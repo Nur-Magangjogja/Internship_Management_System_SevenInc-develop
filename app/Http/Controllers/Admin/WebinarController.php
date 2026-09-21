@@ -132,7 +132,7 @@ class WebinarController extends Controller
                 continue;
             }
 
-            $cert = $this->generateWebinarCertificate($webinar, $attendance->user);
+            $cert = $this->generateWebinarCertificate($webinar, $attendance->user, $attendance->id);
 
             $attendance->update([
                 'certificate_id' => $cert?->id,
@@ -166,7 +166,7 @@ class WebinarController extends Controller
 
         try {
             // Generate sertifikat webinar
-            $cert = $this->generateWebinarCertificate($webinar, $attendance->user);
+            $cert = $this->generateWebinarCertificate($webinar, $attendance->user, $attendance->id);
 
             // Update attendance
             $attendance->update([
@@ -269,8 +269,9 @@ class WebinarController extends Controller
      * Menggunakan DB transaction + lock untuk mencegah duplicate serial number
      * ketika banyak peserta di-approve bersamaan.
      */
-    private function generateWebinarCertificate(Webinar $webinar, $user, $attendanceId): ?\App\Models\WebinarCertificate
+    private function generateWebinarCertificate(Webinar $webinar, $user, $attendanceId = null): ?\App\Models\WebinarCertificate
     {
+        $attendanceId = $attendanceId ?? \App\Models\WebinarAttendance::where('webinar_id', $webinar->id)->where('user_id', $user->id ?? null)->value('id');
         $webinar->loadMissing('brand');
         
         $startDate = $webinar->event_date;
