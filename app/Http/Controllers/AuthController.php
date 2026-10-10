@@ -17,6 +17,9 @@ class AuthController extends Controller
             if ($role === 'admin') {
                 return redirect()->route('admin.dashboard.index');
             }
+            if ($role === 'hr_staff') {
+                return redirect()->route('hr.dashboard');
+            }
             return redirect()->route('pemagang.dashboard');
         }
         return view('auth.admin-register');
@@ -54,7 +57,7 @@ class AuthController extends Controller
 
         // Langsung ke form magang
         return redirect()->route('pemagang.registration.form')
-            ->with('success', '✅ Akun berhasil dibuat! Silakan isi form pendaftaran magang di bawah ini.');
+            ->with('success', 'Akun berhasil dibuat! Silakan isi form pendaftaran magang di bawah ini.');
     }
 
     /**
@@ -66,6 +69,9 @@ class AuthController extends Controller
             $role = auth()->user()->role;
             if ($role === 'admin') {
                 return redirect()->route('admin.dashboard.index');
+            }
+            if ($role === 'hr_staff') {
+                return redirect()->route('hr.dashboard');
             }
             return redirect()->route('pemagang.dashboard');
         }
@@ -133,7 +139,12 @@ class AuthController extends Controller
                 return redirect()->route('admin.dashboard.index');
             }
 
-            // Semua role selain admin (user, pemagang) → pemagang dashboard baru
+            // HR Staff → HR dashboard
+            if ($user->role === 'hr_staff') {
+                return redirect()->route('hr.dashboard');
+            }
+
+            // Semua role selain admin & hr_staff (user, pemagang) → pemagang dashboard baru
             return redirect()->route('pemagang.dashboard');
         }
 

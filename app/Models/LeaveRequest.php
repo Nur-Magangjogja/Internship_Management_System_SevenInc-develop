@@ -19,6 +19,6 @@ class LeaveRequest extends Model
 
     public function internshipRegistration()
     {
-        return $this->belongsTo(InternshipRegistration::class, 'intern_id');
+        return $this->belongsTo(InternshipRegistration::class, 'intern_id')->withTrashed();
     }
 }

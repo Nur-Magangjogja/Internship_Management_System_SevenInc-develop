@@ -18,7 +18,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(
+            \App\Services\SpreadsheetTransport\SpreadsheetTransportInterface::class,
+            function ($app) {
+                $driver = new \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport();
+                if ($driver->isConfigured()) {
+                    return $driver;
+                }
+
+                return new \App\Services\SpreadsheetTransport\NullSpreadsheetTransport();
+            }
+        );
     }
 
     /**

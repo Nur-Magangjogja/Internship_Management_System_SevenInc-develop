@@ -17,7 +17,13 @@
             </button>
 
             <div class="min-w-0">
-                <p class="truncate text-[17px] font-bold text-admin-text-dark">Panel Administrasi</p>
+                <p class="truncate text-[17px] font-bold text-admin-text-dark">
+                    @if($user && $user->role === 'hr_staff')
+                        Panel HR Staff
+                    @else
+                        Panel Administrasi
+                    @endif
+                </p>
                 <p class="hidden truncate text-xs text-admin-text-mid sm:block">InternHub</p>
             </div>
         </div>
@@ -66,8 +72,10 @@
                     </span>
 
                     <span class="hidden text-left sm:block">
-                        <span class="block max-w-28 truncate text-[13px] font-semibold text-admin-text-dark">{{ $user->name ?? 'Admin' }}</span>
-                        <span class="block text-[11px] text-admin-text-mid">Administrator</span>
+                        <span class="block max-w-28 truncate text-[13px] font-semibold text-admin-text-dark">{{ $user->name ?? 'Pengguna' }}</span>
+                        <span class="block text-[11px] text-admin-text-mid">
+                            {{ $user && $user->role === 'hr_staff' ? 'HR Staff' : 'Administrator' }}
+                        </span>
                     </span>
 
                     <svg class="hidden h-4 w-4 text-admin-text-mid sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -77,13 +85,15 @@
 
                 <div id="admin-profile-menu" class="absolute right-0 mt-2 hidden w-56 overflow-hidden rounded-xl border border-admin-border bg-white py-2 shadow-[0_12px_32px_rgba(27,58,52,0.14)]">
                     <div class="border-b border-admin-border px-4 py-3">
-                        <p class="truncate text-sm font-semibold text-admin-text-dark">{{ $user->name ?? 'Admin' }}</p>
+                        <p class="truncate text-sm font-semibold text-admin-text-dark">{{ $user->name ?? 'Pengguna' }}</p>
                         <p class="truncate text-xs text-admin-text-mid">{{ $user->email ?? '' }}</p>
                     </div>
 
-                    <a href="{{ route('admin.profile.edit') }}" class="block px-4 py-2.5 text-sm text-admin-text-mid hover:bg-admin-secondary hover:text-admin-primary-dark">
-                        Edit Profil
-                    </a>
+                    @if($user && $user->role === 'admin')
+                        <a href="{{ route('admin.profile.edit') }}" class="block px-4 py-2.5 text-sm text-admin-text-mid hover:bg-admin-secondary hover:text-admin-primary-dark">
+                            Edit Profil
+                        </a>
+                    @endif
 
                     <form action="{{ route('user.logout') }}" method="POST" class="border-t border-admin-border">
                         @csrf

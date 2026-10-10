@@ -46,11 +46,15 @@ class MembercardController extends Controller
         }
 
         if ($search) {
-            $query->whereHas('intern', function ($q) use ($search) {
-                $q->where('fullname', 'like', "%{$search}%")
-                  ->orWhere('student_id', 'like', "%{$search}%")
-                  ->orWhere('institution_name', 'like', "%{$search}%");
-            })->orWhere('member_code', 'like', "%{$search}%");
+            $query->where(function ($mq) use ($search) {
+                $mq->whereHas('intern', function ($q) use ($search) {
+                    $q->where('fullname', 'like', "%{$search}%")
+                      ->orWhere('student_id', 'like', "%{$search}%")
+                      ->orWhereHas('institution', function ($iq) use ($search) {
+                          $iq->where('name', 'like', "%{$search}%");
+                      });
+                })->orWhere('member_code', 'like', "%{$search}%");
+            });
         }
 
         $downloads = $query->get();
@@ -64,11 +68,25 @@ class MembercardController extends Controller
     public function logDownload(Request $request)
     {
         $data = $request->validate([
-            'id' => 'required|string', // this is the code
+            'id' => 'required|string', // this is the member_code
         ]);
 
+        if (!auth()->check()) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+                'status' => false
+            ], 401);
+        }
+
+        if (auth()->user()->role !== 'pemagang') {
+            return response()->json([
+                'message' => 'Unauthorized action.',
+                'status' => false
+            ], 403);
+        }
+
         // Find existing record ONLY
-        $download = AlumniMembercard::where('member_code', $data['id'])->first();
+        $download = AlumniMembercard::with('intern')->where('member_code', $data['id'])->first();
 
         // If not found, DO NOT create a new record
         if (!$download) {
@@ -76,6 +94,15 @@ class MembercardController extends Controller
                 'message' => 'Download record not found — please contact admin.',
                 'status' => false
             ], 404);
+        }
+
+        // Strict ownership check: kartu harus milik pemagang yang sedang login (fail-closed jika relasi intern null)
+        $intern = $download->intern;
+        if (!$intern || (int)$intern->user_id !== (int)auth()->id()) {
+            return response()->json([
+                'message' => 'Unauthorized action.',
+                'status' => false
+            ], 403);
         }
 
         if (!$download->has_downloaded) {
@@ -155,7 +182,7 @@ class MembercardController extends Controller
         // Re-generate (refresh data terbaru ke record download)
         $user->createMemberCard();
 
-        return back()->with('success', "✅ Membercard untuk <strong>{$user->name}</strong> berhasil digenerate dan sudah tersedia di Dokumen Saya pemagang.");
+        return back()->with('success', "Membercard untuk <strong>{$user->name}</strong> berhasil digenerate dan sudah tersedia di Dokumen Saya pemagang.");
     }
 
     /**
@@ -193,7 +220,7 @@ class MembercardController extends Controller
             $generated++;
         }
 
-        $msg = "✅ {$generated} membercard berhasil digenerate ulang.";
+        $msg = "{$generated} membercard berhasil digenerate ulang.";
         if ($skipped > 0) {
             $msg .= " {$skipped} dilewati (user tidak ditemukan).";
         }

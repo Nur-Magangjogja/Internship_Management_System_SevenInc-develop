@@ -125,6 +125,10 @@ class UserController extends Controller
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
 
+        if (!$user->internshipRegistration) {
+            return redirect()->route('pemagang.dashboard')->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
+
         // paginate 10, urut terbaru di atas
         $reports = $user->dailyReports()
             ->orderByDesc('date')
@@ -140,6 +144,10 @@ class UserController extends Controller
     {
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
+
+        if (!$user->internshipRegistration) {
+            return back()->withInput()->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
 
         $validated = $request->validate([
             'date'       => ['required', 'date'],
@@ -177,6 +185,10 @@ class UserController extends Controller
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
 
+        if (!$user->internshipRegistration) {
+            return redirect()->route('pemagang.dashboard')->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
+
         $leaveRequests = $user->leaveRequests()
             ->orderByDesc('leave_date')
             ->orderByDesc('created_at')
@@ -191,6 +203,10 @@ class UserController extends Controller
     {
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
+
+        if (!$user->internshipRegistration) {
+            return back()->withInput()->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
 
         $validated = $request->validate([
             'leave_type' => ['required', 'string', 'max:50'],
@@ -220,6 +236,10 @@ class UserController extends Controller
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
 
+        if (!$user->internshipRegistration) {
+            return redirect()->route('pemagang.dashboard')->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
+
         $pendingTasks = $user->pendingTasks()
             ->orderByDesc('created_at')
             ->paginate(10)
@@ -233,6 +253,10 @@ class UserController extends Controller
     {
         $user = $request->user();
         $this->assertPemagangOrAbort($user);
+
+        if (!$user->internshipRegistration) {
+            return back()->withInput()->with('error', 'Data pendaftaran magang tidak ditemukan.');
+        }
 
         $validated = $request->validate([
             'task_title'       => ['required', 'string', 'max:255'],

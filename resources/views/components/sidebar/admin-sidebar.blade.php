@@ -10,6 +10,12 @@
         'video' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
         'settings' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V20.3h-3v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7.08 15a1.7 1.7 0 0 0-1.55-1H5.4v-3h.13A1.7 1.7 0 0 0 7.08 10a1.7 1.7 0 0 0-.34-1.88l-.06-.06L8.8 5.94l.06.06A1.7 1.7 0 0 0 10.74 6.34a1.7 1.7 0 0 0 1-1.55V4.7h3v.09a1.7 1.7 0 0 0 1 1.55A1.7 1.7 0 0 0 17.62 6l.06-.06 2.12 2.12-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.55 1h.13v3h-.13A1.7 1.7 0 0 0 19.4 15Z"/></svg>',
         'message' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-4-.9L3 21l1.8-4.4A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/></svg>',
+        'building' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>',
+        'phone' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+        'activity' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+        'table' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
+        'archive' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
+        'upload' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
         'logout' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>',
     ];
 
@@ -19,6 +25,14 @@
             'items' => [
                 ['label' => 'Dashboard',         'route' => 'admin.dashboard.index',          'icon' => 'dashboard'],
                 ['label' => 'Semua Pengguna',     'route' => 'admin.users.index',              'icon' => 'users'],
+                ['label' => 'Kelola HR Staff',    'route' => 'admin.hr-staff.index',           'icon' => 'users'],
+                ['label' => 'Master Institusi',   'route' => 'admin.institutions.index',       'icon' => 'building'],
+                ['label' => 'Review Kontak Pembimbing', 'route' => 'admin.contact-review.index', 'icon' => 'check'],
+                ['label' => 'Monitoring Follow-Up', 'route' => 'admin.follow-up.index',        'icon' => 'phone'],
+                ['label' => 'Template MOU',        'route' => 'admin.mou-templates.index',      'icon' => 'file'],
+                ['label' => 'Dokumen MOU & PKS',   'route' => 'admin.mous.index',               'icon' => 'file'],
+                ['label' => 'Log Aktivitas',       'route' => 'admin.activity-logs.index',      'icon' => 'activity'],
+                ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
                 ['label' => 'Manajemen Divisi',   'route' => 'admin.form-settings.divisions',  'icon' => 'settings'],
                 ['label' => 'Pengaturan Form',     'route' => 'admin.form-settings.fields',     'icon' => 'settings'],
@@ -48,8 +62,22 @@
                 ['label' => 'Kelola Webinar', 'route' => 'admin.webinars.index', 'icon' => 'video'],
             ],
         ],
-
     ];
+
+    if (auth()->check() && auth()->user()->role === 'hr_staff') {
+        $groups = [
+            [
+                'label' => 'Operasional HR',
+                'items' => [
+                    ['label' => 'Dashboard HR', 'route' => 'hr.dashboard', 'icon' => 'dashboard'],
+                    ['label' => 'Data Institusi', 'route' => 'hr.institutions.index', 'icon' => 'building'],
+                    ['label' => 'Review Kontak Pembimbing', 'route' => 'hr.contact-review.index', 'icon' => 'check'],
+                    ['label' => 'Tugas Follow-Up', 'route' => 'hr.follow-up.index', 'icon' => 'phone'],
+                    ['label' => 'Dokumen MOU', 'route' => 'hr.mous.index', 'icon' => 'file'],
+                ],
+            ],
+        ];
+    }
 @endphp
 
 <aside
@@ -103,9 +131,18 @@
                             // Data Pemagang: aktif di route pemagang.* (active/completed/exited)
                             // Fallback: cek route persis
                             $isActive = match($item['route']) {
-                                'admin.interns.pendaftar' => request()->routeIs('admin.interns.pendaftar'),
-                                'admin.interns.pemagang'  => request()->routeIs('admin.interns.pemagang'),
-                                'admin.webinars.index'    => request()->routeIs('admin.webinars.*'),
+                                'admin.interns.pendaftar'   => request()->routeIs('admin.interns.pendaftar'),
+                                'admin.interns.pemagang'    => request()->routeIs('admin.interns.pemagang'),
+                                'admin.webinars.index'      => request()->routeIs('admin.webinars.*'),
+                                'admin.mou-templates.index' => request()->routeIs('admin.mou-templates.*'),
+                                'admin.mous.index'          => request()->routeIs('admin.mous.*'),
+                                'admin.activity-logs.index' => request()->routeIs('admin.activity-logs.*'),
+                                'admin.spreadsheet-connections.index' => request()->routeIs('admin.spreadsheet-connections.*'),
+                                'admin.archive-exports.index' => request()->routeIs('admin.archive-exports.*'),
+                                'admin.legacy-import.index' => request()->routeIs('admin.legacy-import.*'),
+                                'admin.contact-review.index' => request()->routeIs('admin.contact-review.*'),
+                                'hr.contact-review.index'    => request()->routeIs('hr.contact-review.*'),
+                                'hr.mous.index'             => request()->routeIs('hr.mous.*'),
                                 default => request()->routeIs($item['route']),
                             };
                         @endphp

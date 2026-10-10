@@ -413,11 +413,17 @@ class InternController extends Controller
             }
         }
 
-        // Helper untuk mencari atau membuat relasi (case-insensitive)
+        // Helper untuk mencari atau membuat relasi (case-insensitive dengan scoping parent)
         $getRelationId = function($modelClass, $name, $extra = []) {
             if (empty($name)) return null;
             $name = ucwords(strtolower(trim($name)));
-            $existing = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            $query = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)]);
+            foreach ($extra as $col => $val) {
+                if ($val !== null) {
+                    $query->where($col, $val);
+                }
+            }
+            $existing = $query->first();
             if ($existing) return $existing->id;
             return $modelClass::create(array_merge(['name' => $name], $extra))->id;
         };
@@ -430,7 +436,20 @@ class InternController extends Controller
         }
         if (array_key_exists('institution_name', $validatedData)) {
             if (!empty($validatedData['institution_name'])) {
-                $validatedData['institution_id'] = $getRelationId(\App\Models\Institution::class, $validatedData['institution_name']);
+                $instName = trim($validatedData['institution_name']);
+                $normName = \App\Models\Institution::normalizeName($instName);
+                $existingInst = \App\Models\Institution::whereRaw('LOWER(name) = ?', [strtolower($instName)])
+                    ->orWhere('normalized_name', $normName)
+                    ->first();
+                if ($existingInst) {
+                    $validatedData['institution_id'] = $existingInst->id;
+                } else {
+                    $validatedData['institution_id'] = \App\Models\Institution::create([
+                        'name'            => ucwords(strtolower($instName)),
+                        'normalized_name' => $normName,
+                        'is_active'       => true,
+                    ])->id;
+                }
             }
             unset($validatedData['institution_name']);
         }
@@ -452,14 +471,26 @@ class InternController extends Controller
         if (array_key_exists('internship_interest', $validatedData)) {
             if (!empty($validatedData['internship_interest'])) {
                 // frontend sends division name
-                $validatedData['division_id'] = $getRelationId(\App\Models\Division::class, $validatedData['internship_interest']);
+                $divName = trim($validatedData['internship_interest']);
+                $existingDiv = \App\Models\Division::whereRaw('LOWER(name) = ?', [strtolower($divName)])
+                    ->orWhere('slug', \Illuminate\Support\Str::slug($divName, '_'))
+                    ->first();
+                if ($existingDiv) {
+                    $validatedData['division_id'] = $existingDiv->id;
+                }
             }
             unset($validatedData['internship_interest']);
         }
 
         if (array_key_exists('brand', $validatedData)) {
             if (!empty($validatedData['brand'])) {
-                $validatedData['brand_id'] = $getRelationId(\App\Models\Brand::class, $validatedData['brand']);
+                $brandStr = trim($validatedData['brand']);
+                $existingBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandStr)])
+                    ->orWhereRaw('LOWER(code) = ?', [strtolower($brandStr)])
+                    ->first();
+                if ($existingBrand) {
+                    $validatedData['brand_id'] = $existingBrand->id;
+                }
             }
             unset($validatedData['brand']);
         }
@@ -531,9 +562,38 @@ class InternController extends Controller
             unset($validatedData['internship_info_sources']);
         }
 
+        // Track meaningful attribute changes for audit logging (excluding status transitions handled by lifecycle)
+        $trackedFields = [
+            'name', 'fullname', 'phone', 'phone_number', 'institution_id', 'faculty_id',
+            'study_program_id', 'major', 'division_id', 'brand_id', 'start_date', 'end_date',
+            'status_pembimbing', 'pembimbing_nama', 'pembimbing_phone'
+        ];
+        $beforeChanges = [];
+        $afterChanges = [];
+        foreach ($validatedData as $key => $val) {
+            if (in_array($key, $trackedFields) && $intern->getAttribute($key) != $val) {
+                $beforeChanges[$key] = $intern->getAttribute($key);
+                $afterChanges[$key] = $val;
+            }
+        }
+
         // Jangan timpa internship_status lewat update biasa jika tidak dikirim
         if (isset($validatedData['internship_status']) && $validatedData['internship_status'] !== $intern->internship_status) {
             $oldStatus = $intern->internship_status;
+            $newStatus = $validatedData['internship_status'];
+            $reason    = $request->input('reason') ?? $request->input('correction_reason');
+            $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+
+            try {
+                $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+            } catch (\InvalidArgumentException $e) {
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['message' => $e->getMessage()], 422);
+                }
+                return back()->withInput()->with('error', $e->getMessage());
+            }
+
+            unset($validatedData['internship_status']);
             $intern->fill($validatedData)->save();
             $this->syncPemagangRole($intern);
             
@@ -553,17 +613,112 @@ class InternController extends Controller
             $intern->fill($validatedData)->save();
         }
 
+        if (!empty($afterChanges)) {
+            \App\Services\ActivityLogger::log(
+                action: 'admin_intern_registration_updated',
+                description: "Data pendaftaran {$intern->name} diperbarui oleh Administrator.",
+                subject: $intern,
+                before: $beforeChanges,
+                after: $afterChanges,
+                metadata: ['registration_id' => $intern->id]
+            );
+        }
+
         return response()->json($intern, 200);
     }
 
 
 
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $intern = IR::findOrFail($id);
+
+        $request->validate([
+            'admin_password' => ['required', 'string'],
+        ], [
+            'admin_password.required' => 'Konfirmasi kata sandi admin wajib diisi.',
+        ]);
+
+        if (!\Illuminate\Support\Facades\Hash::check($request->admin_password, auth()->user()->password)) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'message' => 'Konfirmasi kata sandi admin salah. Aksi penghapusan dibatalkan.'
+                ], 403);
+            }
+            return back()->with('error', 'Konfirmasi kata sandi admin salah. Aksi penghapusan dibatalkan.');
+        }
+
+        $internName = $intern->fullname;
+        $internId   = $intern->id;
+        $hadDocs    = $intern->hasDocuments();
+
+        // Soft delete pendaftaran (history-safe, tidak memicu MySQL cascade)
         $intern->delete();
-        return response()->json(['message' => 'Data berhasil dihapus'], 200);
+
+        \App\Services\ActivityLogger::log(
+            action: 'intern_registration_deleted',
+            description: "Admin melakukan soft delete pendaftaran pemagang ke arsip: {$internName}",
+            metadata: [
+                'auth_verified' => true,
+                'intern_id'     => $internId,
+                'had_documents' => $hadDocs,
+            ]
+        );
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'message' => "Data pendaftaran {$internName} berhasil dipindahkan ke arsip (soft delete)."
+            ], 200);
+        }
+
+        return redirect()->back()->with('success', "Data pendaftaran {$internName} berhasil dipindahkan ke arsip (soft delete).");
+    }
+
+    /**
+     * Memulihkan pendaftaran pemagang yang telah di-soft-delete (dengan re-autentikasi kata sandi admin).
+     */
+    public function restore(Request $request, $id)
+    {
+        $request->validate([
+            'admin_password' => ['required', 'string'],
+        ], [
+            'admin_password.required' => 'Konfirmasi kata sandi admin wajib diisi.',
+        ]);
+
+        if (!\Illuminate\Support\Facades\Hash::check($request->admin_password, auth()->user()->password)) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'message' => 'Konfirmasi kata sandi admin salah. Aksi pemulihan dibatalkan.'
+                ], 403);
+            }
+            return back()->with('error', 'Konfirmasi kata sandi admin salah. Aksi pemulihan dibatalkan.');
+        }
+
+        $intern = IR::onlyTrashed()->findOrFail($id);
+
+        $internName = $intern->fullname;
+        $intern->restore();
+
+        // PENTING: Restore registration tidak memulihkan User atau mengubah role/status akun.
+        // Account state dan registration lifecycle tetap terpisah.
+
+        \App\Services\ActivityLogger::log(
+            action: 'intern_registration_restored',
+            description: "Admin memulihkan data pendaftaran pemagang dari arsip: {$internName}",
+            metadata: [
+                'auth_verified' => true,
+                'intern_id'     => $intern->id,
+            ]
+        );
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'message' => "Data pendaftaran {$internName} berhasil dipulihkan dari arsip.",
+            ], 200);
+        }
+
+        return redirect()->back()->with('success', "Data pendaftaran {$internName} berhasil dipulihkan dari arsip.");
     }
 
     // ===== helper: tetapkan / cabut role "pemagang" sesuai status & kondisi =====
@@ -586,10 +741,13 @@ class InternController extends Controller
                 $user->save();
             }
         } elseif (in_array($intern->internship_status, [IR::STATUS_EXITED, IR::STATUS_REJECTED])) {
-            // Hanya cabut role bila status keluar atau ditolak
-            if (mb_strtolower($user->role ?? '') === 'pemagang') {
-                $user->role = 'user';
-                $user->save();
+            // Hanya cabut role bila status keluar atau ditolak DAN pengguna tidak memiliki riwayat completed lainnya (bukan alumni)
+            $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+            if (!$lifecycle->shouldRetainPemagangRole($user)) {
+                if (mb_strtolower($user->role ?? '') === 'pemagang') {
+                    $user->role = 'user';
+                    $user->save();
+                }
             }
         }
         // Status waiting/pending: jangan ubah role
@@ -786,25 +944,36 @@ class InternController extends Controller
         $validated = $request->validate([
             'internship_status' => 'required|in:waiting,active,completed,exited,pending,accepted,rejected',
             'brand'             => 'nullable|string|max:100',
+            'reason'            => 'nullable|string|max:500',
+            'correction_reason' => 'nullable|string|max:500',
         ]);
 
         $oldStatus = $intern->internship_status; // Menyimpan status lama
         $newStatus = $validated['internship_status']; // Status baru yang diterima
+        $reason    = $validated['reason'] ?? $validated['correction_reason'] ?? $request->input('reason') ?? $request->input('correction_reason');
 
-        // Mengupdate status internship
-        $intern->internship_status = $newStatus;
+        // Gunakan RegistrationLifecycleService untuk validasi & transisi
+        $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+        try {
+            $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->with('error', $e->getMessage());
+        }
 
         // Simpan brand jika status accepted & brand dikirim
         if ($newStatus === IR::STATUS_ACCEPTED && !empty($validated['brand'])) {
             $brandName = trim($validated['brand']);
-            $existingBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandName)])->first();
-            $intern->brand_id = $existingBrand ? $existingBrand->id : \App\Models\Brand::create(['name' => $brandName])->id;
+            $existingBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandName)])
+                ->orWhereRaw('LOWER(code) = ?', [strtolower($brandName)])
+                ->first();
+            if ($existingBrand) {
+                $intern->brand_id = $existingBrand->id;
+                $intern->save();
+            }
         }
-
-        // Admin bebas mengubah status apapun tanpa perlu pengecekan status sebelumnya
-
-        // Simpan perubahan status
-        $intern->save();
 
         // Sinkronkan role user sesuai status baru
         $this->syncPemagangRole($intern);
@@ -853,7 +1022,10 @@ class InternController extends Controller
         $mailCount = 0;
         $mailList  = [];
 
-        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList) {
+        $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+        $reason    = $request->input('reason') ?? $request->input('correction_reason');
+
+        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList, $lifecycle, $reason) {
             $interns = IR::whereIn('id', $validated['ids'])->lockForUpdate()->get();
 
             foreach ($interns as $intern) {
@@ -862,8 +1034,7 @@ class InternController extends Controller
                 }
 
                 $old = $intern->internship_status;
-                $intern->internship_status = $validated['internship_status'];
-                $intern->save();
+                $lifecycle->transition($intern, $validated['internship_status'], isAdmin: true, reason: $reason);
 
                 // Buat membercard hanya saat status active atau completed
                 if (in_array($intern->internship_status, [IR::STATUS_ACTIVE, IR::STATUS_COMPLETED])) {

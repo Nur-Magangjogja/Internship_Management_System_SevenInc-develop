@@ -189,8 +189,10 @@ class InternApiController extends Controller
 
         $q = IR::with(['skills', 'tools']);
 
-        // Scope status
-        if ($scope !== 'all') {
+        // Scope status / Trashed
+        if ($scope === 'trashed' || $req->get('status') === 'trashed') {
+            $q->onlyTrashed();
+        } elseif ($scope !== 'all') {
             $q->where('internship_status', $scope);
         }
 
@@ -370,7 +372,8 @@ class InternApiController extends Controller
                 'internship_status'        => $r->internship_status,
                 'internship_status_label'  => $this->statusView((string)$r->internship_status)['label'],
                 'internship_status_class'  => $this->statusView((string)$r->internship_status)['class'],
-
+                'deleted_at'               => optional($r->deleted_at)?->toIso8601String(),
+                'is_trashed'               => $r->trashed(),
             ];
         }, $list);
         

@@ -11,10 +11,12 @@ use App\Models\StudyProgram;
 use App\Models\Division;
 use App\Models\Brand;
 use App\Models\InternshipRegistration;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 
 class AdminRekomendasiDivisiNameTest extends TestCase
 {
+    use DatabaseTransactions;
     public function test_rekomendasi_preview_uses_division_name_instead_of_code_for_placeholder(): void
     {
         $admin = User::create([
@@ -29,19 +31,23 @@ class AdminRekomendasiDivisiNameTest extends TestCase
         $fac  = Faculty::first() ?? Faculty::create(['name' => 'Fakultas Teknik', 'institution_id' => $inst->id]);
         $sp   = StudyProgram::first() ?? StudyProgram::create(['name' => 'Informatika', 'faculty_id' => $fac->id]);
         
-        $division = Division::create([
-            'name' => 'Divisi Khusus Pengembangan Web',
-            'code' => 'DKPW',
-            'slug' => 'divisi-khusus-pengembangan-web-' . time(),
-        ]);
+        $division = Division::firstOrCreate(
+            ['code' => 'DKPW'],
+            [
+                'name' => 'Divisi Khusus Pengembangan Web',
+                'slug' => 'divisi-khusus-pengembangan-web-' . time(),
+            ]
+        );
 
-        $brand = Brand::create([
-            'name'               => 'Brand Rekomendasi Test',
-            'code'               => 'BRT',
-            'company_address'    => 'Jl. Test No. 123',
-            'signatory_name'     => 'Direktur Utama',
-            'signatory_position' => 'Direktur',
-        ]);
+        $brand = Brand::firstOrCreate(
+            ['code' => 'BRT'],
+            [
+                'name'               => 'Brand Rekomendasi Test',
+                'company_address'    => 'Jl. Test No. 123',
+                'signatory_name'     => 'Direktur Utama',
+                'signatory_position' => 'Direktur',
+            ]
+        );
 
         $user = User::create([
             'name'     => 'u_rek_' . time(),
@@ -87,11 +93,6 @@ class AdminRekomendasiDivisiNameTest extends TestCase
         $response->assertSee('Telah magang sebagai Divisi Khusus Pengembangan Web di Brand Rekomendasi Test.');
         $response->assertDontSee('Telah magang sebagai DKPW di Brand Rekomendasi Test.');
 
-        // Cleanup
-        $intern->delete();
-        $user->delete();
-        $brand->delete();
-        $division->delete();
-        $admin->delete();
+        // Cleanup dilakukan secara otomatis oleh DatabaseTransactions rollback.
     }
 }
