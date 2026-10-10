@@ -28,7 +28,7 @@ class DocumentController extends Controller
             $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
             $path = 'documents/loa/' . $fileName;
 
-            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
+            if (\Illuminate\Support\Facades\Storage::disk('local')->exists($path) || \Illuminate\Support\Facades\Storage::disk('public')->exists($path)) {
                 $loa->file_path = $path;
                 $loa->status = 'success';
             } else {

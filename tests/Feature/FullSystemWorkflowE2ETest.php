@@ -77,6 +77,8 @@ class FullSystemWorkflowE2ETest extends TestCase
         // -------------------------------------------------------------
         // TAHAP 2: Buat Akun Pemagang Baru & Daftar Melalui Form Magang
         // -------------------------------------------------------------
+        auth()->logout();
+
         $pemagangUsername = 'pemagang_e2e_' . uniqid();
         $pemagangEmail    = $pemagangUsername . '@example.com';
         $pemagangPassword = 'password123';
@@ -117,6 +119,10 @@ class FullSystemWorkflowE2ETest extends TestCase
             'internship_reason'      => 'Ingin menimba ilmu profesional di Seven Inc',
             'start_date'             => '2026-01-01',
             'end_date'               => '2026-04-01',
+            'wfo_readiness'          => 'Siap WFO di Yogyakarta',
+            'schedule_shift_readiness' => 'Sanggup',
+            'has_laptop'             => 1,
+            'planned_duration'       => '3 Bulan',
         ]);
         $resSubmit->assertRedirect();
 

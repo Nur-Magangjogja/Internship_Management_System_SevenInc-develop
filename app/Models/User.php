@@ -12,11 +12,42 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_HR_STAFF = 'hr_staff';
+    public const ROLE_PEMAGANG = 'pemagang';
+    public const ROLE_USER = 'user';
+
+    public function isAdmin(): bool
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    public function isHrStaff(): bool
+    {
+        return $this->role === self::ROLE_HR_STAFF;
+    }
+
+    public function isPemagang(): bool
+    {
+        return $this->role === self::ROLE_PEMAGANG;
+    }
+
+    /**
+     * Memeriksa apakah akun pengguna aktif (tidak diblokir/banned dan tidak dihapus secara soft-delete).
+     */
+    public function isActive(): bool
+    {
+        return !$this->is_banned
+            && $this->banned_at === null
+            && !$this->trashed();
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +61,8 @@ class User extends Authenticatable
         'role',
         'is_online',
         'is_banned',
+        'banned_at',
+        'ban_reason',
     ];
 
     /**
@@ -58,6 +91,52 @@ class User extends Authenticatable
     {
         return $this->hasOne(\App\Models\InternshipRegistration::class, 'user_id')
             ->latestOfMany('id');
+    }
+
+    /**
+     * Registrasi terbaru (terakhir dibuat) milik pengguna, apapun statusnya.
+     */
+    public function latestRegistration(): HasOne
+    {
+        return $this->hasOne(\App\Models\InternshipRegistration::class, 'user_id')
+            ->latestOfMany('id');
+    }
+
+    /**
+     * Registrasi operasional yang sedang berjalan atau draf aktif milik pengguna.
+     * Mengembalikan null jika seluruh registrasi terdahulu sudah terminal/closed (completed/rejected/exited).
+     */
+    public function currentRegistration(): ?\App\Models\InternshipRegistration
+    {
+        return app(\App\Services\RegistrationLifecycleService::class)->getOpenOrDraftRegistration($this);
+    }
+
+    /**
+     * Registrasi berstatus 'completed' terakhir milik pengguna (untuk fallback entitlement dokumen alumni).
+     */
+    public function latestCompletedRegistration(): HasOne
+    {
+        return $this->hasOne(\App\Models\InternshipRegistration::class, 'user_id')
+            ->where('internship_status', \App\Models\InternshipRegistration::STATUS_COMPLETED)
+            ->latestOfMany('id');
+    }
+
+    /**
+     * Seluruh riwayat pendaftaran magang multi-periode milik pengguna.
+     */
+    public function internshipRegistrations(): HasMany
+    {
+        return $this->hasMany(\App\Models\InternshipRegistration::class, 'user_id');
+    }
+
+    /**
+     * Periksa apakah pengguna merupakan alumni (memiliki riwayat magang yang completed).
+     */
+    public function hasCompletedInternship(): bool
+    {
+        return $this->internshipRegistrations()
+            ->where('internship_status', \App\Models\InternshipRegistration::STATUS_COMPLETED)
+            ->exists();
     }
 
 
@@ -106,11 +185,22 @@ class User extends Authenticatable
         // Ini mencegah kartu dibuat saat status masih 'accepted'.
     }
 
-    public function createMemberCard()
+    public function createMemberCard(?InternshipRegistration $targetRegistration = null): ?\App\Models\AlumniMembercard
     {
-        $intern = $this->internshipRegistration;
+        $intern = $targetRegistration;
 
-        if (!$intern || !$intern->start_date) return;
+        if (!$intern) {
+            $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+            $intern = $lifecycle->resolveRegistrationForDocuments($this, null, 'membercard');
+        }
+
+        if (!$intern || !$intern->start_date) {
+            return null;
+        }
+
+        if (!in_array($intern->internship_status, [InternshipRegistration::STATUS_COMPLETED, InternshipRegistration::STATUS_ACTIVE], true)) {
+            return null;
+        }
 
         $angkatanYear = \Carbon\Carbon::parse($intern->start_date)->format('Y');
         $angkatan     = substr($angkatanYear, -2);
@@ -119,7 +209,7 @@ class User extends Authenticatable
         $prefix       = $this->getBrandPrefix($brand);
         $code         = "{$prefix}{$angkatan}{$idPadded}";
 
-        \App\Models\AlumniMembercard::firstOrCreate(
+        return \App\Models\AlumniMembercard::firstOrCreate(
             ['intern_id' => $intern->id],
             [
                 'member_code' => $code,
@@ -168,13 +258,28 @@ class User extends Authenticatable
         return $this->hasOne(InternshipRegistration::class, 'user_id')->latestOfMany();
     }
 
-    public function getNameAttribute()
+    /**
+     * Nama tampilan (display name) untuk antarmuka pengguna:
+     * Memprioritaskan nama lengkap registrasi terbaru jika ada,
+     * dengan fallback ke nama akun / username asli.
+     */
+    public function getDisplayNameAttribute(): string
     {
-        // Prioritas: fullname dari registrasi (pemagang) -> name di kolom users (admin/user)
-        if ($this->registration && $this->registration->fullname) {
-            return $this->registration->fullname;
+        $reg = $this->internshipRegistration ?? $this->registration;
+        if ($reg && !empty($reg->fullname)) {
+            return $reg->fullname;
         }
-        return $this->attributes['name'] ?? null;
+
+        return (string) ($this->attributes['name'] ?? '');
+    }
+
+    /**
+     * Nama lengkap dari pendaftaran magang terbaru (jika ada).
+     */
+    public function getLatestRegistrationNameAttribute(): ?string
+    {
+        $reg = $this->internshipRegistration ?? $this->registration;
+        return $reg?->fullname;
     }
 
     public function getProfilePictureAttribute()

@@ -1,0 +1,211 @@
+@extends('layouts.dashboard', ['title' => 'Integrasi Google Spreadsheet'])
+
+@section('content')
+<div class="px-6 py-8">
+    <!-- Header -->
+    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Spreadsheet</h1>
+            <p class="text-sm text-slate-500">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
+        </div>
+    </div>
+
+    <!-- Alert Messages -->
+    @if (session('success'))
+        <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
+            {{ session('success') }}
+        </div>
+    @endif
+    @if (session('info'))
+        <div class="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm font-medium text-sky-800">
+            {{ session('info') }}
+        </div>
+    @endif
+    @if (session('error'))
+        <div class="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    <!-- Information Box -->
+    <div class="mb-8 rounded-xl border border-blue-200 bg-blue-50/50 p-5 text-sm text-blue-900 shadow-sm">
+        <div class="flex items-start gap-3">
+            <svg class="h-5 w-5 shrink-0 text-blue-600 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <div class="space-y-1">
+                <p class="font-semibold text-blue-950">Prinsip Integrasi Spreadsheet (Source of Truth)</p>
+                <ul class="list-disc pl-4 space-y-1 text-xs text-blue-800">
+                    <li>Database SertIF adalah satu-satunya sumber kebenaran data (Source of Truth).</li>
+                    <li>Google Spreadsheet berfungsi sebagai mirror operasional satu arah (SertIF &rarr; Spreadsheet).</li>
+                    <li>Perubahan manual pada sel Google Spreadsheet tidak akan menimpa data di database SertIF.</li>
+                    <li>Kredensial rahasia (OAuth/Service Account) disimpan pada konfigurasi server (.env), tidak disimpan dalam basis data.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Cards -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        @foreach ($connections as $conn)
+            <div class="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div>
+                    <!-- Card Top Header -->
+                    <div class="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                            <span class="inline-block px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider rounded-md {{ $conn->connection_key === 'registration' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-purple-50 text-purple-700 border border-purple-200' }}">
+                                {{ $conn->connection_key }}
+                            </span>
+                            <h2 class="mt-2 text-lg font-bold text-slate-800">{{ $conn->display_name }}</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <!-- Status Active Badge -->
+                            @if ($conn->is_enabled)
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                    Aktif
+                                </span>
+                            @else
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                                    Nonaktif
+                                </span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <!-- Details List -->
+                    <div class="space-y-3 text-xs border-t border-slate-100 pt-4">
+                        <div>
+                            <span class="font-medium text-slate-500 block">URL Spreadsheet:</span>
+                            @if ($conn->spreadsheet_url)
+                                <a href="{{ $conn->spreadsheet_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono">
+                                    {{ $conn->spreadsheet_url }}
+                                </a>
+                            @else
+                                <span class="text-slate-400 italic">Belum dikonfigurasi</span>
+                            @endif
+                        </div>
+
+                        <div>
+                            <span class="font-medium text-slate-500 block">Spreadsheet ID:</span>
+                            <span class="font-mono text-slate-700 break-all">{{ $conn->spreadsheet_id ?? '-' }}</span>
+                        </div>
+
+                        <div>
+                            <span class="font-medium text-slate-500 block">Apps Script Endpoint URL:</span>
+                            @if ($conn->apps_script_endpoint_url)
+                                <span class="font-mono text-slate-700 break-all">{{ $conn->apps_script_endpoint_url }}</span>
+                            @else
+                                <span class="text-slate-400 italic">Belum dikonfigurasi (Opsional / Fase S9E)</span>
+                            @endif
+                        </div>
+
+                        <div>
+                            <span class="font-medium text-slate-500 block mb-1">Status Koneksi:</span>
+                            @php
+                                $badgeConfig = match($conn->connection_status) {
+                                    'connected' => ['bg' => 'bg-emerald-50 text-emerald-700 border-emerald-200', 'dot' => 'bg-emerald-500', 'label' => 'Terhubung (Connected)'],
+                                    'pending_transport' => ['bg' => 'bg-amber-50 text-amber-700 border-amber-200', 'dot' => 'bg-amber-500', 'label' => 'Pending Transport'],
+                                    'error' => ['bg' => 'bg-rose-50 text-rose-700 border-rose-200', 'dot' => 'bg-rose-500', 'label' => 'Koneksi Error'],
+                                    'not_configured' => ['bg' => 'bg-slate-100 text-slate-600 border-slate-200', 'dot' => 'bg-slate-400', 'label' => 'Belum Dikonfigurasi'],
+                                    default => ['bg' => 'bg-slate-100 text-slate-600 border-slate-200', 'dot' => 'bg-slate-400', 'label' => 'Belum Diuji'],
+                                };
+                            @endphp
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border {{ $badgeConfig['bg'] }}">
+                                <span class="h-1.5 w-1.5 rounded-full {{ $badgeConfig['dot'] }}"></span>
+                                {{ $badgeConfig['label'] }}
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            @if ($conn->last_tested_at)
+                                <div>
+                                    <span class="font-medium text-slate-500 block">Terakhir Diuji:</span>
+                                    <span class="text-slate-700 font-mono">{{ $conn->last_tested_at->format('d M Y H:i:s') }}</span>
+                                </div>
+                            @endif
+
+                            @if ($conn->last_successful_test_at)
+                                <div>
+                                    <span class="font-medium text-emerald-600 block">Terakhir Berhasil Terhubung:</span>
+                                    <span class="text-emerald-700 font-mono">{{ $conn->last_successful_test_at->format('d M Y H:i:s') }}</span>
+                                </div>
+                            @endif
+                        </div>
+
+                        @if ($conn->last_error_summary)
+                            @php
+                                $isError = $conn->connection_status === 'error';
+                                $isConnected = $conn->connection_status === 'connected';
+                                $boxClass = $isError
+                                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                                    : ($isConnected ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-700');
+                            @endphp
+                            <div class="rounded-lg p-2.5 border text-xs {{ $boxClass }}">
+                                <span class="font-semibold block mb-0.5">{{ $isError ? 'Catatan Kesalahan Koneksi:' : 'Catatan Hasil Pengujian:' }}</span>
+                                <p class="leading-relaxed">{{ $conn->last_error_summary }}</p>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+
+                <!-- Card Bottom Actions -->
+                <div class="mt-6 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                    <a
+                        href="{{ route('admin.spreadsheet-connections.show', $conn) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                        <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect width="18" height="18" x="3" y="3" rx="2"/>
+                            <path d="M3 9h18M3 15h18M9 3v18"/>
+                        </svg>
+                        Lihat Kolom
+                    </a>
+
+                    <a
+                        href="{{ route('admin.spreadsheet-connections.edit', $conn) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                        <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                        Edit Konfigurasi
+                    </a>
+
+                    <form action="{{ route('admin.spreadsheet-connections.toggle', $conn) }}" method="POST" class="inline">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition {{ $conn->is_enabled ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' }}"
+                        >
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="9"/>
+                                <path d="M12 3v9"/>
+                            </svg>
+                            {{ $conn->is_enabled ? 'Nonaktifkan' : 'Aktifkan' }}
+                        </button>
+                    </form>
+
+                    <form action="{{ route('admin.spreadsheet-connections.test', $conn) }}" method="POST" class="inline">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-100"
+                        >
+                            <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                <polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                            Uji Koneksi
+                        </button>
+                    </form>
+                </div>
+            </div>
+        @endforeach
+    </div>
+</div>
+@endsection

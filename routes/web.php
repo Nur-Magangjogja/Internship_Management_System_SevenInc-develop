@@ -51,6 +51,9 @@ Route::get('/', function () {
         if (auth()->user()->role === 'admin') {
             return redirect()->route('admin.dashboard.index');
         }
+        if (auth()->user()->role === 'hr_staff') {
+            return redirect()->route('hr.dashboard');
+        }
         return redirect()->route('pemagang.dashboard');
     }
     return view('landing');
@@ -60,15 +63,20 @@ Route::get('/', function () {
 // GET /login
 Route::get('/login', function() {
     if (auth()->check()) {
-        return auth()->user()->role === 'admin'
-            ? redirect()->route('admin.dashboard.index')
-            : redirect()->route('pemagang.dashboard');
+        if (auth()->user()->role === 'admin') {
+            return redirect()->route('admin.dashboard.index');
+        }
+        if (auth()->user()->role === 'hr_staff') {
+            return redirect()->route('hr.dashboard');
+        }
+        return redirect()->route('pemagang.dashboard');
     }
     return view('auth.login');
 })->name('user.login')->middleware('guest');
 
 Route::post('/login', [AuthController::class, 'login'])
-    ->name('user.login.submit');
+    ->name('user.login.submit')
+    ->middleware('throttle:login');
 
 // GET /register
 Route::get('/register', function() {
@@ -76,7 +84,8 @@ Route::get('/register', function() {
 })->name('user.register')->middleware('guest');
 
 Route::post('/register', [AuthController::class, 'register'])
-    ->name('user.register.submit');
+    ->name('user.register.submit')
+    ->middleware(['guest', 'throttle:10,1']);
 
 // Logout (user & admin)
 Route::post('/logout', [AuthController::class, 'logout'])
@@ -88,7 +97,7 @@ Route::get('/user/dashboard', fn() => redirect()->route('pemagang.dashboard'))
     ->name('user.dashboard')
     ->middleware('auth');
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'role:pemagang'])->group(function () {
     // Laporan harian, izin, tugas — tetap di sini karena dipakai UserController
     Route::get('/user/daily-report', [UserController::class, 'dailyReport'])->name('user.dailyReport');
     Route::post('/user/daily-report', [UserController::class, 'storeDailyReport'])->name('user.storeDailyReport');
@@ -98,12 +107,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/user/pending-tasks', [UserController::class, 'pendingTasks'])->name('user.pendingTasks');
     Route::post('/user/pending-tasks', [UserController::class, 'storePendingTask'])->name('user.storePendingTask');
-});
 
-
-Route::middleware(['auth'])->group(function () {
-    Route::post('/user/loa/generate', [LoaController::class, 'generate'])
-        ->name('user.loa.generate');
+    Route::post('/user/loa/generate', [LoaController::class, 'generate'])->name('user.loa.generate');
 });
 
 
@@ -121,7 +126,7 @@ Route::view('/internship/submitted', 'pages.internship.submitted-page')
 // Shortcut ke tabel internship (halaman admin)
 Route::get('/internship/table', fn () => redirect()->route('admin.interns.index'))
     ->name('internship.table')
-    ->middleware('auth');
+    ->middleware(['auth', 'role:admin']);
 
 // ========================
 // Dokumen Kelulusan (SKL & LOA)
@@ -140,13 +145,18 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         // Sanitize filename — hanya huruf, angka, dash, underscore, titik
         if (!preg_match('/^[A-Za-z0-9_\-\.]+\.pdf$/', $filename)) abort(404);
 
-        // Cari file: coba di public disk dulu, lalu di tmp
+        // Cari file: coba di private storage dulu, lalu tmp, lalu legacy public disk
         $candidates = [
+            storage_path("app/documents/{$type}/{$filename}"),
+            storage_path("app/documents/skl/{$filename}"),
+            storage_path("app/documents/loa/{$filename}"),
+            storage_path("app/documents/rekomendasi/{$filename}"),
+            storage_path("app/private/documents/{$type}/{$filename}"),
+            storage_path("app/tmp/{$filename}"),
             storage_path("app/public/documents/{$type}/{$filename}"),
             storage_path("app/public/documents/skl/{$filename}"),
             storage_path("app/public/documents/loa/{$filename}"),
             storage_path("app/public/documents/rekomendasi/{$filename}"),
-            storage_path("app/tmp/{$filename}"),
         ];
 
         $fullPath = null;
@@ -236,9 +246,108 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
     // Users CRUD -> admin.users.*
     Route::resource('users', AdminUserController::class);
+    Route::post('users/{id}/restore', [AdminUserController::class, 'restore'])->name('users.restore');
     // Ban / Unban user
     Route::post('users/{user}/ban',   [AdminUserController::class, 'ban'])->name('users.ban');
     Route::post('users/{user}/unban', [AdminUserController::class, 'unban'])->name('users.unban');
+
+    // HR Staff Management -> admin.hr-staff.*
+    Route::resource('hr-staff', \App\Http\Controllers\Admin\HrStaffController::class);
+    Route::post('hr-staff/{user}/toggle-status', [\App\Http\Controllers\Admin\HrStaffController::class, 'toggleStatus'])->name('hr-staff.toggle-status');
+    Route::post('hr-staff/{id}/restore', [\App\Http\Controllers\Admin\HrStaffController::class, 'restore'])->name('hr-staff.restore');
+
+    // Master Institusi -> admin.institutions.*
+    Route::resource('institutions', \App\Http\Controllers\Admin\InstitutionController::class)->except(['destroy']);
+    Route::post('institutions/{institution}/toggle-status', [\App\Http\Controllers\Admin\InstitutionController::class, 'toggleStatus'])->name('institutions.toggle-status');
+    Route::post('institutions/{institution}/contacts', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'store'])->name('institutions.contacts.store');
+    Route::put('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'update'])->name('institution-contacts.update');
+    Route::post('institution-contacts/{contact}/toggle-status', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'toggleStatus'])->name('institution-contacts.toggle-status');
+    Route::post('institution-contacts/{contact}/verify', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'verify'])->name('institution-contacts.verify');
+    Route::delete('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'destroy'])->name('institution-contacts.destroy');
+
+    // Review Kontak Pembimbing -> admin.contact-review.*
+    Route::get('/contact-review', [\App\Http\Controllers\Admin\ContactReviewController::class, 'index'])->name('contact-review.index');
+    Route::post('/contact-review/{registration}/link', [\App\Http\Controllers\Admin\ContactReviewController::class, 'linkExisting'])->name('contact-review.link');
+    Route::post('/contact-review/{registration}/create-and-verify', [\App\Http\Controllers\Admin\ContactReviewController::class, 'createAndVerify'])->name('contact-review.create-and-verify');
+
+    // Modul Follow-up Kemitraan -> admin.follow-up.*
+    Route::get('/follow-up', [\App\Http\Controllers\HR\FollowUpController::class, 'index'])->name('follow-up.index');
+    Route::get('/follow-up/create', [\App\Http\Controllers\HR\FollowUpController::class, 'create'])->name('follow-up.create');
+    Route::post('/follow-up', [\App\Http\Controllers\HR\FollowUpController::class, 'store'])->name('follow-up.store');
+    Route::get('/follow-up/{cycle}', [\App\Http\Controllers\HR\FollowUpController::class, 'show'])->name('follow-up.show');
+    Route::post('/follow-up/{cycle}/attempts', [\App\Http\Controllers\HR\FollowUpController::class, 'recordAttempt'])->name('follow-up.attempts.store');
+    Route::post('/follow-up/{cycle}/complete', [\App\Http\Controllers\HR\FollowUpController::class, 'complete'])->name('follow-up.complete');
+    Route::post('/follow-up/{cycle}/claim', [\App\Http\Controllers\HR\FollowUpController::class, 'claimLock'])->name('follow-up.claim');
+    Route::post('/follow-up/{cycle}/release', [\App\Http\Controllers\HR\FollowUpController::class, 'releaseLock'])->name('follow-up.release');
+    Route::post('/follow-up/{cycle}/heartbeat', [\App\Http\Controllers\HR\FollowUpController::class, 'heartbeat'])->name('follow-up.heartbeat');
+    Route::post('/follow-up/{cycle}/force-release', [\App\Http\Controllers\HR\FollowUpController::class, 'forceRelease'])->name('follow-up.force-release');
+
+    // Log Aktivitas Terpusat -> admin.activity-logs.*
+    Route::get('/activity-logs', [\App\Http\Controllers\Admin\ActivityLogController::class, 'index'])->name('activity-logs.index');
+    Route::get('/activity-logs/{activityLog}', [\App\Http\Controllers\Admin\ActivityLogController::class, 'show'])->name('activity-logs.show');
+
+    // Integrasi Google Spreadsheet -> admin.spreadsheet-connections.*
+    Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
+        Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
+        Route::get('/{spreadsheetConnection}/edit', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'edit'])->name('edit');
+        Route::put('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'update'])->name('update');
+        Route::post('/{spreadsheetConnection}/toggle', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'toggle'])->name('toggle');
+        Route::post('/{spreadsheetConnection}/test', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'test'])->name('test');
+        Route::post('/{spreadsheetConnection}/sync-rows/{spreadsheetRowSync}/retry', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryRow'])->name('retry-row');
+        Route::post('/{spreadsheetConnection}/retry-failed', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryAllFailed'])->name('retry-failed');
+        Route::post('/{spreadsheetConnection}/schemas', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'storeSchema'])->name('schemas.store');
+        Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/activate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'activateSchema'])->name('schemas.activate');
+        Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/deactivate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'deactivateSchema'])->name('schemas.deactivate');
+    });
+
+    // Manajemen Template MOU -> admin.mou-templates.*
+    Route::prefix('mou-templates')->name('mou-templates.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\MouTemplateController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\MouTemplateController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\MouTemplateController::class, 'store'])->name('store');
+        Route::get('/{mouTemplate}/edit', [\App\Http\Controllers\Admin\MouTemplateController::class, 'edit'])->name('edit');
+        Route::put('/{mouTemplate}', [\App\Http\Controllers\Admin\MouTemplateController::class, 'update'])->name('update');
+        Route::get('/{mouTemplate}/preview', [\App\Http\Controllers\Admin\MouTemplateController::class, 'preview'])->name('preview');
+        Route::post('/{mouTemplate}/toggle-active', [\App\Http\Controllers\Admin\MouTemplateController::class, 'toggleActive'])->name('toggle-active');
+        Route::delete('/{mouTemplate}', [\App\Http\Controllers\Admin\MouTemplateController::class, 'destroy'])->name('destroy');
+    });
+
+    // Manajemen Dokumen MOU -> admin.mous.*
+    Route::prefix('mous')->name('mous.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\HR\MouController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\HR\MouController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\HR\MouController::class, 'store'])->name('store');
+        Route::get('/{mou}', [\App\Http\Controllers\HR\MouController::class, 'show'])->name('show');
+        Route::get('/{mou}/print', [\App\Http\Controllers\HR\MouController::class, 'print'])->name('print');
+        Route::post('/{mou}/delivered', [\App\Http\Controllers\HR\MouController::class, 'markDelivered'])->name('delivered');
+        Route::post('/{mou}/upload-signed', [\App\Http\Controllers\HR\MouController::class, 'uploadSigned'])->name('upload-signed');
+        Route::get('/{mou}/download-signed', [\App\Http\Controllers\HR\MouController::class, 'downloadSigned'])->name('download-signed');
+        Route::post('/{mou}/cancel', [\App\Http\Controllers\HR\MouController::class, 'cancel'])->name('cancel');
+        Route::post('/{mou}/sync-drive', [\App\Http\Controllers\HR\MouController::class, 'syncDrive'])->name('sync-drive');
+    });
+
+    // Ekspor Arsip Tahunan -> admin.archive-exports.*
+    Route::prefix('archive-exports')->name('archive-exports.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'index'])->name('index');
+        Route::get('/preview', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'preview'])->name('preview');
+        Route::post('/generate', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'generate'])->name('generate');
+        Route::get('/{archiveExport}/download', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'download'])->name('download');
+        Route::post('/{archiveExport}/sync-drive', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'syncDrive'])->name('sync-drive');
+        Route::delete('/{archiveExport}', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'destroy'])->name('destroy');
+    });
+
+    // Impor Data Legacy -> admin.legacy-import.*
+    Route::prefix('legacy-import')->name('legacy-import.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\LegacyImportController::class, 'index'])->name('index');
+        Route::post('/preview', [\App\Http\Controllers\Admin\LegacyImportController::class, 'preview'])->name('preview');
+        Route::post('/commit', [\App\Http\Controllers\Admin\LegacyImportController::class, 'commit'])->name('commit');
+        Route::post('/cancel', [\App\Http\Controllers\Admin\LegacyImportController::class, 'cancel'])->name('cancel');
+        Route::get('/template', [\App\Http\Controllers\Admin\LegacyImportController::class, 'downloadTemplate'])->name('template');
+    });
+
+
+
 
     // API: ambil pemagang selesai berdasarkan brand (HARUS sebelum resource agar tidak bentrok dengan {certificate})
     Route::get('/certificate/interns-by-brand', [CertificateController::class, 'getInternsByBrand'])->name('certificate.interns-by-brand');
@@ -284,8 +393,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
             ->name('certificate.dynamic')
             ->whereIn('template', ['certmagangjogjacom', 'certareakerjacom', 'certtipisinicom']);
 
-        // Hapus intern
+        // Arsip pendaftaran dihapus
+        Route::get('/trashed', [InternPageController::class, 'trashed'])->name('trashed');
+
+        // Hapus & Restore intern
         Route::delete('/{intern}', [InternController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/restore', [InternController::class, 'restore'])->name('restore');
     });
 
     // API Select interns & JSON -> admin.interns.search, admin.interns.api
@@ -381,30 +494,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
 
 
-Route::get('/skl-preview', function () {
-    return view('user.skl');
-});
-
-Route::middleware(['auth'])->group(function () {
-
-    // CRUD sederhana data pemagang (opsional jika sudah ada halaman lain)
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    // LOA Administratif (khusus role:admin)
     Route::get('/admin/loa/interns', [LoaController::class, 'indexInterns'])->name('admin.loa.interns');
     Route::post('/admin/loa/generate', [LoaController::class, 'generate'])->name('admin.loa.generate'); // single
     Route::post('/admin/loa/generate-batch', [LoaController::class, 'generateBatch'])->name('admin.loa.generateBatch'); // multiple (legacy)
-
-    // API: pemagang accepted belum ada LOA berdasarkan brand
     Route::get('/admin/loa/interns-by-brand', [LoaController::class, 'getInternsByBrand'])->name('admin.loa.interns_by_brand');
-
-    // Generate LOA per-pemagang berdasarkan brand (1 PDF per orang, ZIP kalau banyak)
     Route::post('/admin/loa/generate-brand', [LoaController::class, 'generateForBrand'])->name('admin.loa.generate_brand');
-
-    // Preview (tanpa simpan)
-    Route::get('/user/loa/preview', [LoaController::class, 'preview'])->name('user.loa.preview');
 });
 
-Route::post('/membercard/download', [MembercardController::class, 'downloadMembercard'])->name('membercard.download');
-
-Route::prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     // index
     Route::get('membercards', [MembercardController::class, 'index'])
         ->name('membercards.index');
@@ -437,6 +536,49 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::delete('membercards/{code}', [MembercardController::class, 'destroy'])
         ->name('membercards.destroy');
 });
+
+/* =================== HR STAFF ROUTES =================== */
+Route::middleware(['auth', 'active', 'role:hr_staff,admin'])->prefix('hr')->name('hr.')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\HR\DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/', fn() => redirect()->route('hr.dashboard'));
+    Route::get('/institutions', [\App\Http\Controllers\Admin\InstitutionController::class, 'index'])->name('institutions.index');
+    Route::get('/institutions/{institution}', [\App\Http\Controllers\Admin\InstitutionController::class, 'show'])->name('institutions.show');
+    Route::post('/institutions/{institution}/contacts', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'store'])->name('institutions.contacts.store');
+    Route::put('/institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'update'])->name('institution-contacts.update');
+    Route::post('/institution-contacts/{contact}/toggle-status', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'toggleStatus'])->name('institution-contacts.toggle-status');
+    Route::post('/institution-contacts/{contact}/verify', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'verify'])->name('institution-contacts.verify');
+
+    // Review Kontak Pembimbing -> hr.contact-review.*
+    Route::get('/contact-review', [\App\Http\Controllers\Admin\ContactReviewController::class, 'index'])->name('contact-review.index');
+    Route::post('/contact-review/{registration}/link', [\App\Http\Controllers\Admin\ContactReviewController::class, 'linkExisting'])->name('contact-review.link');
+    Route::post('/contact-review/{registration}/create-and-verify', [\App\Http\Controllers\Admin\ContactReviewController::class, 'createAndVerify'])->name('contact-review.create-and-verify');
+
+    // Follow-up Operasional HR -> hr.follow-up.*
+    Route::get('/follow-up', [\App\Http\Controllers\HR\FollowUpController::class, 'index'])->name('follow-up.index');
+    Route::get('/follow-up/create', [\App\Http\Controllers\HR\FollowUpController::class, 'create'])->name('follow-up.create');
+    Route::post('/follow-up', [\App\Http\Controllers\HR\FollowUpController::class, 'store'])->name('follow-up.store');
+    Route::get('/follow-up/{cycle}', [\App\Http\Controllers\HR\FollowUpController::class, 'show'])->name('follow-up.show');
+    Route::post('/follow-up/{cycle}/attempts', [\App\Http\Controllers\HR\FollowUpController::class, 'recordAttempt'])->name('follow-up.attempts.store');
+    Route::post('/follow-up/{cycle}/complete', [\App\Http\Controllers\HR\FollowUpController::class, 'complete'])->name('follow-up.complete');
+    Route::post('/follow-up/{cycle}/claim', [\App\Http\Controllers\HR\FollowUpController::class, 'claimLock'])->name('follow-up.claim');
+    Route::post('/follow-up/{cycle}/release', [\App\Http\Controllers\HR\FollowUpController::class, 'releaseLock'])->name('follow-up.release');
+    Route::post('/follow-up/{cycle}/heartbeat', [\App\Http\Controllers\HR\FollowUpController::class, 'heartbeat'])->name('follow-up.heartbeat');
+
+    // Dokumen MOU Kemitraan -> hr.mous.*
+    Route::prefix('mous')->name('mous.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\HR\MouController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\HR\MouController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\HR\MouController::class, 'store'])->name('store');
+        Route::get('/{mou}', [\App\Http\Controllers\HR\MouController::class, 'show'])->name('show');
+        Route::get('/{mou}/print', [\App\Http\Controllers\HR\MouController::class, 'print'])->name('print');
+        Route::post('/{mou}/delivered', [\App\Http\Controllers\HR\MouController::class, 'markDelivered'])->name('delivered');
+        Route::post('/{mou}/upload-signed', [\App\Http\Controllers\HR\MouController::class, 'uploadSigned'])->name('upload-signed');
+        Route::get('/{mou}/download-signed', [\App\Http\Controllers\HR\MouController::class, 'downloadSigned'])->name('download-signed');
+        Route::post('/{mou}/cancel', [\App\Http\Controllers\HR\MouController::class, 'cancel'])->name('cancel');
+        Route::post('/{mou}/sync-drive', [\App\Http\Controllers\HR\MouController::class, 'syncDrive'])->name('sync-drive');
+    });
+});
+
 
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('generate-pdf', [SuratPenilaianController::class, 'showForm'])->name('generateForm');
@@ -474,20 +616,28 @@ Route::middleware(['auth', 'role:admin'])
 });
 
 
-// tetap ada route log-download (tidak di dalam admin group, jika publik)
-Route::post('/log-download', [MembercardController::class, 'logDownload'])->name('log.download');
-Route::view('/loa-preview', 'user.loa');
+// Endpoint log download kartu anggota (khusus pemagang login)
+Route::post('/log-download', [MembercardController::class, 'logDownload'])
+    ->name('log.download')
+    ->middleware(['auth', 'role:pemagang', 'throttle:30,1']);
 
-/* =================== PEMAGANG ROUTES (UI Baru) =================== */
-Route::middleware(['auth'])->prefix('pemagang')->name('pemagang.')->group(function () {
-
-    // Dashboard
-    Route::get('/dashboard', [PemagangDashboard::class, 'index'])->name('dashboard');
-
+/* =================== PEMAGANG & USER ROUTES =================== */
+// Pendaftaran & Pengaturan Akun (diakses oleh user calon pemagang dan pemagang aktif)
+Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pemagang.')->group(function () {
     // Form Pendaftaran
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
     Route::post('/daftar/draft', [PemagangRegistration::class, 'saveDraft'])->name('registration.draft');
+
+    // Pengaturan Akun
+    Route::get('/pengaturan', [PemagangSettings::class, 'index'])->name('settings');
+    Route::put('/pengaturan', [PemagangSettings::class, 'update'])->name('settings.update');
+});
+
+// Modul Pemagang Aktif / Selesai (khusus role:pemagang)
+Route::middleware(['auth', 'role:pemagang'])->prefix('pemagang')->name('pemagang.')->group(function () {
+    // Dashboard
+    Route::get('/dashboard', [PemagangDashboard::class, 'index'])->name('dashboard');
 
     // Dokumen Saya
     Route::get('/dokumen', [PemagangDocument::class, 'index'])->name('documents');
@@ -507,10 +657,6 @@ Route::middleware(['auth'])->prefix('pemagang')->name('pemagang.')->group(functi
     // Lihat Membercard
     Route::get('/membercard', [PemagangDocument::class, 'viewMembercard'])->name('membercard');
     Route::get('/membercard/download', [PemagangDocument::class, 'downloadMembercard'])->name('membercard.download');
-
-    // Pengaturan Akun
-    Route::get('/pengaturan', [PemagangSettings::class, 'index'])->name('settings');
-    Route::put('/pengaturan', [PemagangSettings::class, 'update'])->name('settings.update');
 
     // Webinar
     Route::get('/webinar', [\App\Http\Controllers\Pemagang\WebinarController::class, 'index'])->name('webinar.index');

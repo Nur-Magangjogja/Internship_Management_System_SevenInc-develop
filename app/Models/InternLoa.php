@@ -33,6 +33,6 @@ class InternLoa extends Model
 
     public function intern()
     {
-        return $this->belongsTo(InternshipRegistration::class, 'intern_id');
+        return $this->belongsTo(InternshipRegistration::class, 'intern_id')->withTrashed();
     }
 }

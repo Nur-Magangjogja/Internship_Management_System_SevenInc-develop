@@ -15,6 +15,6 @@ class InternInfoSource extends Model
 
     public function internshipRegistration()
     {
-        return $this->belongsTo(InternshipRegistration::class, 'internship_registration_id');
+        return $this->belongsTo(InternshipRegistration::class, 'internship_registration_id')->withTrashed();
     }
 }

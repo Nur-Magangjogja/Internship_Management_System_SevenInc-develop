@@ -13,11 +13,16 @@
             'waiting'  => 'Menunggu Review',
             'accepted' => 'Diterima',
             'rejected' => 'Ditolak',
+            'trashed'  => 'Arsip Terhapus',
         ],
         'pemagang' => [
             'active'    => 'Aktif',
             'completed' => 'Selesai',
             'exited'    => 'Keluar',
+            'trashed'   => 'Arsip Terhapus',
+        ],
+        'trashed' => [
+            'trashed'   => 'Arsip Terhapus',
         ],
         default => [
             'all'       => 'Semua',
@@ -28,6 +33,7 @@
             'completed' => 'Selesai',
             'rejected'  => 'Ditolak',
             'exited'    => 'Keluar',
+            'trashed'   => 'Arsip Terhapus',
         ],
     };
 
@@ -112,23 +118,78 @@
     </div>
 </div>
 
-{{-- Modal: Konfirmasi Hapus --}}
+{{-- Modal: Konfirmasi Hapus (Soft Delete ke Arsip) --}}
 <div id="confirmModal" class="fixed inset-0 z-[110] hidden">
     <div class="absolute inset-0 bg-black/50 backdrop-blur-[2px]" data-confirm-close></div>
     <div class="absolute inset-0 flex items-center justify-center p-4">
         <div class="w-full max-w-md rounded-[16px] bg-white shadow-xl overflow-hidden">
-            <div class="p-6 text-center">
+            <div class="p-6">
                 <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
                     <svg class="h-7 w-7 text-[#D32F2F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 </div>
-                <h3 class="mb-2 text-[15px] font-bold text-[#1B3A34]">Hapus data pemagang?</h3>
-                <p id="confirmBody" class="text-[12.5px] text-[#4B5F5A] leading-relaxed">
-                    Data ini akan dihapus permanen dan tidak dapat dikembalikan.
+                <h3 class="mb-2 text-center text-[15px] font-bold text-[#1B3A34]">Pindahkan pendaftaran ke arsip?</h3>
+                <p id="confirmBody" class="mb-4 text-center text-[12.5px] text-[#4B5F5A] leading-relaxed">
+                    Data pendaftaran pemagang akan dipindahkan ke arsip (soft delete). Dokumen dan riwayat historis tetap terjaga.
                 </p>
+                <div class="mb-4 text-left">
+                    <label for="delete_admin_password" class="mb-1 block text-xs font-semibold text-slate-700">
+                        Konfirmasi Kata Sandi Admin
+                    </label>
+                    <input
+                        type="password"
+                        id="delete_admin_password"
+                        name="admin_password"
+                        required
+                        placeholder="Masukkan kata sandi admin"
+                        class="w-full rounded-[9px] border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-red-500 focus:outline-none"
+                    >
+                </div>
+                <div class="flex justify-end gap-3 border-t border-[#DCE7E1] pt-4">
+                    <button class="rounded-[9px] border border-[#DCE7E1] bg-white px-4 py-2 text-sm font-semibold text-[#1B3A34] hover:bg-[#F4F8F6]" data-confirm-close>Batal</button>
+                    <button id="confirmYes" class="rounded-[9px] bg-[#D32F2F] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Ya, Pindahkan</button>
+                </div>
             </div>
-            <div class="flex justify-center gap-3 border-t border-[#DCE7E1] px-5 py-4">
-                <button class="rounded-[9px] border border-[#DCE7E1] bg-white px-4 py-2 text-sm font-semibold text-[#1B3A34] hover:bg-[#F4F8F6]" data-confirm-close>Batal</button>
-                <button id="confirmYes" class="rounded-[9px] bg-[#D32F2F] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Ya, Hapus</button>
+        </div>
+    </div>
+</div>
+
+{{-- Modal: Konfirmasi Pemulihan (Restore dari Arsip) --}}
+<div id="restoreModal" class="fixed inset-0 z-[110] hidden">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-[2px]" data-restore-close></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="w-full max-w-md rounded-[16px] bg-white shadow-xl overflow-hidden p-6">
+            <h3 class="text-base font-bold text-slate-800">Konfirmasi Pemulihan Pendaftaran</h3>
+            <p id="restoreBody" class="mt-2 text-xs text-slate-600">
+                Anda akan memulihkan data pendaftaran ini dari arsip terhapus.
+            </p>
+            <div class="mt-4">
+                <label for="restore_admin_password" class="mb-1 block text-xs font-semibold text-slate-700">
+                    Konfirmasi Kata Sandi Admin
+                </label>
+                <input
+                    type="password"
+                    id="restore_admin_password"
+                    name="admin_password"
+                    required
+                    placeholder="Masukkan kata sandi admin"
+                    class="w-full rounded-[9px] border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                >
+            </div>
+            <div class="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4">
+                <button
+                    type="button"
+                    class="rounded-[9px] border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    data-restore-close
+                >
+                    Batal
+                </button>
+                <button
+                    type="button"
+                    id="restoreYes"
+                    class="rounded-[9px] bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                >
+                    Pulihkan Pendaftaran
+                </button>
             </div>
         </div>
     </div>
@@ -480,6 +541,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
                 Dokumen
             </button>`;
+        }
+
+        if (it.is_trashed || activeFilter === 'trashed') {
+            return `
+            <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                <button type="button" title="Lihat Detail"
+                    class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-[#2D8659] hover:text-[#1F5F3F] js-detail"
+                    data-id="${it.id}">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button type="button" title="Pulihkan Pendaftaran"
+                    class="flex h-8 px-2.5 items-center justify-center rounded-[8px] border border-blue-200 bg-blue-50 text-blue-600 text-xs font-semibold transition hover:bg-blue-100 js-restore"
+                    data-id="${it.id}">
+                    Pulihkan
+                </button>
+            </div>`;
         }
 
         return `
@@ -861,6 +938,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const id   = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
                 openConfirmDelete(id, data?.fullname || 'pemagang ini');
+            });
+        });
+
+        // Pulihkan (Restore)
+        document.querySelectorAll('.js-restore').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id   = Number(btn.dataset.id);
+                const data = window.rowData.get(id);
+                openConfirmRestore(id, data?.fullname || 'pemagang ini');
             });
         });
 
@@ -1669,35 +1755,95 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
     }
 
-    // ── Modal: Konfirmasi Hapus ──────────────────────────────────────────────────
+    // ── Modal: Konfirmasi Hapus (Soft Delete ke Arsip) ──────────────────────────
     let deleteId = null;
 
     function openConfirmDelete(id, name) {
         deleteId = id;
+        const pwdInput = document.getElementById('delete_admin_password');
+        if (pwdInput) pwdInput.value = '';
         document.getElementById('confirmBody').innerHTML =
-            `Data <strong>${name}</strong> akan dihapus permanen dan tidak dapat dikembalikan.`;
+            `Data <strong>${name}</strong> akan dipindahkan ke arsip (soft delete). Dokumen dan riwayat tetap terjaga.`;
         openModal(confirmModal);
     }
 
     document.getElementById('confirmYes').addEventListener('click', async () => {
         if (!deleteId) return;
+        const passwordInput = document.getElementById('delete_admin_password');
+        const adminPassword = (passwordInput?.value || '').trim();
+        if (!adminPassword) {
+            pushToast('Konfirmasi kata sandi admin wajib diisi.', 'error');
+            passwordInput?.focus();
+            return;
+        }
+
         const url = `${ADMIN_INTERNS_BASE}/${deleteId}`;
         try {
             const fd = new FormData();
             fd.append('_method', 'DELETE');
+            fd.append('admin_password', adminPassword);
             const res = await fetch(url, {
                 method: 'POST', body: fd,
-                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                 credentials: 'same-origin'
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
             closeModal(confirmModal);
-            pushToast('Data pemagang berhasil dihapus.');
+            pushToast(data.message || 'Data pendaftaran berhasil dipindahkan ke arsip.');
             loadPage(window.__CURRENT_PAGE || 1);
         } catch (err) {
-            pushToast('Gagal menghapus: ' + err.message, 'error');
+            pushToast('Gagal memindahkan ke arsip: ' + err.message, 'error');
         } finally {
             deleteId = null;
+        }
+    });
+
+    // ── Modal: Konfirmasi Pemulihan (Restore) ──────────────────────────────────
+    let restoreId = null;
+    const restoreModal = document.getElementById('restoreModal');
+
+    function openConfirmRestore(id, name) {
+        restoreId = id;
+        const pwdInput = document.getElementById('restore_admin_password');
+        if (pwdInput) pwdInput.value = '';
+        document.getElementById('restoreBody').innerHTML =
+            `Anda akan memulihkan data pendaftaran <strong>${name}</strong> dari arsip terhapus.`;
+        openModal(restoreModal);
+    }
+
+    document.querySelectorAll('[data-restore-close]').forEach(el => {
+        el.addEventListener('click', () => closeModal(restoreModal));
+    });
+
+    document.getElementById('restoreYes')?.addEventListener('click', async () => {
+        if (!restoreId) return;
+        const passwordInput = document.getElementById('restore_admin_password');
+        const adminPassword = (passwordInput?.value || '').trim();
+        if (!adminPassword) {
+            pushToast('Konfirmasi kata sandi admin wajib diisi.', 'error');
+            passwordInput?.focus();
+            return;
+        }
+
+        const url = `${ADMIN_INTERNS_BASE}/${restoreId}/restore`;
+        try {
+            const fd = new FormData();
+            fd.append('admin_password', adminPassword);
+            const res = await fetch(url, {
+                method: 'POST', body: fd,
+                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                credentials: 'same-origin'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+            closeModal(restoreModal);
+            pushToast(data.message || 'Data pendaftaran berhasil dipulihkan dari arsip.');
+            loadPage(window.__CURRENT_PAGE || 1);
+        } catch (err) {
+            pushToast('Gagal memulihkan data: ' + err.message, 'error');
+        } finally {
+            restoreId = null;
         }
     });
 

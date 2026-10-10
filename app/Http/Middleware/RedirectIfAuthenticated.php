@@ -30,7 +30,7 @@ class RedirectIfAuthenticated
                     $request->is('admin/login')
                 ) {
                     if ($user && ($user->role ?? null) === 'admin') {
-                        return redirect()->route('dashboard.index');
+                        return redirect()->route('admin.dashboard.index');
                     }
                     // Login tapi bukan admin → arahkan ke HOME default
                     return redirect(RouteServiceProvider::HOME);
@@ -39,6 +39,10 @@ class RedirectIfAuthenticated
                 // Fallback umum: user sudah login, ke halaman guest lain
                 if ($user && ($user->role ?? null) === 'admin') {
                     return redirect()->route('admin.dashboard.index');
+                }
+
+                if ($user && ($user->role ?? null) === 'hr_staff') {
+                    return redirect()->route('hr.dashboard');
                 }
 
                 return redirect(RouteServiceProvider::HOME);

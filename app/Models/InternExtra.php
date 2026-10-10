@@ -37,7 +37,7 @@ class InternExtra extends Model
 
     public function registration()
     {
-        return $this->belongsTo(InternshipRegistration::class, 'intern_id');
+        return $this->belongsTo(InternshipRegistration::class, 'intern_id')->withTrashed();
     }
 
     public function brand()

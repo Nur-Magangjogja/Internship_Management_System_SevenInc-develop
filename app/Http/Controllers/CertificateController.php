@@ -163,8 +163,21 @@ class CertificateController extends Controller
 
     public function downloadUserPdf(Request $request)
     {
+        $authUser = auth()->user();
         $internId = $request->get('intern_id');
+
+        if (!$internId && $authUser) {
+            $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+            $ir = $lifecycle->resolveRegistrationForDocuments($authUser, documentType: 'certificate');
+            $internId = $ir?->id;
+        }
+
         $certificate = InternCertificate::where('intern_id', $internId)->firstOrFail();
+
+        // Enforce ownership tampering check: non-admin can only download their own certificate
+        if ($authUser && $authUser->role !== 'admin' && (int) $certificate->intern?->user_id !== (int) $authUser->id) {
+            abort(403, 'Anda tidak berhak mengakses sertifikat milik pengguna lain.');
+        }
 
         $nameSlug  = Str::slug($certificate->intern->fullname ?? 'cert', '-');
         $fileName  = "Sertifikat-{$nameSlug}.pdf";
