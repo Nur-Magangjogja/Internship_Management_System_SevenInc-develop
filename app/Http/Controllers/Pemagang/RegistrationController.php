@@ -25,7 +25,8 @@ class RegistrationController extends Controller
     public function showForm()
     {
         $user         = auth()->user();
-        $registration = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
+        $registration = $lifecycle->getOpenOrDraftRegistration($user);
 
         // Ambil divisi aktif dari DB; fallback ke list hardcode jika DB kosong
         $divisions = \App\Models\Division::active()->pluck('name');
@@ -57,10 +58,16 @@ class RegistrationController extends Controller
             // Tabel belum ada → fallback ke form statis
         }
 
-        $cities = \App\Models\City::orderBy('name')->get();
-        $institutions = \App\Models\Institution::orderBy('name')->get();
-        $faculties = \App\Models\Faculty::orderBy('name')->get();
-        $studyPrograms = \App\Models\StudyProgram::orderBy('name')->get();
+        $cities = \App\Models\City::select('id', 'name')->orderBy('name')->get();
+        $institutions = \App\Models\Institution::select('id', 'name')
+            ->where('is_active', true)
+            ->when($registration && $registration->institution_id, function ($q) use ($registration) {
+                $q->orWhere('id', $registration->institution_id);
+            })
+            ->orderBy('name')
+            ->get();
+        $faculties = \App\Models\Faculty::select('id', 'name')->orderBy('name')->get();
+        $studyPrograms = \App\Models\StudyProgram::select('id', 'name')->orderBy('name')->get();
 
         return view('pemagang.registration.form', compact(
             'registration', 'divisions', 'mainFields', 'extraFields', 'useFormFields',
@@ -98,20 +105,26 @@ class RegistrationController extends Controller
             : $this->submitRules();
 
         $validated = $request->validate($rules, [
-            'phone_number.regex'   => 'No. HP hanya boleh berisi angka (10-15 digit).',
-            'phone_number.required' => 'No. HP wajib diisi.',
-            'fullname.required'    => 'Nama lengkap wajib diisi.',
-            'student_id.required'  => 'NIM/NPM wajib diisi.',
-            'email.required'       => 'Email wajib diisi.',
-            'gender.required'      => 'Jenis kelamin wajib dipilih.',
-            'birth_place.required' => 'Tempat lahir wajib diisi.',
-            'religion.required'    => 'Agama wajib dipilih.',
-            'institution_name.required' => 'Nama universitas wajib diisi.',
-            'study_program.required'    => 'Program studi wajib diisi.',
-            'faculty.required'          => 'Fakultas wajib diisi.',
-            'current_city.required'     => 'Kota domisili wajib diisi.',
-            'internship_reason.required' => 'Alasan magang wajib diisi.',
-            'internship_interest.required' => 'Divisi yang diminati wajib dipilih.',
+            'phone_number.regex'               => 'No. HP hanya boleh berisi angka (10-15 digit).',
+            'phone_number.required'            => 'No. HP wajib diisi.',
+            'fullname.required'                => 'Nama lengkap wajib diisi.',
+            'student_id.required'              => 'NIM/NPM wajib diisi.',
+            'email.required'                   => 'Email wajib diisi.',
+            'gender.required'                  => 'Jenis kelamin wajib dipilih.',
+            'birth_place.required'             => 'Tempat lahir wajib diisi.',
+            'religion.required'                => 'Agama wajib dipilih.',
+            'institution_name.required'        => 'Nama universitas/sekolah wajib diisi.',
+            'study_program.required'           => 'Program studi wajib diisi.',
+            'faculty.required'                 => 'Fakultas wajib diisi.',
+            'current_city.required'            => 'Kota domisili wajib diisi.',
+            'internship_reason.required'       => 'Alasan magang wajib diisi.',
+            'internship_interest.required'     => 'Divisi yang diminati wajib dipilih.',
+            'wfo_readiness.required'           => 'Kesiapan WFO Yogyakarta wajib dipilih.',
+            'schedule_shift_readiness.required' => 'Kesanggupan jadwal & shifting wajib dipilih.',
+            'has_laptop.required'              => 'Kepemilikan laptop wajib dipilih.',
+            'planned_duration.required'        => 'Durasi magang wajib dipilih/diisi.',
+            'cv_ktp_portofolio_pdf.mimes'      => 'Berkas lampiran harus berformat PDF.',
+            'cv_ktp_portofolio_pdf.max'        => 'Ukuran berkas lampiran maksimal 10MB.',
         ]);
 
         // Normalisasi tanggal
@@ -120,71 +133,41 @@ class RegistrationController extends Controller
                 try {
                     $validated[$field] = Carbon::parse($validated[$field])->format('Y-m-d');
                 } catch (\Throwable) { /* biarkan string asli */ }
+            } else {
+                $validated[$field] = null;
             }
+        }
+
+        // Normalisasi boolean has_laptop
+        if (isset($validated['has_laptop']) && $validated['has_laptop'] !== null && $validated['has_laptop'] !== '') {
+            $validated['has_laptop'] = filter_var($validated['has_laptop'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        } else {
+            $validated['has_laptop'] = null;
         }
 
         // Checkbox arrays → CSV
         $validated['owned_tools'] = $request->input('owned_tools');
         $infoSourcesArr = $request->input('internship_info_sources', []);
 
-        // Upload file
-        foreach (['cv_ktp_portofolio_pdf', 'portofolio_visual', 'profile_photo'] as $fileField) {
-            if ($request->hasFile($fileField)) {
-                $validated[$fileField] = $this->storeFile($request->file($fileField), 'uploads');
-            }
-        }
-
-        // Pastikan kolom NOT NULL yang tidak tampil di form selalu punya nilai
-        $notNullDefaults = [
-            'boarding_info'          => 'Tidak',
-            'supervisor_contact'     => '-',
-            'social_media_instagram' => '-',
-            'current_activities'     => '-',
-            'design_software'        => $validated['design_software'] ?? '-',
-            'digital_marketing_type' => $validated['digital_marketing_type'] ?? '-',
-            'video_software'         => $validated['video_software'] ?? '-',
-            'programming_languages'  => $validated['programming_languages'] ?? '-',
-            'laptop_equipment'       => $validated['laptop_equipment'] ?? '-',
-            'owned_tools'            => $validated['owned_tools'] ?? '-',
-            // Kolom NOT NULL yang bisa kosong saat draft
-            'gender'                 => $validated['gender'] ?? 'Laki-laki',
-            'birth_place'            => $validated['birth_place'] ?? '-',
-            'religion'               => $validated['religion'] ?? '-',
-            'internship_type'        => $validated['internship_type'] ?? 'Magang Mandiri',
-            'internship_arrangement' => $validated['internship_arrangement'] ?? 'Onsite',
-            'current_status'         => $validated['current_status'] ?? 'Mahasiswa/Pelajar',
-            'english_book_ability'   => $validated['english_book_ability'] ?? 'Saya bisa',
-            'internship_reason'      => $validated['internship_reason'] ?? '-',
-            'fullname'               => $validated['fullname'] ?? '-',
-            'born_date'              => $validated['born_date'] ?? '-',
-            'student_id'             => $validated['student_id'] ?? '-',
-            'email'                  => $validated['email'] ?? (auth()->user()->email ?? '-'),
-            'phone_number'           => $validated['phone_number'] ?? '-',
-            'institution_name'       => $validated['institution_name'] ?? '-',
-            'study_program'          => $validated['study_program'] ?? '-',
-            'faculty'                => $validated['faculty'] ?? '-',
-            'current_city'           => $validated['current_city'] ?? '-',
-        ];
-
-        foreach ($notNullDefaults as $field => $default) {
-            if (empty($validated[$field])) {
-                $validated[$field] = $default;
-            }
-        }
-
-        // Draft atau submit?
-        $validated['is_draft']      = $isDraft;
-        $validated['draft_saved_at'] = $isDraft ? now() : null;
-
-        if (!$isDraft) {
+        // Draft atau submit? Unanswered fields in draft remain null (No fake defaults)
+        if ($isDraft) {
+            $validated['internship_status'] = IR::STATUS_NEW;
+        } else {
             $validated['internship_status'] = IR::STATUS_WAITING;
             $validated['user_id']           = $user->id;
         }
+        unset($validated['is_draft'], $validated['draft_saved_at']);
 
         $getRelationId = function($modelClass, $name, $extra = []) {
             if (empty($name) || $name === '-') return null;
             $name = ucwords(strtolower(trim($name)));
-            $existing = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            $query = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)]);
+            foreach ($extra as $col => $val) {
+                if ($val !== null) {
+                    $query->where($col, $val);
+                }
+            }
+            $existing = $query->first();
             if ($existing) return $existing->id;
             return $modelClass::create(array_merge(['name' => $name], $extra))->id;
         };
@@ -193,18 +176,75 @@ class RegistrationController extends Controller
             $validated['city_id'] = $getRelationId(\App\Models\City::class, $validated['current_city']);
             unset($validated['current_city']);
         }
+
         if (!empty($validated['institution_name'])) {
-            $validated['institution_id'] = $getRelationId(\App\Models\Institution::class, $validated['institution_name']);
+            $inputName = trim($validated['institution_name']);
+            $normName  = \App\Models\Institution::normalizeName($inputName);
+
+            $existingInst = \App\Models\Institution::whereRaw('LOWER(name) = ?', [strtolower($inputName)])
+                ->orWhere('normalized_name', $normName)
+                ->first();
+
+            $currentReg = IR::where('user_id', $user->id)->latest('id')->first();
+            if ($existingInst && !$existingInst->is_active && (!$currentReg || $currentReg->institution_id !== $existingInst->id)) {
+                return back()->withInput()->withErrors([
+                    'institution_name' => "Institusi {$existingInst->name} saat ini sedang tidak aktif menerima pendaftaran baru."
+                ]);
+            }
+
+            if ($existingInst) {
+                $validated['institution_id'] = $existingInst->id;
+            } else {
+                $validated['institution_id'] = \App\Models\Institution::create([
+                    'name'            => ucwords(strtolower($inputName)),
+                    'normalized_name' => $normName,
+                    'is_active'       => true,
+                ])->id;
+            }
             unset($validated['institution_name']);
         }
+
+        // Resolusi Fakultas & Program Studi:
+        // faculty_id diturunkan dari study_program dan mempertahankan hirarki S4
         if (!empty($validated['faculty'])) {
             $extra = isset($validated['institution_id']) ? ['institution_id' => $validated['institution_id']] : [];
             $validated['faculty_id'] = $getRelationId(\App\Models\Faculty::class, $validated['faculty'], $extra);
             unset($validated['faculty']);
         }
+
         if (!empty($validated['study_program'])) {
-            $extra = isset($validated['faculty_id']) ? ['faculty_id' => $validated['faculty_id']] : [];
-            $validated['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $validated['study_program'], $extra);
+            $progName = trim($validated['study_program']);
+            $instId   = $validated['institution_id'] ?? null;
+
+            // Cari StudyProgram yang memiliki faculty di institution terkait
+            $scopedProg = \App\Models\StudyProgram::whereRaw('LOWER(name) = ?', [strtolower($progName)])
+                ->when($instId, function ($q) use ($instId) {
+                    $q->whereHas('faculty', fn($fq) => $fq->where('institution_id', $instId));
+                })
+                ->when(isset($validated['faculty_id']), function ($q) use ($validated) {
+                    $q->where('faculty_id', $validated['faculty_id']);
+                })
+                ->first();
+
+            if ($scopedProg) {
+                $validated['study_program_id'] = $scopedProg->id;
+                $validated['faculty_id']       = $scopedProg->faculty_id;
+            } else {
+                // Jika faculty_id belum ada, cari faculty yang ada di institution tersebut
+                if (!isset($validated['faculty_id']) && $instId) {
+                    $defaultFac = \App\Models\Faculty::where('institution_id', $instId)->first();
+                    if (!$defaultFac) {
+                        $defaultFac = \App\Models\Faculty::create([
+                            'institution_id' => $instId,
+                            'name'           => 'Fakultas Umum',
+                        ]);
+                    }
+                    $validated['faculty_id'] = $defaultFac->id;
+                }
+
+                $extra = isset($validated['faculty_id']) ? ['faculty_id' => $validated['faculty_id']] : [];
+                $validated['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $progName, $extra);
+            }
             unset($validated['study_program']);
         }
 
@@ -213,35 +253,81 @@ class RegistrationController extends Controller
         unset($validated['internship_interest']);
 
         if (!empty($divisionInput) && $divisionInput !== '-') {
-            $validated['division_id'] = self::resolveDivisionId($divisionInput);
+            $divisionId = self::resolveDivisionId($divisionInput);
+            if ($divisionId) {
+                $validated['division_id'] = $divisionId;
+            } else {
+                if ($isDraft) {
+                    $validated['division_id'] = null;
+                } else {
+                    return back()->withInput()->withErrors([
+                        'internship_interest' => 'Divisi yang dipilih tidak valid atau tidak tersedia.'
+                    ]);
+                }
+            }
         } elseif (!$isDraft && empty($validated['division_id'])) {
             $validated['division_id'] = \App\Models\Division::where('is_active', true)->first()?->id ?? 1;
         }
 
-        // Upsert — update kalau sudah ada, buat baru kalau belum
-        $existing = IR::where('user_id', $user->id)->latest('id')->first();
+        // Multi-period aware upsert:
+        // Update hanya jika ada pendaftaran yang masih terbuka (draft / open).
+        // Jika periode sebelumnya sudah selesai/tertutup, buat record pendaftaran baru untuk periode baru.
+        $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+        $existing  = $lifecycle->getOpenOrDraftRegistration($user);
 
         if ($existing) {
-            // Jangan timpa status kalau submit (status dikelola admin)
-            if (!$isDraft) {
-                unset($validated['internship_status']);
+            // Jangan timpa status jika submit resmi pada pendaftaran yang sudah berjalan
+            if (!$isDraft && !empty($existing->internship_status)) {
+                if ($existing->is_draft) {
+                    $validated['internship_status'] = IR::STATUS_WAITING;
+                } else {
+                    unset($validated['internship_status']);
+                }
             }
             $existing->fill($validated)->save();
+            $intern = $existing;
         } else {
+            // Pengguna baru atau alumni yang mendaftar periode baru
             $validated['user_id'] = $user->id;
             if (!$isDraft) {
-                // Ubah role user saat submit resmi
-                $user->role = 'pemagang';
-                $user->save();
+                $validated['internship_status'] = IR::STATUS_WAITING;
+                if ($user->role !== 'pemagang') {
+                    $user->role = 'pemagang';
+                    $user->save();
+                }
             }
-            IR::create($validated);
+            $intern = IR::create($validated);
         }
 
-        // Get the latest registration to sync relations
-        $intern = IR::where('user_id', $user->id)->latest('id')->first();
-
         if ($intern) {
-            // Sync Skills
+            // Local attachment persistence (Rule 6 & 7: PDF max 10MB divalidasi dan tersimpan di DB)
+            if ($request->hasFile('cv_ktp_portofolio_pdf')) {
+                $file = $request->file('cv_ktp_portofolio_pdf');
+                $path = $this->storeFile($file, 'uploads');
+                $intern->attachments()->create([
+                    'attachment_type' => 'cv_ktp_portofolio',
+                    'file_path'       => $path,
+                    'original_name'   => $file->getClientOriginalName(),
+                    'file_size'       => $file->getSize(),
+                    'mime_type'       => $file->getMimeType() ?: 'application/pdf',
+                ]);
+            }
+
+            if ($request->hasFile('profile_photo')) {
+                $file = $request->file('profile_photo');
+                $path = $this->storeFile($file, 'uploads');
+                $intern->profile_photo = $path;
+                $intern->save();
+                $intern->attachments()->create([
+                    'attachment_type' => 'profile_photo',
+                    'file_path'       => $path,
+                    'original_name'   => $file->getClientOriginalName(),
+                    'file_size'       => $file->getSize(),
+                    'mime_type'       => $file->getMimeType() ?: 'image/jpeg',
+                ]);
+            }
+
+            // Sync Skills (Preserve AS-IS per Rule 9)
             $intern->skills()->delete();
             $skillCategories = [
                 'design' => $validated['design_software'] ?? '',
@@ -270,6 +356,31 @@ class RegistrationController extends Controller
                     $intern->infoSources()->create(['source_name' => trim($s)]);
                 }
             }
+
+            // Auto-link pembimbing kanonikal jika memenuhi Guardrail 1 (exact unique verified phone & name).
+            // Applicant TIDAK PERNAH membuat baris baru di institution_contacts.
+            \App\Services\ContactMatchingService::attemptAutoLink($intern);
+
+            // Outbound audit & sync for submitted registration
+            if (!$isDraft) {
+                \App\Services\ActivityLogger::log(
+                    action: 'intern_registration_submitted',
+                    description: "Pendaftaran magang berhasil dikirim oleh {$user->name}.",
+                    subject: $intern,
+                    metadata: [
+                        'registration_id'   => $intern->id,
+                        'institution_name'  => $intern->institution_name,
+                        'division_id'       => $intern->division_id,
+                        'internship_status' => $intern->internship_status,
+                    ]
+                );
+
+                try {
+                    app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForRegistration($intern);
+                } catch (\Throwable) {
+                    // Outbound sync queue failure must never abort registration submission
+                }
+            }
         }
 
         if ($isDraft) {
@@ -290,79 +401,82 @@ class RegistrationController extends Controller
 
         return redirect()->route('home')
             ->with('registration_success', true)
-            ->with('success', '🎉 Pendaftaran berhasil dikirim! Silakan login untuk memantau status magangmu.');
+            ->with('success', 'Pendaftaran berhasil dikirim. Silakan masuk untuk memantau status magang Anda.');
     }
 
     private function draftRules(): array
     {
-        // Draft: semua field opsional
+        // Draft: semua field opsional tanpa default palsu
         return [
-            'fullname'           => 'nullable|string|max:255',
-            'born_date'          => 'nullable|string|max:255',
-            'birth_place'        => 'nullable|string|max:100',
-            'student_id'         => 'nullable|string|max:50',
-            'email'              => 'nullable|string|max:255',
-            'gender'             => 'nullable|string|max:50',
-            'religion'           => 'nullable|string|max:50',
-            'phone_number'       => 'nullable|regex:/^[0-9]{0,15}$/',
-            'institution_name'   => 'nullable|string|max:255',
-            'study_program'      => 'nullable|string|max:255',
-            'faculty'            => 'nullable|string|max:255',
-            'current_city'       => 'nullable|string|max:255',
-            'internship_reason'  => 'nullable|string',
-            'internship_type'    => 'nullable|string|max:50',
-            'internship_arrangement' => 'nullable|string|max:50',
-            'current_status'     => 'nullable|string|max:50',
-            'english_book_ability' => 'nullable|string|max:50',
-            'internship_interest'  => 'nullable|string|max:255',
-            'start_date'         => 'nullable|string|max:255',
-            'end_date'           => 'nullable|string|max:255',
-            'cv_ktp_portofolio_pdf' => 'nullable|file|mimes:pdf|max:10240',
-            'portofolio_visual'  => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
-            'profile_photo'      => 'nullable|file|mimes:jpg,jpeg,png|max:5120',
-            // fields lainnya opsional
-            'design_software'    => 'nullable|string|max:255',
-            'video_software'     => 'nullable|string|max:255',
-            'programming_languages' => 'nullable|string|max:255',
-            'digital_marketing_type' => 'nullable|string|max:255',
-            'owned_tools'        => 'nullable|string|max:255',
-            'supervisor_name'    => 'nullable|string|max:255',
-            'supervisor_contact' => 'nullable|regex:/^[0-9]{0,15}$/',
-            'current_activities' => 'nullable|string',
-            'boarding_info'      => 'nullable|string|max:50',
-            'social_media_instagram' => 'nullable|string|max:255',
-            'internship_info_sources' => 'nullable|array',
-            'internship_info_sources.*' => 'nullable|string|max:100',
+            'fullname'                 => 'nullable|string|max:150',
+            'born_date'                => 'nullable|string|max:255',
+            'birth_place'              => 'nullable|string|max:100',
+            'student_id'               => 'nullable|string|max:50',
+            'email'                    => 'nullable|string|max:255',
+            'gender'                   => 'nullable|string|max:50',
+            'religion'                 => 'nullable|string|max:50',
+            'phone_number'             => 'nullable|regex:/^[0-9]{0,15}$/',
+            'institution_name'         => 'nullable|string|max:255',
+            'study_program'            => 'nullable|string|max:255',
+            'faculty'                  => 'nullable|string|max:255',
+            'current_city'             => 'nullable|string|max:255',
+            'internship_reason'        => 'nullable|string',
+            'internship_type'          => 'nullable|string|max:50',
+            'internship_arrangement'   => 'nullable|string|max:50',
+            'current_status'           => 'nullable|string|max:100',
+            'wfo_readiness'            => 'nullable|string|max:100',
+            'schedule_shift_readiness' => 'nullable|string|max:100',
+            'has_laptop'               => 'nullable|in:0,1,true,false',
+            'planned_duration'         => 'nullable|string|max:50',
+            'english_book_ability'     => 'nullable|string|max:50',
+            'internship_interest'      => 'nullable|string|max:255',
+            'start_date'               => 'nullable|string|max:255',
+            'end_date'                 => 'nullable|string|max:255',
+            'cv_ktp_portofolio_pdf'    => 'nullable|file|mimes:pdf|max:10240',
+            'portofolio_visual'        => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png|max:5120',
+            'design_software'          => 'nullable|string|max:255',
+            'video_software'           => 'nullable|string|max:255',
+            'programming_languages'    => 'nullable|string|max:255',
+            'digital_marketing_type'   => 'nullable|string|max:255',
+            'owned_tools'              => 'nullable|string|max:255',
+            'supervisor_name'          => 'nullable|string|max:255',
+            'supervisor_contact'       => 'nullable|string|max:50',
+            'current_activities'       => 'nullable|string',
+            'boarding_info'            => 'nullable|string|max:50',
+            'social_media_instagram'   => 'nullable|string|max:255',
+            'internship_info_sources'  => 'nullable|array',
+            'internship_info_sources.*'=> 'nullable|string|max:100',
         ];
     }
 
     private function submitRules(): array
     {
-        // Submit: hanya field terkait Data Diri, Data Mahasiswa, dan Data Magang yang wajib diisi.
-        // Berkas (surat pengantar, CV/portofolio, foto), keahlian, kemampuan bahasa inggris, dll bersifat opsional.
+        // Submit: wajib mengisi field contract form 2026.
+        // Field legacy (born_date, faculty, english_book_ability, dll) tidak diwajibkan.
+        // Berkas lampiran dan foto profil opsional saat submit awal namun divalidasi ketat bila diunggah.
         return array_merge($this->draftRules(), [
             // Data Diri
-            'fullname'           => 'required|string|max:255',
-            'born_date'          => 'required|string|max:255',
-            'birth_place'        => 'required|string|max:100',
-            'gender'             => 'required|string|max:50',
-            'religion'           => 'required|string|max:50',
-            'current_city'       => 'required|string|max:255',
-            'email'              => 'required|string|max:255',
-            'phone_number'       => 'required|regex:/^[0-9]{10,15}$/',
+            'fullname'                 => 'required|string|max:150',
+            'gender'                   => 'required|string|in:Laki-laki,Perempuan',
+            'current_city'             => 'required|string|max:255',
+            'email'                    => 'required|email|max:255',
+            'phone_number'             => 'required|regex:/^[0-9]{10,15}$/',
 
-            // Data Mahasiswa
-            'current_status'     => 'required|string|max:50',
-            'student_id'         => 'required|string|max:50',
-            'institution_name'   => 'required|string|max:255',
-            'faculty'            => 'required|string|max:255',
-            'study_program'      => 'required|string|max:255',
+            // Data Akademik
+            'current_status'           => 'required|string|max:100',
+            'student_id'               => 'required|string|max:50',
+            'institution_name'         => 'required|string|max:255',
+            'study_program'            => 'required|string|max:255',
 
             // Data Magang
-            'internship_interest'    => 'required|string|max:255',
-            'internship_type'        => 'required|string|max:50',
-            'internship_arrangement' => 'nullable|string|max:50',
-            'internship_reason'      => 'required|string',
+            'internship_interest'      => 'required|string|max:255',
+            'internship_type'          => 'required|string|max:50',
+            'internship_reason'        => 'required|string',
+            'wfo_readiness'            => 'required|string|max:100',
+            'schedule_shift_readiness' => 'required|string|max:100',
+            'has_laptop'               => 'required|in:0,1,true,false',
+            'planned_duration'         => 'required|string|max:50',
         ]);
     }
 

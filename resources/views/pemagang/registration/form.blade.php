@@ -70,6 +70,28 @@
       </div>
     @endif
 
+    {{-- Stepper Progress Bar --}}
+    <div class="mb-6 rounded-xl border border-gray-150 bg-gray-50/70 p-3 sm:p-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs">
+        <div class="flex items-center gap-2 text-emerald-800 font-semibold">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white font-bold text-[11px]">1</span>
+          <span class="truncate">Data Diri & Edukasi</span>
+        </div>
+        <div class="flex items-center gap-2 text-gray-600 font-medium">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">2</span>
+          <span class="truncate">Pilihan & Durasi</span>
+        </div>
+        <div class="flex items-center gap-2 text-gray-600 font-medium">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">3</span>
+          <span class="truncate">Berkas & Portofolio</span>
+        </div>
+        <div class="flex items-center gap-2 text-gray-600 font-medium">
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">4</span>
+          <span class="truncate">Finalisasi & Submit</span>
+        </div>
+      </div>
+    </div>
+
     <form id="form-daftar" action="{{ route('pemagang.registration.store') }}" method="POST" enctype="multipart/form-data" class="space-y-5">
       @csrf
 
@@ -146,7 +168,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="{{ $label }}">Jenis Kelamin <span class="text-red-500">*</span></label>
-              <div class="flex gap-4 pt-2">
+              <div class="flex gap-6 pt-1">
                 <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="radio" name="gender" value="Laki-laki" class="{{ $radio }}"
                     @checked($old('gender') === 'Laki-laki')> Laki-laki
@@ -207,14 +229,14 @@
             <div>
               <label class="{{ $label }}">Status Saat Ini <span class="text-red-500">*</span></label>
               <select name="current_status" required class="{{ $input }}">
-                <option value="">-- Pilih --</option>
-                <option value="Mahasiswa/Pelajar" @selected($old('current_status') === 'Mahasiswa/Pelajar')>Masih Kuliah/Sekolah</option>
-                <option value="Tidak Bekerja" @selected($old('current_status') === 'Tidak Bekerja')>Lulus & Belum Bekerja</option>
-                <option value="Karyawan" @selected($old('current_status') === 'Karyawan')>Lulus & Sudah Bekerja</option>
+                <option value="">-- Pilih Status --</option>
+                <option value="Mahasiswa / Pelajar Aktif" @selected($old('current_status') === 'Mahasiswa / Pelajar Aktif')>Mahasiswa / Pelajar Aktif</option>
+                <option value="Lulus Kuliah / Sekolah (Belum Bekerja)" @selected($old('current_status') === 'Lulus Kuliah / Sekolah (Belum Bekerja)')>Lulus Kuliah / Sekolah (Belum Bekerja)</option>
+                <option value="Lulus Kuliah / Sekolah (Sedang Bekerja)" @selected($old('current_status') === 'Lulus Kuliah / Sekolah (Sedang Bekerja)')>Lulus Kuliah / Sekolah (Sedang Bekerja)</option>
               </select>
             </div>
             <div>
-              <label class="{{ $label }}">NIM / NPM <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">NIM / NPM / NISN <span class="text-red-500">*</span></label>
               <input type="text" name="student_id" required placeholder="21552011045"
                 pattern="[0-9A-Za-z\-]+" inputmode="text"
                 class="{{ $input }}" value="{{ $old('student_id') }}">
@@ -222,23 +244,16 @@
             </div>
           </div>
 
-          {{-- Universitas & Fakultas & Prodi --}}
-          <div>
-            <label class="{{ $label }}">Universitas / Sekolah <span class="text-red-500">*</span></label>
-            <input type="text" id="institution_name" name="institution_name" required placeholder="Telkom University"
-              class="{{ $input }} tomselect-input" value="{{ $old('institution_name') }}"
-              data-options="{{ json_encode(collect($institutions ?? [])->pluck('name')) }}">
-          </div>
-
+          {{-- Universitas & Program Studi --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Fakultas <span class="text-red-500">*</span></label>
-              <input type="text" id="faculty" name="faculty" required placeholder="Ilmu Komputer"
-                class="{{ $input }} tomselect-input" value="{{ $old('faculty') }}"
-                data-options="{{ json_encode(collect($faculties ?? [])->pluck('name')) }}">
+              <label class="{{ $label }}">Universitas / Sekolah <span class="text-red-500">*</span></label>
+              <input type="text" id="institution_name" name="institution_name" required placeholder="Telkom University"
+                class="{{ $input }} tomselect-input" value="{{ $old('institution_name') }}"
+                data-options="{{ json_encode(collect($institutions ?? [])->pluck('name')) }}">
             </div>
             <div>
-              <label class="{{ $label }}">Program Studi <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Program Studi / Jurusan <span class="text-red-500">*</span></label>
               <input type="text" id="study_program" name="study_program" required placeholder="Rekayasa Perangkat Lunak"
                 class="{{ $input }} tomselect-input" value="{{ $old('study_program') }}"
                 data-options="{{ json_encode(collect($studyPrograms ?? [])->pluck('name')) }}">
@@ -255,64 +270,85 @@
         </h3>
 
         <div class="space-y-4">
-          {{-- Divisi Diminati --}}
-          <div>
-            <label class="{{ $label }}">Divisi Diminati <span class="text-red-500">*</span></label>
-            <select name="internship_interest" required class="{{ $input }}">
-              <option value="">-- Pilih Divisi --</option>
-              @foreach($divisions ?? [] as $div)
-                <option value="{{ $div }}" @selected($old('internship_interest') === $div)>
-                  {{ $div }}
-                </option>
-              @endforeach
-            </select>
-          </div>
-
-          {{-- Jenis Magang --}}
-          <div>
-            <label class="{{ $label }}">Jenis Magang <span class="text-red-500">*</span></label>
-            <select name="internship_type" required class="{{ $input }}" id="select-internship-type-static">
-              <option value="">-- Pilih --</option>
-              <option value="Kampus Merdeka" @selected($old('internship_type') === 'Kampus Merdeka')>Kampus Merdeka (MBKM)</option>
-              <option value="Magang Kampus"  @selected($old('internship_type') === 'Magang Kampus')>Magang Kampus</option>
-              <option value="Magang Mandiri" @selected($old('internship_type') === 'Magang Mandiri')>Magang Mandiri</option>
-              <option value="PKL"            @selected($old('internship_type') === 'PKL')>PKL (Praktik Kerja Lapangan)</option>
-            </select>
-            <input type="hidden" name="internship_arrangement" value="Onsite">
-            {{-- Keterangan jenis magang --}}
-            <div id="internship-type-desc-static" class="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 space-y-1">
-              <p class="text-xs text-gray-500 leading-snug desc-item" data-for-type="Kampus Merdeka">
-                <span class="font-semibold text-gray-700">Kampus Merdeka (MBKM):</span>
-                Program magang bersertifikat resmi dari Kemendikbudristek (MSIB).
-              </p>
-              <p class="text-xs text-gray-500 leading-snug desc-item" data-for-type="Magang Kampus">
-                <span class="font-semibold text-gray-700">Magang Kampus:</span>
-                Magang dari kampus untuk pemenuhan tugas akhir atau penilaian akademik.
-              </p>
-              <p class="text-xs text-gray-500 leading-snug desc-item" data-for-type="Magang Mandiri">
-                <span class="font-semibold text-gray-700">Magang Mandiri:</span>
-                Magang inisiatif pribadi secara mandiri tanpa terikat penilaian akademik kampus.
-              </p>
-              <p class="text-xs text-gray-500 leading-snug desc-item" data-for-type="PKL">
-                <span class="font-semibold text-gray-700">PKL:</span>
-                Praktik Kerja Lapangan, umumnya untuk siswa siswi tingkat SMK/sederajat.
-              </p>
-            </div>
-          </div>
-
-          {{-- Durasi Magang --}}
+          {{-- Divisi Diminati & Jenis Magang --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Tanggal Mulai</label>
-              <input type="date" name="start_date"
-                min="{{ date('Y-m-d') }}"
-                class="{{ $input }}" value="{{ $toDateInput($old('start_date')) }}">
+              <label class="{{ $label }}">Program Magang yang Diminati <span class="text-red-500">*</span></label>
+              <select name="internship_interest" required class="{{ $input }}">
+                <option value="">-- Pilih Divisi --</option>
+                @foreach($divisions ?? [] as $div)
+                  <option value="{{ $div }}" @selected($old('internship_interest') === $div)>
+                    {{ $div }}
+                  </option>
+                @endforeach
+              </select>
             </div>
             <div>
-              <label class="{{ $label }}">Tanggal Selesai</label>
-              <input type="date" name="end_date"
-                class="{{ $input }}" value="{{ $toDateInput($old('end_date')) }}">
+              <label class="{{ $label }}">Jenis Magang <span class="text-red-500">*</span></label>
+              <select name="internship_type" required class="{{ $input }}" id="select-internship-type-static">
+                <option value="">-- Pilih --</option>
+                <option value="Magang Mandiri" @selected($old('internship_type') === 'Magang Mandiri')>Magang Mandiri</option>
+                <option value="Reguler-Kampus" @selected($old('internship_type') === 'Reguler-Kampus')>Reguler-Kampus</option>
+              </select>
             </div>
+          </div>
+
+          {{-- Kesiapan WFO & Kesanggupan Shifting --}}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="{{ $label }}">Kesiapan Sistem Magang WFO di Yogyakarta <span class="text-red-500">*</span></label>
+              <select name="wfo_readiness" required class="{{ $input }}">
+                <option value="">-- Pilih Kesiapan WFO --</option>
+                <option value="Siap WFO di Yogyakarta" @selected($old('wfo_readiness') === 'Siap WFO di Yogyakarta')>Siap WFO di Yogyakarta</option>
+                <option value="Tidak Siap" @selected($old('wfo_readiness') === 'Tidak Siap')>Tidak Siap</option>
+              </select>
+            </div>
+            <div>
+              <label class="{{ $label }}">Kesanggupan Jadwal Senin-Sabtu & Shifting <span class="text-red-500">*</span></label>
+              <select name="schedule_shift_readiness" required class="{{ $input }}">
+                <option value="">-- Pilih Kesanggupan --</option>
+                <option value="Sanggup" @selected($old('schedule_shift_readiness') === 'Sanggup')>Sanggup</option>
+                <option value="Tidak Sanggup" @selected($old('schedule_shift_readiness') === 'Tidak Sanggup')>Tidak Sanggup</option>
+              </select>
+            </div>
+          </div>
+
+          {{-- Kepemilikan Laptop & Durasi Magang --}}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="{{ $label }}">Apakah Memiliki Laptop Sendiri? <span class="text-red-500">*</span></label>
+              <div class="flex gap-6 pt-2">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="has_laptop" value="1" class="{{ $radio }}"
+                    @checked($old('has_laptop') === '1' || $old('has_laptop') === true || $old('has_laptop') === 1)> Ya (Punya Sendiri)
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="has_laptop" value="0" class="{{ $radio }}"
+                    @checked($old('has_laptop') === '0' || $old('has_laptop') === false || ($old('has_laptop') === 0 && $old('has_laptop') !== ''))> Tidak
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="{{ $label }}">Berapa Lama Rencana Magang? <span class="text-red-500">*</span></label>
+              <select name="planned_duration" required class="{{ $input }}">
+                <option value="">-- Pilih Durasi --</option>
+                <option value="1 Bulan" @selected($old('planned_duration') === '1 Bulan')>1 Bulan</option>
+                <option value="2 Bulan" @selected($old('planned_duration') === '2 Bulan')>2 Bulan</option>
+                <option value="3 Bulan" @selected($old('planned_duration') === '3 Bulan')>3 Bulan</option>
+                <option value="4 Bulan" @selected($old('planned_duration') === '4 Bulan')>4 Bulan</option>
+                <option value="5 Bulan" @selected($old('planned_duration') === '5 Bulan')>5 Bulan</option>
+                <option value="6 Bulan" @selected($old('planned_duration') === '6 Bulan')>6 Bulan</option>
+                <option value="Lebih dari 6 Bulan" @selected($old('planned_duration') === 'Lebih dari 6 Bulan')>Lebih dari 6 Bulan</option>
+              </select>
+            </div>
+          </div>
+
+          {{-- Tanggal Mulai --}}
+          <div>
+            <label class="{{ $label }}">Kapan Berencana Mulai Magang/PKL?</label>
+            <input type="date" name="start_date"
+              min="{{ date('Y-m-d') }}"
+              class="{{ $input }}" value="{{ $toDateInput($old('start_date')) }}">
           </div>
 
           {{-- Alasan Magang --}}
@@ -333,41 +369,36 @@
         <p class="text-xs text-gray-400 mb-4">Berkas pendukung dapat dilengkapi sekarang atau disusulkan kemudian</p>
 
         <div class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="{{ $label }}">Surat Pengantar (PDF) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-              <input type="file" name="cv_ktp_portofolio_pdf" accept=".pdf"
-                class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer"
-                style="--file-bg: #1a5c38;">
-              @if($reg?->cv_ktp_portofolio_pdf)
-                <p class="text-xs text-gray-400 mt-1">
-                  File sebelumnya: <a href="{{ asset('storage/' . $reg->cv_ktp_portofolio_pdf) }}" target="_blank" class="text-blue-600 hover:underline">{{ basename($reg->cv_ktp_portofolio_pdf) }}</a>
-                </p>
-              @endif
-            </div>
-            <div>
-              <label class="{{ $label }}">CV / Portfolio (PDF) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-              <input type="file" name="portofolio_visual" accept=".pdf,.jpg,.jpeg,.png"
-                class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer">
-              @if($reg?->portofolio_visual)
-                <p class="text-xs text-gray-400 mt-1">
-                  File sebelumnya: <a href="{{ asset('storage/' . $reg->portofolio_visual) }}" target="_blank" class="text-blue-600 hover:underline">{{ basename($reg->portofolio_visual) }}</a>
-                </p>
-              @endif
-            </div>
-          </div>
           <div>
-            <label class="{{ $label }}">Foto Profil (JPG/PNG) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-            <input type="file" name="profile_photo" accept=".jpg,.jpeg,.png"
+            <label class="{{ $label }}">Upload PDF CV + scan KTM/KTP + Portofolio (Maks. 10MB) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
+            <input type="file" name="cv_ktp_portofolio_pdf" id="cv_ktp_portofolio_pdf" accept=".pdf"
               class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer"
               style="--file-bg: #1a5c38;">
-            @if($reg?->profile_photo)
-              <p class="text-xs text-gray-400 mt-1">
-                File sebelumnya: <a href="{{ asset('storage/' . $reg->profile_photo) }}" target="_blank" class="text-blue-600 hover:underline">{{ basename($reg->profile_photo) }}</a>
+            <div id="cv-feedback" class="hidden mt-2 p-2.5 rounded-lg border text-xs"></div>
+            @php
+              $existingCv = $reg?->attachments()->where('attachment_type', 'cv_ktp_portofolio')->latest('id')->first();
+            @endphp
+            @if($existingCv)
+              <p class="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                <i class="fas fa-file-pdf text-red-500"></i>
+                File tersimpan: <a href="{{ asset('storage/' . $existingCv->file_path) }}" target="_blank" class="text-blue-600 hover:underline font-medium">{{ $existingCv->original_name }}</a> ({{ round($existingCv->file_size / 1024, 1) }} KB)
               </p>
             @endif
           </div>
-          <p class="text-xs text-gray-400">Maks. 5MB per file, format PDF/JPG/PNG sesuai ketentuan field</p>
+          <div>
+            <label class="{{ $label }}">Foto Profil (JPG/PNG, Maks. 5MB) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
+            <input type="file" name="profile_photo" id="profile_photo" accept=".jpg,.jpeg,.png"
+              class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer"
+              style="--file-bg: #1a5c38;">
+            <div id="photo-feedback" class="hidden mt-2 p-2.5 rounded-lg border text-xs"></div>
+            @if($reg?->profile_photo)
+              <p class="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                <i class="fas fa-image text-emerald-500"></i>
+                Foto tersimpan: <a href="{{ asset('storage/' . $reg->profile_photo) }}" target="_blank" class="text-blue-600 hover:underline font-medium">{{ basename($reg->profile_photo) }}</a>
+              </p>
+            @endif
+          </div>
+          <p class="text-xs text-gray-400">Format PDF maks 10MB untuk berkas gabungan, JPG/PNG maks 5MB untuk foto profil.</p>
         </div>
       </div>
 
@@ -379,16 +410,6 @@
         </h3>
 
         <div class="space-y-4">
-          {{-- Kemampuan Bahasa Inggris --}}
-          <div>
-            <label class="{{ $label }}">Kemampuan Membaca Buku Bahasa Inggris <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-            <select name="english_book_ability" class="{{ $input }}">
-              <option value="">-- Pilih (Opsional) --</option>
-              <option value="Saya bisa" @selected($old('english_book_ability') === 'Saya bisa')>Saya bisa</option>
-              <option value="Kurang bisa" @selected($old('english_book_ability') === 'Kurang bisa')>Kurang bisa</option>
-              <option value="Tidak bisa" @selected($old('english_book_ability') === 'Tidak bisa')>Tidak bisa</option>
-            </select>
-          </div>
 
           {{-- Skill Fields --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -511,30 +532,35 @@
       @endif
 
       {{-- Tombol --}}
-      <div class="flex items-center gap-3 pt-2">
+      <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100">
         @if(!$registration || $registration->is_draft)
-          {{-- Belum submit → tombol kirim + draft --}}
+          {{-- Belum submit → tombol kirim + server draft + local draft --}}
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg"
+            class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
             style="background-color:#1a5c38;">
             <i class="fas fa-paper-plane text-xs"></i>
             Kirim Pendaftaran
           </button>
+          <button type="submit" formaction="{{ route('pemagang.registration.draft') }}" formnovalidate
+            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition">
+            <i class="fas fa-cloud-arrow-up text-xs"></i>
+            Simpan Draft ke Server
+          </button>
           <button type="button" id="btn-save-local"
-            class="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
             <i class="fas fa-save text-xs"></i>
-            Simpan Sementara
+            Simpan di Browser
           </button>
         @else
           {{-- Sudah submit → hanya bisa update data --}}
           <button type="submit"
-            class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg"
+            class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
             style="background-color:#1a5c38;">
             <i class="fas fa-save text-xs"></i>
             Simpan Perubahan Data
           </button>
           <a href="{{ route('pemagang.dashboard') }}"
-            class="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
             Kembali
           </a>
         @endif
@@ -587,6 +613,11 @@
     if (!form) return;
 
     form.addEventListener('submit', function(e) {
+      // Lewatkan validasi submit jika tombol yang diklik adalah simpan draft ke server
+      if (e.submitter && (e.submitter.hasAttribute('formnovalidate') || e.submitter.getAttribute('formaction')?.includes('draft'))) {
+        return;
+      }
+
       let hasError = false;
 
       // Cek semua input/select/textarea yang required
@@ -602,7 +633,7 @@
           if (!errMsg) {
             errMsg = document.createElement('p');
             errMsg.className = 'field-error-msg text-xs text-red-500 mt-1';
-            errMsg.textContent = '⚠ Field ini wajib diisi';
+            errMsg.textContent = 'Field ini wajib diisi';
             field.parentNode.appendChild(errMsg);
           }
           errMsg.classList.remove('hidden');
@@ -630,7 +661,7 @@
           if (!errMsg) {
             errMsg = document.createElement('p');
             errMsg.className = 'radio-error-' + name + ' text-xs text-red-500 mt-1';
-            errMsg.textContent = '⚠ Pilih salah satu opsi';
+            errMsg.textContent = 'Pilih salah satu opsi';
             container?.parentNode?.appendChild(errMsg);
           }
         } else if (errMsg) {
@@ -677,7 +708,7 @@
       document.body.appendChild(toast);
     }
     toast.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${message}
-      <button onclick="this.parentNode.remove()" class="ml-3 text-red-400 hover:text-red-600">✕</button>`;
+      <button onclick="this.parentNode.remove()" class="ml-3 text-red-400 hover:text-red-600 font-bold" aria-label="Tutup">X</button>`;
     toast.style.display = 'flex';
     setTimeout(() => toast?.remove(), 5000);
   }
@@ -730,8 +761,70 @@
     localStorage.removeItem(FORM_KEY);
   });
 
+  // ===== Feedback dan validasi ukuran upload berkas (real-time) =====
+  function setupFileUploadFeedback() {
+    const cvInput = document.getElementById('cv_ktp_portofolio_pdf');
+    const cvBox = document.getElementById('cv-feedback');
+    if (cvInput && cvBox) {
+      cvInput.addEventListener('change', function() {
+        const file = this.files?.[0];
+        if (!file) {
+          cvBox.className = 'hidden';
+          cvBox.innerHTML = '';
+          return;
+        }
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (!isPdf) {
+          cvBox.className = 'mt-2 p-2.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2';
+          cvBox.innerHTML = '<i class="fas fa-exclamation-circle text-red-600"></i> Berkas harus berformat PDF (.pdf)';
+          this.value = '';
+          return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          cvBox.className = 'mt-2 p-2.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2';
+          cvBox.innerHTML = '<i class="fas fa-exclamation-circle text-red-600"></i> Ukuran berkas (' + sizeMb + ' MB) melebihi batas maksimal 10 MB';
+          this.value = '';
+          return;
+        }
+        cvBox.className = 'mt-2 p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2';
+        cvBox.innerHTML = '<i class="fas fa-check-circle text-emerald-600"></i> Berkas siap diunggah: <strong class="ml-1">' + file.name + '</strong> (' + sizeMb + ' MB)';
+      });
+    }
+
+    const photoInput = document.getElementById('profile_photo');
+    const photoBox = document.getElementById('photo-feedback');
+    if (photoInput && photoBox) {
+      photoInput.addEventListener('change', function() {
+        const file = this.files?.[0];
+        if (!file) {
+          photoBox.className = 'hidden';
+          photoBox.innerHTML = '';
+          return;
+        }
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        const isImage = file.type.startsWith('image/') || /\.(jpe?g|png)$/i.test(file.name);
+        if (!isImage) {
+          photoBox.className = 'mt-2 p-2.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2';
+          photoBox.innerHTML = '<i class="fas fa-exclamation-circle text-red-600"></i> Berkas harus berformat gambar JPG/PNG';
+          this.value = '';
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          photoBox.className = 'mt-2 p-2.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2';
+          photoBox.innerHTML = '<i class="fas fa-exclamation-circle text-red-600"></i> Ukuran foto (' + sizeMb + ' MB) melebihi batas maksimal 5 MB';
+          this.value = '';
+          return;
+        }
+        photoBox.className = 'mt-2 p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2';
+        photoBox.innerHTML = '<i class="fas fa-check-circle text-emerald-600"></i> Foto siap diunggah: <strong class="ml-1">' + file.name + '</strong> (' + sizeMb + ' MB)';
+      });
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     setupRequiredHighlight();
+    setupFileUploadFeedback();
 
     // Restore dari localStorage kalau fullname masih kosong (form baru)
     const firstInput = document.querySelector('#form-daftar input[name="fullname"]');
@@ -739,7 +832,7 @@
 
     setupNumericValidation(
       'input[name="phone_number"]',
-      '⚠ No. HP hanya boleh berisi angka (contoh: 08123456789)'
+      'No. HP hanya boleh berisi angka (contoh: 08123456789)'
     );
 
 

@@ -4,16 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Carbon\Carbon;
 
 class InternshipRegistration extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'internship_registrations';
 
     // ===== Workflow status (dipakai filter/menu) =====
+    public const STATUS_NEW         = 'new';
     public const STATUS_WAITING     = 'waiting';
     public const STATUS_ACTIVE      = 'active';
     public const STATUS_COMPLETED   = 'completed';
@@ -28,8 +30,9 @@ class InternshipRegistration extends Model
         'city_id', 'institution_id', 'study_program_id', 'faculty_id',
         'internship_reason', 'internship_type', 'internship_arrangement',
         'current_status', 'english_book_ability',
+        'wfo_readiness', 'schedule_shift_readiness', 'has_laptop',
         'division_id', 'brand_id',
-        'start_date', 'end_date',
+        'start_date', 'planned_duration', 'end_date',
         'internship_status',
         'supervisor_name', 'supervisor_contact',
         'current_activities', 'social_media_instagram',
@@ -44,15 +47,16 @@ class InternshipRegistration extends Model
      * - Simpan created_at/updated_at saja sebagai datetime.
      */
     protected $casts = [
+        'has_laptop'     => 'boolean',
         'created_at'     => 'datetime',
         'updated_at'     => 'datetime',
-        'draft_saved_at' => 'datetime',
     ];
 
     protected $appends = [
         'email', 'current_city', 'institution_name', 'study_program', 'faculty', 'internship_interest', 'brand',
         'owned_tools', 'internship_info_sources', 'laptop_equipment',
-        'design_software', 'video_software', 'programming_languages', 'digital_marketing_type'
+        'design_software', 'video_software', 'programming_languages', 'digital_marketing_type',
+        'is_draft',
     ];
 
     protected $with = [
@@ -109,29 +113,29 @@ class InternshipRegistration extends Model
      |  Accessor/Mutator: SELALU kembalikan STRING, bukan Carbon
      * ============================================================ */
 
-    /** born_date: simpan Y-m-d bila bisa, get selalu string apa adanya */
+    /** born_date: simpan Y-m-d bila bisa, get selalu string apa adanya atau null */
     protected function bornDate(): Attribute
     {
         return Attribute::make(
-            get: fn ($value) => is_string($value) ? $value : (string) $value,
+            get: fn ($value) => $value === null ? null : (string) $value,
             set: fn ($value) => $this->toYmdString($value)
         );
     }
 
-    /** start_date: simpan Y-m-d bila bisa, get selalu string apa adanya */
+    /** start_date: simpan Y-m-d bila bisa, get selalu string apa adanya atau null */
     protected function startDate(): Attribute
     {
         return Attribute::make(
-            get: fn ($value) => is_string($value) ? $value : (string) $value,
+            get: fn ($value) => $value === null ? null : (string) $value,
             set: fn ($value) => $this->toYmdString($value)
         );
     }
 
-    /** end_date: simpan Y-m-d bila bisa, get selalu string apa adanya */
+    /** end_date: simpan Y-m-d bila bisa, get selalu string apa adanya atau null */
     protected function endDate(): Attribute
     {
         return Attribute::make(
-            get: fn ($value) => is_string($value) ? $value : (string) $value,
+            get: fn ($value) => $value === null ? null : (string) $value,
             set: fn ($value) => $this->toYmdString($value)
         );
     }
@@ -239,7 +243,7 @@ class InternshipRegistration extends Model
 
     public function user()
     {
-        return $this->belongsTo(\App\Models\User::class, 'user_id');
+        return $this->belongsTo(\App\Models\User::class, 'user_id')->withTrashed();
     }
 
     public function city()
@@ -250,6 +254,27 @@ class InternshipRegistration extends Model
     public function institution()
     {
         return $this->belongsTo(\App\Models\Institution::class, 'institution_id');
+    }
+
+    public function attachments()
+    {
+        return $this->hasMany(\App\Models\RegistrationAttachment::class, 'internship_registration_id');
+    }
+
+    public function contactLinks()
+    {
+        return $this->hasMany(\App\Models\RegistrationContactLink::class, 'internship_registration_id');
+    }
+
+    public function institutionContacts()
+    {
+        return $this->belongsToMany(
+            \App\Models\InstitutionContact::class,
+            'registration_contact_links',
+            'internship_registration_id',
+            'institution_contact_id'
+        )->withPivot(['public_uuid', 'relation_year', 'is_primary', 'source', 'confirmed_by', 'confirmed_at'])
+         ->withTimestamps();
     }
 
     public function skills()
@@ -346,4 +371,72 @@ class InternshipRegistration extends Model
     {
         return $this->hasOne(\App\Models\InternAssessment::class, 'intern_id');
     }
+
+    public function assessments()
+    {
+        return $this->hasMany(\App\Models\InternAssessment::class, 'intern_id');
+    }
+
+    public function membercards()
+    {
+        return $this->hasMany(\App\Models\AlumniMembercard::class, 'intern_id');
+    }
+
+    public function loas()
+    {
+        return $this->hasMany(\App\Models\InternLoa::class, 'intern_id');
+    }
+
+    public function skls()
+    {
+        return $this->hasMany(\App\Models\SklDocument::class, 'intern_id');
+    }
+
+    public function certificates()
+    {
+        return $this->hasMany(\App\Models\InternCertificate::class, 'intern_id');
+    }
+
+    public function hasDocuments(): bool
+    {
+        return $this->membercards()->exists()
+            || $this->loas()->exists()
+            || $this->skls()->exists()
+            || $this->certificates()->exists()
+            || $this->assessments()->exists();
+    }
+
+    /**
+     * Memeriksa apakah pendaftaran berada pada status tertutup (riwayat masa lalu).
+     */
+    public function isClosed(): bool
+    {
+        return in_array($this->internship_status, [
+            self::STATUS_COMPLETED,
+            self::STATUS_EXITED,
+            self::STATUS_REJECTED,
+        ], true);
+    }
+
+    /**
+     * Memeriksa apakah pendaftaran sedang aktif atau dalam proses.
+     */
+    public function isOpen(): bool
+    {
+        return in_array($this->internship_status, [
+            self::STATUS_WAITING,
+            self::STATUS_PENDING,
+            self::STATUS_ACCEPTED,
+            self::STATUS_ACTIVE,
+        ], true);
+    }
+
+    /**
+     * Accessor untuk is_draft. Bernilai true jika status kosong atau masih 'new'.
+     */
+    public function getIsDraftAttribute(): bool
+    {
+        return empty($this->internship_status) || $this->internship_status === self::STATUS_NEW;
+    }
 }
+

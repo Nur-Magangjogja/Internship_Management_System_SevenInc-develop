@@ -145,7 +145,7 @@
                                     $nameSlug = \Illuminate\Support\Str::slug($cert->name ?? 'cert', '-');
                                     $filename = "Sertifikat-{$nameSlug}.pdf";
                                 @endphp
-                                <a href="{{ asset('storage/documents/certificates/' . $filename) }}" target="_blank" title="Lihat Sertifikat"
+                                <a href="{{ route('admin.certificate.pdf', $cert->id) }}" target="_blank" title="Lihat Sertifikat"
                                     class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-[#2D8659] hover:text-[#1F5F3F]">
                                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </a>

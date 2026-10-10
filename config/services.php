@@ -37,4 +37,25 @@ return [
         'api_key' => env('ABSEN_DJURAGAN_API_KEY', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c'),
     ],
 
+    'google_drive' => [
+        'enabled'       => env('GOOGLE_DRIVE_ENABLED', false),
+        'client_id'     => env('GOOGLE_DRIVE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+        'refresh_token' => env('GOOGLE_DRIVE_REFRESH_TOKEN'),
+        'folder_id'     => env('GOOGLE_DRIVE_FOLDER_ID'),
+    ],
+
+    'google_sheets' => [
+        'enabled' => env('GOOGLE_SHEETS_ENABLED', false),
+    ],
+
+    'google_apps_script' => [
+        'enabled'          => env('GOOGLE_APPS_SCRIPT_ENABLED', false),
+        'endpoint_url'     => env('GOOGLE_APPS_SCRIPT_ENDPOINT_URL'),
+        'shared_secret'    => env('GOOGLE_APPS_SCRIPT_SHARED_SECRET', env('GOOGLE_APPS_SCRIPT_WEBHOOK_SECRET')),
+        'timeout_seconds'  => (int) env('GOOGLE_APPS_SCRIPT_TIMEOUT_SECONDS', 30),
+        'root_folder_id'   => env('GOOGLE_DRIVE_ROOT_FOLDER_ID'),
+    ],
+
 ];
+

@@ -19,6 +19,6 @@ class InternTool extends Model
 
     public function internshipRegistration()
     {
-        return $this->belongsTo(InternshipRegistration::class);
+        return $this->belongsTo(InternshipRegistration::class)->withTrashed();
     }
 }

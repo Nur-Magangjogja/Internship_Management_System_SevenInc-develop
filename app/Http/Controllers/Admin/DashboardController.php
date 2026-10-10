@@ -8,8 +8,12 @@ use App\Models\InternshipRegistration as IR;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Artisan;
+use App\Models\ActivityLog;
 use App\Models\DailyReport;
+use App\Models\FollowUpCycle;
+use App\Models\Institution;
 use App\Models\LeaveRequest;
+use App\Models\Mou;
 use App\Models\PendingTask;
 use App\Models\User;
 use Carbon\Carbon;
@@ -193,46 +197,63 @@ class DashboardController extends Controller
 
     public function index()
     {
-        $allReports = DailyReport::with('user')->latest('date')->get();
-        $allLeaves  = LeaveRequest::with('user')->latest('leave_date')->get();
-        $allTasks   = PendingTask::with('user')->latest()->get();
+        // Kompatibilitas view: inisialisasi collection kosong tanpa query database berat yang tidak terpakai
+        $allReports = collect();
+        $allLeaves  = collect();
+        $allTasks   = collect();
+        $users      = collect();
 
-        // Ringkasan hitungan (berdasarkan workflow status)
+        // 1. Ringkasan hitungan status pemagang dalam 1 query agregasi terpadu
+        $irCounts = IR::selectRaw("
+            COUNT(*) as total,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as waiting,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as accepted,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as exited,
+            SUM(CASE WHEN internship_status = ? THEN 1 ELSE 0 END) as rejected
+        ", [
+            IR::STATUS_WAITING,
+            IR::STATUS_PENDING,
+            IR::STATUS_ACCEPTED,
+            IR::STATUS_ACTIVE,
+            IR::STATUS_COMPLETED,
+            IR::STATUS_EXITED,
+            IR::STATUS_REJECTED,
+        ])->first();
+
         $counts = [
-            'total'     => IR::count(),
-            'waiting'   => IR::where('internship_status', IR::STATUS_WAITING)->count(),
-            'pending'   => IR::where('internship_status', IR::STATUS_PENDING)->count(),
-            'accepted'  => IR::where('internship_status', IR::STATUS_ACCEPTED)->count(),
-            'active'    => IR::where('internship_status', IR::STATUS_ACTIVE)->count(),
-            'completed' => IR::where('internship_status', IR::STATUS_COMPLETED)->count(),
-            'exited'    => IR::where('internship_status', IR::STATUS_EXITED)->count(),
-            'rejected'  => IR::where('internship_status', IR::STATUS_REJECTED)->count(),
+            'total'     => (int) ($irCounts->total ?? 0),
+            'waiting'   => (int) ($irCounts->waiting ?? 0),
+            'pending'   => (int) ($irCounts->pending ?? 0),
+            'accepted'  => (int) ($irCounts->accepted ?? 0),
+            'active'    => (int) ($irCounts->active ?? 0),
+            'completed' => (int) ($irCounts->completed ?? 0),
+            'exited'    => (int) ($irCounts->exited ?? 0),
+            'rejected'  => (int) ($irCounts->rejected ?? 0),
         ];
 
+        // 2. 5 Pendaftaran terbaru
         $recentInterns = IR::latest('created_at')->limit(5)->get();
 
-        // ===========================
-        // Line chart: total pendaftar per bulan (6 bulan terakhir, termasuk bulan ini)
-        // ===========================
+        // 3. Line chart: total pendaftar per bulan (6 bulan terakhir)
         $end   = Carbon::now()->endOfMonth();
         $start = (clone $end)->subMonths(5)->startOfMonth();
 
-        // Buat list bulan untuk label & kunci (YYYY-MM)
         $months = collect();
         for ($d = $start->copy(); $d <= $end; $d->addMonth()) {
             $months->push($d->copy());
         }
-        $labels = $months->map->format('M Y')->all();   // contoh: ['Mar 2025', ...]
-        $keys   = $months->map->format('Y-m')->all();   // contoh: ['2025-03', ...]
+        $labels = $months->map->format('M Y')->all();
+        $keys   = $months->map->format('Y-m')->all();
 
-        // Grouping total pendaftar per bulan berdasarkan created_at
         $grouped = IR::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym, COUNT(*) as c")
             ->whereBetween('created_at', [$start, $end])
             ->groupBy('ym')
-            ->pluck('c', 'ym') // ['2025-03' => 12, ...]
+            ->pluck('c', 'ym')
             ->all();
 
-        // Susun sesuai urutan bulan, isi 0 jika tidak ada
         $totals = array_map(fn ($k) => $grouped[$k] ?? 0, $keys);
 
         $chart = [
@@ -240,24 +261,65 @@ class DashboardController extends Controller
             'total'  => $totals,
         ];
 
-        $users = \App\Models\User::with('internshipRegistration')
-        ->latest()
-        ->limit(10) // tampilkan 10 terbaru (ubah sesuai kebutuhan)
-        ->get();
+        // 4. Metrik Monitoring Kemitraan & Dokumen MOU dalam query terpadu
+        $instCounts = Institution::selectRaw("
+            COUNT(*) as total_institutions,
+            SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_institutions
+        ")->first();
 
-        $me = auth()->user();
+        $nowStr = now()->toDateTimeString();
+        $fcCounts = FollowUpCycle::selectRaw("
+            SUM(CASE WHEN status IN ('open', 'waiting_response') THEN 1 ELSE 0 END) as followup_open,
+            SUM(CASE WHEN status IN ('open', 'waiting_response') AND locked_by IS NOT NULL AND lock_expires_at > ? THEN 1 ELSE 0 END) as followup_locked,
+            SUM(CASE WHEN status = 'waiting_response' THEN 1 ELSE 0 END) as followup_waiting,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as followup_completed,
+            SUM(CASE WHEN final_result = 'willing' THEN 1 ELSE 0 END) as outcome_willing,
+            SUM(CASE WHEN final_result = 'declined' THEN 1 ELSE 0 END) as outcome_declined,
+            SUM(CASE WHEN final_result = 'no_response' THEN 1 ELSE 0 END) as outcome_no_response
+        ", [$nowStr])->first();
 
-        $reportsMine = $me->dailyReports()->exists()
-            ? $me->dailyReports()->orderByDesc('date')->limit(5)->get()
-            : DailyReport::orderByDesc('date')->limit(5)->get();
+        $nowDate = now()->toDateString();
+        $expiringDate = now()->addDays(60)->toDateString();
+        $mouCounts = Mou::selectRaw("
+            COUNT(*) as mou_total,
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as mou_active,
+            SUM(CASE WHEN status = 'generated' THEN 1 ELSE 0 END) as mou_generated,
+            SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as mou_delivered,
+            SUM(CASE WHEN status = 'active' AND effective_end IS NOT NULL AND effective_end BETWEEN ? AND ? THEN 1 ELSE 0 END) as mou_expiring_soon,
+            SUM(CASE WHEN status = 'expired' OR (status = 'active' AND effective_end IS NOT NULL AND effective_end < ?) THEN 1 ELSE 0 END) as mou_expired
+        ", [$nowDate, $expiringDate, $nowDate])->first();
 
-        $leaveMine = $me->leaveRequests()->exists()
-            ? $me->leaveRequests()->orderByDesc('leave_date')->limit(5)->get()
-            : LeaveRequest::orderByDesc('leave_date')->limit(5)->get();
+        $hrStaffCount = User::where('role', 'hr_staff')->where('is_banned', 0)->count();
 
-        $tasksMine = $me->pendingTasks()->exists()
-            ? $me->pendingTasks()->latest()->limit(5)->get()
-            : PendingTask::latest()->limit(5)->get();
+        $partnershipMetrics = [
+            'total_institutions'  => (int) ($instCounts->total_institutions ?? 0),
+            'active_institutions' => (int) ($instCounts->active_institutions ?? 0),
+            'followup_open'       => (int) ($fcCounts->followup_open ?? 0),
+            'followup_locked'     => (int) ($fcCounts->followup_locked ?? 0),
+            'followup_waiting'    => (int) ($fcCounts->followup_waiting ?? 0),
+            'followup_completed'  => (int) ($fcCounts->followup_completed ?? 0),
+            'outcome_willing'     => (int) ($fcCounts->outcome_willing ?? 0),
+            'outcome_declined'    => (int) ($fcCounts->outcome_declined ?? 0),
+            'outcome_no_response' => (int) ($fcCounts->outcome_no_response ?? 0),
+            'mou_total'           => (int) ($mouCounts->mou_total ?? 0),
+            'mou_active'          => (int) ($mouCounts->mou_active ?? 0),
+            'mou_generated'       => (int) ($mouCounts->mou_generated ?? 0),
+            'mou_delivered'       => (int) ($mouCounts->mou_delivered ?? 0),
+            'mou_expiring_soon'   => (int) ($mouCounts->mou_expiring_soon ?? 0),
+            'mou_expired'         => (int) ($mouCounts->mou_expired ?? 0),
+            'hr_staff_count'      => $hrStaffCount,
+        ];
+
+        // 5. Log kemitraan & Dokumen MOU akan kedaluwarsa
+        $recentPartnershipLogs = ActivityLog::latest('id')->limit(5)->get();
+
+        $expiringMous = Mou::with('institution')
+            ->where('status', Mou::STATUS_ACTIVE)
+            ->whereNotNull('effective_end')
+            ->whereBetween('effective_end', [now(), now()->addDays(60)])
+            ->orderBy('effective_end')
+            ->limit(5)
+            ->get();
 
         return view('dashboard.index', compact(
             'counts',
@@ -266,7 +328,10 @@ class DashboardController extends Controller
             'allReports',
             'allLeaves',
             'allTasks',
-            'recentInterns'
+            'recentInterns',
+            'partnershipMetrics',
+            'recentPartnershipLogs',
+            'expiringMous'
         ));
     }
 }

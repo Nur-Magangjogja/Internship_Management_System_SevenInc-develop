@@ -35,7 +35,9 @@ class DocumentController extends Controller
     public function index()
     {
         $user         = auth()->user();
-        $registration = IR::where('user_id', $user->id)->latest('id')->first();
+        $regId        = request()->query('registration_id');
+        $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
+        $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null);
 
         $status = $registration?->internship_status;
         $isCompleted = $status === IR::STATUS_COMPLETED;
@@ -159,10 +161,12 @@ class DocumentController extends Controller
      * Halaman lihat & download Membercard digital milik pemagang (2D PDF).
      * Hanya tersedia setelah status = completed.
      */
-    public function viewMembercard()
+    public function viewMembercard(Request $request)
     {
         $user       = auth()->user();
-        $reg        = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle  = app(\App\Services\RegistrationLifecycleService::class);
+        $regId      = $request->query('registration_id');
+        $reg        = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null, 'membercard');
 
         // Membercard hanya tersedia setelah selesai magang
         if (!$reg || $reg->internship_status !== IR::STATUS_COMPLETED) {
@@ -185,10 +189,12 @@ class DocumentController extends Controller
      * Download Membercard sebagai PDF.
      * Hanya tersedia setelah status = completed.
      */
-    public function downloadMembercard()
+    public function downloadMembercard(Request $request)
     {
         $user       = auth()->user();
-        $reg        = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle  = app(\App\Services\RegistrationLifecycleService::class);
+        $regId      = $request->query('registration_id');
+        $reg        = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null, 'membercard');
 
         // Membercard hanya tersedia setelah selesai magang
         if (!$reg || $reg->internship_status !== IR::STATUS_COMPLETED) {
@@ -254,10 +260,12 @@ class DocumentController extends Controller
      * Download Sertifikat milik pemagang yang login.
      * Cari sertifikat berdasarkan fullname pemagang di tabel certificates.
      */
-    public function downloadSertifikat()
+    public function downloadSertifikat(Request $request)
     {
         $user         = auth()->user();
-        $registration = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
+        $regId        = $request->query('registration_id');
+        $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null, 'certificate');
 
         if (!$registration || $registration->internship_status !== IR::STATUS_COMPLETED) {
             abort(403, 'Sertifikat hanya tersedia setelah magang selesai.');
@@ -302,10 +310,12 @@ class DocumentController extends Controller
      * Download Surat Rekomendasi milik pemagang yang login.
      * Hanya tersedia jika admin sudah memberikan (rekomendasi_path diisi).
      */
-    public function downloadRekomendasi()
+    public function downloadRekomendasi(Request $request)
     {
         $user         = auth()->user();
-        $registration = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
+        $regId        = $request->query('registration_id');
+        $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null, 'rekomendasi');
 
         if (!$registration || $registration->internship_status !== IR::STATUS_COMPLETED) {
             abort(403, 'Surat rekomendasi hanya tersedia setelah magang selesai.');
@@ -331,10 +341,12 @@ class DocumentController extends Controller
      * Download Surat Penilaian milik pemagang yang login.
      * Cari assessment berdasarkan intern_id (FK ke internship_registrations).
      */
-    public function downloadSuratPenilaian()
+    public function downloadSuratPenilaian(Request $request)
     {
         $user         = auth()->user();
-        $registration = IR::where('user_id', $user->id)->latest('id')->first();
+        $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
+        $regId        = $request->query('registration_id');
+        $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null, 'assessment');
 
         if (!$registration || $registration->internship_status !== IR::STATUS_COMPLETED) {
             abort(403, 'Surat penilaian hanya tersedia setelah magang selesai.');

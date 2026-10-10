@@ -11,16 +11,20 @@ use Illuminate\Support\Facades\View;
 
 class InternPageController extends Controller
 {
-    public function __construct()
+    protected function renderIndex(array $data)
     {
-        View::share('divisions', Division::where('is_active', true)->get());
-        View::share('brands', Brand::all());
+        $default = [
+            'divisions' => Division::where('is_active', true)->get(),
+            'brands'    => Brand::all(),
+        ];
+
+        return view('interns.index', array_merge($default, $data));
     }
 
     // Semua pemagang
     public function index()
     {
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => IR::orderByDesc('created_at')->get(),
             'title'   => 'Semua Pemagang',
             'scope'   => 'all',
@@ -34,7 +38,7 @@ class InternPageController extends Controller
             ->orderByDesc('start_date')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pemagang Aktif',
             'scope'   => 'active',
@@ -48,7 +52,7 @@ class InternPageController extends Controller
             ->orderByDesc('end_date')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pemagang Selesai',
             'scope'   => 'completed',
@@ -62,7 +66,7 @@ class InternPageController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pemagang Keluar',
             'scope'   => 'exited',
@@ -76,7 +80,7 @@ class InternPageController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pemagang Pending',
             'scope'   => 'pending',
@@ -89,7 +93,7 @@ class InternPageController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pemagang Diterima',
             'scope'   => 'accepted',
@@ -102,7 +106,7 @@ class InternPageController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('interns.index', [
+        return $this->renderIndex([
             'interns' => $interns,
             'title'   => 'Pendaftar Ditolak',
             'scope'   => 'rejected',
@@ -115,7 +119,7 @@ class InternPageController extends Controller
      */
     public function pendaftar()
     {
-        return view('interns.index', [
+        return $this->renderIndex([
             'title' => 'Data Pendaftar Magang',
             'scope' => 'waiting',           // default tab saat buka halaman
             'mode'  => 'pendaftar',         // dipakai view untuk tampilkan filter yang tepat
@@ -128,10 +132,23 @@ class InternPageController extends Controller
      */
     public function pemagang()
     {
-        return view('interns.index', [
+        return $this->renderIndex([
             'title' => 'Data Pemagang',
             'scope' => 'active',            // default tab saat buka halaman
             'mode'  => 'pemagang',          // dipakai view untuk tampilkan filter yang tepat
+        ]);
+    }
+
+    /**
+     * Arsip Pendaftaran Dihapus (Soft-Deleted)
+     */
+    public function trashed()
+    {
+        return $this->renderIndex([
+            'interns' => IR::onlyTrashed()->orderByDesc('deleted_at')->get(),
+            'title'   => 'Arsip Pendaftaran Dihapus',
+            'scope'   => 'trashed',
+            'mode'    => 'trashed',
         ]);
     }
 }
