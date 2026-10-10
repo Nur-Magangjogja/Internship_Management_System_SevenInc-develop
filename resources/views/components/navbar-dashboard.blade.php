@@ -22,7 +22,22 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3">
+            {{-- Tombol Kembali ke Web Absen --}}
+            @php
+                $absenBaseUrl = rtrim(config('services.absen_djuragan.web_url', 'http://absen-djuragan.test'), '/');
+                if (request()->isSecure() || str_starts_with(config('app.url'), 'https://')) {
+                    $absenBaseUrl = preg_replace('/^http:\/\//i', 'https://', $absenBaseUrl);
+                }
+                $absenHomeUrl = $absenBaseUrl . '/admin/home';
+            @endphp
+            <a href="{{ $absenHomeUrl }}"
+               class="inline-flex items-center gap-1.5 rounded-lg border border-admin-border bg-[#F4F8F6] px-3 py-1.5 text-xs font-semibold text-admin-primary-dark transition hover:bg-admin-secondary hover:text-admin-text-dark"
+               title="Kembali ke Web Absen (Absen Djuragan)">
+                <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                <span class="hidden sm:inline">Kembali ke Web Absen</span>
+                <span class="sm:hidden">Web Absen</span>
+            </a>
             <div class="relative">
                 <button
                     id="admin-notification-toggle"

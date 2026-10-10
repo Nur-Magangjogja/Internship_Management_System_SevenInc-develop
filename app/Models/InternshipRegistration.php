@@ -24,7 +24,7 @@ class InternshipRegistration extends Model
 
     protected $fillable = [
         'user_id',
-        'fullname', 'born_date', 'student_id', 'gender', 'phone_number',
+        'fullname', 'born_date', 'birth_place', 'student_id', 'gender', 'religion', 'phone_number',
         'city_id', 'institution_id', 'study_program_id', 'faculty_id',
         'internship_reason', 'internship_type', 'internship_arrangement',
         'current_status', 'english_book_ability',

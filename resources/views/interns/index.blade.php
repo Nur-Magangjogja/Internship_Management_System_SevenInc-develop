@@ -1186,7 +1186,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Definisi section berdasarkan field_key sistem
             const SECTION_MAP = {
                 fullname:            'Data Pribadi',
+                birth_place:         'Data Pribadi',
                 born_date:           'Data Pribadi',
+                religion:            'Data Pribadi',
                 student_id:          'Data Pribadi',
                 gender:              'Data Pribadi',
                 email:               'Data Pribadi',
@@ -1250,7 +1252,9 @@ document.addEventListener('DOMContentLoaded', () => {
             fieldsHtml = `
                 ${sectionHtml('Data Pribadi')}
                 ${detailRow('Nama Lengkap', it.fullname)}
+                ${detailRow('Tempat Lahir', it.birth_place)}
                 ${detailRow('Tahun Lahir', it.born_date)}
+                ${detailRow('Agama', it.religion)}
                 ${detailRow('NIM / NIS', it.student_id)}
                 ${detailRow('Jenis Kelamin', it.gender)}
                 ${detailRow('Email', it.email)}
@@ -1432,7 +1436,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (__formFields.length > 0) {
             const SECTION_MAP = {
                 fullname:            'Data Pribadi',
+                birth_place:         'Data Pribadi',
                 born_date:           'Data Pribadi',
+                religion:            'Data Pribadi',
                 student_id:          'Data Pribadi',
                 gender:              'Data Pribadi',
                 email:               'Data Pribadi',
@@ -1454,7 +1460,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 video_software:      'Keahlian & Alat',
                 programming_languages:'Keahlian & Alat',
                 digital_marketing_type:'Keahlian & Alat',
-                owned_tools:         'Keahlian & Alat',
                 owned_tools:         'Keahlian & Alat',
             };
 
@@ -1484,6 +1489,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 ['Laki-laki','Laki-laki'],['Perempuan','Perempuan'],
             ].map(([v,l]) => `<option value="${v}" ${it.gender===v?'selected':''}>${l}</option>`).join('');
 
+            const religionOpts = [
+                'Islam','Kristen','Katolik','Hindu','Buddha','Khonghucu'
+            ].map(r => `<option value="${r}" ${it.religion===r?'selected':''}>${r}</option>`).join('');
+
             const typeOpts = [
                 ['Magang Mandiri','Magang Mandiri'],['Magang Kampus','Magang Kampus / Reguler'],
                 ['PKL','PKL'],['Kampus Merdeka','Kampus Merdeka'],
@@ -1501,7 +1510,14 @@ document.addEventListener('DOMContentLoaded', () => {
             dynamicFieldsHtml = `
                 ${section('Data Pribadi')}
                 ${editField('Nama Lengkap', 'fullname', it.fullname)}
+                ${editField('Tempat Lahir', 'birth_place', it.birth_place)}
                 ${editField('Tahun Lahir (Atau Tanggal)', 'born_date', it.born_date_raw, 'date')}
+                <div>
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Agama</label>
+                    <select name="religion" class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
+                        <option value="">-- Pilih --</option>${religionOpts}
+                    </select>
+                </div>
                 ${editField('NIM / NIS', 'student_id', it.student_id)}
                 <div>
                     <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Jenis Kelamin</label>

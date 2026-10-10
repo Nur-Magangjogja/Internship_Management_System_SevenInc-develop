@@ -32,12 +32,13 @@ class RegistrationController extends Controller
 
         if ($divisions->isEmpty()) {
             $divisions = collect([
-                'Administration', 'Human Resources (HR)', 'UI/UX Designer',
-                'Programmer (Front End / Backend)', 'Photographer', 'Videographer',
-                'Graphic Designer (Konten Kreatif)', 'Social Media Specialist',
-                'Content Writer', 'Content Planner', 'Sales & Marketing',
-                'Public Relations (Marcomm)', 'Digital Marketing', 'TikTok Creator',
-                'Project Manager', 'Pengelasan', 'Animasi', 'Customer Service',
+                'UI/UX Designer', 'Marketing / Sales', 'Social Media Specialist',
+                'Programmer', 'Marcom/Public Relation', 'Tiktok Creator',
+                'Desain Grafis', 'Content Writer', 'Host/Presenter',
+                'Fotografer', 'Content Planner', 'Voice Over Talent',
+                'Videografer', 'Administrasi', 'Las', 'Digital Marketing',
+                'Project Manager', 'Human Resource', 'Research & Development',
+                'Animasi', 'Customer Service',
             ]);
         }
 
@@ -103,6 +104,8 @@ class RegistrationController extends Controller
             'student_id.required'  => 'NIM/NPM wajib diisi.',
             'email.required'       => 'Email wajib diisi.',
             'gender.required'      => 'Jenis kelamin wajib dipilih.',
+            'birth_place.required' => 'Tempat lahir wajib diisi.',
+            'religion.required'    => 'Agama wajib dipilih.',
             'institution_name.required' => 'Nama universitas wajib diisi.',
             'study_program.required'    => 'Program studi wajib diisi.',
             'faculty.required'          => 'Fakultas wajib diisi.',
@@ -145,6 +148,8 @@ class RegistrationController extends Controller
             'owned_tools'            => $validated['owned_tools'] ?? '-',
             // Kolom NOT NULL yang bisa kosong saat draft
             'gender'                 => $validated['gender'] ?? 'Laki-laki',
+            'birth_place'            => $validated['birth_place'] ?? '-',
+            'religion'               => $validated['religion'] ?? '-',
             'internship_type'        => $validated['internship_type'] ?? 'Magang Mandiri',
             'internship_arrangement' => $validated['internship_arrangement'] ?? 'Onsite',
             'current_status'         => $validated['current_status'] ?? 'Mahasiswa/Pelajar',
@@ -159,7 +164,6 @@ class RegistrationController extends Controller
             'study_program'          => $validated['study_program'] ?? '-',
             'faculty'                => $validated['faculty'] ?? '-',
             'current_city'           => $validated['current_city'] ?? '-',
-            'internship_interest'    => $validated['internship_interest'] ?? '-',
         ];
 
         foreach ($notNullDefaults as $field => $default) {
@@ -177,8 +181,8 @@ class RegistrationController extends Controller
             $validated['user_id']           = $user->id;
         }
 
-                $getRelationId = function($modelClass, $name, $extra = []) {
-            if (empty($name)) return null;
+        $getRelationId = function($modelClass, $name, $extra = []) {
+            if (empty($name) || $name === '-') return null;
             $name = ucwords(strtolower(trim($name)));
             $existing = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
             if ($existing) return $existing->id;
@@ -203,10 +207,15 @@ class RegistrationController extends Controller
             $validated['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $validated['study_program'], $extra);
             unset($validated['study_program']);
         }
-        if (!empty($validated['internship_interest'])) {
-            $validated['division_id'] = $getRelationId(\App\Models\Division::class, $validated['internship_interest']);
-            // Do not unset internship_interest because it might be used by status logic, but actually InternController unset it.
-            unset($validated['internship_interest']);
+
+        // Resolusi Divisi yang dipilih
+        $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($validated['internship_interest'] ?? null);
+        unset($validated['internship_interest']);
+
+        if (!empty($divisionInput) && $divisionInput !== '-') {
+            $validated['division_id'] = self::resolveDivisionId($divisionInput);
+        } elseif (!$isDraft && empty($validated['division_id'])) {
+            $validated['division_id'] = \App\Models\Division::where('is_active', true)->first()?->id ?? 1;
         }
 
         // Upsert — update kalau sudah ada, buat baru kalau belum
@@ -290,9 +299,11 @@ class RegistrationController extends Controller
         return [
             'fullname'           => 'nullable|string|max:255',
             'born_date'          => 'nullable|string|max:255',
+            'birth_place'        => 'nullable|string|max:100',
             'student_id'         => 'nullable|string|max:50',
             'email'              => 'nullable|string|max:255',
             'gender'             => 'nullable|string|max:50',
+            'religion'           => 'nullable|string|max:50',
             'phone_number'       => 'nullable|regex:/^[0-9]{0,15}$/',
             'institution_name'   => 'nullable|string|max:255',
             'study_program'      => 'nullable|string|max:255',
@@ -333,7 +344,9 @@ class RegistrationController extends Controller
             // Data Diri
             'fullname'           => 'required|string|max:255',
             'born_date'          => 'required|string|max:255',
+            'birth_place'        => 'required|string|max:100',
             'gender'             => 'required|string|max:50',
+            'religion'           => 'required|string|max:50',
             'current_city'       => 'required|string|max:255',
             'email'              => 'required|string|max:255',
             'phone_number'       => 'required|regex:/^[0-9]{10,15}$/',
@@ -375,5 +388,103 @@ class RegistrationController extends Controller
         } while (Storage::disk('public')->exists($path));
 
         return $file->storeAs($dir, $name, 'public');
+    }
+
+    /**
+     * Resolusi ID Divisi dengan dukungan ID numerik, nama persis, kamus sinonim, dan flexible matching.
+     */
+    public static function resolveDivisionId(mixed $input): ?int
+    {
+        if (empty($input) || $input === '-') return null;
+
+        // 1. Jika ID numerik dan ada di database
+        if (is_numeric($input)) {
+            $div = \App\Models\Division::find((int) $input);
+            if ($div) return $div->id;
+        }
+
+        $rawName = trim((string) $input);
+        $clean   = strtolower($rawName);
+
+        // 2. Cek kecocokan nama langsung (case-insensitive)
+        $div = \App\Models\Division::whereRaw('LOWER(name) = ?', [$clean])->first();
+        if ($div) return $div->id;
+
+        // 3. Kamus sinonim & variasi nama
+        $synonyms = [
+            'programmer (front end / backend)'  => 'Programmer',
+            'programmer (frontend / backend)'   => 'Programmer',
+            'web programmer'                    => 'Programmer',
+            'developer'                         => 'Programmer',
+            'frontend'                          => 'Programmer',
+            'backend'                           => 'Programmer',
+            'administration'                    => 'Administrasi',
+            'admin'                             => 'Administrasi',
+            'adm'                               => 'Administrasi',
+            'human resources (hr)'              => 'Human Resource',
+            'human resources'                   => 'Human Resource',
+            'hrd'                               => 'Human Resource',
+            'hr'                                => 'Human Resource',
+            'ui/ux'                             => 'UI/UX Designer',
+            'uiux'                              => 'UI/UX Designer',
+            'ui-ux'                             => 'UI/UX Designer',
+            'photographer'                      => 'Fotografer',
+            'fotografi'                         => 'Fotografer',
+            'videographer'                      => 'Videografer',
+            'videografi'                        => 'Videografer',
+            'graphic designer (konten kreatif)' => 'Desain Grafis',
+            'graphic designer'                  => 'Desain Grafis',
+            'desainer grafis'                   => 'Desain Grafis',
+            'social media'                      => 'Social Media Specialist',
+            'smm'                               => 'Social Media Specialist',
+            'content writter'                   => 'Content Writer',
+            'penulis konten'                    => 'Content Writer',
+            'sales & marketing'                 => 'Marketing / Sales',
+            'sales and marketing'               => 'Marketing / Sales',
+            'marketing'                         => 'Marketing / Sales',
+            'sales'                             => 'Marketing / Sales',
+            'public relations (marcomm)'        => 'Marcom/Public Relation',
+            'public relations'                  => 'Marcom/Public Relation',
+            'marcomm'                           => 'Marcom/Public Relation',
+            'marcom'                            => 'Marcom/Public Relation',
+            'pr'                                => 'Marcom/Public Relation',
+            'tiktok'                            => 'Tiktok Creator',
+            'kreator tiktok'                    => 'Tiktok Creator',
+            'pengelasan'                        => 'Las',
+            'welder'                            => 'Las',
+            'welding'                           => 'Las',
+            'animation'                         => 'Animasi',
+            'animator'                          => 'Animasi',
+            'cs'                                => 'Customer Service',
+            'layanan pelanggan'                 => 'Customer Service',
+            'host'                              => 'Host/Presenter',
+            'presenter'                         => 'Host/Presenter',
+            'voice over'                        => 'Voice Over Talent',
+            'pengisi suara'                     => 'Voice Over Talent',
+            'rnd'                               => 'Research & Development',
+            'r&d'                               => 'Research & Development',
+        ];
+
+        if (isset($synonyms[$clean])) {
+            $mapped = \App\Models\Division::where('name', $synonyms[$clean])->first();
+            if ($mapped) return $mapped->id;
+        }
+
+        // 4. Flexible LIKE search (dua arah)
+        $flexible = \App\Models\Division::where(function ($q) use ($clean) {
+            $q->whereRaw('LOWER(name) LIKE ?', ["%{$clean}%"])
+              ->orWhereRaw('? LIKE CONCAT("%", LOWER(name), "%")', [$clean]);
+        })->first();
+
+        if ($flexible) return $flexible->id;
+
+        // 5. Jika benar-benar baru, buat record divisi baru yang aktif
+        $newDiv = \App\Models\Division::create([
+            'name'      => ucwords($clean),
+            'slug'      => \Illuminate\Support\Str::slug($clean, '_'),
+            'is_active' => true,
+        ]);
+
+        return $newDiv->id;
     }
 }

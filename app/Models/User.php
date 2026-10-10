@@ -30,6 +30,9 @@ class User extends Authenticatable
         'role',
         'is_online',
         'is_banned',
+        'is_gps_support',
+        'is_gps_active',
+        'is_gps_activate',
     ];
 
     /**
@@ -52,6 +55,9 @@ class User extends Authenticatable
         'banned_at'         => 'datetime',
         'is_banned'         => 'boolean',
         'is_online'         => 'boolean',
+        'is_gps_support'    => 'boolean',
+        'is_gps_active'     => 'boolean',
+        'is_gps_activate'   => 'boolean',
     ];
 
     public function internshipRegistration(): HasOne

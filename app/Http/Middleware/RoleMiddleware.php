@@ -19,8 +19,15 @@ class RoleMiddleware
                 ->with('error', 'Silakan login terlebih dahulu.');
         }
 
+        $userRole = Auth::user()->role;
+
+        // Bypass: superadmin otomatis memiliki akses penuh ke area admin
+        if ($role === 'admin' && in_array($userRole, ['admin', 'superadmin', 'super_admin'], true)) {
+            return $next($request);
+        }
+
         // Sudah login tapi role tidak cocok → arahkan ke dashboard user biasa
-        if (Auth::user()->role !== $role) {
+        if ($userRole !== $role) {
             return redirect()->route('user.dashboard')
                 ->with('error', 'Anda tidak memiliki akses ke halaman tersebut.');
         }

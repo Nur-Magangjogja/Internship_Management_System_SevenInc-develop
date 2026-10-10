@@ -237,6 +237,13 @@
           </div>
 
           <div class="col-span-12 md:col-span-6 lg:col-span-4">
+            <label class="{{ $label }}">Tempat Lahir</label>
+            <input type="text" name="birth_place" value="{{ old('birth_place', $intern->birth_place) }}"
+                  class="{{ $input }} @error('birth_place') border-red-500 focus:ring-red-500 @enderror" placeholder="Contoh: Sleman">
+            @error('birth_place') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+          </div>
+
+          <div class="col-span-12 md:col-span-6 lg:col-span-4">
             <label class="{{ $label }}">Tanggal Lahir</label>
             <input type="date" name="born_date" value="{{ old('born_date', $toInputDate($intern->born_date)) }}"
                   class="{{ $input }} @error('born_date') border-red-500 focus:ring-red-500 @enderror" required>
@@ -252,6 +259,18 @@
               <option value="female" {{ $g === 'female' ? 'selected' : '' }}>Perempuan</option>
             </select>
             @error('gender') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+          </div>
+
+          @php $rel = old('religion', $intern->religion); @endphp
+          <div class="col-span-12 md:col-span-6 lg:col-span-4">
+            <label class="{{ $label }}">Agama</label>
+            <select name="religion" class="{{ $input }} pr-10 @error('religion') border-red-500 focus:ring-red-500 @enderror">
+              <option value="" {{ $rel ? '' : 'selected' }}>Pilih Agama</option>
+              @foreach(['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $agama)
+                <option value="{{ $agama }}" {{ $rel === $agama ? 'selected' : '' }}>{{ $agama }}</option>
+              @endforeach
+            </select>
+            @error('religion') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
           </div>
 
           <div class="col-span-12 md:col-span-6 lg:col-span-6">

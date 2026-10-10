@@ -67,10 +67,27 @@
             <input type="text" id="fullname" name="fullname" required placeholder="Muhammad Sumbul" class="{{ $input }}" value="{{ old('fullname') }}" />
           </div>
 
+          <!-- Tempat Lahir -->
+          <div>
+            <label for="birth_place" class="{{ $label }}">Tempat Lahir</label>
+            <input type="text" id="birth_place" name="birth_place" placeholder="Contoh: Sleman" class="{{ $input }}" value="{{ old('birth_place') }}" />
+          </div>
+
           <!-- Tahun Lahir (string) -->
           <div>
             <label for="born_date" class="{{ $label }}">Tahun Lahir</label>
             <input type="text" id="born_date" name="born_date" placeholder="25 Juni 2005" required class="{{ $input }}" value="{{ old('born_date') }}" />
+          </div>
+
+          <!-- Agama -->
+          <div>
+            <label for="religion" class="{{ $label }}">Agama</label>
+            <select id="religion" name="religion" class="{{ $input }}">
+              <option value="">Pilih Agama</option>
+              @foreach(['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $agama)
+                <option value="{{ $agama }}" @selected(old('religion') === $agama)>{{ $agama }}</option>
+              @endforeach
+            </select>
           </div>
 
           <!-- NIM/NIS -->

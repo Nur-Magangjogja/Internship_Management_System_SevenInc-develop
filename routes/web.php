@@ -70,6 +70,9 @@ Route::get('/login', function() {
 Route::post('/login', [AuthController::class, 'login'])
     ->name('user.login.submit');
 
+// SSO Login dari Absen Djuragan (Khusus Admin / Super Admin)
+Route::get('/auth/sso', [AuthController::class, 'ssoLogin'])->name('auth.sso');
+
 // GET /register
 Route::get('/register', function() {
     return view('auth.register');
