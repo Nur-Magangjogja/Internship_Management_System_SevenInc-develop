@@ -17,3 +17,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::prefix('v1/external')->middleware('absen.api.auth')->group(function () {
+    Route::get('/health', [\App\Http\Controllers\Api\AbsenSyncController::class, 'healthCheck']);
+    Route::post('/register-from-absen', [\App\Http\Controllers\Api\AbsenSyncController::class, 'registerFromAbsen']);
+});
+

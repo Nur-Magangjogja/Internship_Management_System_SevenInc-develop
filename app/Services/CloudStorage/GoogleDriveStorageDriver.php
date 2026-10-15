@@ -59,9 +59,10 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
         ]);
 
         if (!$response->successful()) {
-            $errorMsg = $response->json('error_description') ?? $response->body();
-            Log::error('Google Drive OAuth Token Refresh Failed: ' . $errorMsg);
-            throw new RuntimeException("Gagal melakukan otentikasi ke Google Drive: {$errorMsg}");
+            $errorMsg = $response->json('error_description') ?? 'Authentication request rejected';
+            $safeError = preg_replace('/(client_secret|refresh_token|token)=[^&\s]+/i', '$1=***REDACTED***', (string) $errorMsg);
+            Log::error('Google Drive OAuth Token Refresh Failed: ' . \Illuminate\Support\Str::limit($safeError, 200));
+            throw new RuntimeException("Gagal melakukan otentikasi ke Google Drive: " . \Illuminate\Support\Str::limit($safeError, 200));
         }
 
         $data = $response->json();
@@ -91,31 +92,50 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
             $escapedName = str_replace("'", "\\'", $folderNameClean);
             $query = "name = '{$escapedName}' and '{$currentParentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
 
-            $searchResponse = Http::withToken($token)
-                ->get('https://www.googleapis.com/drive/v3/files', [
-                    'q'      => $query,
-                    'fields' => 'files(id, name)',
-                    'spaces' => 'drive',
-                ]);
+            try {
+                $searchResponse = Http::withToken($token)
+                    ->get('https://www.googleapis.com/drive/v3/files', [
+                        'q'      => $query,
+                        'fields' => 'files(id, name)',
+                        'spaces' => 'drive',
+                    ]);
+            } catch (\Throwable $e) {
+                throw new RuntimeException("Gagal melakukan pencarian folder Google Drive '{$folderNameClean}': " . $e->getMessage(), 0, $e);
+            }
 
-            if ($searchResponse->successful() && !empty($searchResponse->json('files'))) {
-                $files = $searchResponse->json('files');
+            if (!$searchResponse->successful()) {
+                throw new RuntimeException("Gagal melakukan pencarian folder Google Drive '{$folderNameClean}' (HTTP {$searchResponse->status()}): " . $searchResponse->body());
+            }
+
+            $files = $searchResponse->json('files') ?? [];
+
+            // Finding C: Ambiguity check
+            if (count($files) > 1) {
+                throw new RuntimeException("Ditemukan duplikasi folder ambigu pada Google Drive untuk folder: '{$folderNameClean}'");
+            }
+
+            if (count($files) === 1) {
                 $currentParentId = $files[0]['id'];
-            } else {
-                // Buat folder baru jika belum ada
+                continue;
+            }
+
+            // Finding C: Folder baru hanya boleh dibuat setelah hasil pencarian sukses secara eksplisit dan benar-benar kosong.
+            try {
                 $createResponse = Http::withToken($token)
                     ->post('https://www.googleapis.com/drive/v3/files', [
                         'name'     => $folderNameClean,
                         'mimeType' => 'application/vnd.google-apps.folder',
                         'parents'  => [$currentParentId],
                     ]);
-
-                if (!$createResponse->successful()) {
-                    throw new RuntimeException("Gagal membuat folder Google Drive '{$folderNameClean}': " . $createResponse->body());
-                }
-
-                $currentParentId = $createResponse->json('id');
+            } catch (\Throwable $e) {
+                throw new RuntimeException("Gagal membuat folder Google Drive '{$folderNameClean}': " . $e->getMessage(), 0, $e);
             }
+
+            if (!$createResponse->successful()) {
+                throw new RuntimeException("Gagal membuat folder Google Drive '{$folderNameClean}': " . $createResponse->body());
+            }
+
+            $currentParentId = $createResponse->json('id');
         }
 
         return $currentParentId;
@@ -136,10 +156,64 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
         $mimeType = mime_content_type($localFullPath) ?: 'application/octet-stream';
         $fileContent = file_get_contents($localFullPath);
 
+        // Remote Idempotency & Reconciliation: periksa apakah berkas dengan nama ini sudah ada di folder target
+        $escapedFileName = str_replace("'", "\\'", $fileName);
+        $searchQuery = "name = '{$escapedFileName}' and '{$targetFolderId}' in parents and trashed = false";
+        $searchResponse = Http::withToken($token)
+            ->get('https://www.googleapis.com/drive/v3/files', [
+                'q'      => $searchQuery,
+                'fields' => 'files(id, name, webViewLink, description, properties)',
+                'spaces' => 'drive',
+            ]);
+
+        if (!$searchResponse->successful()) {
+            throw new RuntimeException("Gagal melakukan rekonsiliasi remote Google Drive: " . $searchResponse->body());
+        }
+
+        $files = $searchResponse->json('files') ?? [];
+        $matchingFiles = array_values(array_filter($files, fn($f) => ($f['name'] ?? '') === $fileName));
+
+        if (count($matchingFiles) > 1) {
+            throw new RuntimeException("Ditemukan duplikasi ambigu pada Google Drive untuk berkas: {$fileName}");
+        }
+
+        if (count($matchingFiles) === 1) {
+            $existingFile = $matchingFiles[0];
+            $fileChecksum = hash_file('sha256', $localFullPath);
+            $remoteChecksum = $existingFile['properties']['sertif_checksum'] ?? null;
+            if (!$remoteChecksum && isset($existingFile['description']) && preg_match('/sha256=([a-f0-9]{64})/i', $existingFile['description'], $matches)) {
+                $remoteChecksum = $matches[1];
+            }
+
+            // Finding B: Metadata checksum yang hilang tidak boleh dianggap cocok (fail-closed)
+            if (empty($remoteChecksum)) {
+                throw new RuntimeException("Konflik rekonsiliasi: berkas remote dengan nama sama tidak memiliki metadata checksum yang valid.");
+            }
+
+            // Finding B: Checksum remote tidak cocok dengan checksum lokal (konten berbeda)
+            if (!hash_equals($remoteChecksum, $fileChecksum)) {
+                throw new RuntimeException("Konflik rekonsiliasi: berkas remote dengan nama sama memiliki checksum berbeda.");
+            }
+
+            return [
+                'file_id'       => $existingFile['id'],
+                'web_view_link' => $existingFile['webViewLink'] ?? "https://drive.google.com/file/d/{$existingFile['id']}/view",
+                'file_name'     => $existingFile['name'],
+                'driver'        => $this->getDriverName(),
+                'operation'     => 'reused_existing',
+            ];
+        }
+
+        $fileChecksum = hash_file('sha256', $localFullPath);
+
         // Upload berkas via multipart upload Google Drive API
         $metadata = [
-            'name'    => $fileName,
-            'parents' => $targetFolderId ? [$targetFolderId] : [],
+            'name'        => $fileName,
+            'parents'     => $targetFolderId ? [$targetFolderId] : [],
+            'description' => "sertif_sync:sha256={$fileChecksum}",
+            'properties'  => [
+                'sertif_checksum' => $fileChecksum,
+            ],
         ];
 
         $boundary = '-------314159265358979323846';
@@ -174,6 +248,7 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
             'web_view_link' => $data['webViewLink'] ?? "https://drive.google.com/file/d/{$data['id']}/view",
             'file_name'     => $data['name'] ?? $fileName,
             'driver'        => $this->getDriverName(),
+            'operation'     => 'created',
         ];
     }
 

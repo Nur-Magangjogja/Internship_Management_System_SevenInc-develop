@@ -70,5 +70,7 @@ class Kernel extends HttpKernel
         'account.active' => \App\Http\Middleware\EnsureAccountIsActive::class,
         'prevent-back' => \App\Http\Middleware\PreventBackHistory::class,
         'update.status.online' => \App\Http\Middleware\UpdateUserStatusOnline::class,
+        'absen.api.auth' => \App\Http\Middleware\AbsenApiKeyMiddleware::class,
+        'absen.api.key' => \App\Http\Middleware\AbsenApiKeyMiddleware::class,
     ];
 }

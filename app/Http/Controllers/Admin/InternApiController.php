@@ -187,13 +187,26 @@ class InternApiController extends Controller
             'created_at',
         ];
 
+        // birth_place hanya diikutsertakan jika kolom fisik sudah tersedia di database
+        if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place')) {
+            $searchable[] = 'birth_place';
+        }
+
         $q = IR::with(['skills', 'tools']);
 
-        // Scope status / Trashed
+        // Scope status / Trashed / Peserta Administratif
         if ($scope === 'trashed' || $req->get('status') === 'trashed') {
             $q->onlyTrashed();
+        } elseif ($scope === 'participants' || $req->get('scope') === 'participants') {
+            $q->where('internship_status', IR::STATUS_ACCEPTED)
+              ->where('followup_status', IR::FOLLOWUP_MOVED_TO_PARTICIPANTS);
         } elseif ($scope !== 'all') {
             $q->where('internship_status', $scope);
+        }
+
+        // Filter terpisah untuk followup_status jika disediakan
+        if ($req->filled('followup_status')) {
+            $q->where('followup_status', $req->get('followup_status'));
         }
 
         // ========== GLOBAL SEARCH (semua kolom) ==========
@@ -314,17 +327,46 @@ class InternApiController extends Controller
             $list = $paginator->items(); // array of IR
         }
 
+        // Preload activity logs in batch to prevent N+1 queries (S17.18C)
+        $registrationIds = collect($list)->pluck('id')->filter()->all();
+        $preloadedLogs = collect();
+        if (!empty($registrationIds)) {
+            $preloadedLogs = \App\Models\ActivityLog::where(function ($q) use ($registrationIds) {
+                $q->whereIn('subject_id', $registrationIds)
+                  ->where(function ($sq) {
+                      $sq->whereIn('subject_type', [
+                          IR::class,
+                          'InternshipRegistration',
+                          (new IR)->getMorphClass(),
+                      ]);
+                  });
+            })
+            ->whereIn('action', [
+                'intern_registration_status_updated',
+                'intern_registration_status_corrected',
+                'admin_intern_registration_updated',
+            ])
+            ->get()
+            ->groupBy('subject_id');
+        }
+
+        $lifecycleService = app(\App\Services\RegistrationLifecycleService::class);
+
         // Map data → rows
         $statusCompleted = defined(IR::class.'::STATUS_COMPLETED') ? IR::STATUS_COMPLETED : 'completed';
 
-        $rows = array_map(function (IR $r) use ($statusCompleted) {
+        $rows = array_map(function (IR $r) use ($statusCompleted, $preloadedLogs, $lifecycleService) {
             $canCert = ($r->internship_status === $statusCompleted);
+            $logsForR = $preloadedLogs->get($r->id, collect());
+            $condition = $lifecycleService->resolveCurrentCondition($r, $logsForR);
 
             return [
                 'id'            => $r->id,
                 'fullname'      => $r->fullname,
                 'born_date'     => $this->formatIndoDateOut($r->born_date),
                 'born_date_raw' => $r->born_date,
+                'birth_place'   => $r->birth_place,
+                'religion'      => $r->religion,
                 'student_id'    => preg_replace('/^(NIM|NIS)\s*/i', '', (string) $r->student_id),
                 'email'         => $r->email,
                 'internship_status' => $r->internship_status,
@@ -372,6 +414,13 @@ class InternApiController extends Controller
                 'internship_status'        => $r->internship_status,
                 'internship_status_label'  => $this->statusView((string)$r->internship_status)['label'],
                 'internship_status_class'  => $this->statusView((string)$r->internship_status)['class'],
+                'followup_status'          => $r->followup_status,
+                'followup_status_label'    => $r->followup_status_label,
+                'followup_status_class'    => $r->followup_status_badge_class,
+                'followup_update_url'      => route('admin.interns.followup.update', $r),
+                'current_condition_label'  => $condition['condition_label'],
+                'current_condition_case'   => $condition['case'],
+                'spreadsheet_column_y_label' => $condition['spreadsheet_column_y_label'],
                 'deleted_at'               => optional($r->deleted_at)?->toIso8601String(),
                 'is_trashed'               => $r->trashed(),
             ];
@@ -427,7 +476,9 @@ class InternApiController extends Controller
                 return ['value' => $k, 'label' => $this->labelize($this->mapArrangement, $k)];
             }, array_keys($this->mapArrangement)),
 
-
+            'followup_status' => array_map(function ($k, $label) {
+                return ['value' => $k, 'label' => $label];
+            }, array_keys(IR::FOLLOWUP_STATUS_LABELS), array_values(IR::FOLLOWUP_STATUS_LABELS)),
         ];
 
         // Template sertifikat yang tersedia (sinkron dengan routes)

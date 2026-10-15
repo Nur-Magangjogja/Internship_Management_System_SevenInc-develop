@@ -106,4 +106,64 @@ class AuthUsernameTest extends TestCase
         // Clean up
         User::where('email', $uniqueEmail)->delete();
     }
+
+    public function test_get_logout_redirects_to_login_page(): void
+    {
+        $response = $this->get('/logout');
+
+        $response->assertRedirect(route('user.login'));
+    }
+
+    public function test_post_logout_logs_out_user_and_redirects_to_login_page(): void
+    {
+        $uniqueUsername = 'logoutuser_' . time();
+        $uniqueEmail = 'logoutuser_' . time() . '@example.com';
+
+        $user = User::create([
+            'name' => $uniqueUsername,
+            'email' => $uniqueEmail,
+            'password' => Hash::make('password123'),
+            'role' => 'user',
+        ]);
+
+        $this->actingAs($user);
+        $this->assertAuthenticated();
+
+        $response = $this->post(route('user.logout'));
+
+        $response->assertRedirect(route('user.login'));
+        $this->assertGuest();
+
+        // Clean up
+        User::where('email', $uniqueEmail)->delete();
+    }
+
+    public function test_user_can_login_with_remember_me_saving_token(): void
+    {
+        $uniqueUsername = 'rememberuser_' . time();
+        $uniqueEmail = 'rememberuser_' . time() . '@example.com';
+
+        $user = User::create([
+            'name' => $uniqueUsername,
+            'email' => $uniqueEmail,
+            'password' => Hash::make('password123'),
+            'role' => 'user',
+        ]);
+
+        $response = $this->post(route('user.login.submit'), [
+            'login' => $uniqueUsername,
+            'password' => 'password123',
+            'remember' => '1',
+        ]);
+
+        $response->assertRedirect(route('pemagang.dashboard'));
+        $this->assertAuthenticated();
+
+        $freshUser = User::find($user->id);
+        $this->assertNotNull($freshUser->remember_token);
+        $this->assertNotEmpty($freshUser->remember_token);
+
+        // Clean up
+        $freshUser->delete();
+    }
 }

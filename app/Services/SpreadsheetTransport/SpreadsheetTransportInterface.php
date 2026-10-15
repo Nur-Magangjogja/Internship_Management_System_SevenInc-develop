@@ -23,6 +23,24 @@ interface SpreadsheetTransportInterface
     ): SpreadsheetTransportResponse;
 
     /**
+     * Perform an idempotent remote row update only based on stable syncId.
+     * Strictly fails without row insertion if the row does not already exist.
+     *
+     * @param SpreadsheetConnection $connection
+     * @param string $tabName
+     * @param string $syncId Permanent canonical SERTIF_SYNC_ID
+     * @param array<string, mixed> $payload Exact column key-value pairs
+     * @return SpreadsheetTransportResponse
+     */
+    public function sendRowUpdateOnly(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId,
+        array $payload
+    ): SpreadsheetTransportResponse;
+
+
+    /**
      * Test transport availability and connectivity without mutating data.
      *
      * @param SpreadsheetConnection $connection

@@ -410,26 +410,34 @@ class UserController extends Controller
             return view('user.dashboard'); // Redirect ke halaman dashboard
         }
 
-        // Cek apakah tanggal mulai magang sudah lewat, jika iya ubah status menjadi aktif
-        if ($registration->start_date && Carbon::parse($registration->start_date)->isToday()) {
-            $registration->update(['internship_status' => 'active']);
-        }
+        // Halaman profil bersifat STRICTLY READ-ONLY (S17.17 Final Hardening).
+        // HTTP GET tidak boleh memutasi internship_status dalam kondisi apapun,
+        // bahkan jika status saat ini adalah 'accepted' dan tanggal mulai magang telah tiba.
+        // Tanggung jawab transisi status magang berada pada alur lifecycle yang disengaja.
 
         // Jika status waiting atau accepted -> langsung ke halaman edit profile
         if (in_array($registration->internship_status, [
-            \App\Models\InternshipRegistration::STATUS_WAITING,
-            \App\Models\InternshipRegistration::STATUS_ACCEPTED,
+            IR::STATUS_WAITING,
+            IR::STATUS_ACCEPTED,
         ], true)) {
             return view('user.edit-profile', ['registration' => $registration]);
         }
 
         // Jika status aktif, arahkan ke dashboard pengguna
-        if ($registration->internship_status === \App\Models\InternshipRegistration::STATUS_ACTIVE) {
+        if ($registration->internship_status === IR::STATUS_ACTIVE) {
             return view('user.dashboard-active', ['registration' => $registration]);
         }
 
         // Default: render dashboard biasa jika status lainnya
         return view('user.dashboard', ['registration' => $registration]);
+    }
+
+    /**
+     * Alias method untuk profile view (S17.17 regression protection)
+     */
+    public function showProfile(Request $request)
+    {
+        return $this->index($request);
     }
 
     // Menampilkan form pendaftaran magang

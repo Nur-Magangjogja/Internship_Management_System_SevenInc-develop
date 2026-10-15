@@ -365,6 +365,8 @@ class InternController extends Controller
             // Data Pribadi
             'fullname'               => 'required|string|max:255',
             'born_date'              => 'nullable|string|max:255',
+            'birth_place'            => 'nullable|string|max:100',
+            'religion'               => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'             => 'required|string|max:50',
             'email'                  => 'required|email|max:255',
             'gender'                 => 'nullable|string|max:50',
@@ -411,6 +413,32 @@ class InternController extends Controller
                     // biarkan string asli
                 }
             }
+        }
+
+        // Normalisasi string kosong birth_place & religion ke NULL
+        if (array_key_exists('birth_place', $validatedData) && trim((string)$validatedData['birth_place']) === '') {
+            $validatedData['birth_place'] = null;
+        }
+        if (array_key_exists('religion', $validatedData) && trim((string)$validatedData['religion']) === '') {
+            $validatedData['religion'] = null;
+        }
+
+        // Cegah silent data loss: tolak nilai baru jika database belum siap
+        $hasBirthPlaceCol = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place');
+        $hasReligionCol   = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion');
+
+        if (!$hasBirthPlaceCol && !empty($validatedData['birth_place'])) {
+            $msg = 'Kolom tempat lahir belum didukung oleh konfigurasi database saat ini.';
+            return $request->expectsJson() || $request->ajax()
+                ? response()->json(['message' => $msg, 'errors' => ['birth_place' => [$msg]]], 422)
+                : back()->withInput()->withErrors(['birth_place' => $msg]);
+        }
+
+        if (!$hasReligionCol && !empty($validatedData['religion'])) {
+            $msg = 'Kolom agama belum didukung oleh konfigurasi database saat ini.';
+            return $request->expectsJson() || $request->ajax()
+                ? response()->json(['message' => $msg, 'errors' => ['religion' => [$msg]]], 422)
+                : back()->withInput()->withErrors(['religion' => $msg]);
         }
 
         // Helper untuk mencari atau membuat relasi (case-insensitive dengan scoping parent)
@@ -564,7 +592,7 @@ class InternController extends Controller
 
         // Track meaningful attribute changes for audit logging (excluding status transitions handled by lifecycle)
         $trackedFields = [
-            'name', 'fullname', 'phone', 'phone_number', 'institution_id', 'faculty_id',
+            'name', 'fullname', 'birth_place', 'religion', 'phone', 'phone_number', 'institution_id', 'faculty_id',
             'study_program_id', 'major', 'division_id', 'brand_id', 'start_date', 'end_date',
             'status_pembimbing', 'pembimbing_nama', 'pembimbing_phone'
         ];
@@ -572,9 +600,23 @@ class InternController extends Controller
         $afterChanges = [];
         foreach ($validatedData as $key => $val) {
             if (in_array($key, $trackedFields) && $intern->getAttribute($key) != $val) {
-                $beforeChanges[$key] = $intern->getAttribute($key);
-                $afterChanges[$key] = $val;
+                if ($key === 'religion') {
+                    // Privasi: catat identitas field tanpa menyimpan nilai sensitif agama ke riwayat log
+                    $beforeChanges[$key] = '[DIUBAH]';
+                    $afterChanges[$key] = '[DIUBAH]';
+                } else {
+                    $beforeChanges[$key] = $intern->getAttribute($key);
+                    $afterChanges[$key] = $val;
+                }
             }
+        }
+
+        // Proteksi kompatibilitas environment unmigrated
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place')) {
+            unset($validatedData['birth_place']);
+        }
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion')) {
+            unset($validatedData['religion']);
         }
 
         // Jangan timpa internship_status lewat update biasa jika tidak dikirim
@@ -1006,6 +1048,50 @@ class InternController extends Controller
         return redirect()->route('admin.interns.index')->with('success', 'Status berhasil diperbarui!');
     }
 
+    /**
+     * PATCH /admin/interns/{intern}/followup-status
+     * Memperbarui status follow-up pendaftar oleh admin (S17.18C).
+     */
+    public function updateFollowupStatus(Request $request, $id)
+    {
+        $intern = $id instanceof IR ? $id : IR::findOrFail($id);
+
+        $validStatuses = implode(',', array_keys(IR::FOLLOWUP_STATUS_LABELS));
+        $validated = $request->validate([
+            'followup_status' => 'required|in:' . $validStatuses,
+            'reason'          => 'nullable|string|max:500',
+        ]);
+
+        $newFollowupStatus = $validated['followup_status'];
+        $reason = $validated['reason'] ?? null;
+
+        $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+        try {
+            $lifecycle->updateFollowupStatus($intern, $newFollowupStatus, $request->user(), $reason);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $e->getMessage()], 403);
+            }
+            return back()->withInput()->with('error', $e->getMessage());
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok'                    => true,
+                'followup_status'       => $intern->followup_status,
+                'followup_status_label' => $intern->followup_status_label,
+                'message'               => 'Status follow-up berhasil diperbarui.',
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Status follow-up berhasil diperbarui.');
+    }
+
 
     /**
      * PATCH /admin/interns/bulk/status
@@ -1311,4 +1397,38 @@ class InternController extends Controller
             ->deleteFileAfterSend(true);
     }
 
+    /**
+     * S17.18D.2: Admin dapat mengoreksi jawaban dinamis sesuai schema snapshot pendaftaran.
+     */
+    public function updateCustomAnswers(Request $request, IR $intern)
+    {
+        $snapshot = $intern->formSnapshot;
+        $targetYear = $intern->created_at ? (int) $intern->created_at->year : (int) now()->year;
+        $schema = $snapshot ?: (\App\Models\FormSchema::where('year', $targetYear)->activePublished()->first() ?: \App\Models\FormSchema::activePublished()->first());
+
+        if (!$schema) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Skema formulir pendaftaran tidak ditemukan.',
+            ], 404);
+        }
+
+        $formBuilderService = app(\App\Services\FormBuilderService::class);
+        $validation = $formBuilderService->validateCustomAnswers($schema, $request->input('answers', []), $intern);
+
+        if (!$validation['is_valid']) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validation['errors'],
+            ], 422);
+        }
+
+        $formBuilderService->saveCustomAnswers($intern, $validation['cleaned'], $schema, auth()->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jawaban dinamis pendaftaran berhasil diperbarui.',
+            'answers' => $intern->customAnswers()->pluck('answer_value', 'field_key'),
+        ]);
+    }
 }

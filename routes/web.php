@@ -88,8 +88,38 @@ Route::post('/register', [AuthController::class, 'register'])
     ->middleware(['guest', 'throttle:10,1']);
 
 // Logout (user & admin)
+Route::get('/logout', fn() => redirect()->route('user.login'));
 Route::post('/logout', [AuthController::class, 'logout'])
     ->name('user.logout');
+
+// Password Reset (Guest)
+Route::middleware('guest')->group(function () {
+    Route::get('/forgot-password', [AuthController::class, 'showForgotPasswordForm'])
+        ->name('password.request');
+
+    Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail'])
+        ->name('password.email')
+        ->middleware('throttle:6,1');
+
+    Route::get('/reset-password/{token}', [AuthController::class, 'showResetPasswordForm'])
+        ->name('password.reset');
+
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])
+        ->name('password.update')
+        ->middleware('throttle:6,1');
+
+    // Account Activation (Guest)
+    Route::get('/activate/{token}', [AuthController::class, 'showActivationForm'])
+        ->name('user.activate');
+
+    Route::post('/activate', [AuthController::class, 'activateAccount'])
+        ->name('user.activate.submit')
+        ->middleware('throttle:6,1');
+
+    Route::post('/resend-activation', [AuthController::class, 'resendActivation'])
+        ->name('user.activate.resend')
+        ->middleware('throttle:6,1');
+});
 
 /* =================== USER ROUTES (Legacy — dipertahankan untuk kompatibilitas) =================== */
 // Redirect user.dashboard ke pemagang.dashboard supaya link lama tidak broken
@@ -132,7 +162,7 @@ Route::get('/internship/table', fn () => redirect()->route('admin.interns.index'
 // Dokumen Kelulusan (SKL & LOA)
 // ========================
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // Halaman daftar SKL dan LOA
     Route::get('/documents/loas', [DocumentController::class, 'listLoas'])->name('documents.loas');
     Route::get('/documents/skls', [DocumentController::class, 'listSkls'])->name('documents.skls');
@@ -178,6 +208,47 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     })->name('documents.serve')->where('filename', '[A-Za-z0-9_\-\.]+');
 });
 
+// Serve berkas privat/foto dengan proteksi otorisasi kepemilikan (Modul 5)
+Route::middleware(['auth'])->get('/media/private-serve', function (\Illuminate\Http\Request $request) {
+    $encodedPath = $request->query('path');
+    if (!$encodedPath) abort(404);
+
+    $path = base64_decode($encodedPath, true);
+    if (!$path || str_contains($path, '..') || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
+        abort(403, 'Akses path tidak sah.');
+    }
+
+    $user = auth()->user();
+    // Admin dan HR Staff berwenang melihat semua berkas operasional
+    if (!in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+        // Pemagang hanya boleh mengakses berkas miliknya sendiri
+        $isOwner = \App\Models\RegistrationAttachment::where('file_path', $path)
+            ->whereHas('registration', fn($q) => $q->where('user_id', $user->id))
+            ->exists();
+
+        if (!$isOwner) {
+            $isProfileOwner = \App\Models\InternshipRegistration::where('user_id', $user->id)
+                ->where('profile_photo', $path)
+                ->exists();
+            if (!$isProfileOwner && ($user->avatar ?? null) !== $path) {
+                abort(403, 'Anda tidak memiliki hak akses untuk melihat berkas ini.');
+            }
+        }
+    }
+
+    if (!\Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+        abort(404, 'Berkas fisik tidak ditemukan.');
+    }
+
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($path);
+    $mime = mime_content_type($fullPath) ?: 'application/octet-stream';
+
+    return response()->file($fullPath, [
+        'Content-Type'  => $mime,
+        'Cache-Control' => 'private, max-age=86400',
+    ]);
+})->name('media.private.serve');
+
 
 Route::middleware(['auth', 'role:pemagang'])->prefix('user/documents')->name('user.')->group(function () {
 
@@ -190,7 +261,7 @@ Route::middleware(['auth', 'role:pemagang'])->prefix('user/documents')->name('us
 
 });
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin/documents')->name('admin.documents.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin/documents')->name('admin.documents.')->group(function () {
     Route::get('/skl/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showSKL'])
         ->name('skl.show');
     Route::get('/loa/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showLOA'])
@@ -206,6 +277,21 @@ Route::middleware(['auth','role:pemagang'])->group(function () {
 Route::get('/admin/login', [AuthController::class, 'showLoginForm'])
     ->name('admin.login')
     ->middleware('guest');
+
+/* =================== SYNC MONITORING & RETRY ROUTES (Admin, Superadmin & HR Staff) =================== */
+Route::prefix('admin/sync-monitoring')
+    ->name('admin.sync-monitoring.')
+    ->middleware(['auth', 'role:admin,superadmin,hr_staff', 'prevent-back'])
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'index'])->name('index');
+        Route::get('/{category}/{id}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'show'])->name('show');
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::post('/retry/main-row/{rowSync}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retryMainRow'])->name('retry-main-row');
+            Route::post('/retry/sidecar/{sidecarSync}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retrySidecar'])->name('retry-sidecar');
+            Route::post('/retry/attachment/{attachment}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retryAttachment'])->name('retry-attachment');
+            Route::post('/batch-retry', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'batchRetry'])->name('batch-retry');
+        });
+    });
 
 /* =================== ADMIN ROUTES =================== */
 // Semua nama route akan diawali 'admin.' (mis: 'admin.dashboard.index')
@@ -231,6 +317,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         // Form Fields Builder
         Route::get('/fields',                                 [\App\Http\Controllers\Admin\FormFieldController::class, 'index'])->name('fields');
         Route::post('/fields',                                [\App\Http\Controllers\Admin\FormFieldController::class, 'store'])->name('fields.store');
+        Route::post('/fields/publish',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'publish'])->name('fields.publish');
+        Route::post('/fields/{field}/archive',                [\App\Http\Controllers\Admin\FormFieldController::class, 'archive'])->name('fields.archive');
         Route::get('/fields/preview-data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'previewData'])->name('fields.preview-data');
         Route::post('/fields/reorder',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'reorder'])->name('fields.reorder');
         Route::get('/fields/{field}/data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'show'])->name('fields.show');
@@ -345,9 +433,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/cancel', [\App\Http\Controllers\Admin\LegacyImportController::class, 'cancel'])->name('cancel');
         Route::get('/template', [\App\Http\Controllers\Admin\LegacyImportController::class, 'downloadTemplate'])->name('template');
     });
+});
 
-
-
+/* =================== OPERATIONAL ROUTES (Admin & HR Staff) =================== */
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff', 'prevent-back'])->group(function () {
 
     // API: ambil pemagang selesai berdasarkan brand (HARUS sebelum resource agar tidak bentrok dengan {certificate})
     Route::get('/certificate/interns-by-brand', [CertificateController::class, 'getInternsByBrand'])->name('certificate.interns-by-brand');
@@ -375,6 +464,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
         // Update status & data
         Route::patch('/{intern}/status', [InternController::class, 'updateStatus'])->name('status.update');
+        Route::patch('/{intern}/followup-status', [InternController::class, 'updateFollowupStatus'])->name('followup.update');
+        Route::patch('/{intern}/custom-answers', [InternController::class, 'updateCustomAnswers'])->name('custom-answers.update');
         Route::patch('/bulk/status', [InternController::class, 'bulkUpdateStatus'])->name('status.bulk');
         Route::patch('/{intern}', [InternController::class, 'update'])->name('update');
 
@@ -494,8 +585,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
 
 
-Route::middleware(['auth', 'role:admin'])->group(function () {
-    // LOA Administratif (khusus role:admin)
+Route::middleware(['auth', 'role:admin,hr_staff'])->group(function () {
+    // LOA Administratif (role:admin,hr_staff)
     Route::get('/admin/loa/interns', [LoaController::class, 'indexInterns'])->name('admin.loa.interns');
     Route::post('/admin/loa/generate', [LoaController::class, 'generate'])->name('admin.loa.generate'); // single
     Route::post('/admin/loa/generate-batch', [LoaController::class, 'generateBatch'])->name('admin.loa.generateBatch'); // multiple (legacy)
@@ -503,7 +594,7 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/loa/generate-brand', [LoaController::class, 'generateForBrand'])->name('admin.loa.generate_brand');
 });
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // index
     Route::get('membercards', [MembercardController::class, 'index'])
         ->name('membercards.index');
@@ -580,13 +671,13 @@ Route::middleware(['auth', 'active', 'role:hr_staff,admin'])->prefix('hr')->name
 });
 
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('generate-pdf', [SuratPenilaianController::class, 'showForm'])->name('generateForm');
     Route::post('generate-pdf', [SuratPenilaianController::class, 'generatePdf'])->name('generatePdf');
 });
 
 
-Route::middleware(['auth', 'role:admin'])
+Route::middleware(['auth', 'role:admin,hr_staff'])
     ->prefix('admin/interns')
     ->group(function () {
 
@@ -621,6 +712,11 @@ Route::post('/log-download', [MembercardController::class, 'logDownload'])
     ->name('log.download')
     ->middleware(['auth', 'role:pemagang', 'throttle:30,1']);
 
+// Unduh berkas dokumen pendaftaran privat (hanya pemilik atau admin/hr_staff)
+Route::get('/registration/documents/{attachment}', [PemagangRegistration::class, 'downloadDocument'])
+    ->name('pemagang.registration.attachment.download')
+    ->middleware('auth');
+
 /* =================== PEMAGANG & USER ROUTES =================== */
 // Pendaftaran & Pengaturan Akun (diakses oleh user calon pemagang dan pemagang aktif)
 Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pemagang.')->group(function () {
@@ -628,6 +724,7 @@ Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pem
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
     Route::post('/daftar/draft', [PemagangRegistration::class, 'saveDraft'])->name('registration.draft');
+    Route::delete('/daftar/attachments/{attachment}', [PemagangRegistration::class, 'deleteAttachment'])->name('registration.attachment.delete');
 
     // Pengaturan Akun
     Route::get('/pengaturan', [PemagangSettings::class, 'index'])->name('settings');

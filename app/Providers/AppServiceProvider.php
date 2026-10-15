@@ -29,6 +29,20 @@ class AppServiceProvider extends ServiceProvider
                 return new \App\Services\SpreadsheetTransport\NullSpreadsheetTransport();
             }
         );
+
+        // S17.18G.4R Fix 3: Scoped binding — fresh per request/job cycle, avoiding cross-request state leakage
+        $this->app->scoped(\App\Services\FormBuilderService::class);
+
+        // Phase C.3B.1 & C.3B.3A: Absen Outbound Transport binding with fail-closed default
+        $this->app->bind(
+            \App\Services\AbsenIntegration\Transports\AbsenOutboundTransportInterface::class,
+            function ($app) {
+                if (config('services.absen_djuragan.outbound_enabled', false)) {
+                    return $app->make(\App\Services\AbsenIntegration\Transports\AbsenHttpOutboundTransport::class);
+                }
+                return new \App\Services\AbsenIntegration\Transports\DisabledAbsenOutboundTransport();
+            }
+        );
     }
 
     /**
@@ -36,6 +50,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Standarisasi Pagination Global SERTIF (Modul 4)
+        \Illuminate\Pagination\Paginator::defaultView('components.pagination');
+        \Illuminate\Pagination\Paginator::defaultSimpleView('components.pagination');
+
         View::composer('pemagang.layouts.app', function ($view) {
             $user = Auth::user();
             $notifications = collect();

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
-class GoogleAppsScriptTransport implements SpreadsheetTransportInterface
+class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
 {
     protected ?string $endpointUrl;
     protected ?string $sharedSecret;
@@ -70,6 +70,171 @@ class GoogleAppsScriptTransport implements SpreadsheetTransportInterface
     }
 
     /**
+     * Send an idempotent row update only to Google Apps Script.
+     * Strictly fails without row insertion if the row does not already exist remotely.
+     */
+    public function sendRowUpdateOnly(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId,
+        array $payload
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        // Sanitize formula injection on payload values
+        $sanitizedPayload = $this->sanitizePayloadForFormulas($payload);
+
+        $innerPayload = [
+            'action'         => 'update_row',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'sync_id'        => $syncId,
+            'payload'        => $sanitizedPayload,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
+     * Perform safe remote row lookup by sync_id via Apps Script.
+     */
+    public function lookupRow(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'lookup_row',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'sync_id'        => $syncId,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
+     * Ensure sidecar extension columns exist in Google Sheets.
+     */
+    public function ensureExtensionColumns(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        array $columns
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'ensure_extension_columns',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'sheet_name'     => $tabName,
+            'columns'        => array_values($columns),
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'ENSURE_COLUMNS');
+    }
+
+    /**
+     * Upsert a sidecar extension row in Google Sheets.
+     */
+    public function upsertExtensionRow(
+        SpreadsheetConnection $connection,
+        string $mainTabName,
+        string $extensionTabName,
+        string $syncId,
+        int|string $registrationId,
+        string $formSchemaVersion,
+        string $lastSyncAt,
+        array $answers
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $sanitizedAnswers = $this->sanitizePayloadForFormulas($answers);
+
+        $innerPayload = [
+            'action'               => 'upsert_extension_row',
+            'connection_key'       => $connection->connection_key,
+            'spreadsheet_id'       => $connection->spreadsheet_id,
+            'main_sheet_name'      => $mainTabName,
+            'extension_sheet_name' => $extensionTabName,
+            'sync_id'              => $syncId,
+            'registration_id'      => (string) $registrationId,
+            'form_schema_version'  => (string) $formSchemaVersion,
+            'last_sync_at'         => (string) $lastSyncAt,
+            'answers'              => $sanitizedAnswers,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
+     * Inspect alignment between main tab and sidecar extension tab.
+     */
+    public function inspectSidecarAlignment(
+        SpreadsheetConnection $connection,
+        string $mainTabName,
+        string $extensionTabName,
+        ?string $syncId = null
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'               => 'inspect_sidecar_alignment',
+            'connection_key'       => $connection->connection_key,
+            'spreadsheet_id'       => $connection->spreadsheet_id,
+            'main_sheet_name'      => $mainTabName,
+            'extension_sheet_name' => $extensionTabName,
+            'sync_id'              => $syncId,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId ?: 'ALIGNMENT');
+    }
+
+    /**
      * Upload an attachment file to Google Drive via Apps Script.
      */
     public function uploadAttachment(
@@ -108,19 +273,44 @@ class GoogleAppsScriptTransport implements SpreadsheetTransportInterface
         $fileData = file_get_contents($localFullPath);
         $base64Data = base64_encode($fileData);
 
+        $attachment->loadMissing('registration');
         $reg = $attachment->registration;
-        $syncIdentity = 'ATT-' . $attachment->internship_registration_id . '-' . $attachment->id;
+
+        if (!$reg || empty($reg->id)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Data registrasi terkait lampiran tidak ditemukan atau tidak valid.',
+                errorCode: 'INVALID_REGISTRATION',
+                isRetryable: false
+            );
+        }
+
+        if (!$reg->created_at) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Tanggal pendaftaran (created_at) tidak valid untuk penentuan tahun.',
+                errorCode: 'INVALID_REGISTRATION_YEAR',
+                isRetryable: false
+            );
+        }
+
+        $year = (string) $reg->created_at->format('Y');
+        $fileChecksum = hash_file('sha256', $localFullPath);
+        $contentVersion = substr($fileChecksum, 0, 16);
+        $syncIdentity = 'ATT-' . $reg->id . '-' . $attachment->id . '-v' . $contentVersion;
 
         $innerPayload = [
             'action'          => 'upload_attachment',
             'connection_key'  => $connection->connection_key,
             'sync_id'         => $syncIdentity,
-            'registration_id' => (string) $attachment->internship_registration_id,
-            'applicant_name'  => $reg ? $reg->fullname : 'Pemagang',
-            'year'            => $reg && $reg->created_at ? (string) $reg->created_at->year : (string) date('Y'),
+            'registration_id' => (string) $reg->id,
+            'attachment_id'   => (string) $attachment->id,
+            'applicant_name'  => (string) $reg->fullname,
+            'category'        => (string) ($attachment->category ?? 'lampiran'),
+            'year'            => $year,
             'file_name'       => $attachment->original_name,
             'mime_type'       => $attachment->mime_type,
             'file_content'    => $base64Data,
+            'file_checksum'   => $fileChecksum,
+            'content_version' => $contentVersion,
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncIdentity);
@@ -157,7 +347,17 @@ class GoogleAppsScriptTransport implements SpreadsheetTransportInterface
         $nonce = (string) Str::uuid();
 
         // Calculate HMAC-SHA256 over canonical string: timestamp.nonce.json(innerPayload)
-        $canonicalData = $timestamp . '.' . $nonce . '.' . json_encode($innerPayload);
+        try {
+            $canonicalJson = json_encode($innerPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Gagal serialisasi JSON canonical payload: ' . $e->getMessage(),
+                errorCode: 'JSON_ENCODE_ERROR',
+                isRetryable: false
+            );
+        }
+
+        $canonicalData = $timestamp . '.' . $nonce . '.' . $canonicalJson;
         $signature = hash_hmac('sha256', $canonicalData, $this->sharedSecret);
 
         $requestBody = [
@@ -168,11 +368,13 @@ class GoogleAppsScriptTransport implements SpreadsheetTransportInterface
         ];
 
         try {
-            $httpResponse = Http::asJson()
+            $bodyJson = json_encode($requestBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
+
+            $httpResponse = Http::withBody($bodyJson, 'application/json')
                 ->acceptJson()
                 ->withOptions(['allow_redirects' => true])
                 ->timeout($this->timeoutSeconds)
-                ->post($endpoint, $requestBody);
+                ->post($endpoint);
 
             if ($httpResponse->status() === 401 || $httpResponse->status() === 403) {
                 return SpreadsheetTransportResponse::failure(

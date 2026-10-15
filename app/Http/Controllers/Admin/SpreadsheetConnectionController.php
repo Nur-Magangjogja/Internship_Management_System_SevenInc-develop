@@ -11,6 +11,7 @@ use DomainException;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 class SpreadsheetConnectionController extends Controller
 {
@@ -151,16 +152,23 @@ class SpreadsheetConnectionController extends Controller
      */
     public function retryRow(SpreadsheetConnection $spreadsheetConnection, SpreadsheetRowSync $spreadsheetRowSync, SpreadsheetSyncEngineService $syncEngine)
     {
+        Gate::authorize('retry-sync-monitoring', $spreadsheetConnection);
+
         if ((int) $spreadsheetRowSync->spreadsheet_connection_id !== (int) $spreadsheetConnection->id) {
             abort(404);
         }
 
         try {
-            $syncEngine->retrySyncRecord($spreadsheetRowSync, Auth::user());
+            $success = $syncEngine->queueManualRetry($spreadsheetRowSync, Auth::user());
+            if (!$success) {
+                return redirect()
+                    ->back()
+                    ->with('error', 'Gagal memicu retry: Record sedang diproses oleh worker aktif atau tidak eligible.');
+            }
 
             return redirect()
                 ->back()
-                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijadwalkan.");
+                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijadwalkan ke antrean.");
         } catch (Exception $e) {
             return redirect()
                 ->back()
@@ -173,6 +181,8 @@ class SpreadsheetConnectionController extends Controller
      */
     public function retryAllFailed(SpreadsheetConnection $spreadsheetConnection, SpreadsheetSyncEngineService $syncEngine)
     {
+        Gate::authorize('retry-sync-monitoring', $spreadsheetConnection);
+
         try {
             $count = $syncEngine->retryAllFailed($spreadsheetConnection, Auth::user());
 

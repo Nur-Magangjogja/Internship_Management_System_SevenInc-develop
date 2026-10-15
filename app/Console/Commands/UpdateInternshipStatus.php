@@ -27,20 +27,20 @@ class UpdateInternshipStatus extends Command
      */
     public function handle()
     {
-        // Ambil semua magang yang memiliki tanggal mulai dan status selain "aktif"
-        $registrations = IR::whereNotNull('start_date') // Pastikan ada tanggal mulai
-            ->where('internship_status', '!=', IR::STATUS_ACTIVE) // Jangan update yang sudah aktif
-            ->where('internship_status', '!=', IR::STATUS_COMPLETED) // Jangan update yang sudah selesai
-            ->where('internship_status', '!=', IR::STATUS_REJECTED) // Jangan update yang ditolak
+        // Hanya pendaftaran yang TELAH DITERIMA resmi oleh Admin (STATUS_ACCEPTED) yang dapat menjadi aktif (S17.17)
+        $registrations = IR::where('internship_status', IR::STATUS_ACCEPTED)
+            ->whereNotNull('start_date')
             ->get();
 
         // Periksa setiap magang
         foreach ($registrations as $registration) {
             // Cek jika tanggal mulai sudah tercapai
-            if (Carbon::parse($registration->start_date)->isToday()) {
-                // Jika sudah, update status menjadi "active"
-                $registration->internship_status = IR::STATUS_ACTIVE;
-                $registration->save();
+            if (Carbon::parse($registration->start_date)->isToday() || Carbon::parse($registration->start_date)->isPast()) {
+                // Perbarui status menjadi "active" melalui alur lifecycle resmi
+                app(\App\Services\RegistrationLifecycleService::class)->transition(
+                    $registration,
+                    IR::STATUS_ACTIVE
+                );
 
                 // Tampilkan info bahwa status telah diperbarui
                 $this->info("Status magang untuk {$registration->fullname} diperbarui ke 'aktif'");

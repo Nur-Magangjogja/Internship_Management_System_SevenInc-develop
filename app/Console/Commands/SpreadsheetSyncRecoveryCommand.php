@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\UploadRegistrationAttachmentToDriveJob;
 use App\Models\RegistrationAttachment;
+use App\Models\SpreadsheetRowSync;
 use App\Services\SpreadsheetSyncEngineService;
 use Illuminate\Console\Command;
 
@@ -14,7 +15,11 @@ class SpreadsheetSyncRecoveryCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'sertif:spreadsheet-sync:recover {--connection= : Optional connection key (registration|followup)} {--limit=50 : Maximum records to process}';
+    protected $signature = 'sertif:spreadsheet-sync:recover
+                            {--connection= : Optional connection key (registration|followup)}
+                            {--limit=50 : Maximum records to process}
+                            {--include-sidecar : Juga pindai antrean sidecar custom fields}
+                            {--dry-run : Mode simulasi tanpa melakukan dispatch atau mutasi database}';
 
     /**
      * The console command description.
@@ -28,30 +33,80 @@ class SpreadsheetSyncRecoveryCommand extends Command
      */
     public function handle(SpreadsheetSyncEngineService $syncEngine): int
     {
-        $limit = (int) $this->option('limit');
+        $limit = max(1, (int) $this->option('limit'));
+        $dryRun = (bool) $this->option('dry-run');
+        $includeSidecar = (bool) $this->option('include-sidecar');
+
+        if ($dryRun) {
+            $this->warn('[DRY-RUN] Mode simulasi aktif: Tidak ada mutasi database atau job dispatch yang dijalankan.');
+        }
+
         $this->info('Memulai pemindaian recovery antrean sinkronisasi...');
 
         // 1. Scan and dispatch spreadsheet row syncs
-        $dispatchedRows = $syncEngine->scanAndDispatchPendingSyncs($limit);
-        $this->line("Ditemukan {$dispatchedRows} baris spreadsheet sinkronisasi yang siap diproses ulang.");
+        if ($dryRun) {
+            $dueRows = SpreadsheetRowSync::where(function ($query) {
+                    $query->where(function ($q) {
+                        $q->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
+                          ->where(function ($nq) {
+                              $nq->whereNull('next_retry_at')
+                                 ->orWhere('next_retry_at', '<=', now());
+                          });
+                    })
+                    ->orWhere(function ($q) {
+                        $q->where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)
+                          ->whereNotNull('next_retry_at')
+                          ->where('next_retry_at', '<=', now());
+                    });
+                })
+                ->where(function ($query) {
+                    $query->whereNull('locked_at')
+                          ->orWhere('locked_at', '<', now()->subMinutes(5));
+                })
+                ->limit($limit)
+                ->count();
+            $this->line("[DRY-RUN] Ditemukan {$dueRows} baris spreadsheet utama yang memenuhi syarat pemulihan.");
+            $dispatchedRows = $dueRows;
+        } else {
+            $dispatchedRows = $syncEngine->scanAndDispatchPendingSyncs($limit);
+            $this->line("Ditemukan {$dispatchedRows} baris spreadsheet sinkronisasi yang siap diproses ulang.");
+        }
 
         // 2. Scan pending/failed attachment uploads
-        $pendingAttachments = RegistrationAttachment::whereIn('drive_sync_status', [
+        $pendingAttachmentsQuery = RegistrationAttachment::whereIn('drive_sync_status', [
                 RegistrationAttachment::STATUS_PENDING,
                 RegistrationAttachment::STATUS_FAILED,
             ])
             ->whereNull('drive_file_id')
-            ->limit($limit)
-            ->get();
+            ->limit($limit);
 
-        $dispatchedAttachments = 0;
-        foreach ($pendingAttachments as $attachment) {
-            UploadRegistrationAttachmentToDriveJob::dispatch($attachment->id);
-            $dispatchedAttachments++;
+        if ($dryRun) {
+            $dispatchedAttachments = $pendingAttachmentsQuery->count();
+            $this->line("[DRY-RUN] Ditemukan {$dispatchedAttachments} berkas lampiran yang memenuhi syarat sinkronisasi Drive.");
+        } else {
+            $pendingAttachments = $pendingAttachmentsQuery->get();
+            $dispatchedAttachments = 0;
+            foreach ($pendingAttachments as $attachment) {
+                UploadRegistrationAttachmentToDriveJob::dispatch($attachment->id);
+                $dispatchedAttachments++;
+            }
+            $this->line("Ditemukan {$dispatchedAttachments} berkas lampiran yang dijadwalkan untuk sinkronisasi Drive.");
         }
 
-        $this->line("Ditemukan {$dispatchedAttachments} berkas lampiran yang dijadwalkan untuk sinkronisasi Drive.");
-        $this->info("Recovery selesai. Total baris: {$dispatchedRows}, Total lampiran: {$dispatchedAttachments}.");
+        // 3. Optional Sidecar Recovery Scanner
+        $dispatchedSidecars = 0;
+        if ($includeSidecar) {
+            $dispatchedSidecars = $syncEngine->scanAndDispatchPendingSidecarSyncs($limit, $dryRun);
+            if ($dryRun) {
+                $this->line("[DRY-RUN] Ditemukan {$dispatchedSidecars} baris sidecar custom fields yang memenuhi syarat pemulihan.");
+            } else {
+                $this->line("Ditemukan {$dispatchedSidecars} baris sidecar custom fields yang dijadwalkan untuk diproses.");
+            }
+        }
+
+        $summaryPrefix = $dryRun ? '[DRY-RUN] Simulasi' : 'Recovery';
+        $sidecarSummary = $includeSidecar ? ", Total sidecar: {$dispatchedSidecars}" : '';
+        $this->info("{$summaryPrefix} selesai. Total baris: {$dispatchedRows}, Total lampiran: {$dispatchedAttachments}{$sidecarSummary}.");
 
         return Command::SUCCESS;
     }

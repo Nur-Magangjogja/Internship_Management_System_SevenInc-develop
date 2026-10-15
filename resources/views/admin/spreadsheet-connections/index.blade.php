@@ -8,6 +8,17 @@
             <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Spreadsheet</h1>
             <p class="text-sm text-slate-500">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
         </div>
+        <div class="flex items-center gap-3">
+            <a
+                href="{{ route('admin.sync-monitoring.index') }}"
+                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                Monitoring & Pemulihan
+            </a>
+        </div>
     </div>
 
     <!-- Alert Messages -->

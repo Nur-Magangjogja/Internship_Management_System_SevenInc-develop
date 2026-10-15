@@ -73,6 +73,29 @@
             <input type="text" id="born_date" name="born_date" placeholder="25 Juni 2005" required class="{{ $input }}" value="{{ old('born_date') }}" />
           </div>
 
+          @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place'))
+          <!-- Tempat Lahir -->
+          <div>
+            <label for="birth_place" class="{{ $label }}">Tempat Lahir</label>
+            <input type="text" id="birth_place" name="birth_place" placeholder="Contoh: Sleman" maxlength="100" class="{{ $input }}" value="{{ old('birth_place') }}" />
+            @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+          </div>
+          @endif
+
+          @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion'))
+          <!-- Agama -->
+          <div>
+            <label for="religion" class="{{ $label }}">Agama</label>
+            <select id="religion" name="religion" class="{{ $input }}">
+              <option value="">-- Pilih Agama (Opsional) --</option>
+              @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
+                <option value="{{ $rel }}" @selected(old('religion') === $rel)>{{ $rel }}</option>
+              @endforeach
+            </select>
+            @error('religion') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+          </div>
+          @endif
+
           <!-- NIM/NIS -->
           <div>
             <label for="student_id" class="{{ $label }}">Nomor Induk Mahasiswa / Siswa</label>

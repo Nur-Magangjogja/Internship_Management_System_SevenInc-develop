@@ -67,9 +67,10 @@
                     type="button"
                     class="flex items-center gap-2 rounded-full border border-admin-border py-1 pl-1 pr-2.5 transition hover:bg-admin-secondary"
                 >
-                    <span class="flex h-7 w-7 items-center justify-center rounded-full bg-admin-secondary text-xs font-bold text-admin-primary-dark">
-                        {{ strtoupper(substr($user->name ?? 'A', 0, 1)) }}
-                    </span>
+                    @php
+                        $userAvatar = $user->avatar ?? $user->profile_picture ?? null;
+                    @endphp
+                    <x-image-display :src="$userAvatar" :alt="$user->name ?? 'Pengguna'" class="w-7 h-7 rounded-full object-cover shrink-0" :fallbackInitial="substr($user->name ?? 'A', 0, 1)" type="avatar" />
 
                     <span class="hidden text-left sm:block">
                         <span class="block max-w-28 truncate text-[13px] font-semibold text-admin-text-dark">{{ $user->name ?? 'Pengguna' }}</span>

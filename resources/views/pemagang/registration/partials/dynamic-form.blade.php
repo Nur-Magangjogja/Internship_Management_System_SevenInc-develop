@@ -58,7 +58,7 @@
                 break;
 
             case 'date':
-                $dateVal = is_callable($toDateInput) ? $toDateInput((string)$val) : $val;
+                $dateVal = is_callable($toDateInput) ? $toDateInput($val) : (is_string($val) ? $val : '');
                 $html .= '<input type="date" name="' . e($field->field_key) . '" '
                     . $required . ' class="' . $input . '" value="' . e($dateVal) . '">';
                 break;
@@ -76,6 +76,21 @@
                     foreach ($divisions as $div) {
                         $sel = ($val === $div) ? 'selected' : '';
                         $opts .= '<option value="' . e($div) . '" ' . $sel . '>' . e($div) . '</option>';
+                    }
+                } elseif ($field->field_key === 'religion') {
+                    $placeholder = $field->placeholder ?: '-- Pilih Agama (Opsional) --';
+                    $opts = '<option value="">' . e($placeholder) . '</option>';
+                    $relOptions = !empty($field->options) ? $field->options : [
+                        ['value' => 'Islam', 'label' => 'Islam'],
+                        ['value' => 'Kristen Protestan', 'label' => 'Kristen Protestan'],
+                        ['value' => 'Katolik', 'label' => 'Katolik'],
+                        ['value' => 'Hindu', 'label' => 'Hindu'],
+                        ['value' => 'Buddha', 'label' => 'Buddha'],
+                        ['value' => 'Khonghucu', 'label' => 'Khonghucu'],
+                    ];
+                    foreach ($relOptions as $opt) {
+                        $sel = ($val === $opt['value']) ? 'selected' : '';
+                        $opts .= '<option value="' . e($opt['value']) . '" ' . $sel . '>' . e($opt['label']) . '</option>';
                     }
                 } else {
                     $placeholder = $field->placeholder ?: '-- Pilih --';
@@ -235,3 +250,14 @@
     </div>
 </div>
 @endif
+
+{{-- Render field kustom dari Form Builder (jika ada) --}}
+@if(!empty($customFields) && $customFields->isNotEmpty())
+<div class="border-t border-gray-100 pt-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">Pertanyaan Tambahan</h3>
+    <div class="space-y-4">
+        {!! $renderGroup($customFields) !!}
+    </div>
+</div>
+@endif
+

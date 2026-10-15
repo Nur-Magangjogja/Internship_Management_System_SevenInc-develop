@@ -137,34 +137,79 @@ class CloudSyncManager
     /**
      * Sinkronisasikan berkas lampiran registrasi (CV, Portofolio, dll) ke cloud storage via Direct Drive API.
      */
-    public function syncRegistrationAttachment(\App\Models\RegistrationAttachment $attachment, ?User $actor = null): array
+    /**
+     * Lakukan operasi upload berkas lampiran ke remote storage tanpa mutasi database (khusus worker jalur fencing).
+     */
+    public function uploadRegistrationAttachment(\App\Models\RegistrationAttachment $attachment): array
     {
         $attachment->loadMissing('registration');
 
-        $localDisk = 'private';
+        // S17.18G.5 Fix B: Resolusi berkas lampiran dari disk 'local' (privat), fallback ke 'public' (legacy)
+        $localDisk = 'local';
         if (!Storage::disk($localDisk)->exists($attachment->file_path)) {
             $localDisk = 'public';
             if (!Storage::disk($localDisk)->exists($attachment->file_path)) {
-                throw new RuntimeException("Berkas fisik lampiran tidak ditemukan di server: {$attachment->file_path}");
+                if (array_key_exists('private', config('filesystems.disks', [])) && Storage::disk('private')->exists($attachment->file_path)) {
+                    $localDisk = 'private';
+                } else {
+                    throw new RuntimeException("Berkas fisik lampiran tidak ditemukan di server: {$attachment->file_path}");
+                }
             }
         }
 
         $fullPath = Storage::disk($localDisk)->path($attachment->file_path);
         $year = $attachment->registration?->created_at ? $attachment->registration->created_at->format('Y') : date('Y');
         $regId = $attachment->internship_registration_id;
-        $remoteFolder = "Lampiran/{$year}/Reg-{$regId}";
+        $applicantName = $attachment->registration?->user?->name ?? ($attachment->registration?->name ?? 'Pemagang');
+        $cleanName = Str::slug($applicantName, '_');
+        $categoryFolder = match ($attachment->category) {
+            'cv' => 'CV',
+            'identity' => 'Identitas',
+            'portfolio' => 'Portofolio',
+            'cover_letter' => 'Surat-Pengantar',
+            'proposal' => 'Proposal',
+            'supporting_document' => 'Dokumen-Pendukung',
+            'profile_photo' => 'Foto-Profil',
+            'legacy_bundle' => 'Berkas-Gabungan',
+            default => 'Lampiran',
+        };
+        $remoteFolder = "Pemagang/{$year}/REG-{$regId}_{$cleanName}/{$categoryFolder}";
 
-        $customFileName = $attachment->original_name ?: basename($attachment->file_path);
+        $fileChecksum = hash_file('sha256', $fullPath);
+        $contentVersion = substr($fileChecksum, 0, 16);
+        $baseFileName = $attachment->original_name ?: basename($attachment->file_path);
+        $customFileName = "ATT-{$regId}-{$attachment->id}-v{$contentVersion}_{$baseFileName}";
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $customFileName);
+        $uploadResult['file_checksum'] = $fileChecksum;
+        $uploadResult['content_version'] = $contentVersion;
+        $uploadResult['remote_folder'] = $remoteFolder;
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan berkas lampiran registrasi (CV, Portofolio, dll) ke cloud storage via Direct Drive API.
+     */
+    public function syncRegistrationAttachment(\App\Models\RegistrationAttachment $attachment, ?User $actor = null): array
+    {
+        $uploadResult = $this->uploadRegistrationAttachment($attachment);
+
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
         $attachment->update([
             'drive_file_id'       => $uploadResult['file_id'],
             'drive_web_view_link' => $uploadResult['web_view_link'],
-            'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
-            'drive_synced_at'     => now(),
-            'drive_error_message' => null,
+            'drive_sync_status'   => $isRealDrive ? \App\Models\RegistrationAttachment::STATUS_SYNCED : \App\Models\RegistrationAttachment::STATUS_PENDING,
+            'drive_synced_at'     => $isRealDrive ? now() : null,
+            'drive_file_checksum' => $uploadResult['file_checksum'] ?? null,
+            'drive_error_message' => $isRealDrive ? null : 'Simulated local storage fallback: Google Drive not configured.',
         ]);
+
+        $regId = $attachment->internship_registration_id;
+        $remoteFolder = $uploadResult['remote_folder'] ?? "Pemagang/Reg-{$regId}";
 
         ActivityLogger::log(
             action: 'attachment_drive_synced',
@@ -176,6 +221,126 @@ class CloudSyncManager
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'folder'              => $remoteFolder,
                 'driver'              => $uploadResult['driver'],
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan dokumen LOA ke Google Drive.
+     */
+    public function syncLoaFile(\App\Models\InternLoa $loa, string $localFilePath, ?User $actor = null): array
+    {
+        if (!file_exists($localFilePath)) {
+            throw new RuntimeException("Berkas LOA fisik tidak ditemukan: {$localFilePath}");
+        }
+
+        $year = $loa->created_at ? $loa->created_at->format('Y') : date('Y');
+        $remoteFolder = "Dokumen/{$year}/LOA";
+        $fileName = Str::slug($loa->loa_number) . '.pdf';
+
+        $uploadResult = $this->driver->uploadFile($localFilePath, $remoteFolder, $fileName);
+
+        ActivityLogger::log(
+            action: 'loa_drive_synced',
+            description: "Dokumen LOA {$loa->loa_number} berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $loa,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan dokumen SKL ke Google Drive.
+     */
+    public function syncSklFile(\App\Models\SklDocument $skl, string $localFilePath, ?User $actor = null): array
+    {
+        if (!file_exists($localFilePath)) {
+            throw new RuntimeException("Berkas SKL fisik tidak ditemukan: {$localFilePath}");
+        }
+
+        $year = $skl->created_at ? $skl->created_at->format('Y') : date('Y');
+        $remoteFolder = "Dokumen/{$year}/SKL";
+        $fileName = Str::slug($skl->skl_number) . '.pdf';
+
+        $uploadResult = $this->driver->uploadFile($localFilePath, $remoteFolder, $fileName);
+
+        ActivityLogger::log(
+            action: 'skl_drive_synced',
+            description: "Dokumen SKL {$skl->skl_number} berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $skl,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan sertifikat ke Google Drive.
+     */
+    public function syncCertificateFile(\Illuminate\Database\Eloquent\Model $cert, string $localFilePath, string $certNumber, ?User $actor = null): array
+    {
+        if (!file_exists($localFilePath)) {
+            throw new RuntimeException("Berkas Sertifikat fisik tidak ditemukan: {$localFilePath}");
+        }
+
+        $year = date('Y');
+        $remoteFolder = "Dokumen/{$year}/Sertifikat";
+        $fileName = Str::slug($certNumber) . '.pdf';
+
+        $uploadResult = $this->driver->uploadFile($localFilePath, $remoteFolder, $fileName);
+
+        ActivityLogger::log(
+            action: 'certificate_drive_synced',
+            description: "Sertifikat {$certNumber} berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $cert,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan materi/berkas webinar ke Google Drive.
+     */
+    public function syncWebinarFile(\App\Models\Webinar $webinar, string $localFilePath, string $fileName, ?User $actor = null): array
+    {
+        if (!file_exists($localFilePath)) {
+            throw new RuntimeException("Berkas Webinar fisik tidak ditemukan: {$localFilePath}");
+        }
+
+        $year = $webinar->created_at ? $webinar->created_at->format('Y') : date('Y');
+        $webinarSlug = Str::slug($webinar->title ?? 'webinar-' . $webinar->id);
+        $remoteFolder = "Webinar/{$year}/{$webinarSlug}";
+
+        $uploadResult = $this->driver->uploadFile($localFilePath, $remoteFolder, $fileName);
+
+        ActivityLogger::log(
+            action: 'webinar_drive_synced',
+            description: "Berkas Webinar '{$webinar->title}' ({$fileName}) berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $webinar,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
             ]
         );
 

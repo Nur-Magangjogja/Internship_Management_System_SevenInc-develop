@@ -50,6 +50,94 @@ class User extends Authenticatable
     }
 
     /**
+     * Mengembalikan daftar ID koneksi spreadsheet yang diizinkan untuk pengguna ini.
+     * Mengembalikan null jika pengguna memiliki akses global penuh (unrestricted admin/superadmin).
+     * Mengembalikan array kosong [] jika pengguna tidak memiliki hak akses sama sekali.
+     *
+     * Invarian Otorisasi Eksplisit:
+     * 1. Akun tidak aktif / terblokir -> [] (zero access)
+     * 2. Persistent config mapping: config("services.spreadsheet_scopes.{id}")
+     * 3. Properti in-memory / dynamic: $this->allowed_connection_ids
+     * 4. Role 'hr_staff' -> terbatas pada koneksi 'followup' secara persisten dari database
+     * 5. Role 'admin' / 'superadmin' -> akses global penuh (null)
+     */
+    public function getAllowedConnectionIds(): ?array
+    {
+        if (!$this->isActive()) {
+            return [];
+        }
+
+        // 1. Properti in-memory / instance jika diatur secara eksplisit
+        if (isset($this->allowed_connection_ids) && is_array($this->allowed_connection_ids)) {
+            return $this->allowed_connection_ids;
+        }
+
+        // 2. Persistent configuration mapping berdasarkan User ID
+        $configured = config("services.spreadsheet_scopes.{$this->id}");
+        if (is_array($configured)) {
+            return $configured;
+        }
+
+        // 3. Hak akses global eksplisit: Role 'admin' dan 'superadmin' memiliki kewenangan penuh
+        if (in_array($this->role, [self::ROLE_ADMIN, 'superadmin'], true)) {
+            return null;
+        }
+
+        // 4. Role 'hr_staff' dibatasi secara persisten hanya pada koneksi follow-up
+        if ($this->role === self::ROLE_HR_STAFF) {
+            return \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_FOLLOWUP)
+                ->pluck('id')
+                ->all();
+        }
+
+        return [];
+    }
+
+    /**
+     * Memeriksa apakah admin memiliki izin untuk mengakses koneksi spreadsheet tertentu.
+     */
+    public function canAccessConnection(?SpreadsheetConnection $connection = null): bool
+    {
+        if (!$this->isActive()) {
+            return false;
+        }
+
+        if ($connection === null) {
+            return true;
+        }
+
+        $allowedIds = $this->getAllowedConnectionIds();
+
+        // null menandakan kewenangan global penuh
+        if ($allowedIds === null) {
+            return true;
+        }
+
+        return in_array($connection->id, $allowedIds, true);
+    }
+
+    /**
+     * Memeriksa apakah pengguna berwenang menjalankan manual retry sinkronisasi.
+     */
+    public function canRetrySync(): bool
+    {
+        if (!$this->isActive()) {
+            return false;
+        }
+
+        if (isset($this->can_retry_sync)) {
+            return (bool) $this->can_retry_sync;
+        }
+
+        $configuredPermission = config("services.spreadsheet_retry_permission.{$this->id}");
+        if ($configuredPermission !== null) {
+            return (bool) $configuredPermission;
+        }
+
+        return in_array($this->role, [self::ROLE_ADMIN, 'superadmin', self::ROLE_HR_STAFF], true);
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -63,6 +151,8 @@ class User extends Authenticatable
         'is_banned',
         'banned_at',
         'ban_reason',
+        'is_gps_support',
+        'is_gps_active',
     ];
 
     /**
@@ -85,6 +175,9 @@ class User extends Authenticatable
         'banned_at'         => 'datetime',
         'is_banned'         => 'boolean',
         'is_online'         => 'boolean',
+        'is_gps_support'    => 'boolean',
+        'is_gps_active'     => 'boolean',
+        'is_gps_activate'   => 'boolean',
     ];
 
     public function internshipRegistration(): HasOne
@@ -290,5 +383,35 @@ class User extends Authenticatable
     public function getPhoneNumberAttribute()
     {
         return $this->registration ? $this->registration->phone_number : null;
+    }
+
+    /**
+     * Pemetaan identitas eksternal (misal Absen Djuragan).
+     */
+    public function externalIdentityMappings(): HasMany
+    {
+        return $this->hasMany(ExternalIdentityMapping::class, 'ims_user_id');
+    }
+
+    /**
+     * State aktivasi akun (khusus akun baru dari integrasi eksternal).
+     */
+    public function accountActivation(): HasOne
+    {
+        return $this->hasOne(UserAccountActivation::class, 'user_id');
+    }
+
+    /**
+     * Memeriksa apakah akun masih menunggu aktivasi email.
+     * Mengembalikan false jika tabel aktivasi belum dimigrasikan atau akun tidak memiliki record aktivasi.
+     */
+    public function isActivationPending(): bool
+    {
+        if (!\Illuminate\Support\Facades\Schema::connection($this->getConnectionName())->hasTable('user_account_activations')) {
+            return false;
+        }
+
+        $activation = $this->accountActivation;
+        return $activation !== null && $activation->isPending();
     }
 }

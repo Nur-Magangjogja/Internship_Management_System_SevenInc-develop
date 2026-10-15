@@ -137,9 +137,18 @@ class DocumentGeneratorRefactorTest extends TestCase
 
     private function createIntern(User $user, string $status, array $overrides = []): IR
     {
-        $cityId = \App\Models\City::first()?->id ?? 1;
-        $facultyId = \App\Models\Faculty::first()?->id ?? 1;
-        $studyProgId = \App\Models\StudyProgram::first()?->id ?? 1;
+        $city = \App\Models\City::firstOrCreate(['name' => 'Yogyakarta'], ['name' => 'Yogyakarta']);
+        $faculty = \App\Models\Faculty::firstOrCreate(
+            ['institution_id' => $this->institution->id, 'name' => 'Teknik'],
+            ['name' => 'Teknik']
+        );
+        $studyProg = \App\Models\StudyProgram::firstOrCreate(
+            ['faculty_id' => $faculty->id, 'name' => 'Informatika'],
+            ['name' => 'Informatika']
+        );
+        $cityId = $city->id;
+        $facultyId = $faculty->id;
+        $studyProgId = $studyProg->id;
 
         return IR::create(array_merge([
             'user_id'                => $user->id,
