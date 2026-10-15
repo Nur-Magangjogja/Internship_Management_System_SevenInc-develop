@@ -318,7 +318,13 @@ class RegistrationSpreadsheetMappingService
      */
     protected function resolveAttachmentUrl(InternshipRegistration $registration): ?string
     {
-        $attachment = $registration->attachments()->whereNotNull('drive_web_view_link')->first();
+        $attachment = $registration->attachments()
+            ->where('drive_sync_status', \App\Models\RegistrationAttachment::STATUS_SYNCED)
+            ->whereNotNull('drive_file_id')
+            ->where('drive_file_id', 'not like', 'local_sim_%')
+            ->whereNotNull('drive_web_view_link')
+            ->first();
+
         if ($attachment && !empty($attachment->drive_web_view_link)) {
             return $attachment->drive_web_view_link;
         }

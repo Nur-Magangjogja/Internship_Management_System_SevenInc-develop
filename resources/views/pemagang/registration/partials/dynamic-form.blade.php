@@ -77,6 +77,21 @@
                         $sel = ($val === $div) ? 'selected' : '';
                         $opts .= '<option value="' . e($div) . '" ' . $sel . '>' . e($div) . '</option>';
                     }
+                } elseif ($field->field_key === 'religion') {
+                    $placeholder = $field->placeholder ?: '-- Pilih Agama (Opsional) --';
+                    $opts = '<option value="">' . e($placeholder) . '</option>';
+                    $relOptions = !empty($field->options) ? $field->options : [
+                        ['value' => 'Islam', 'label' => 'Islam'],
+                        ['value' => 'Kristen Protestan', 'label' => 'Kristen Protestan'],
+                        ['value' => 'Katolik', 'label' => 'Katolik'],
+                        ['value' => 'Hindu', 'label' => 'Hindu'],
+                        ['value' => 'Buddha', 'label' => 'Buddha'],
+                        ['value' => 'Khonghucu', 'label' => 'Khonghucu'],
+                    ];
+                    foreach ($relOptions as $opt) {
+                        $sel = ($val === $opt['value']) ? 'selected' : '';
+                        $opts .= '<option value="' . e($opt['value']) . '" ' . $sel . '>' . e($opt['label']) . '</option>';
+                    }
                 } else {
                     $placeholder = $field->placeholder ?: '-- Pilih --';
                     $opts = '<option value="">' . e($placeholder) . '</option>';

@@ -107,6 +107,18 @@ Route::middleware('guest')->group(function () {
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])
         ->name('password.update')
         ->middleware('throttle:6,1');
+
+    // Account Activation (Guest)
+    Route::get('/activate/{token}', [AuthController::class, 'showActivationForm'])
+        ->name('user.activate');
+
+    Route::post('/activate', [AuthController::class, 'activateAccount'])
+        ->name('user.activate.submit')
+        ->middleware('throttle:6,1');
+
+    Route::post('/resend-activation', [AuthController::class, 'resendActivation'])
+        ->name('user.activate.resend')
+        ->middleware('throttle:6,1');
 });
 
 /* =================== USER ROUTES (Legacy — dipertahankan untuk kompatibilitas) =================== */
@@ -224,6 +236,21 @@ Route::middleware(['auth','role:pemagang'])->group(function () {
 Route::get('/admin/login', [AuthController::class, 'showLoginForm'])
     ->name('admin.login')
     ->middleware('guest');
+
+/* =================== SYNC MONITORING & RETRY ROUTES (Admin, Superadmin & HR Staff) =================== */
+Route::prefix('admin/sync-monitoring')
+    ->name('admin.sync-monitoring.')
+    ->middleware(['auth', 'role:admin,superadmin,hr_staff', 'prevent-back'])
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'index'])->name('index');
+        Route::get('/{category}/{id}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'show'])->name('show');
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::post('/retry/main-row/{rowSync}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retryMainRow'])->name('retry-main-row');
+            Route::post('/retry/sidecar/{sidecarSync}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retrySidecar'])->name('retry-sidecar');
+            Route::post('/retry/attachment/{attachment}', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'retryAttachment'])->name('retry-attachment');
+            Route::post('/batch-retry', [\App\Http\Controllers\Admin\SyncMonitoringController::class, 'batchRetry'])->name('batch-retry');
+        });
+    });
 
 /* =================== ADMIN ROUTES =================== */
 // Semua nama route akan diawali 'admin.' (mis: 'admin.dashboard.index')

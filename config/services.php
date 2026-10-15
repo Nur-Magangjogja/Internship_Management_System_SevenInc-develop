@@ -31,6 +31,25 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'absen_djuragan' => [
+        'url'              => env('ABSEN_DJURAGAN_API_URL', 'http://absen-djuragan.test/api/v1/external'),
+        'web_url'          => env('ABSEN_DJURAGAN_WEB_URL', 'http://absen-djuragan.test'),
+        'api_key'          => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
+        'inbound_api_key'  => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
+        'outbound_api_key' => env('ABSEN_DJURAGAN_OUTBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
+        'inbound_enabled'       => (bool) env('ABSEN_DJURAGAN_INBOUND_ENABLED', false),
+        'inbound_write_enabled' => (bool) env('ABSEN_DJURAGAN_INBOUND_WRITE_ENABLED', false),
+        'outbox_enabled'        => (bool) env('ABSEN_DJURAGAN_OUTBOX_ENABLED', false),
+        'outbound_enabled'      => (bool) env('ABSEN_DJURAGAN_OUTBOUND_ENABLED', false),
+        'sync_timeout'     => (int) env('ABSEN_DJURAGAN_SYNC_TIMEOUT', 15),
+        'max_retries'      => (int) env('ABSEN_DJURAGAN_MAX_RETRIES', 5),
+        'mappings'         => [
+            'institutions' => [],
+            'divisions'    => [],
+            'brands'       => [],
+        ],
+    ],
+
     'google_drive' => [
         'enabled'       => env('GOOGLE_DRIVE_ENABLED', false),
         'client_id'     => env('GOOGLE_DRIVE_CLIENT_ID'),

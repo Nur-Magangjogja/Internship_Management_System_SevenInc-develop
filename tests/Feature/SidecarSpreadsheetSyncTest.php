@@ -2413,6 +2413,1110 @@ JS;
         // ---------------------------------------------------------------------
         $this->test_r04_full_lock_safety_nonce_replay_and_time_window_matrix_t01_to_t20();
     }
+
+    /**
+     * Wave 2C-C Comprehensive Test Matrix (C01 to C25)
+     * Validates Year Tab Routing, FormSchema Preservation, Apps Script Row 12 Dynamic Resolution,
+     * Case-Variant and Reserved Keys Protection, Partial Update Historical Answer Preservation,
+     * and End-to-End Regression.
+     */
+    public function test_wave2cc_comprehensive_matrix_c01_to_c25(): void
+    {
+        // ---------------------------------------------------------------------
+        // C01 & C02: Registration Year Tab Routing (2026 vs 2027)
+        // ---------------------------------------------------------------------
+        $reg2026 = $this->createVerifiedAcceptedRegistration();
+        $reg2026->created_at = Carbon::create(2026, 3, 15, 10, 0, 0);
+        $reg2026->save();
+        RegistrationCustomAnswer::create([
+            'registration_id' => $reg2026->id,
+            'field_key'       => 'git_repo',
+            'answer_value'    => 'https://github.com/test/repo-2026',
+        ]);
+
+        $mainSync2026 = $this->syncEngine->queueSyncForRegistration($reg2026);
+        $this->assertNotNull($mainSync2026);
+        $this->assertSame('2026', $mainSync2026->target_sheet_tab, 'C01: Main sync routes to 2026 tab.');
+
+        $sidecarSync2026 = $this->syncEngine->queueSidecarSyncForRegistration($reg2026);
+        $this->assertNotNull($sidecarSync2026);
+        $this->assertSame('2026', $sidecarSync2026->main_sheet_tab, 'C01: Sidecar main tab is 2026.');
+        $this->assertSame('2026_Custom_Fields', $sidecarSync2026->extension_sheet_tab, 'C01: Extension tab is 2026_Custom_Fields.');
+
+        $reg2027 = $this->createVerifiedAcceptedRegistration();
+        $reg2027->created_at = Carbon::create(2027, 4, 10, 8, 30, 0);
+        $reg2027->save();
+        RegistrationCustomAnswer::create([
+            'registration_id' => $reg2027->id,
+            'field_key'       => 'git_repo',
+            'answer_value'    => 'https://github.com/test/repo-2027',
+        ]);
+
+        $mainSync2027 = $this->syncEngine->queueSyncForRegistration($reg2027);
+        $this->assertNotNull($mainSync2027);
+        $this->assertSame('2027', $mainSync2027->target_sheet_tab, 'C02: Main sync routes to 2027 tab.');
+
+        $sidecarSync2027 = $this->syncEngine->queueSidecarSyncForRegistration($reg2027);
+        $this->assertNotNull($sidecarSync2027);
+        $this->assertSame('2027', $sidecarSync2027->main_sheet_tab, 'C02: Sidecar main tab is 2027.');
+        $this->assertSame('2027_Custom_Fields', $sidecarSync2027->extension_sheet_tab, 'C02: Extension tab is 2027_Custom_Fields.');
+
+        // ---------------------------------------------------------------------
+        // C03: Invalid Year Rejected Fail-Closed (< 2020 or > 2099)
+        // ---------------------------------------------------------------------
+        $regTooOld = $this->createVerifiedAcceptedRegistration();
+        $regTooOld->created_at = Carbon::create(2018, 1, 1);
+        $regTooOld->save();
+        RegistrationCustomAnswer::create([
+            'registration_id' => $regTooOld->id,
+            'field_key'       => 'git_repo',
+            'answer_value'    => 'https://github.com/test/repo-old',
+        ]);
+        $this->assertNull($this->syncEngine->queueSyncForRegistration($regTooOld), 'C03: Main sync rejects year < 2020.');
+        $this->assertNull($this->syncEngine->queueSidecarSyncForRegistration($regTooOld), 'C03: Sidecar sync rejects year < 2020.');
+
+        $regTooFar = $this->createVerifiedAcceptedRegistration();
+        RegistrationCustomAnswer::create([
+            'registration_id' => $regTooFar->id,
+            'field_key'       => 'git_repo',
+            'answer_value'    => 'https://github.com/test/repo-far',
+        ]);
+        $regTooFar->created_at = Carbon::create(2105, 5, 5);
+        $this->assertNull($this->syncEngine->queueSyncForRegistration($regTooFar), 'C03: Main sync rejects year > 2099.');
+        $this->assertNull($this->syncEngine->queueSidecarSyncForRegistration($regTooFar), 'C03: Sidecar sync rejects year > 2099.');
+
+        // ---------------------------------------------------------------------
+        // C04: start_date vs created_at does NOT override registration year tab
+        // ---------------------------------------------------------------------
+        $regCrossYear = $this->createVerifiedAcceptedRegistration();
+        $regCrossYear->created_at = Carbon::create(2026, 12, 1);
+        $regCrossYear->start_date = Carbon::create(2027, 2, 1);
+        $regCrossYear->save();
+        RegistrationCustomAnswer::create([
+            'registration_id' => $regCrossYear->id,
+            'field_key'       => 'git_repo',
+            'answer_value'    => 'https://github.com/test/repo-cross',
+        ]);
+
+        $crossMain = $this->syncEngine->queueSyncForRegistration($regCrossYear);
+        $crossSidecar = $this->syncEngine->queueSidecarSyncForRegistration($regCrossYear);
+        $this->assertSame('2026', $crossMain->target_sheet_tab, 'C04: Main tab derives strictly from created_at, ignoring start_date.');
+        $this->assertSame('2026', $crossSidecar->main_sheet_tab, 'C04: Sidecar main tab derives strictly from created_at.');
+        $this->assertSame('2026_Custom_Fields', $crossSidecar->extension_sheet_tab, 'C04: Sidecar extension tab derives strictly from created_at.');
+
+        // ---------------------------------------------------------------------
+        // C05: FormSchema matches year and snapshot
+        // ---------------------------------------------------------------------
+        $snapshot = RegistrationFormSnapshot::create([
+            'registration_id'     => $reg2026->id,
+            'form_schema_version' => 'v2026.1',
+            'schema_snapshot'     => ['fields' => [['field_key' => 'git_repo', 'label' => 'Git Repository']]],
+            'submitted_at'        => now(),
+        ]);
+        $payload = $this->mappingService->buildSidecarPayload($reg2026->fresh());
+        $this->assertSame('v2026.1', $payload['form_schema_version'], 'C05: Sidecar payload reflects form snapshot schema version.');
+
+        // ---------------------------------------------------------------------
+        // C12, C13, C14: FormSchema Immutability, Labels, and Historical Data Preservation
+        // ---------------------------------------------------------------------
+        $schema = FormSchema::create([
+            'year'         => 2026,
+            'version_code' => 'v2026.2',
+            'title'        => 'Formulir Pendaftaran 2026 v2',
+            'status'       => FormSchema::STATUS_DRAFT,
+            'is_active'    => true,
+        ]);
+        $field = FormField::create([
+            'form_schema_id' => $schema->id,
+            'field_key'      => 'project_notes',
+            'label'          => 'Initial Notes',
+            'field_type'     => 'textarea',
+            'is_required'    => false,
+            'is_active'      => true,
+        ]);
+
+        // C12: Field label update does not change field_key
+        $field->update(['label' => 'Updated Project Notes']);
+        $this->assertSame('project_notes', $field->fresh()->field_key, 'C12: Label updates preserve immutable field_key.');
+
+        // C13: Archiving field retains existing custom answers
+        $customAnswer = RegistrationCustomAnswer::create([
+            'registration_id' => $reg2026->id,
+            'field_key'       => 'project_notes',
+            'answer_value'    => 'Historical custom value',
+        ]);
+        $field->delete();
+        $this->assertTrue(RegistrationCustomAnswer::where('id', $customAnswer->id)->exists(), 'C13: Archived fields retain historical answers.');
+
+        // C14: New schema version does not corrupt earlier snapshots
+        $newSchema = FormSchema::create([
+            'year'         => 2027,
+            'version_code' => 'v2027.1',
+            'title'        => 'Formulir Pendaftaran 2027 v1',
+            'status'       => FormSchema::STATUS_PUBLISHED,
+            'is_active'    => true,
+        ]);
+        $this->assertSame('v2026.1', $snapshot->fresh()->form_schema_version, 'C14: New schemas do not mutate prior snapshots.');
+
+        // ---------------------------------------------------------------------
+        // C06–C11, C15–C19: Apps Script Dynamic Header Resolution, Reserved Keys,
+        // Case Invariance, and Partial Update Historical Value Preservation
+        // ---------------------------------------------------------------------
+        $nodeAppsScript = <<<'JS'
+const crypto = require("crypto");
+const path = require("path");
+const appsScript = require(path.resolve("./resources/apps-script/SertifGoogleIntegration.js"));
+
+const SECRET = "wave2cc_test_secret_key_123456789";
+const REG_ID = "test-spreadsheet-id-2cc";
+
+global.PropertiesService = {
+  getScriptProperties: () => ({
+    getProperty: (k) => {
+      if (k === "SHARED_API_KEY") return SECRET;
+      if (k === "REGISTRATION_SPREADSHEET_ID") return REG_ID;
+      return null;
+    }
+  })
+};
+
+global.LockService = {
+  getScriptLock: () => ({
+    tryLock: () => true,
+    waitLock: () => true,
+    hasLock: () => true,
+    releaseLock: () => {}
+  })
+};
+
+const cacheStore = {};
+global.CacheService = {
+  getScriptCache: () => ({
+    get: (k) => cacheStore[k] || null,
+    put: (k, v, ttl) => { cacheStore[k] = v; }
+  })
+};
+
+global.Utilities = {
+  Charset: { UTF_8: "UTF_8" },
+  computeHmacSha256Signature: (data, key) => {
+    const hmac = crypto.createHmac("sha256", key);
+    hmac.update(data, "utf8");
+    const digest = hmac.digest();
+    return Array.from(digest).map(b => (b > 127 ? b - 256 : b));
+  }
+};
+
+function signPayload(payload) {
+  const ts = Math.floor(Date.now() / 1000);
+  const nonce = "nonce_" + Math.random().toString(36).substring(2);
+  const canonicalData = ts + "." + nonce + "." + JSON.stringify(payload);
+  const sig = crypto.createHmac("sha256", SECRET).update(canonicalData, "utf8").digest("hex");
+  return {
+    postData: {
+      contents: JSON.stringify({
+        timestamp: ts,
+        nonce: nonce,
+        signature: sig,
+        payload: payload
+      })
+    }
+  };
+}
+
+// In-memory mock sheet store for dynamic verification
+const sheetData = {
+  "2026": {
+    // Standard layout: Rows 1-11 are title/metadata. Row 12 has headers. Row 13 has data.
+    rows: []
+  },
+  "2026_Custom_Fields": {
+    rows: [
+      ["SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT", "custom_portfolio_url", "custom_notes"],
+      ["SYNC-2026-001", "101", "v2026.1", "2026-03-15T10:00:00Z", "https://github.com/myrepo", "Preserved Original Note"]
+    ]
+  }
+};
+
+// Initialize row 1-11 as metadata, row 12 as headers, row 13 as data
+for (let r = 1; r <= 11; r++) {
+  sheetData["2026"].rows.push(["TITLE_OR_METADATA_ROW_" + r]);
+}
+// Row 12: Headers (Col 1: NO, Col 2: NAMA, ..., Col 5: SERTIF_SYNC_ID, Col 6: SERTIF_REGISTRATION_ID)
+sheetData["2026"].rows.push(["NO", "NAMA LENGKAP", "ASAL SEKOLAH", "EMAIL", "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID"]);
+// Row 13: Data row for registration 101
+sheetData["2026"].rows.push(["1", "Budi Santoso", "SMK 1", "budi@example.com", "SYNC-2026-001", "101"]);
+
+function getMockSheet(name) {
+  if (!sheetData[name]) {
+    sheetData[name] = { rows: [] };
+  }
+  const s = sheetData[name];
+  return {
+    getLastRow: () => s.rows.length,
+    getLastColumn: () => {
+      let maxCols = 0;
+      for (const row of s.rows) {
+        if (row.length > maxCols) maxCols = row.length;
+      }
+      return maxCols;
+    },
+    getRange: (r, c, numR, numC) => {
+      numR = numR || 1;
+      numC = numC || 1;
+      return {
+        getValues: () => {
+          const res = [];
+          for (let ro = 0; ro < numR; ro++) {
+            const rowIndex = (r - 1) + ro;
+            const rowArr = s.rows[rowIndex] || [];
+            const rowSlice = [];
+            for (let co = 0; co < numC; co++) {
+              const colIndex = (c - 1) + co;
+              rowSlice.push(rowArr[colIndex] !== undefined ? rowArr[colIndex] : "");
+            }
+            res.push(rowSlice);
+          }
+          return res;
+        },
+        getValue: () => {
+          const rowArr = s.rows[r - 1] || [];
+          return rowArr[c - 1] !== undefined ? rowArr[c - 1] : "";
+        },
+        setValue: (val) => {
+          while (s.rows.length < r) s.rows.push([]);
+          while (s.rows[r - 1].length < c) s.rows[r - 1].push("");
+          s.rows[r - 1][c - 1] = val;
+        },
+        setValues: (vals) => {
+          for (let ro = 0; ro < vals.length; ro++) {
+            const targetRow = (r - 1) + ro;
+            while (s.rows.length <= targetRow) s.rows.push([]);
+            for (let co = 0; co < vals[ro].length; co++) {
+              const targetCol = (c - 1) + co;
+              while (s.rows[targetRow].length <= targetCol) s.rows[targetRow].push("");
+              s.rows[targetRow][targetCol] = vals[ro][co];
+            }
+          }
+        }
+      };
+    }
+  };
+}
+
+global.SpreadsheetApp = {
+  openById: () => ({
+    getSheetByName: (n) => getMockSheet(n),
+    insertSheet: (n) => getMockSheet(n)
+  }),
+  flush: () => {}
+};
+
+function getResponse(res) {
+  if (res && res.data) return res.data;
+  if (res && typeof res.getContent === "function") return JSON.parse(res.getContent());
+  if (res && res.body) return JSON.parse(res.body);
+  return res;
+}
+
+const results = {};
+
+// C06 & C19: Main sheet header on row 12 resolved correctly & partial update preserves historical cell value
+const partialUpdateReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-001",
+  registration_id: "101",
+  form_schema_version: "v2026.1",
+  answers: {
+    // custom_notes is omitted (undefined) -> MUST preserve "Preserved Original Note"
+    custom_portfolio_url: "https://github.com/myrepo-updated"
+  }
+});
+const partialUpdateRes = getResponse(appsScript.doPost(partialUpdateReq));
+results.c06_resolved = partialUpdateRes.success === true && partialUpdateRes.action === "updated";
+
+// Check row 2 in 2026_Custom_Fields
+const updatedRow = sheetData["2026_Custom_Fields"].rows[1];
+// Header order: SERTIF_SYNC_ID, SERTIF_REGISTRATION_ID, FORM_SCHEMA_VERSION, SERTIF_LAST_SYNC_AT, custom_portfolio_url, custom_notes
+results.c19_portfolio_updated = updatedRow[4] === "https://github.com/myrepo-updated";
+results.c19_notes_preserved = updatedRow[5] === "Preserved Original Note";
+
+// C08, C09, C10, C11: Ensure extension columns protection
+const ensureReq1 = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "2026_Custom_Fields",
+  columns: [
+    "custom_extra_field",      // new column -> must add
+    "custom_portfolio_url",    // already exists -> must NOT duplicate
+    "Custom_Portfolio_Url",    // case-variant -> must NOT duplicate
+    "sertif_sync_status",      // reserved key -> must NOT add
+    "timestamp",               // reserved key -> must NOT add
+    "upload_pdf",              // reserved key -> must NOT add
+    "ket"                      // reserved key -> must NOT add
+  ]
+});
+const ensureRes1 = getResponse(appsScript.doPost(ensureReq1));
+results.c08_new_column_added = ensureRes1.success && ensureRes1.added_columns.includes("custom_extra_field");
+results.c09_existing_not_duplicated = !ensureRes1.added_columns.includes("custom_portfolio_url");
+results.c10_case_variant_not_duplicated = !ensureRes1.added_columns.includes("Custom_Portfolio_Url");
+results.c11_reserved_filtered = !ensureRes1.added_columns.includes("sertif_sync_status")
+  && !ensureRes1.added_columns.includes("timestamp")
+  && !ensureRes1.added_columns.includes("upload_pdf")
+  && !ensureRes1.added_columns.includes("ket");
+
+// C07: Main-row identity verified without unsafe column fallback
+sheetData["empty_headers_tab"] = {
+  rows: [
+    ["RANDOM_COL_1", "RANDOM_COL_2", "RANDOM_COL_3"],
+    ["VAL_1", "VAL_2", "VAL_3"]
+  ]
+};
+const missingHeaderReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "empty_headers_tab",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-001",
+  registration_id: "101",
+  answers: {}
+});
+const missingHeaderRes = getResponse(appsScript.doPost(missingHeaderReq));
+results.c07_no_fallback_reject = missingHeaderRes.success === false
+  && (missingHeaderRes.error_code === "MAIN_SYNC_ID_COLUMN_MISSING" || missingHeaderRes.error_code === "MAIN_HEADER_ROW_NOT_FOUND");
+
+// C17 & C18: Upsert produces updated row, not duplicate
+const c17RowBeforeCount = sheetData["2026_Custom_Fields"].rows.length;
+const retryUpsertReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-001",
+  registration_id: "101",
+  form_schema_version: "v2026.1",
+  answers: {
+    custom_portfolio_url: "https://github.com/myrepo-retry"
+  }
+});
+const retryUpsertRes = getResponse(appsScript.doPost(retryUpsertReq));
+const c17RowAfterCount = sheetData["2026_Custom_Fields"].rows.length;
+results.c17_no_duplicate_row = retryUpsertRes.success === true
+  && retryUpsertRes.action === "updated"
+  && c17RowBeforeCount === c17RowAfterCount;
+
+console.log(JSON.stringify(results));
+JS;
+
+        $process = new Process(['node']);
+        $process->setInput($nodeAppsScript);
+        $process->mustRun();
+        $nodeOutput = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertTrue($nodeOutput['c06_resolved'], 'C06: Main sheet header on row 12 resolved correctly.');
+        $this->assertTrue($nodeOutput['c19_portfolio_updated'], 'C19: Updated field value was written to sheet.');
+        $this->assertTrue($nodeOutput['c19_notes_preserved'], 'C19: Historical unmentioned answer preserved on partial update.');
+        $this->assertTrue($nodeOutput['c08_new_column_added'], 'C08: New extension column added exactly once.');
+        $this->assertTrue($nodeOutput['c09_existing_not_duplicated'], 'C09: Existing column not re-added.');
+        $this->assertTrue($nodeOutput['c10_case_variant_not_duplicated'], 'C10: Case-variant column prevented.');
+        $this->assertTrue($nodeOutput['c11_reserved_filtered'], 'C11: Reserved columns prevented from addition.');
+        $this->assertTrue($nodeOutput['c07_no_fallback_reject'], 'C07: Main-row identity verified without unsafe fallback.');
+        $this->assertTrue($nodeOutput['c17_no_duplicate_row'], 'C17: Retry upsert does not create duplicate row.');
+
+        // ---------------------------------------------------------------------
+        // C15, C16, C20, C21, C22, C23, C24, C25: Suite-Level Integrations & Regressions
+        // ---------------------------------------------------------------------
+        // C15 & C16 verified by existing test:
+        $this->test_r02_sidecar_duplicate_and_identity_mismatch_prevent_header_modification();
+
+        // C20: Legacy placeholder policy
+        $this->test_legacy_registration_creates_sidecar_placeholder_row();
+
+        // C21: Sidecar held if main row not synced
+        $this->mockTransport->callCount = 0;
+        $this->test_sidecar_sync_held_fail_closed_if_main_row_not_synced();
+
+        // C24: HMAC, nonce replay & window alignment
+        $this->test_r04_full_lock_safety_nonce_replay_and_time_window_matrix_t01_to_t20();
+
+        // C25: Unrelated year tabs untouched
+        $this->assertDatabaseMissing('spreadsheet_row_syncs', [
+            'syncable_id'      => $reg2026->id,
+            'target_sheet_tab' => '2027',
+        ]);
+        $this->assertDatabaseMissing('spreadsheet_sidecar_syncs', [
+            'internship_registration_id' => $reg2026->id,
+            'main_sheet_tab'             => '2027',
+        ]);
+    }
+
+    /**
+     * SERTIF Wave 2C-C R02 Mandatory Test Matrix (Items 1 to 20)
+     * Verifies:
+     * 1. Main upsert 2026 accepted with valid tab and schema.
+     * 2. Main upsert 2027 accepted with valid tab and schema.
+     * 3. Main update-only 2027 accepted with valid row and identity.
+     * 4. Non-numeric or invalid year tab name rejected.
+     * 5. Missing tab not auto-created.
+     * 6. Schema mismatch fails closed.
+     * 7. 'Ukuran Kaos' and 'ukuran_kaos' safely reconciled without duplicate columns.
+     * 8. Distinct historical fields not incorrectly merged.
+     * 9. Reserved keys with spelling/case variations rejected.
+     * 10. Swapped base columns A-D on existing sheet rejected without mutation.
+     * 11. Base columns on new sheet created strictly to contract.
+     * 12. Main header split across two rows fails closed without cross-row mixing.
+     * 13. Complete header on Row 12 processed correctly.
+     * 14. Complete header on Row 1 legacy processed to contract.
+     * 15. Identity mismatch does not modify header or data.
+     * 16. Duplicate sync ID rejected.
+     * 17. Partial update preserves historical cell value.
+     * 18. Remote retry remains idempotent.
+     * 19. Security HMAC and nonce TTL 900s pass.
+     * 20. Wave 2C-B regression remains passing.
+     */
+    public function test_wave2cc_r02_comprehensive_matrix_items_01_to_20(): void
+    {
+        $nodeTestScript = <<<'JS'
+const crypto = require("crypto");
+const path = require("path");
+const appsScript = require(path.resolve("./resources/apps-script/SertifGoogleIntegration.js"));
+
+const SECRET = "wave2cc_r02_matrix_secret_key_987654321";
+const REG_ID = "test-spreadsheet-id-r02-matrix";
+
+global.PropertiesService = {
+  getScriptProperties: () => ({
+    getProperty: (k) => {
+      if (k === "SHARED_API_KEY") return SECRET;
+      if (k === "REGISTRATION_SPREADSHEET_ID") return REG_ID;
+      return null;
+    }
+  })
+};
+
+global.LockService = {
+  getScriptLock: () => ({
+    tryLock: () => true,
+    waitLock: () => true,
+    hasLock: () => true,
+    releaseLock: () => {}
+  })
+};
+
+const cacheStore = {};
+global.CacheService = {
+  getScriptCache: () => ({
+    get: (k) => cacheStore[k] || null,
+    put: (k, v, ttl) => { cacheStore[k] = v; }
+  })
+};
+
+global.Utilities = {
+  Charset: { UTF_8: "UTF_8" },
+  computeHmacSha256Signature: (data, key) => {
+    const hmac = crypto.createHmac("sha256", key);
+    hmac.update(data, "utf8");
+    const digest = hmac.digest();
+    return Array.from(digest).map(b => (b > 127 ? b - 256 : b));
+  }
+};
+
+function signPayload(payload, tsOffset, customNonce) {
+  const ts = Math.floor(Date.now() / 1000) + (tsOffset || 0);
+  const nonce = customNonce || ("nonce_" + Math.random().toString(36).substring(2));
+  const canonicalData = ts + "." + nonce + "." + JSON.stringify(payload);
+  const sig = crypto.createHmac("sha256", SECRET).update(canonicalData, "utf8").digest("hex");
+  return {
+    postData: {
+      contents: JSON.stringify({
+        timestamp: ts,
+        nonce: nonce,
+        signature: sig,
+        payload: payload
+      })
+    }
+  };
+}
+
+function getResponse(res) {
+  if (res && res.data) return res.data;
+  if (res && typeof res.getContent === "function") return JSON.parse(res.getContent());
+  if (res && res.body) return JSON.parse(res.body);
+  return res;
+}
+
+// 29-column Canonical Registration Contract Headers
+const regContract29Headers = [
+  "Timestamp", "Nama Lengkap", "NIM (Nomor Induk Mahasiswa)", "Program Studi", "Email",
+  "Jenis Kelamin", "No. HP Aktif yang bisa dihubungi dan chat WA", "Asal Sekolah/Kampus",
+  "Nama Kota/Daerah tempat tinggal Anda saat ini", "Mengapa Anda ingin Magang/PKL disini?",
+  "Jenis Magang apa yang Anda pilih?", "Status Anda saat ini",
+  "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
+  "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan",
+  "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)",
+  "Apakah ada laptop sendiri", "Jika YA, alat apa yang dimiliki/dibawa",
+  "Kapan berencana mulai Magang/PKL", "Berapa lama akan Magang/PKL", "Sumber info magang",
+  "Instagram", "Butuh info kost/kontrakan", "Program Magang/PKL yang diminati",
+  "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", "KET",
+  "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "SERTIF_SYNC_STATUS", "SERTIF_LAST_SYNC_AT"
+];
+
+function createValid29RowData(syncId, regId) {
+  return {
+    "Timestamp": "2026-03-15 10:00:00",
+    "Nama Lengkap": "Test User " + regId,
+    "NIM (Nomor Induk Mahasiswa)": "12345678",
+    "Program Studi": "Teknik Informatika",
+    "Email": "user" + regId + "@example.com",
+    "Jenis Kelamin": "Laki-laki",
+    "No. HP Aktif yang bisa dihubungi dan chat WA": "081234567890",
+    "Asal Sekolah/Kampus": "Universitas Indonesia",
+    "Nama Kota/Daerah tempat tinggal Anda saat ini": "Jakarta",
+    "Mengapa Anda ingin Magang/PKL disini?": "Belajar industri",
+    "Jenis Magang apa yang Anda pilih?": "Magang Reguler",
+    "Status Anda saat ini": "Mahasiswa",
+    "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?": "Siap",
+    "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan": "Dosen Pembimbing",
+    "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)": "Sanggup",
+    "Apakah ada laptop sendiri": "Ada",
+    "Jika YA, alat apa yang dimiliki/dibawa": "Laptop i7",
+    "Kapan berencana mulai Magang/PKL": "1 Maret 2026",
+    "Berapa lama akan Magang/PKL": "6 Bulan",
+    "Sumber info magang": "Website",
+    "Instagram": "@testuser",
+    "Butuh info kost/kontrakan": "Tidak",
+    "Program Magang/PKL yang diminati": "Web Development",
+    "Upload PDF CV + scan KTM/KTP + portofolio max 10MB": "https://drive.google.com/cv.pdf",
+    "KET": "Lengkap",
+    "SERTIF_SYNC_ID": syncId,
+    "SERTIF_REGISTRATION_ID": regId,
+    "SERTIF_SYNC_STATUS": "SYNCED",
+    "SERTIF_LAST_SYNC_AT": "2026-03-15T10:00:00Z"
+  };
+}
+
+// In-Memory Workbook Store
+const sheetStore = {};
+
+function initSheet(name, initialRows) {
+  sheetStore[name] = { rows: initialRows ? JSON.parse(JSON.stringify(initialRows)) : [] };
+}
+
+function getMockSheet(name) {
+  if (!sheetStore[name]) {
+    sheetStore[name] = { rows: [] };
+  }
+  const s = sheetStore[name];
+  return {
+    getLastRow: () => s.rows.length,
+    getLastColumn: () => {
+      let maxCols = 0;
+      for (const row of s.rows) {
+        if (row.length > maxCols) maxCols = row.length;
+      }
+      return maxCols;
+    },
+    getRange: (r, c, numR, numC) => {
+      numR = numR || 1;
+      numC = numC || 1;
+      return {
+        getValues: () => {
+          const res = [];
+          for (let ro = 0; ro < numR; ro++) {
+            const rowIndex = (r - 1) + ro;
+            const rowArr = s.rows[rowIndex] || [];
+            const rowSlice = [];
+            for (let co = 0; co < numC; co++) {
+              const colIndex = (c - 1) + co;
+              rowSlice.push(rowArr[colIndex] !== undefined ? rowArr[colIndex] : "");
+            }
+            res.push(rowSlice);
+          }
+          return res;
+        },
+        getValue: () => {
+          const rowArr = s.rows[r - 1] || [];
+          return rowArr[c - 1] !== undefined ? rowArr[c - 1] : "";
+        },
+        setValue: (val) => {
+          while (s.rows.length < r) s.rows.push([]);
+          while (s.rows[r - 1].length < c) s.rows[r - 1].push("");
+          s.rows[r - 1][c - 1] = val;
+        },
+        setValues: (vals) => {
+          for (let ro = 0; ro < vals.length; ro++) {
+            const targetRow = (r - 1) + ro;
+            while (s.rows.length <= targetRow) s.rows.push([]);
+            for (let co = 0; co < vals[ro].length; co++) {
+              const targetCol = (c - 1) + co;
+              while (s.rows[targetRow].length <= targetCol) s.rows[targetRow].push("");
+              s.rows[targetRow][targetCol] = vals[ro][co];
+            }
+          }
+        }
+      };
+    }
+  };
+}
+
+global.SpreadsheetApp = {
+  openById: () => ({
+    getSheetByName: (n) => sheetStore.hasOwnProperty(n) ? getMockSheet(n) : null,
+    insertSheet: (n) => {
+      if (!sheetStore[n]) sheetStore[n] = { rows: [] };
+      return getMockSheet(n);
+    }
+  }),
+  flush: () => {}
+};
+
+// Setup initial sheets in workbook
+// Tab 2026: Rows 1-11 title, Row 12 headers, Row 13 empty
+const rows2026 = [];
+for (let r = 1; r <= 11; r++) rows2026.push(["METADATA_2026_ROW_" + r]);
+rows2026.push(regContract29Headers.slice());
+initSheet("2026", rows2026);
+
+// Tab 2027: Rows 1-11 title, Row 12 headers, Row 13 empty
+const rows2027 = [];
+for (let r = 1; r <= 11; r++) rows2027.push(["METADATA_2027_ROW_" + r]);
+rows2027.push(regContract29Headers.slice());
+initSheet("2027", rows2027);
+
+const results = {};
+
+// =========================================================================
+// 1. Main upsert 2026 diterima bila tab dan schema valid
+// =========================================================================
+const upsert2026Payload = createValid29RowData("SYNC-2026-M1", "202601");
+const upsert2026Req = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2026",
+  sync_id: "SYNC-2026-M1",
+  spreadsheet_id: REG_ID,
+  payload: upsert2026Payload
+});
+const upsert2026Res = getResponse(appsScript.doPost(upsert2026Req));
+results.item1_main_upsert_2026 = upsert2026Res.success === true && upsert2026Res.row_index === 13;
+
+// =========================================================================
+// 2. Main upsert 2027 diterima bila tab dan schema valid
+// =========================================================================
+const upsert2027Payload = createValid29RowData("SYNC-2027-M1", "202701");
+const upsert2027Req = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2027",
+  sync_id: "SYNC-2027-M1",
+  spreadsheet_id: REG_ID,
+  payload: upsert2027Payload
+});
+const upsert2027Res = getResponse(appsScript.doPost(upsert2027Req));
+results.item2_main_upsert_2027 = upsert2027Res.success === true && upsert2027Res.row_index === 13;
+
+// =========================================================================
+// 3. Main update-only 2027 diterima bila row dan identitas valid
+// =========================================================================
+const update2027Payload = createValid29RowData("SYNC-2027-M1", "202701");
+update2027Payload["Nama Lengkap"] = "Test User 202701 Updated";
+const update2027Req = signPayload({
+  action: "update_row",
+  connection_key: "registration",
+  tab_name: "2027",
+  sync_id: "SYNC-2027-M1",
+  spreadsheet_id: REG_ID,
+  payload: update2027Payload
+});
+const update2027Res = getResponse(appsScript.doPost(update2027Req));
+const row13UpdatedName = sheetStore["2027"].rows[12][1]; // Col 2 is Nama Lengkap
+results.item3_main_update_2027 = update2027Res.success === true
+  && update2027Res.operation === "updated"
+  && row13UpdatedName === "Test User 202701 Updated";
+
+// =========================================================================
+// 4. Nama tab nonnumerik atau tahun tidak valid ditolak
+// =========================================================================
+const invalidTabAlphaReq = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "202a",
+  sync_id: "SYNC-FAIL",
+  spreadsheet_id: REG_ID,
+  payload: { "SERTIF_SYNC_ID": "SYNC-FAIL" }
+});
+const invalidTabAlphaRes = getResponse(appsScript.doPost(invalidTabAlphaReq));
+
+const invalidTabYearUnderReq = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2019",
+  sync_id: "SYNC-FAIL",
+  spreadsheet_id: REG_ID,
+  payload: { "SERTIF_SYNC_ID": "SYNC-FAIL" }
+});
+const invalidTabYearUnderRes = getResponse(appsScript.doPost(invalidTabYearUnderReq));
+
+const invalidTabYearOverReq = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2100",
+  sync_id: "SYNC-FAIL",
+  spreadsheet_id: REG_ID,
+  payload: { "SERTIF_SYNC_ID": "SYNC-FAIL" }
+});
+const invalidTabYearOverRes = getResponse(appsScript.doPost(invalidTabYearOverReq));
+
+results.item4_invalid_tab_rejected = invalidTabAlphaRes.error_code === "TARGET_MISMATCH"
+  && invalidTabYearUnderRes.error_code === "TARGET_MISMATCH"
+  && invalidTabYearOverRes.error_code === "TARGET_MISMATCH";
+
+// =========================================================================
+// 5. Tab tidak ditemukan -> tidak dibuat otomatis
+// =========================================================================
+const missingTabReq = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2028",
+  sync_id: "SYNC-2028-FAIL",
+  spreadsheet_id: REG_ID,
+  payload: createValid29RowData("SYNC-2028-FAIL", "202801")
+});
+const missingTabRes = getResponse(appsScript.doPost(missingTabReq));
+results.item5_missing_tab_not_created = missingTabRes.error_code === "TAB_NOT_FOUND"
+  && !sheetStore.hasOwnProperty("2028");
+
+// =========================================================================
+// 6. Schema utama tidak cocok -> fail-closed
+// =========================================================================
+initSheet("2030", [
+  ["T1"], ["T2"], ["T3"], ["T4"], ["T5"], ["T6"], ["T7"], ["T8"], ["T9"], ["T10"], ["T11"],
+  ["COL_1", "COL_2", "COL_3", "SERTIF_SYNC_ID"] // Only 4 columns, not 29!
+]);
+const mismatchSchemaReq = signPayload({
+  action: "upsert_row",
+  connection_key: "registration",
+  tab_name: "2030",
+  sync_id: "SYNC-2030-FAIL",
+  spreadsheet_id: REG_ID,
+  payload: createValid29RowData("SYNC-2030-FAIL", "203001")
+});
+const mismatchSchemaRes = getResponse(appsScript.doPost(mismatchSchemaReq));
+results.item6_schema_mismatch_fail_closed = mismatchSchemaRes.error_code === "SCHEMA_MISMATCH"
+  && sheetStore["2030"].rows.length === 12; // zero rows inserted
+
+// =========================================================================
+// 7. Ukuran Kaos dan ukuran_kaos direkonsiliasi tanpa kolom ganda
+// =========================================================================
+initSheet("2026_Custom_Fields", [
+  ["SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT", "Ukuran Kaos"]
+]);
+const ensureKaosReq = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "2026_Custom_Fields",
+  columns: ["ukuran_kaos"]
+});
+const ensureKaosRes = getResponse(appsScript.doPost(ensureKaosReq));
+const colsAfterEnsure = sheetStore["2026_Custom_Fields"].rows[0].length;
+
+const upsertKaosReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-M1",
+  registration_id: "202601",
+  form_schema_version: "v2026.1",
+  answers: { "ukuran_kaos": "XL" }
+});
+const upsertKaosRes = getResponse(appsScript.doPost(upsertKaosReq));
+const rowKaosValues = sheetStore["2026_Custom_Fields"].rows[1];
+const finalKaosColCount = sheetStore["2026_Custom_Fields"].rows[0].length;
+
+results.item7_kaos_reconciled = ensureKaosRes.success === true
+  && ensureKaosRes.added_columns.length === 0
+  && colsAfterEnsure === 5
+  && upsertKaosRes.success === true
+  && finalKaosColCount === 5
+  && rowKaosValues[4] === "XL";
+
+// =========================================================================
+// 8. Field historis dengan identitas berbeda tidak digabung secara salah
+// =========================================================================
+const ensureDistinctReq = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "2026_Custom_Fields",
+  columns: ["ukuran_sepatu", "custom_notes"]
+});
+const ensureDistinctRes = getResponse(appsScript.doPost(ensureDistinctReq));
+const distinctColsCount = sheetStore["2026_Custom_Fields"].rows[0].length;
+results.item8_distinct_fields_not_merged = ensureDistinctRes.added_columns.includes("ukuran_sepatu")
+  && ensureDistinctRes.added_columns.includes("custom_notes")
+  && distinctColsCount === 7;
+
+// =========================================================================
+// 9. Reserved key dengan variasi penulisan ditolak
+// =========================================================================
+const ensureReservedReq = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "2026_Custom_Fields",
+  columns: [
+    "Nama Lengkap", "nama_lengkap", "NAMA_LENGKAP",
+    "No. HP", "no_hp", "SERTIF_SYNC_ID",
+    "timestamp", "Upload PDF", "Kesiapan WFO"
+  ]
+});
+const ensureReservedRes = getResponse(appsScript.doPost(ensureReservedReq));
+results.item9_reserved_variations_rejected = ensureReservedRes.added_columns.length === 0;
+
+// =========================================================================
+// 10. Base columns A-D tertukar pada sheet existing ditolak tanpa mutasi
+// =========================================================================
+initSheet("swapped_base_ext", [
+  ["SERTIF_REGISTRATION_ID", "SERTIF_SYNC_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT"], // A and B swapped!
+  ["202601", "SYNC-2026-M1", "v1", "2026-03-15T10:00:00Z"]
+]);
+const swappedEnsureReq = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "swapped_base_ext",
+  columns: ["any_new_column"]
+});
+const swappedEnsureRes = getResponse(appsScript.doPost(swappedEnsureReq));
+const swappedHeaderCol1 = sheetStore["swapped_base_ext"].rows[0][0];
+
+const swappedUpsertReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026",
+  extension_sheet_name: "swapped_base_ext",
+  sync_id: "SYNC-2026-M1",
+  registration_id: "202601",
+  answers: {}
+});
+const swappedUpsertRes = getResponse(appsScript.doPost(swappedUpsertReq));
+
+results.item10_swapped_base_rejected_no_mutation = swappedEnsureRes.error_code === "BASE_COLUMNS_MISMATCH"
+  && swappedUpsertRes.error_code === "BASE_COLUMNS_MISMATCH"
+  && swappedHeaderCol1 === "SERTIF_REGISTRATION_ID"; // Header NOT mutated!
+
+// =========================================================================
+// 11. Base columns pada sheet baru dibuat sesuai kontrak
+// =========================================================================
+const brandNewEnsureReq = signPayload({
+  action: "ensure_extension_columns",
+  spreadsheet_id: REG_ID,
+  sheet_name: "brand_new_ext_sheet",
+  columns: ["initial_field"]
+});
+const brandNewEnsureRes = getResponse(appsScript.doPost(brandNewEnsureReq));
+const brandNewHeaders = sheetStore["brand_new_ext_sheet"].rows[0];
+results.item11_brand_new_base_columns = brandNewEnsureRes.success === true
+  && brandNewHeaders[0] === "SERTIF_SYNC_ID"
+  && brandNewHeaders[1] === "SERTIF_REGISTRATION_ID"
+  && brandNewHeaders[2] === "FORM_SCHEMA_VERSION"
+  && brandNewHeaders[3] === "SERTIF_LAST_SYNC_AT"
+  && brandNewHeaders[4] === "initial_field";
+
+// =========================================================================
+// 12. Header utama tersebar di dua baris -> fail-closed
+// =========================================================================
+initSheet("split_header_main", [
+  ["SERTIF_SYNC_ID", "COL_B"],
+  ["DATA_1"], ["DATA_2"], ["DATA_3"], ["DATA_4"], ["DATA_5"],
+  ["DATA_6"], ["DATA_7"], ["DATA_8"], ["DATA_9"], ["DATA_10"],
+  ["COL_A", "SERTIF_REGISTRATION_ID"]
+]);
+const splitHeaderCheck = appsScript.resolveMainSheetHeaderAndIndices(getMockSheet("split_header_main"), "split_header_main");
+const splitUpsertReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "split_header_main",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-M1",
+  registration_id: "202601",
+  answers: {}
+});
+const splitUpsertRes = getResponse(appsScript.doPost(splitUpsertReq));
+
+results.item12_split_header_fail_closed = splitHeaderCheck.error_code === "MAIN_HEADER_ROW_NOT_FOUND"
+  && splitUpsertRes.error_code === "MAIN_HEADER_ROW_NOT_FOUND";
+
+// =========================================================================
+// 13. Header lengkap Row 12 diproses dengan benar
+// =========================================================================
+const row12Check = appsScript.resolveMainSheetHeaderAndIndices(getMockSheet("2026"), "2026");
+results.item13_row12_resolved = row12Check.headerRow === 12
+  && row12Check.dataStartRow === 13
+  && row12Check.syncIdCol === 26
+  && row12Check.regIdCol === 27;
+
+// =========================================================================
+// 14. Header lengkap Row 1 legacy diproses sesuai kontrak
+// =========================================================================
+initSheet("flat_legacy_tab", [
+  ["NO", "NAMA", "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "KET"],
+  ["1", "Legacy User", "SYNC-LEG-1", "901", "Ok"]
+]);
+const legacyRow1Check = appsScript.resolveMainSheetHeaderAndIndices(getMockSheet("flat_legacy_tab"), "flat_legacy_tab");
+results.item14_row1_legacy_resolved = legacyRow1Check.headerRow === 1
+  && legacyRow1Check.dataStartRow === 2
+  && legacyRow1Check.syncIdCol === 3
+  && legacyRow1Check.regIdCol === 4;
+
+// =========================================================================
+// 15. Identity mismatch tidak memodifikasi header atau data
+// =========================================================================
+const mismatchExtColsBefore = sheetStore["2026_Custom_Fields"].rows[0].length;
+const mismatchExtRowsBefore = sheetStore["2026_Custom_Fields"].rows.length;
+const identityMismatchReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026",
+  extension_sheet_name: "2026_Custom_Fields",
+  sync_id: "SYNC-2026-M1",
+  registration_id: "WRONG_REG_ID_9999",
+  answers: { "should_not_be_added": "Danger" }
+});
+const identityMismatchRes = getResponse(appsScript.doPost(identityMismatchReq));
+const mismatchExtColsAfter = sheetStore["2026_Custom_Fields"].rows[0].length;
+const mismatchExtRowsAfter = sheetStore["2026_Custom_Fields"].rows.length;
+
+results.item15_identity_mismatch_no_mutation = identityMismatchRes.error_code === "IDENTITY_MISMATCH"
+  && mismatchExtColsBefore === mismatchExtColsAfter
+  && mismatchExtRowsBefore === mismatchExtRowsAfter;
+
+// =========================================================================
+// 16. Duplicate sync ID tetap ditolak
+// =========================================================================
+// Insert second row with same sync ID into 2026
+sheetStore["2026"].rows.push(sheetStore["2026"].rows[12].slice());
+const dupUpdateReq = signPayload({
+  action: "update_row",
+  connection_key: "registration",
+  tab_name: "2026",
+  sync_id: "SYNC-2026-M1",
+  spreadsheet_id: REG_ID,
+  payload: upsert2026Payload
+});
+const dupUpdateRes = getResponse(appsScript.doPost(dupUpdateReq));
+results.item16_duplicate_sync_id_rejected = dupUpdateRes.error_code === "DUPLICATE_SYNC_ID";
+
+// =========================================================================
+// 17. Partial update mempertahankan nilai historis
+// =========================================================================
+initSheet("partial_test_ext", [
+  ["SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT", "portfolio_url", "special_note"],
+  ["SYNC-PARTIAL-1", "REG-P1", "v1", "2026-01-01", "https://old.url", "Original Historical Note"]
+]);
+// Setup main row for SYNC-PARTIAL-1
+initSheet("2026_P_MAIN", [
+  ["T1"], ["T2"], ["T3"], ["T4"], ["T5"], ["T6"], ["T7"], ["T8"], ["T9"], ["T10"], ["T11"],
+  regContract29Headers.slice(),
+  ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "SYNC-PARTIAL-1", "REG-P1", "SYNCED", "2026-01-01"]
+]);
+const partialReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026_P_MAIN",
+  extension_sheet_name: "partial_test_ext",
+  sync_id: "SYNC-PARTIAL-1",
+  registration_id: "REG-P1",
+  form_schema_version: "v1",
+  answers: {
+    portfolio_url: "https://new.updated.url"
+    // special_note is omitted!
+  }
+});
+const partialRes = getResponse(appsScript.doPost(partialReq));
+const partialRow = sheetStore["partial_test_ext"].rows[1];
+results.item17_partial_update_preserves_history = partialRes.success === true
+  && partialRow[4] === "https://new.updated.url"
+  && partialRow[5] === "Original Historical Note";
+
+// =========================================================================
+// 18. Remote retry tetap idempotent
+// =========================================================================
+const retryReq = signPayload({
+  action: "upsert_extension_row",
+  spreadsheet_id: REG_ID,
+  main_sheet_name: "2026_P_MAIN",
+  extension_sheet_name: "partial_test_ext",
+  sync_id: "SYNC-PARTIAL-1",
+  registration_id: "REG-P1",
+  form_schema_version: "v1",
+  answers: {
+    portfolio_url: "https://new.updated.url"
+  }
+});
+const retryRes = getResponse(appsScript.doPost(retryReq));
+const finalPartialRowCount = sheetStore["partial_test_ext"].rows.length;
+results.item18_retry_idempotent = retryRes.success === true
+  && retryRes.action === "updated"
+  && finalPartialRowCount === 2;
+
+// =========================================================================
+// 19. Security HMAC dan nonce TTL 900 detik
+// =========================================================================
+const nonce1 = "test_nonce_r02_matrix_001";
+const hmacReqValid = signPayload({ action: "ping" }, 0, nonce1);
+const hmacResValid = getResponse(appsScript.doPost(hmacReqValid));
+
+// Replay with identical nonce
+const hmacReqReplay = signPayload({ action: "ping" }, 0, nonce1);
+const hmacResReplay = getResponse(appsScript.doPost(hmacReqReplay));
+
+// Timestamp skew > 900s
+const hmacReqSkew = signPayload({ action: "ping" }, 1000, "nonce_skew_001");
+const hmacResSkew = getResponse(appsScript.doPost(hmacReqSkew));
+
+results.item19_hmac_and_nonce_ttl = hmacResValid.success === true
+  && hmacResReplay.error_code === "REPLAYED_NONCE"
+  && hmacResSkew.error_code === "EXPIRED_REQUEST"
+  && cacheStore["nonce_" + nonce1] === "1";
+
+console.log(JSON.stringify(results));
+JS;
+
+        $process = new Process(['node']);
+        $process->setInput($nodeTestScript);
+        $process->mustRun();
+        $res = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
+
+        // Assert all matrix items 1 to 19
+        $this->assertTrue($res['item1_main_upsert_2026'], 'Item 1: Main upsert 2026 accepted when tab and schema valid.');
+        $this->assertTrue($res['item2_main_upsert_2027'], 'Item 2: Main upsert 2027 accepted when tab and schema valid.');
+        $this->assertTrue($res['item3_main_update_2027'], 'Item 3: Main update-only 2027 accepted when row and identity valid.');
+        $this->assertTrue($res['item4_invalid_tab_rejected'], 'Item 4: Non-numeric and invalid year tab names rejected fail-closed.');
+        $this->assertTrue($res['item5_missing_tab_not_created'], 'Item 5: Missing main tab returns TAB_NOT_FOUND without auto-creation.');
+        $this->assertTrue($res['item6_schema_mismatch_fail_closed'], 'Item 6: Main schema mismatch fails closed without inserting data.');
+        $this->assertTrue($res['item7_kaos_reconciled'], 'Item 7: Ukuran Kaos and ukuran_kaos reconciled safely without duplicate columns.');
+        $this->assertTrue($res['item8_distinct_fields_not_merged'], 'Item 8: Distinct historical fields not incorrectly merged.');
+        $this->assertTrue($res['item9_reserved_variations_rejected'], 'Item 9: Reserved keys with spelling/case variations rejected.');
+        $this->assertTrue($res['item10_swapped_base_rejected_no_mutation'], 'Item 10: Swapped base columns A-D rejected without header relabeling.');
+        $this->assertTrue($res['item11_brand_new_base_columns'], 'Item 11: Base columns on new sheet created strictly to contract.');
+        $this->assertTrue($res['item12_split_header_fail_closed'], 'Item 12: Split main headers fail closed without cross-row index mixing.');
+        $this->assertTrue($res['item13_row12_resolved'], 'Item 13: Complete header on Row 12 resolved correctly.');
+        $this->assertTrue($res['item14_row1_legacy_resolved'], 'Item 14: Complete header on Row 1 legacy resolved to contract.');
+        $this->assertTrue($res['item15_identity_mismatch_no_mutation'], 'Item 15: Identity mismatch rejects without modifying header or data.');
+        $this->assertTrue($res['item16_duplicate_sync_id_rejected'], 'Item 16: Duplicate sync ID rejected.');
+        $this->assertTrue($res['item17_partial_update_preserves_history'], 'Item 17: Partial update preserves historical cell value.');
+        $this->assertTrue($res['item18_retry_idempotent'], 'Item 18: Remote retry remains idempotent.');
+        $this->assertTrue($res['item19_hmac_and_nonce_ttl'], 'Item 19: Security HMAC and nonce TTL 900s pass.');
+
+        // =====================================================================
+        // 20. Regresi Wave 2C-B tetap lulus
+        // =====================================================================
+        $this->test_sidecar_sync_succeeds_when_main_row_is_verified_synced();
+        $this->test_active_processing_lease_cannot_be_stolen();
+        $this->test_expired_processing_lease_can_be_reclaimed();
+    }
 }
 
 

@@ -569,6 +569,8 @@ class RegistrationController extends Controller
             'schedule_shift_readiness.required' => 'Kesanggupan jadwal & shifting wajib dipilih.',
             'has_laptop.required'               => 'Kepemilikan laptop wajib dipilih.',
             'planned_duration.required'         => 'Durasi magang wajib dipilih/diisi.',
+            'birth_place.max'                  => 'Tempat lahir maksimal 100 karakter.',
+            'religion.in'                      => 'Pilihan agama tidak valid.',
             'cv_ktp_portofolio_pdf.mimes'       => 'Berkas lampiran harus berformat PDF.',
             'cv_ktp_portofolio_pdf.max'         => 'Ukuran berkas lampiran maksimal 10MB.',
         ]);
@@ -589,6 +591,31 @@ class RegistrationController extends Controller
             $validated['has_laptop'] = filter_var($validated['has_laptop'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         } else {
             $validated['has_laptop'] = null;
+        }
+
+        // Normalisasi string kosong birth_place & religion ke NULL
+        if (array_key_exists('birth_place', $validated) && trim((string)$validated['birth_place']) === '') {
+            $validated['birth_place'] = null;
+        }
+        if (array_key_exists('religion', $validated) && trim((string)$validated['religion']) === '') {
+            $validated['religion'] = null;
+        }
+
+        // Cegah silent data loss: jika database belum memiliki kolom yang dibutuhkan,
+        // tolak pengisian data baru dengan pesan validasi eksplisit, jangan membuang input secara diam-diam.
+        $hasBirthPlaceCol = Schema::hasColumn('internship_registrations', 'birth_place');
+        $hasReligionCol   = Schema::hasColumn('internship_registrations', 'religion');
+
+        if (!$hasBirthPlaceCol && !empty($validated['birth_place'])) {
+            return back()->withInput()->withErrors([
+                'birth_place' => 'Kolom tempat lahir belum didukung oleh konfigurasi database saat ini.'
+            ]);
+        }
+
+        if (!$hasReligionCol && !empty($validated['religion'])) {
+            return back()->withInput()->withErrors([
+                'religion' => 'Kolom agama belum didukung oleh konfigurasi database saat ini.'
+            ]);
         }
 
         // Checkbox arrays → CSV
@@ -740,6 +767,14 @@ class RegistrationController extends Controller
                         $validated['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $progName, $extra);
                     }
                     unset($validated['study_program']);
+                }
+
+                // Proteksi kompatibilitas environment unmigrated
+                if (!Schema::hasColumn('internship_registrations', 'birth_place')) {
+                    unset($validated['birth_place']);
+                }
+                if (!Schema::hasColumn('internship_registrations', 'religion')) {
+                    unset($validated['religion']);
                 }
 
                 if ($existing) {
@@ -918,6 +953,8 @@ class RegistrationController extends Controller
         return [
             'fullname'                 => 'nullable|string|max:150',
             'born_date'                => 'nullable|string|max:255',
+            'birth_place'              => 'nullable|string|max:100',
+            'religion'                 => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'               => 'nullable|string|max:50',
             'email'                    => 'nullable|string|max:255',
             'gender'                   => 'nullable|string|max:50',

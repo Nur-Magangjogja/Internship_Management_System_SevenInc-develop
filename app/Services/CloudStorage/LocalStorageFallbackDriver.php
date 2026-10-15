@@ -42,7 +42,7 @@ class LocalStorageFallbackDriver implements CloudStorageInterface
         Storage::disk($this->diskName)->put($targetRelativePath, $fileContent);
 
         $fileId = 'local_sim_' . md5($targetRelativePath . time());
-        $simulatedViewUrl = url("storage/{$targetRelativePath}");
+        $simulatedViewUrl = "sertif://simulated-storage/{$targetRelativePath}";
 
         return [
             'file_id'       => $fileId,

@@ -32,6 +32,17 @@ class AppServiceProvider extends ServiceProvider
 
         // S17.18G.4R Fix 3: Scoped binding — fresh per request/job cycle, avoiding cross-request state leakage
         $this->app->scoped(\App\Services\FormBuilderService::class);
+
+        // Phase C.3B.1 & C.3B.3A: Absen Outbound Transport binding with fail-closed default
+        $this->app->bind(
+            \App\Services\AbsenIntegration\Transports\AbsenOutboundTransportInterface::class,
+            function ($app) {
+                if (config('services.absen_djuragan.outbound_enabled', false)) {
+                    return $app->make(\App\Services\AbsenIntegration\Transports\AbsenHttpOutboundTransport::class);
+                }
+                return new \App\Services\AbsenIntegration\Transports\DisabledAbsenOutboundTransport();
+            }
+        );
     }
 
     /**

@@ -17,7 +17,13 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Pemrosesan transactional outbox Absen Djuragan jika outbox aktif
+        if (config('services.absen_djuragan.outbox_enabled', false)) {
+            $schedule->command('absen:process-outbox --limit=50')
+                ->everyMinute()
+                ->withoutOverlapping()
+                ->runInBackground();
+        }
     }
 
     /**

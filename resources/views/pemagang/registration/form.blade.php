@@ -239,6 +239,36 @@
             </div>
           </div>
 
+          {{-- Tempat Lahir & Agama (Hanya ditampilkan jika kolom schema telah tersedia) --}}
+          @php
+            $hasBirthPlaceCol = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place');
+            $hasReligionCol   = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion');
+          @endphp
+          @if($hasBirthPlaceCol || $hasReligionCol)
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @if($hasBirthPlaceCol)
+            <div>
+              <label class="{{ $label }}">Tempat Lahir</label>
+              <input type="text" name="birth_place" placeholder="Contoh: Sleman" maxlength="100"
+                class="{{ $input }}" value="{{ $old('birth_place') }}">
+              @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+            </div>
+            @endif
+            @if($hasReligionCol)
+            <div>
+              <label class="{{ $label }}">Agama</label>
+              <select name="religion" class="{{ $input }}">
+                <option value="">-- Pilih Agama (Opsional) --</option>
+                @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
+                  <option value="{{ $rel }}" @selected($old('religion') === $rel)>{{ $rel }}</option>
+                @endforeach
+              </select>
+              @error('religion') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+            </div>
+            @endif
+          </div>
+          @endif
+
           {{-- Kota Domisili --}}
           <div>
             <label class="{{ $label }}">Kota Domisili <span class="text-red-500">*</span></label>
@@ -831,7 +861,7 @@
   const MANUAL_DRAFT_KEY = 'sertif_manual_draft_{{ auth()->id() }}';
   const TRANSIENT_YEAR_KEY = 'sertif_year_transient_{{ auth()->id() }}';
   const SAFE_CORE_FIELD_NAMES = [
-    'fullname', 'student_id', 'born_date', 'gender',
+    'fullname', 'student_id', 'born_date', 'birth_place', 'religion', 'gender',
     'phone_number', 'email', 'current_city', 'institution_name',
     'faculty', 'study_program'
   ];

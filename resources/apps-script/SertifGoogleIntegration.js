@@ -414,16 +414,21 @@ function handleUpsertRowAction(payload) {
     }, 400);
   }
 
-  // 4. Strict allowlist validation for tab_name
+  // 4. Strict allowlist validation for tab_name (2020-2099 for registration, explicit string for followup)
   var validTab = false;
-  if (connectionKey === "registration" && targetTabName === "2026") {
-    validTab = true;
+  if (connectionKey === "registration") {
+    if (typeof targetTabName === "string" && /^\d{4}$/.test(targetTabName.trim())) {
+      var yearNum = parseInt(targetTabName.trim(), 10);
+      if (yearNum >= 2020 && yearNum <= 2099) {
+        validTab = true;
+      }
+    }
   } else if (connectionKey === "followup" && targetTabName === "Follow Up Guru Dosen") {
     validTab = true;
   }
 
   if (!validTab) {
-    var expectedTab = (connectionKey === "registration") ? "2026" : "Follow Up Guru Dosen";
+    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit)" : "Follow Up Guru Dosen";
     return createJsonResponse({
       success: false,
       sync_id: syncId,
@@ -482,7 +487,7 @@ function handleUpsertRowAction(payload) {
   var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
-  if (connectionKey === "registration" || targetTabName === "2026") {
+  if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
     headerRowIndex = 12;
   }
 
@@ -710,16 +715,21 @@ function handleUpdateRowAction(payload) {
     }, 400);
   }
 
-  // 4. Strict allowlist validation for tab_name
+  // 4. Strict allowlist validation for tab_name (2020-2099 for registration, explicit string for followup)
   var validTab = false;
-  if (connectionKey === "registration" && targetTabName === "2026") {
-    validTab = true;
+  if (connectionKey === "registration") {
+    if (typeof targetTabName === "string" && /^\d{4}$/.test(targetTabName.trim())) {
+      var yearNum = parseInt(targetTabName.trim(), 10);
+      if (yearNum >= 2020 && yearNum <= 2099) {
+        validTab = true;
+      }
+    }
   } else if (connectionKey === "followup" && targetTabName === "Follow Up Guru Dosen") {
     validTab = true;
   }
 
   if (!validTab) {
-    var expectedTab = (connectionKey === "registration") ? "2026" : "Follow Up Guru Dosen";
+    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit)" : "Follow Up Guru Dosen";
     return createJsonResponse({
       success: false,
       sync_id: syncId,
@@ -778,7 +788,7 @@ function handleUpdateRowAction(payload) {
   var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
-  if (connectionKey === "registration" || targetTabName === "2026") {
+  if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
     headerRowIndex = 12;
   }
 
@@ -975,9 +985,9 @@ function handleUploadAttachmentAction(payload) {
     }, 400);
   }
 
-  var syncId = payload.sync_id;
-  var year = payload.year || new Date().getFullYear().toString();
-  var regId = payload.registration_id || "0";
+  var syncId = (payload.sync_id || "").toString().trim();
+  var year = (payload.year || new Date().getFullYear().toString()).toString().trim();
+  var regId = (payload.registration_id || "0").toString().trim();
   var applicantName = payload.applicant_name || "Pemagang";
   var originalFileName = payload.file_name || "attachment.pdf";
   var mimeType = payload.mime_type || "application/octet-stream";
@@ -991,6 +1001,121 @@ function handleUploadAttachmentAction(payload) {
       is_retryable: false,
       message: "Konten berkas base64 kosong."
     }, 400);
+  }
+
+  // S17.18G.6-D-R04 Section 4: Checksum & Version Integrity Verification
+  var expectedChecksum = (payload.file_checksum || "").toLowerCase().trim();
+  if (!expectedChecksum || !/^[a-f0-9]{64}$/.test(expectedChecksum)) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "INVALID_CHECKSUM",
+      is_retryable: false,
+      message: "Parameter file_checksum wajib berupa SHA-256 hex string 64 karakter valid."
+    }, 400);
+  }
+
+  // 1. Decode base64
+  var decodedBytes = null;
+  try {
+    decodedBytes = Utilities.base64Decode(base64Data);
+  } catch (decErr) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "BASE64_DECODE_ERROR",
+      is_retryable: false,
+      message: "Gagal mendecode konten berkas base64: " + decErr.toString()
+    }, 400);
+  }
+
+  // 2. Compute SHA-256 byte digest using Apps Script crypto utility
+  var actualFileChecksum = null;
+  try {
+    var digestBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, decodedBytes);
+    actualFileChecksum = bytesToHex(digestBytes).toLowerCase();
+  } catch (digErr) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "DIGEST_ERROR",
+      is_retryable: false,
+      message: "Gagal menghitung digest SHA-256 berkas: " + digErr.toString()
+    }, 500);
+  }
+
+  // 3. Compare computed digest with payload.file_checksum
+  if (actualFileChecksum !== expectedChecksum) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "CHECKSUM_MISMATCH",
+      is_retryable: false,
+      message: "Checksum SHA-256 byte berkas (" + actualFileChecksum + ") tidak cocok dengan payload file_checksum (" + expectedChecksum + ")."
+    }, 400);
+  }
+
+  // 4. Verify content_version matches prefix of checksum (16 chars)
+  var contentVersion = (payload.content_version || "").toLowerCase().trim();
+  var expectedVersion = actualFileChecksum.substring(0, 16);
+  if (!contentVersion || contentVersion !== expectedVersion) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "CONTENT_VERSION_MISMATCH",
+      is_retryable: false,
+      message: "Parameter content_version (" + contentVersion + ") tidak sesuai dengan prefix SHA-256 (" + expectedVersion + ")."
+    }, 400);
+  }
+
+  // 5. Ensure registration_id, attachment_id, and sync_id are bound properly
+  var attId = (payload.attachment_id || "").toString().trim();
+  if (!attId && syncId) {
+    var syncParts = syncId.split("-");
+    if (syncParts.length >= 3) {
+      attId = syncParts[2];
+    }
+  }
+
+  if (!regId || regId === "0" || !attId) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "INVALID_IDENTITY",
+      is_retryable: false,
+      message: "registration_id dan attachment_id wajib diisi secara valid."
+    }, 400);
+  }
+
+  var expectedSyncId = "ATT-" + regId + "-" + attId + "-v" + expectedVersion;
+  if (syncId !== expectedSyncId) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "SYNC_IDENTITY_MISMATCH",
+      is_retryable: false,
+      message: "sync_id (" + syncId + ") tidak terikat ke format deterministik (" + expectedSyncId + ")."
+    }, 400);
+  }
+
+  if (typeof LockService === "undefined" || !LockService.getScriptLock) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "LOCK_SERVICE_UNAVAILABLE",
+      is_retryable: true,
+      message: "Layanan LockService Google Apps Script tidak tersedia di lingkungan ini."
+    }, 503);
+  }
+
+  if (typeof DriveApp === "undefined" || !DriveApp.getFolderById) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "DRIVE_SERVICE_UNAVAILABLE",
+      is_retryable: true,
+      message: "Layanan DriveApp Google tidak tersedia di lingkungan ini."
+    }, 503);
   }
 
   var lock = LockService.getScriptLock();
@@ -1021,13 +1146,50 @@ function handleUploadAttachmentAction(payload) {
     var targetFolderName = cleanApplicantName + "_REG" + regId;
     var targetFolder = getOrCreateSubFolder(yearFolder, targetFolderName);
 
-    // Idempotency check: check if file with this sync identity already exists
+    // Idempotency check: check if file with this sync identity & verified checksum already exists
     var safeFilePrefix = syncId + "_";
     var existingFiles = targetFolder.getFiles();
     while (existingFiles.hasNext()) {
       var file = existingFiles.next();
-      if (file.getName().indexOf(safeFilePrefix) === 0 || file.getDescription() === syncId) {
-        // File already exists -> return existing file reference without creating duplicate
+      var fName = file.getName() || "";
+      var desc = (file.getDescription() || "").trim();
+
+      // Check if this remote file matches the exact sync identity & content version
+      var isSameVersionIdentity = (fName.indexOf(safeFilePrefix) === 0 ||
+                                   desc.indexOf(":sync_id=" + syncId) !== -1 ||
+                                   desc.indexOf(syncId) !== -1);
+
+      if (isSameVersionIdentity) {
+        // Extract remote checksum from description: "sertif_sync:reg=...:att=...:sha256=...:sync_id=..."
+        var remoteChecksum = null;
+        var match = desc.match(/sha256=([a-f0-9]{64})/i);
+        if (match) {
+          remoteChecksum = match[1].toLowerCase();
+        }
+
+        // Blocker A (Req 1, 2, 3, 4): Jika identitas versi sama tetapi metadata checksum tidak dapat diverifikasi -> FAIL CLOSED!
+        if (!remoteChecksum) {
+          return createJsonResponse({
+            success: false,
+            sync_id: syncId,
+            error_code: "REMOTE_IDENTITY_UNVERIFIABLE",
+            is_retryable: false,
+            message: "Berkas remote dengan identitas versi sama ('" + syncId + "') ditemukan namun metadata checksum tidak dapat diverifikasi."
+          }, 422);
+        }
+
+        // Blocker A (Req 3): Jika identitas versi sama namun checksum remote berbeda -> FAIL CLOSED (conflict)!
+        if (remoteChecksum !== actualFileChecksum) {
+          return createJsonResponse({
+            success: false,
+            sync_id: syncId,
+            error_code: "REMOTE_IDENTITY_CONFLICT",
+            is_retryable: false,
+            message: "Konflik berkas remote: berkas dengan identitas versi sama memiliki checksum remote (" + remoteChecksum + ") yang berbeda dari checksum lokal (" + actualFileChecksum + ")."
+          }, 422);
+        }
+
+        // Blocker A (Req 6): Identitas sama dan SHA256 terbukti sama -> reuse secara idempotent
         return createJsonResponse({
           success: true,
           action: "upload_attachment",
@@ -1041,13 +1203,14 @@ function handleUploadAttachmentAction(payload) {
       }
     }
 
-    // Decode and save new file
-    var decodedBytes = Utilities.base64Decode(base64Data);
+    // Decode and save new file version (using verified decodedBytes and verified actualFileChecksum)
     var uniqueFileName = safeFilePrefix + originalFileName;
     var blob = Utilities.newBlob(decodedBytes, mimeType, uniqueFileName);
     
     var createdFile = targetFolder.createFile(blob);
-    createdFile.setDescription(syncId);
+    if (createdFile && typeof createdFile.setDescription === "function") {
+      createdFile.setDescription("sertif_sync:reg=" + regId + ":att=" + attId + ":sha256=" + actualFileChecksum + ":sync_id=" + syncId);
+    }
 
     // Keep file permissions strictly restricted (inherit from folder)
     return createJsonResponse({
@@ -1069,7 +1232,11 @@ function handleUploadAttachmentAction(payload) {
       message: "Gagal menyimpan berkas ke Google Drive: " + err.toString()
     }, 500);
   } finally {
-    lock.releaseLock();
+    if (lockAcquired && lock) {
+      try {
+        lock.releaseLock();
+      } catch (e) {}
+    }
   }
 }
 
@@ -1290,6 +1457,129 @@ function resolveSpreadsheetForSidecar(payload) {
 }
 
 /**
+ * Canonical identity normalization for field_key and extension column headers (S17.18G.6-C-R02).
+ * Normalizes case, trims whitespace, maps spaces/dots/hyphens to underscores, collapses consecutive
+ * underscores, and removes disallowed punctuation, conforming to FormBuilder field_key standards.
+ * Guarantees that 'Ukuran Kaos', 'ukuran_kaos', 'UKURAN_KAOS', and 'Ukuran-Kaos' resolve to the exact same canonical identity 'ukuran_kaos'.
+ */
+function normalizeCanonicalFieldKey(key) {
+  if (key === undefined || key === null) return "";
+  var str = key.toString().trim().toLowerCase();
+  if (str === "") return "";
+  str = str.replace(/[\s\.\-]+/g, "_");
+  str = str.replace(/[^a-z0-9_]/g, "");
+  str = str.replace(/_+/g, "_");
+  str = str.replace(/^_+|_+$/g, "");
+  return str;
+}
+
+/**
+ * Reserved column keys that cannot be added as custom fields in extension tabs (S17.18G.6-C-R02)
+ * Derived from SertIF Core and Spreadsheet Reserved Keys specifications.
+ */
+var RESERVED_EXTENSION_KEYS = [
+  "timestamp", "nama_lengkap", "nim", "program_studi", "email", "jenis_kelamin",
+  "no_hp", "asal_sekolah", "asal_kampus", "kota_tinggal", "alasan_magang",
+  "jenis_magang", "status_saat_ini", "kesiapan_wfo", "dosen_pembimbing",
+  "kesanggupan_jadwal", "laptop_sendiri", "alat_dimiliki", "rencana_mulai",
+  "durasi_magang", "sumber_info", "instagram", "info_kost", "program_minat",
+  "upload_pdf", "ket", "catatan", "no", "nama", "whatsapp", "phone", "divisi",
+  "fullname", "student_id", "born_date", "institution_name", "faculty",
+  "study_program", "current_city", "gender", "phone_number", "internship_interest",
+  "start_date", "end_date", "internship_type", "internship_arrangement",
+  "current_status", "wfo_readiness", "schedule_shift_readiness", "has_laptop",
+  "planned_duration", "cv_ktp_portofolio_pdf", "profile_photo", "design_software",
+  "video_software", "programming_languages", "digital_marketing_type",
+  "owned_tools", "supervisor_name", "supervisor_contact", "current_activities",
+  "boarding_info", "social_media_instagram", "internship_info_sources",
+  "sertif_sync_id", "sertif_registration_id", "sertif_sync_status", "sertif_last_sync_at",
+  "form_schema_version"
+];
+
+function isReservedExtensionKey(keyName) {
+  if (!keyName) return true;
+  var cleanKey = normalizeCanonicalFieldKey(keyName);
+  if (!cleanKey) return true;
+  for (var i = 0; i < RESERVED_EXTENSION_KEYS.length; i++) {
+    if (normalizeCanonicalFieldKey(RESERVED_EXTENSION_KEYS[i]) === cleanKey) return true;
+  }
+  return false;
+}
+
+/**
+ * Dynamic resolution of main sheet header row and identity column indices (S17.18G.6-C-R02)
+ * Supports standard year sheets (headers on row 12) and flat/legacy sheets (headers on row 1).
+ * Never assumes hardcoded column indices or falls back to columns 26/27.
+ * Strictly requires both SERTIF_SYNC_ID and SERTIF_REGISTRATION_ID on the EXACT SAME row (no cross-row mixing).
+ */
+function resolveMainSheetHeaderAndIndices(mainSheet, mainSheetName) {
+  var lastRow = mainSheet.getLastRow();
+  var lastCol = mainSheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) {
+    return {
+      error_code: "MAIN_ROW_NOT_FOUND",
+      message: "Tab utama '" + mainSheetName + "' kosong. Baris utama tidak ditemukan."
+    };
+  }
+
+  // Prefer row 12 for standard 4-digit registration year tabs, row 1 for other/flat tabs
+  var candidateRows = [];
+  if (/^\d{4}$/.test(mainSheetName)) {
+    candidateRows = [12, 1];
+  } else {
+    candidateRows = [1, 12];
+  }
+  for (var r = 2; r <= Math.min(lastRow, 15); r++) {
+    if (candidateRows.indexOf(r) === -1) {
+      candidateRows.push(r);
+    }
+  }
+
+  var resolvedHeaderRow = -1;
+  var syncIdCol = -1;
+  var regIdCol = -1;
+
+  for (var cIdx = 0; cIdx < candidateRows.length; cIdx++) {
+    var rowNum = candidateRows[cIdx];
+    if (rowNum > lastRow) continue;
+    var rowValues = mainSheet.getRange(rowNum, 1, 1, lastCol).getValues()[0];
+    var sCol = -1;
+    var rCol = -1;
+    for (var col = 0; col < rowValues.length; col++) {
+      var hClean = (rowValues[col] !== null && rowValues[col] !== undefined)
+        ? rowValues[col].toString().trim()
+        : "";
+      if (/^sertif_sync_id$/i.test(hClean)) sCol = col + 1;
+      if (/^sertif_registration_id$/i.test(hClean)) rCol = col + 1;
+    }
+    // CONTRACT: BOTH SERTIF_SYNC_ID and SERTIF_REGISTRATION_ID MUST be found on the SAME row!
+    if (sCol !== -1 && rCol !== -1) {
+      resolvedHeaderRow = rowNum;
+      syncIdCol = sCol;
+      regIdCol = rCol;
+      break;
+    }
+  }
+
+  // Cross-row mixing is strictly prohibited: if not found on the exact same row, fail-closed!
+  if (resolvedHeaderRow === -1 || syncIdCol === -1 || regIdCol === -1) {
+    return {
+      error_code: "MAIN_HEADER_ROW_NOT_FOUND",
+      message: "Tidak ditemukan satu baris header valid yang memuat sekaligus kolom SERTIF_SYNC_ID dan SERTIF_REGISTRATION_ID pada tab utama '" + mainSheetName + "'."
+    };
+  }
+
+  return {
+    headerRow: resolvedHeaderRow,
+    dataStartRow: resolvedHeaderRow + 1,
+    syncIdCol: syncIdCol,
+    regIdCol: regIdCol,
+    lastRow: lastRow,
+    lastCol: lastCol
+  };
+}
+
+/**
  * Handle ensure_extension_columns Action (S17.18D.3)
  * Menjamin tab ekstensi (default: 2026_Custom_Fields) dan kolom field_key terbitan tersedia.
  */
@@ -1334,51 +1624,61 @@ function handleEnsureExtensionColumnsAction(payload) {
     var sheet = ss.getSheetByName(sheetName);
     var baseColumns = ["SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT"];
 
+    var isNewSheet = false;
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
-      sheet.getRange(1, 1, 1, baseColumns.length).setValues([baseColumns]);
+      isNewSheet = true;
     }
 
     var lastCol = sheet.getLastColumn();
+    var lastRow = sheet.getLastRow();
     var existingHeaders = [];
-    if (lastCol > 0) {
-      var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-      for (var i = 0; i < headerValues.length; i++) {
-        existingHeaders.push(headerValues[i].toString().trim());
-      }
-    } else {
+
+    if (isNewSheet || lastCol === 0 || lastRow === 0) {
+      // Penulisan base columns hanya diizinkan pada sheet baru atau sheet yang masih kosong
       sheet.getRange(1, 1, 1, baseColumns.length).setValues([baseColumns]);
       existingHeaders = baseColumns.slice();
       lastCol = baseColumns.length;
-    }
+    } else {
+      var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      for (var i = 0; i < headerValues.length; i++) {
+        existingHeaders.push((headerValues[i] !== null && headerValues[i] !== undefined) ? headerValues[i].toString().trim() : "");
+      }
 
-    // Verifikasi kolom dasar A-D
-    for (var b = 0; b < baseColumns.length; b++) {
-      if (existingHeaders[b] !== baseColumns[b]) {
-        sheet.getRange(1, b + 1).setValue(baseColumns[b]);
-        existingHeaders[b] = baseColumns[b];
+      // Verifikasi kolom dasar A-D pada sheet existing: DILARANG menimpa/mengacak header yang sudah ada!
+      // Jika posisi atau identitas base columns tidak sesuai kontrak -> FAIL-CLOSED (422)
+      for (var b = 0; b < baseColumns.length; b++) {
+        var actualBase = (existingHeaders[b] !== undefined) ? existingHeaders[b] : "";
+        if (actualBase !== baseColumns[b]) {
+          return createJsonResponse({
+            success: false,
+            error_code: "BASE_COLUMNS_MISMATCH",
+            is_retryable: false,
+            message: "Posisi atau identitas base columns pada tab ekstensi '" + sheetName + "' tidak sesuai kontrak (kolom " + (b + 1) + " diharapkan '" + baseColumns[b] + "', ditemukan '" + actualBase + "'). Menolak mutasi untuk melindungi integritas data."
+          }, 422);
+        }
       }
     }
 
-    // Tambahkan kolom baru yang belum ada di headers (cegah benturan reserved base columns)
+    // Tambahkan kolom baru yang belum ada di headers (cegah benturan reserved keys & semantic field identity collision)
     var requestedColumns = payload.columns || [];
     var addedColumns = [];
     for (var c = 0; c < requestedColumns.length; c++) {
-      var colKey = requestedColumns[c].toString().trim();
+      var colKey = (requestedColumns[c] !== null && requestedColumns[c] !== undefined)
+        ? requestedColumns[c].toString().trim()
+        : "";
       if (!colKey) continue;
 
-      var isBaseCol = false;
-      for (var bk = 0; bk < baseColumns.length; bk++) {
-        if (baseColumns[bk].toLowerCase() === colKey.toLowerCase()) {
-          isBaseCol = true;
-          break;
-        }
-      }
-      if (isBaseCol) continue;
+      // Cegah penambahan reserved base columns atau reserved spreadsheet keys
+      if (isReservedExtensionKey(colKey)) continue;
 
+      var canonColKey = normalizeCanonicalFieldKey(colKey);
+      if (!canonColKey) continue;
+
+      // Canonical duplicate check terhadap headers yang sudah ada (misal 'Ukuran Kaos' vs 'ukuran_kaos')
       var found = false;
       for (var e = 0; e < existingHeaders.length; e++) {
-        if (existingHeaders[e].toLowerCase() === colKey.toLowerCase()) {
+        if (normalizeCanonicalFieldKey(existingHeaders[e]) === canonColKey) {
           found = true;
           break;
         }
@@ -1474,7 +1774,7 @@ function handleUpsertExtensionRowAction(payload) {
       }, 400);
     }
 
-    // 1. REMOTE IDENTITY VERIFICATION: Verifikasi Baris Utama (Main.Z = sync_id, Main.AA = registrationId)
+    // 1. REMOTE IDENTITY VERIFICATION: Verifikasi Baris Utama secara Dinamis
     var mainSheetName = payload.main_sheet_name || "2026";
     var mainSheet = ss.getSheetByName(mainSheetName);
     if (!mainSheet) {
@@ -1486,52 +1786,36 @@ function handleUpsertExtensionRowAction(payload) {
       }, 404);
     }
 
-    var mainLastRow = mainSheet.getLastRow();
-    var mainLastCol = mainSheet.getLastColumn();
-    if (mainLastRow <= 1) {
+    var headerInfo = resolveMainSheetHeaderAndIndices(mainSheet, mainSheetName);
+    if (headerInfo.error_code) {
+      return createJsonResponse({
+        success: false,
+        error_code: headerInfo.error_code,
+        is_retryable: false,
+        message: headerInfo.message
+      }, 422);
+    }
+
+    var mainLastRow = headerInfo.lastRow;
+    var dataStartRow = headerInfo.dataStartRow;
+    var mainSyncIdCol = headerInfo.syncIdCol;
+    var mainRegIdCol = headerInfo.regIdCol;
+
+    if (mainLastRow < dataStartRow) {
       return createJsonResponse({
         success: false,
         error_code: "MAIN_ROW_NOT_FOUND",
         is_retryable: false,
-        message: "Tab utama '" + mainSheetName + "' kosong. Baris utama tidak ditemukan."
+        message: "Tab utama '" + mainSheetName + "' tidak memiliki data baris registrasi."
       }, 422);
     }
 
-    var mainHeaders = mainSheet.getRange(1, 1, 1, mainLastCol).getValues()[0];
-    var mainSyncIdCol = -1;
-    var mainRegIdCol = -1;
-    for (var m = 0; m < mainHeaders.length; m++) {
-      var hClean = mainHeaders[m].toString().trim();
-      if (/^sertif_sync_id$/i.test(hClean)) mainSyncIdCol = m + 1;
-      if (/^sertif_registration_id$/i.test(hClean)) mainRegIdCol = m + 1;
-    }
-
-    if (mainSyncIdCol === -1 && mainLastCol >= 26) mainSyncIdCol = 26;
-    if (mainRegIdCol === -1 && mainLastCol >= 27) mainRegIdCol = 27;
-
-    if (mainSyncIdCol === -1) {
-      return createJsonResponse({
-        success: false,
-        error_code: "MAIN_SYNC_ID_COLUMN_MISSING",
-        is_retryable: false,
-        message: "Kolom SERTIF_SYNC_ID tidak ditemukan pada tab utama '" + mainSheetName + "'."
-      }, 422);
-    }
-
-    if (mainRegIdCol === -1) {
-      return createJsonResponse({
-        success: false,
-        error_code: "MAIN_REG_ID_COLUMN_MISSING",
-        is_retryable: false,
-        message: "Kolom SERTIF_REGISTRATION_ID tidak ditemukan pada tab utama '" + mainSheetName + "'."
-      }, 422);
-    }
-
-    var mainSyncValues = mainSheet.getRange(2, mainSyncIdCol, mainLastRow - 1, 1).getValues();
+    var numDataRows = mainLastRow - dataStartRow + 1;
+    var mainSyncValues = mainSheet.getRange(dataStartRow, mainSyncIdCol, numDataRows, 1).getValues();
     var matchingMainRows = [];
     for (var mr = 0; mr < mainSyncValues.length; mr++) {
       if (mainSyncValues[mr][0] && mainSyncValues[mr][0].toString().trim() === syncId) {
-        matchingMainRows.push(mr + 2);
+        matchingMainRows.push(mr + dataStartRow);
       }
     }
 
@@ -1574,7 +1858,7 @@ function handleUpsertExtensionRowAction(payload) {
     }
 
     // 2. REMOTE IDENTITY VERIFICATION: Verifikasi Tab Ekstensi SEBELUM MODIFIKASI HEADER (R02 Fix 4)
-    var extSheetName = payload.extension_sheet_name || "2026_Custom_Fields";
+    var extSheetName = payload.extension_sheet_name || (mainSheetName + "_Custom_Fields");
     var extSheet = ss.getSheetByName(extSheetName);
     var baseColumns = ["SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "FORM_SCHEMA_VERSION", "SERTIF_LAST_SYNC_AT"];
 
@@ -1585,6 +1869,24 @@ function handleUpsertExtensionRowAction(payload) {
     if (extSheet) {
       extLastRow = extSheet.getLastRow();
       extLastCol = extSheet.getLastColumn();
+
+      // Verifikasi base columns A-D SEBELUM membaca data atau memodifikasi sheet!
+      if (extLastCol > 0) {
+        var curBaseHeaders = extSheet.getRange(1, 1, 1, Math.min(extLastCol, baseColumns.length)).getValues()[0];
+        for (var b = 0; b < baseColumns.length; b++) {
+          var actBase = (curBaseHeaders[b] !== undefined && curBaseHeaders[b] !== null)
+            ? curBaseHeaders[b].toString().trim()
+            : "";
+          if (actBase !== baseColumns[b]) {
+            return createJsonResponse({
+              success: false,
+              error_code: "BASE_COLUMNS_MISMATCH",
+              is_retryable: false,
+              message: "Posisi atau identitas base columns pada tab ekstensi '" + extSheetName + "' tidak sesuai kontrak (kolom " + (b + 1) + " diharapkan '" + baseColumns[b] + "', ditemukan '" + actBase + "'). Menolak mutasi untuk melindungi integritas data."
+            }, 422);
+          }
+        }
+      }
 
       if (extLastRow > 1) {
         var sidecarSyncValues = extSheet.getRange(2, 1, extLastRow - 1, 1).getValues();
@@ -1621,50 +1923,51 @@ function handleUpsertExtensionRowAction(payload) {
     }
 
     // 3. SEMUA PENGECEKAN PRA-SYARAT LOLOS -> BARU INISIALISASI / MODIFIKASI HEADER EKSTENSI
+    var isNewExtSheet = false;
     if (!extSheet) {
       extSheet = ss.insertSheet(extSheetName);
-      extSheet.getRange(1, 1, 1, baseColumns.length).setValues([baseColumns]);
-      extLastRow = 1;
-      extLastCol = baseColumns.length;
+      isNewExtSheet = true;
     }
 
     var extHeaders = [];
-    if (extLastCol > 0) {
-      var extHeaderRow = extSheet.getRange(1, 1, 1, extLastCol).getValues()[0];
-      for (var h = 0; h < extHeaderRow.length; h++) {
-        extHeaders.push(extHeaderRow[h].toString().trim());
-      }
-    } else {
+    if (isNewExtSheet || extLastCol === 0 || extLastRow === 0) {
       extSheet.getRange(1, 1, 1, baseColumns.length).setValues([baseColumns]);
       extHeaders = baseColumns.slice();
+      extLastRow = 1;
       extLastCol = baseColumns.length;
-    }
-
-    // Pastikan baseColumns di 4 kolom pertama
-    for (var b = 0; b < baseColumns.length; b++) {
-      if (extHeaders[b] !== baseColumns[b]) {
-        extSheet.getRange(1, b + 1).setValue(baseColumns[b]);
-        extHeaders[b] = baseColumns[b];
+    } else {
+      var extHeaderRow = extSheet.getRange(1, 1, 1, extLastCol).getValues()[0];
+      for (var h = 0; h < extHeaderRow.length; h++) {
+        extHeaders.push((extHeaderRow[h] !== null && extHeaderRow[h] !== undefined) ? extHeaderRow[h].toString().trim() : "");
+      }
+      // Dilarang menimpa base columns jika sudah ada di sheet!
+      for (var b = 0; b < baseColumns.length; b++) {
+        if (extHeaders[b] !== baseColumns[b]) {
+          return createJsonResponse({
+            success: false,
+            error_code: "BASE_COLUMNS_MISMATCH",
+            is_retryable: false,
+            message: "Posisi atau identitas base columns pada tab ekstensi '" + extSheetName + "' tidak sesuai kontrak."
+          }, 422);
+        }
       }
     }
 
     var answerKeys = Object.keys(answers);
     for (var k = 0; k < answerKeys.length; k++) {
-      var keyName = answerKeys[k].toString().trim();
+      var keyName = (answerKeys[k] !== null && answerKeys[k] !== undefined)
+        ? answerKeys[k].toString().trim()
+        : "";
       if (!keyName) continue;
 
-      var isBaseKey = false;
-      for (var bk = 0; bk < baseColumns.length; bk++) {
-        if (baseColumns[bk].toLowerCase() === keyName.toLowerCase()) {
-          isBaseKey = true;
-          break;
-        }
-      }
-      if (isBaseKey) continue;
+      if (isReservedExtensionKey(keyName)) continue;
+
+      var canonKey = normalizeCanonicalFieldKey(keyName);
+      if (!canonKey) continue;
 
       var keyFound = false;
       for (var eh = 0; eh < extHeaders.length; eh++) {
-        if (extHeaders[eh].toLowerCase() === keyName.toLowerCase()) {
+        if (normalizeCanonicalFieldKey(extHeaders[eh]) === canonKey) {
           keyFound = true;
           break;
         }
@@ -1677,6 +1980,15 @@ function handleUpsertExtensionRowAction(payload) {
     }
 
     // 4. SUSUN ROW VALUES DAN TULIS / PERBARUI BARIS EKSTENSI
+    var existingRowValues = [];
+    if (matchingSidecarRows.length === 1) {
+      var existingRowIndex = matchingSidecarRows[0];
+      var currentExtCols = extSheet.getLastColumn();
+      if (currentExtCols > 0) {
+        existingRowValues = extSheet.getRange(existingRowIndex, 1, 1, currentExtCols).getValues()[0];
+      }
+    }
+
     var rowValues = [];
     for (var colIdx = 0; colIdx < extHeaders.length; colIdx++) {
       var headerName = extHeaders[colIdx];
@@ -1691,16 +2003,35 @@ function handleUpsertExtensionRowAction(payload) {
       } else {
         var val = answers[headerName];
         if (val === undefined) {
-          var lowerHeader = headerName.toLowerCase();
+          var canonHeader = normalizeCanonicalFieldKey(headerName);
           for (var ak = 0; ak < answerKeys.length; ak++) {
-            if (answerKeys[ak].toLowerCase() === lowerHeader) {
+            if (normalizeCanonicalFieldKey(answerKeys[ak]) === canonHeader) {
               val = answers[answerKeys[ak]];
               break;
             }
           }
         }
-        var finalVal = (val !== null && val !== undefined) ? (Array.isArray(val) ? JSON.stringify(val) : val.toString()) : "";
-        rowValues.push(finalVal);
+
+        if (matchingSidecarRows.length === 1) {
+          // UPDATE: Preserve historical answer when field is omitted from answers (val === undefined)
+          if (val === undefined) {
+            var priorVal = (existingRowValues.length > colIdx && existingRowValues[colIdx] !== null && existingRowValues[colIdx] !== undefined)
+              ? existingRowValues[colIdx]
+              : "";
+            rowValues.push(priorVal);
+          } else if (val === null || val === "") {
+            rowValues.push("");
+          } else {
+            var formattedVal = Array.isArray(val) ? JSON.stringify(val) : val.toString();
+            rowValues.push(formattedVal);
+          }
+        } else {
+          // INSERT: New sidecar row
+          var finalVal = (val !== null && val !== undefined)
+            ? (Array.isArray(val) ? JSON.stringify(val) : val.toString())
+            : "";
+          rowValues.push(finalVal);
+        }
       }
     }
 
@@ -1762,7 +2093,7 @@ function handleInspectSidecarAlignmentAction(payload) {
 
     var ss = resolved.spreadsheet;
     var mainSheetName = payload.main_sheet_name || "2026";
-    var extSheetName = payload.extension_sheet_name || "2026_Custom_Fields";
+    var extSheetName = payload.extension_sheet_name || (mainSheetName + "_Custom_Fields");
     var syncId = (payload.sync_id || "").toString().trim();
 
     var mainSheet = ss.getSheetByName(mainSheetName);
@@ -1777,26 +2108,24 @@ function handleInspectSidecarAlignmentAction(payload) {
       }, 404);
     }
 
-    var mainLastRow = mainSheet.getLastRow();
-    var mainLastCol = mainSheet.getLastColumn();
-    var mainSyncIdCol = 26;
-    var mainRegIdCol = 27;
-
-    if (mainLastRow > 1) {
-      var mainHeaders = mainSheet.getRange(1, 1, 1, mainLastCol).getValues()[0];
-      for (var m = 0; m < mainHeaders.length; m++) {
-        var hc = mainHeaders[m].toString().trim();
-        if (/^sertif_sync_id$/i.test(hc)) mainSyncIdCol = m + 1;
-        if (/^sertif_registration_id$/i.test(hc)) mainRegIdCol = m + 1;
-      }
+    var headerInfo = resolveMainSheetHeaderAndIndices(mainSheet, mainSheetName);
+    if (headerInfo.error_code) {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: headerInfo.error_code,
+        is_retryable: false,
+        message: headerInfo.message
+      }, 422);
     }
 
     var mainRowFound = null;
-    if (syncId && mainLastRow > 1) {
-      var mSyncs = mainSheet.getRange(2, mainSyncIdCol, mainLastRow - 1, 1).getValues();
+    if (syncId && headerInfo.lastRow >= headerInfo.dataStartRow) {
+      var numDataRows = headerInfo.lastRow - headerInfo.dataStartRow + 1;
+      var mSyncs = mainSheet.getRange(headerInfo.dataStartRow, headerInfo.syncIdCol, numDataRows, 1).getValues();
       for (var mi = 0; mi < mSyncs.length; mi++) {
         if (mSyncs[mi][0] && mSyncs[mi][0].toString().trim() === syncId) {
-          mainRowFound = mi + 2;
+          mainRowFound = mi + headerInfo.dataStartRow;
           break;
         }
       }
@@ -1889,6 +2218,10 @@ if (typeof module !== "undefined" && module.exports) {
     handleUpsertExtensionRowAction: handleUpsertExtensionRowAction,
     handleInspectSidecarAlignmentAction: handleInspectSidecarAlignmentAction,
     resolveSpreadsheetForSidecar: resolveSpreadsheetForSidecar,
+    normalizeCanonicalFieldKey: normalizeCanonicalFieldKey,
+    isReservedExtensionKey: isReservedExtensionKey,
+    resolveMainSheetHeaderAndIndices: resolveMainSheetHeaderAndIndices,
+    handleUploadAttachmentAction: handleUploadAttachmentAction,
     createJsonResponse: createJsonResponse,
     bytesToHex: bytesToHex
   };

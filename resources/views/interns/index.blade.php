@@ -1535,12 +1535,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else {
             // Fallback: hardcoded field list (bila form_fields belum ter-load)
+            const hasBirthPlace = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place') ? 'true' : 'false' }};
+            const hasReligion = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion') ? 'true' : 'false' }};
             fieldsHtml = `
                 ${sectionHtml('Data Pribadi')}
                 ${detailRow('Nama Lengkap', it.fullname)}
+                ${hasBirthPlace ? detailRow('Tempat Lahir', it.birth_place) : ''}
                 ${detailRow('Tahun Lahir', it.born_date)}
                 ${detailRow('NIM / NIS', it.student_id)}
                 ${detailRow('Jenis Kelamin', it.gender)}
+                ${hasReligion ? detailRow('Agama', it.religion) : ''}
                 ${detailRow('Email', it.email)}
                 ${detailRow('No. HP / WA', it.phone_number)}
                 ${detailRow('Kota Tinggal', it.current_city)}
@@ -1786,9 +1790,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 `<option value="${d.name}" ${it.internship_interest === d.name ? 'selected' : ''}>${d.name}</option>`
             ).join('');
 
+            const hasBirthPlace = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place') ? 'true' : 'false' }};
+            const hasReligion = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion') ? 'true' : 'false' }};
+
             dynamicFieldsHtml = `
                 ${section('Data Pribadi')}
                 ${editField('Nama Lengkap', 'fullname', it.fullname)}
+                ${hasBirthPlace ? editField('Tempat Lahir', 'birth_place', it.birth_place) : ''}
                 ${editField('Tahun Lahir (Atau Tanggal)', 'born_date', it.born_date_raw, 'date')}
                 ${editField('NIM / NIS', 'student_id', it.student_id)}
                 <div>
@@ -1797,6 +1805,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <option value="">-- Pilih --</option>${genderOpts}
                     </select>
                 </div>
+                ${hasReligion ? `<div>
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Agama</label>
+                    <select name="religion" class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
+                        <option value="">-- Pilih Agama (Opsional) --</option>
+                        ${['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'].map(rel => `<option value="${rel}" ${it.religion === rel ? 'selected' : ''}>${rel}</option>`).join('')}
+                    </select>
+                </div>` : ''}
                 ${editField('Email', 'email', it.email, 'email')}
                 ${editField('No. HP / WA', 'phone_number', it.phone_number)}
                 <div>

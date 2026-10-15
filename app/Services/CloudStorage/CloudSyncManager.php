@@ -137,7 +137,10 @@ class CloudSyncManager
     /**
      * Sinkronisasikan berkas lampiran registrasi (CV, Portofolio, dll) ke cloud storage via Direct Drive API.
      */
-    public function syncRegistrationAttachment(\App\Models\RegistrationAttachment $attachment, ?User $actor = null): array
+    /**
+     * Lakukan operasi upload berkas lampiran ke remote storage tanpa mutasi database (khusus worker jalur fencing).
+     */
+    public function uploadRegistrationAttachment(\App\Models\RegistrationAttachment $attachment): array
     {
         $attachment->loadMissing('registration');
 
@@ -159,17 +162,41 @@ class CloudSyncManager
         $regId = $attachment->internship_registration_id;
         $remoteFolder = "Lampiran/{$year}/Reg-{$regId}";
 
-        $customFileName = $attachment->original_name ?: basename($attachment->file_path);
+        $fileChecksum = hash_file('sha256', $fullPath);
+        $contentVersion = substr($fileChecksum, 0, 16);
+        $baseFileName = $attachment->original_name ?: basename($attachment->file_path);
+        $customFileName = "ATT-{$regId}-{$attachment->id}-v{$contentVersion}_{$baseFileName}";
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $customFileName);
+        $uploadResult['file_checksum'] = $fileChecksum;
+        $uploadResult['content_version'] = $contentVersion;
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan berkas lampiran registrasi (CV, Portofolio, dll) ke cloud storage via Direct Drive API.
+     */
+    public function syncRegistrationAttachment(\App\Models\RegistrationAttachment $attachment, ?User $actor = null): array
+    {
+        $uploadResult = $this->uploadRegistrationAttachment($attachment);
+
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
         $attachment->update([
             'drive_file_id'       => $uploadResult['file_id'],
             'drive_web_view_link' => $uploadResult['web_view_link'],
-            'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
-            'drive_synced_at'     => now(),
-            'drive_error_message' => null,
+            'drive_sync_status'   => $isRealDrive ? \App\Models\RegistrationAttachment::STATUS_SYNCED : \App\Models\RegistrationAttachment::STATUS_PENDING,
+            'drive_synced_at'     => $isRealDrive ? now() : null,
+            'drive_file_checksum' => $uploadResult['file_checksum'] ?? null,
+            'drive_error_message' => $isRealDrive ? null : 'Simulated local storage fallback: Google Drive not configured.',
         ]);
+
+        $regId = $attachment->internship_registration_id;
+        $year = $attachment->registration?->created_at ? $attachment->registration->created_at->format('Y') : date('Y');
+        $remoteFolder = "Lampiran/{$year}/Reg-{$regId}";
 
         ActivityLogger::log(
             action: 'attachment_drive_synced',

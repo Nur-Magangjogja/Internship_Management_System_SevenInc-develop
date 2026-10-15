@@ -244,19 +244,43 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $fileData = file_get_contents($localFullPath);
         $base64Data = base64_encode($fileData);
 
+        $attachment->loadMissing('registration');
         $reg = $attachment->registration;
-        $syncIdentity = 'ATT-' . $attachment->internship_registration_id . '-' . $attachment->id;
+
+        if (!$reg || empty($reg->id)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Data registrasi terkait lampiran tidak ditemukan atau tidak valid.',
+                errorCode: 'INVALID_REGISTRATION',
+                isRetryable: false
+            );
+        }
+
+        if (!$reg->created_at) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Tanggal pendaftaran (created_at) tidak valid untuk penentuan tahun.',
+                errorCode: 'INVALID_REGISTRATION_YEAR',
+                isRetryable: false
+            );
+        }
+
+        $year = (string) $reg->created_at->format('Y');
+        $fileChecksum = hash_file('sha256', $localFullPath);
+        $contentVersion = substr($fileChecksum, 0, 16);
+        $syncIdentity = 'ATT-' . $reg->id . '-' . $attachment->id . '-v' . $contentVersion;
 
         $innerPayload = [
             'action'          => 'upload_attachment',
             'connection_key'  => $connection->connection_key,
             'sync_id'         => $syncIdentity,
-            'registration_id' => (string) $attachment->internship_registration_id,
-            'applicant_name'  => $reg ? $reg->fullname : 'Pemagang',
-            'year'            => $reg && $reg->created_at ? (string) $reg->created_at->year : (string) date('Y'),
+            'registration_id' => (string) $reg->id,
+            'attachment_id'   => (string) $attachment->id,
+            'applicant_name'  => (string) $reg->fullname,
+            'year'            => $year,
             'file_name'       => $attachment->original_name,
             'mime_type'       => $attachment->mime_type,
             'file_content'    => $base64Data,
+            'file_checksum'   => $fileChecksum,
+            'content_version' => $contentVersion,
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncIdentity);

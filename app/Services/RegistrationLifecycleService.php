@@ -193,6 +193,10 @@ class RegistrationLifecycleService
                     );
                 }
             }
+
+            // Phase C.2C: Pencatatan transactional outbox untuk sinkronisasi Absen Djuragan
+            app(\App\Services\AbsenIntegration\AbsenOutboxRecorder::class)
+                ->recordTransition($registration, $newStatus);
         });
 
         // Enqueue outbound spreadsheet sync for eligible registrations

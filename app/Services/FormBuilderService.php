@@ -30,7 +30,7 @@ class FormBuilderService
     ];
 
     public const CORE_FIELD_KEYS = [
-        'fullname', 'student_id', 'born_date', 'institution_name', 'faculty',
+        'fullname', 'student_id', 'born_date', 'birth_place', 'religion', 'institution_name', 'faculty',
         'study_program', 'current_city', 'gender', 'phone_number', 'email',
         'internship_interest', 'start_date', 'end_date', 'internship_type',
         'internship_arrangement', 'current_status', 'wfo_readiness',

@@ -47,7 +47,7 @@ class InternshipRegistration extends Model
 
     protected $fillable = [
         'user_id',
-        'fullname', 'born_date', 'student_id', 'gender', 'phone_number',
+        'fullname', 'born_date', 'birth_place', 'student_id', 'gender', 'religion', 'phone_number',
         'city_id', 'institution_id', 'study_program_id', 'faculty_id',
         'internship_reason', 'internship_type', 'internship_arrangement',
         'current_status', 'english_book_ability',
@@ -393,9 +393,19 @@ class InternshipRegistration extends Model
         return $this->belongsTo(\App\Models\StudyProgram::class, 'study_program_id');
     }
 
+    public function prodi()
+    {
+        return $this->studyProgramRel();
+    }
+
     public function facultyRel()
     {
         return $this->belongsTo(\App\Models\Faculty::class, 'faculty_id');
+    }
+
+    public function faculty()
+    {
+        return $this->facultyRel();
     }
 
     public function getEmailAttribute()
@@ -548,6 +558,14 @@ class InternshipRegistration extends Model
     public function getIsDraftAttribute(): bool
     {
         return empty($this->internship_status) || $this->internship_status === self::STATUS_NEW;
+    }
+
+    /**
+     * Pemetaan registrasi ke sistem eksternal (misal Absen Djuragan).
+     */
+    public function externalRegistrationMappings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\ExternalRegistrationMapping::class, 'ims_registration_id');
     }
 }
 

@@ -84,7 +84,12 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $targetTab = (string) $registration->created_at->year;
+        $year = (int) $registration->created_at->format('Y');
+        if ($year < 2020 || $year > 2099) {
+            return null;
+        }
+
+        $targetTab = (string) $year;
         $externalSyncId = $this->generateExternalSyncId($registration);
 
         $rowSync = SpreadsheetRowSync::firstOrCreate(
@@ -573,7 +578,8 @@ class SpreadsheetSyncEngineService
     public function retrySyncRecord(
         SpreadsheetRowSync $rowSync,
         ?User $actor = null,
-        ?SpreadsheetTransportInterface $customTransport = null
+        ?SpreadsheetTransportInterface $customTransport = null,
+        bool $async = false
     ): bool {
         $fenceToken = (string) Str::uuid();
 
@@ -612,11 +618,40 @@ class SpreadsheetSyncEngineService
                 metadata: [
                     'connection'       => $rowSync->spreadsheetConnection?->display_name,
                     'external_sync_id' => $rowSync->external_sync_id,
+                    'is_async'         => $async,
                 ]
             );
         }
 
+        if ($async) {
+            // Transition directly to pending and clear lock so worker can pick it up with fresh fenceToken
+            DB::table('spreadsheet_row_syncs')
+                ->where('id', $rowSync->id)
+                ->where('locked_by', $fenceToken)
+                ->update([
+                    'sync_status'   => SpreadsheetRowSync::STATUS_PENDING,
+                    'locked_at'     => null,
+                    'locked_by'     => null,
+                    'next_retry_at' => now(),
+                    'updated_at'    => now(),
+                ]);
+
+            DB::afterCommit(function () use ($rowSync) {
+                \App\Jobs\ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+            });
+
+            return true;
+        }
+
         return $this->processSyncRecord($rowSync, $customTransport, force: true, preClaimedFence: $fenceToken);
+    }
+
+    /**
+     * Non-blocking queue-based manual retry for admin web endpoints.
+     */
+    public function queueManualRetry(SpreadsheetRowSync $rowSync, ?User $actor = null): bool
+    {
+        return $this->retrySyncRecord($rowSync, $actor, async: true);
     }
 
     /**

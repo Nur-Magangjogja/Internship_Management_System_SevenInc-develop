@@ -187,6 +187,11 @@ class InternApiController extends Controller
             'created_at',
         ];
 
+        // birth_place hanya diikutsertakan jika kolom fisik sudah tersedia di database
+        if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place')) {
+            $searchable[] = 'birth_place';
+        }
+
         $q = IR::with(['skills', 'tools']);
 
         // Scope status / Trashed / Peserta Administratif
@@ -360,6 +365,8 @@ class InternApiController extends Controller
                 'fullname'      => $r->fullname,
                 'born_date'     => $this->formatIndoDateOut($r->born_date),
                 'born_date_raw' => $r->born_date,
+                'birth_place'   => $r->birth_place,
+                'religion'      => $r->religion,
                 'student_id'    => preg_replace('/^(NIM|NIS)\s*/i', '', (string) $r->student_id),
                 'email'         => $r->email,
                 'internship_status' => $r->internship_status,

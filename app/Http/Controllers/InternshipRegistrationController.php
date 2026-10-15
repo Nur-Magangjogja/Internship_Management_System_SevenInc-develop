@@ -69,6 +69,8 @@ class InternshipRegistrationController extends Controller
             // Wajib (existing)
             'fullname'              => 'required|string|max:255',
             'born_date'             => 'required|string|max:255', // form pakai teks bebas
+            'birth_place'           => 'nullable|string|max:100',
+            'religion'              => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'            => 'required|string|max:50',
             'email'                 => 'required|string|max:255',
             'gender'                => 'required|string|max:50',
@@ -179,6 +181,36 @@ class InternshipRegistrationController extends Controller
         $data['internship_status'] = IR::STATUS_WAITING;
         $data['user_id'] = $userId;
 
+        // Normalisasi string kosong & proteksi kompatibilitas environment unmigrated
+        if (array_key_exists('birth_place', $data) && trim((string)$data['birth_place']) === '') {
+            $data['birth_place'] = null;
+        }
+        if (array_key_exists('religion', $data) && trim((string)$data['religion']) === '') {
+            $data['religion'] = null;
+        }
+
+        // Cegah silent data loss: tolak jika schema belum siap
+        $hasBirthPlaceCol = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place');
+        $hasReligionCol   = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion');
+
+        if (!$hasBirthPlaceCol && !empty($data['birth_place'])) {
+            return back()->withInput()->withErrors([
+                'birth_place' => 'Kolom tempat lahir belum didukung oleh konfigurasi database saat ini.'
+            ]);
+        }
+        if (!$hasReligionCol && !empty($data['religion'])) {
+            return back()->withInput()->withErrors([
+                'religion' => 'Kolom agama belum didukung oleh konfigurasi database saat ini.'
+            ]);
+        }
+
+        if (!$hasBirthPlaceCol) {
+            unset($data['birth_place']);
+        }
+        if (!$hasReligionCol) {
+            unset($data['religion']);
+        }
+
         // Simpan
         IR::create($data);
         
@@ -213,6 +245,8 @@ class InternshipRegistrationController extends Controller
         $validated = $request->validate([
             'fullname'                    => 'required|string|max:255',
             'born_date'                   => 'required|string|max:255',
+            'birth_place'                 => 'nullable|string|max:100',
+            'religion'                    => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'                  => 'required|string|max:50',
             'email'                       => 'required|string|max:255',
             'gender'                      => 'required|string|max:50',
@@ -331,6 +365,35 @@ class InternshipRegistrationController extends Controller
 
         // Jangan izinkan override status dari form
         unset($validated['internship_status']);
+
+        // Normalisasi string kosong & proteksi kompatibilitas environment unmigrated
+        if (array_key_exists('birth_place', $validated) && trim((string)$validated['birth_place']) === '') {
+            $validated['birth_place'] = null;
+        }
+        if (array_key_exists('religion', $validated) && trim((string)$validated['religion']) === '') {
+            $validated['religion'] = null;
+        }
+
+        $hasBirthPlaceCol = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place');
+        $hasReligionCol   = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion');
+
+        if (!$hasBirthPlaceCol && !empty($validated['birth_place'])) {
+            return back()->withInput()->withErrors([
+                'birth_place' => 'Kolom tempat lahir belum didukung oleh konfigurasi database saat ini.'
+            ]);
+        }
+        if (!$hasReligionCol && !empty($validated['religion'])) {
+            return back()->withInput()->withErrors([
+                'religion' => 'Kolom agama belum didukung oleh konfigurasi database saat ini.'
+            ]);
+        }
+
+        if (!$hasBirthPlaceCol) {
+            unset($validated['birth_place']);
+        }
+        if (!$hasReligionCol) {
+            unset($validated['religion']);
+        }
 
         // Simpan
         $intern->fill($validated);
