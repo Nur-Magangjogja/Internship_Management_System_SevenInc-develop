@@ -439,45 +439,108 @@
         </div>
       </div>
 
-      {{-- ==================== 4. BERKAS PENDUKUNG (OPSIONAL) ==================== --}}
+      {{-- ==================== 4. BERKAS PENDAFTARAN MULTI-UPLOAD ==================== --}}
       <div class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-1 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs flex items-center justify-center font-bold">4</span>
-          Upload Berkas <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
+          Berkas Pendaftaran <span class="text-xs font-normal text-gray-500 normal-case">(Terkategori & Multi-Upload)</span>
         </h3>
-        <p class="text-xs text-gray-400 mb-4">Berkas pendukung dapat dilengkapi sekarang atau disusulkan kemudian</p>
+        <p class="text-xs text-gray-400 mb-4">Unggah dokumen sesuai kategorinya. Anda dapat mengunggah sebagian dokumen sekarang dan melengkapi dokumen susulan kemudian.</p>
 
-        <div class="space-y-4">
-          <div>
-            <label class="{{ $label }}">Upload PDF CV + scan KTM/KTP + Portofolio (Maks. 10MB) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-            <input type="file" name="cv_ktp_portofolio_pdf" id="cv_ktp_portofolio_pdf" accept=".pdf"
-              class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer"
-              style="--file-bg: #1a5c38;">
-            <div id="cv-feedback" class="hidden mt-2 p-2.5 rounded-lg border text-xs"></div>
-            @php
-              $existingCv = $reg?->attachments()->where('attachment_type', 'cv_ktp_portofolio')->latest('id')->first();
-            @endphp
-            @if($existingCv)
-              <p class="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
-                <i class="fas fa-file-pdf text-red-500"></i>
-                File tersimpan: <a href="{{ route('pemagang.registration.attachment.download', $existingCv->id) }}" target="_blank" class="text-blue-600 hover:underline font-medium">{{ $existingCv->original_name }}</a> ({{ round($existingCv->file_size / 1024, 1) }} KB)
-              </p>
-            @endif
+        {{-- Daftar Berkas yang Telah Tersimpan di Server --}}
+        @php
+          $allAttachments = $reg ? $reg->attachments()->latest('id')->get() : collect();
+        @endphp
+        @if($allAttachments->isNotEmpty() || $reg?->profile_photo)
+          <div class="mb-5 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+            <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Berkas Tersimpan di Server ({{ $allAttachments->count() }})
+            </h4>
+            <div class="space-y-2">
+              @foreach($allAttachments as $att)
+                <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-gray-200 rounded-lg text-xs">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="px-2 py-0.5 rounded font-semibold text-[10px] bg-emerald-100 text-emerald-800 uppercase">
+                      {{ \App\Models\RegistrationAttachment::getCategoryLabel($att->attachment_type) }}
+                    </span>
+                    <a href="{{ route('pemagang.registration.attachment.download', $att->id) }}" target="_blank" class="text-blue-600 font-medium hover:underline truncate max-w-xs">
+                      {{ $att->original_name }}
+                    </a>
+                    <span class="text-gray-400">({{ round($att->file_size / 1024, 1) }} KB)</span>
+                    @if($att->drive_sync_status === 'synced')
+                      <span class="text-[10px] text-emerald-600 font-medium flex items-center gap-1"><i class="fas fa-cloud-check"></i> Google Drive</span>
+                    @else
+                      <span class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><i class="fas fa-hard-drive"></i> Lokal Privat</span>
+                    @endif
+                  </div>
+
+                  @if(!$reg || $reg->is_draft || in_array($reg->internship_status, ['new', 'waiting']))
+                    <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')">
+                      @csrf
+                      @method('DELETE')
+                      <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        Hapus
+                      </button>
+                    </form>
+                  @endif
+                </div>
+              @endforeach
+            </div>
           </div>
-          <div>
-            <label class="{{ $label }}">Foto Profil (JPG/PNG, Maks. 5MB) <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
-            <input type="file" name="profile_photo" id="profile_photo" accept=".jpg,.jpeg,.png"
-              class="{{ $input }} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer"
-              style="--file-bg: #1a5c38;">
-            <div id="photo-feedback" class="hidden mt-2 p-2.5 rounded-lg border text-xs"></div>
-            @if($reg?->profile_photo)
-              <p class="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
-                <i class="fas fa-image text-emerald-500"></i>
-                Foto tersimpan: <a href="{{ asset('storage/' . $reg->profile_photo) }}" target="_blank" class="text-blue-600 hover:underline font-medium">{{ basename($reg->profile_photo) }}</a>
-              </p>
-            @endif
+        @endif
+
+        {{-- Form Upload Per Kategori --}}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {{-- 1. CV --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">Curriculum Vitae (CV) <span class="text-xs text-gray-400 font-normal">(PDF/DOC/DOCX, Maks 10MB)</span></label>
+            <input type="file" name="cv" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Lampirkan CV terbaru Anda.</p>
           </div>
-          <p class="text-xs text-gray-400">Format PDF maks 10MB untuk berkas gabungan, JPG/PNG maks 5MB untuk foto profil.</p>
+
+          {{-- 2. KTM / KTP --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">KTM atau KTP <span class="text-xs text-gray-400 font-normal">(PDF/JPG/PNG, Maks 5MB)</span></label>
+            <input type="file" name="identity" accept=".pdf,.jpg,.jpeg,.png" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Kartu identitas mahasiswa atau KTP pendaftar.</p>
+          </div>
+
+          {{-- 3. Portofolio (Multi-Upload) --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white md:col-span-2">
+            <label class="{{ $label }}">Portofolio Karya <span class="text-xs text-emerald-700 font-semibold">(Mendukung Banyak File, Maks 10MB/berkas)</span></label>
+            <input type="file" name="portfolio[]" multiple accept=".pdf,.zip,.rar,.mp4,.doc,.docx,.png,.jpg,.jpeg" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Pilih satu atau beberapa file portofolio, sertifikat penghargaan, atau sampel karya (PDF, ZIP, RAR, video MP4, dokumen).</p>
+          </div>
+
+          {{-- 4. Surat Pengantar --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">Surat Pengantar Kampus / Sekolah <span class="text-xs text-gray-400 font-normal">(PDF/DOCX, Maks 10MB)</span></label>
+            <input type="file" name="cover_letter" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Surat permohonan magang dari institusi pendidikan.</p>
+          </div>
+
+          {{-- 5. Proposal Magang --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">Proposal Magang / PKL <span class="text-xs text-gray-400 font-normal">(PDF/DOCX, Maks 10MB)</span></label>
+            <input type="file" name="proposal" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Opsional jika kampus mensyaratkan proposal kegiatan.</p>
+          </div>
+
+          {{-- 6. Dokumen Pendukung Tambahan (Multi-Upload) --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">Dokumen Pendukung Lainnya <span class="text-xs text-gray-400 font-normal">(Multi-File, Maks 10MB/berkas)</span></label>
+            <input type="file" name="supporting_document[]" multiple accept=".pdf,.doc,.docx,.zip,.rar,.png,.jpg,.jpeg" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Transkrip nilai, sertifikat keahlian, atau surat izin orang tua.</p>
+          </div>
+
+          {{-- 7. Foto Profil --}}
+          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
+            <label class="{{ $label }}">Pasfoto Resmi <span class="text-xs text-gray-400 font-normal">(JPG/PNG/WEBP, Maks 5MB)</span></label>
+            <input type="file" name="profile_photo" accept=".jpg,.jpeg,.png,.webp" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
+            <p class="text-[11px] text-gray-400 mt-1">Pasfoto formal berlatar belakang rapi untuk identitas pemagang.</p>
+          </div>
         </div>
       </div>
 

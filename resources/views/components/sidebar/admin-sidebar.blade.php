@@ -68,13 +68,37 @@
     if (auth()->check() && auth()->user()->role === 'hr_staff') {
         $groups = [
             [
-                'label' => 'Operasional HR',
+                'label' => 'Dashboard & Kemitraan',
                 'items' => [
-                    ['label' => 'Dashboard HR', 'route' => 'hr.dashboard', 'icon' => 'dashboard'],
-                    ['label' => 'Data Institusi', 'route' => 'hr.institutions.index', 'icon' => 'building'],
+                    ['label' => 'Dashboard HR',           'route' => 'hr.dashboard',            'icon' => 'dashboard'],
+                    ['label' => 'Data Institusi',          'route' => 'hr.institutions.index',   'icon' => 'building'],
                     ['label' => 'Review Kontak Pembimbing', 'route' => 'hr.contact-review.index', 'icon' => 'check'],
-                    ['label' => 'Tugas Follow-Up', 'route' => 'hr.follow-up.index', 'icon' => 'phone'],
-                    ['label' => 'Dokumen MOU', 'route' => 'hr.mous.index', 'icon' => 'file'],
+                    ['label' => 'Tugas Follow-Up',         'route' => 'hr.follow-up.index',      'icon' => 'phone'],
+                    ['label' => 'Dokumen MOU',             'route' => 'hr.mous.index',           'icon' => 'file'],
+                ],
+            ],
+            [
+                'label' => 'Pendaftaran & Status',
+                'items' => [
+                    ['label' => 'Data Pendaftar Magang', 'route' => 'admin.interns.pendaftar', 'icon' => 'file'],
+                    ['label' => 'Data Pemagang',          'route' => 'admin.interns.pemagang',  'icon' => 'users'],
+                ],
+            ],
+            [
+                'label' => 'Dokumen & Sertifikat',
+                'items' => [
+                    ['label' => 'Data LOA',             'route' => 'admin.documents.loas',        'icon' => 'file'],
+                    ['label' => 'Surat Penilaian',      'route' => 'interns.assessment.index',    'icon' => 'file'],
+                    ['label' => 'Data SKL',             'route' => 'admin.documents.skls',        'icon' => 'file'],
+                    ['label' => 'Sertifikat',          'route' => 'admin.certificate.index',     'icon' => 'award'],
+                    ['label' => 'Member Card',          'route' => 'admin.membercards.index',     'icon' => 'award'],
+                    ['label' => 'Informasi Alumni',     'route' => 'admin.intern_extras.index',   'icon' => 'users'],
+                ],
+            ],
+            [
+                'label' => 'Webinar',
+                'items' => [
+                    ['label' => 'Kelola Webinar', 'route' => 'admin.webinars.index', 'icon' => 'video'],
                 ],
             ],
         ];
@@ -149,6 +173,14 @@
                                 'admin.contact-review.index' => request()->routeIs('admin.contact-review.*'),
                                 'hr.contact-review.index'    => request()->routeIs('hr.contact-review.*'),
                                 'hr.mous.index'             => request()->routeIs('hr.mous.*'),
+                                'hr.institutions.index'     => request()->routeIs('hr.institutions.*'),
+                                'hr.follow-up.index'        => request()->routeIs('hr.follow-up.*'),
+                                'admin.documents.loas'      => request()->routeIs('admin.documents.loas*') || request()->routeIs('admin.loa.*'),
+                                'interns.assessment.index'  => request()->routeIs('interns.assessment.*') || request()->routeIs('admin.generateForm'),
+                                'admin.documents.skls'      => request()->routeIs('admin.documents.skls*') || request()->routeIs('admin.skl.*'),
+                                'admin.certificate.index'   => request()->routeIs('admin.certificate.*'),
+                                'admin.membercards.index'   => request()->routeIs('admin.membercards.*'),
+                                'admin.intern_extras.index' => request()->routeIs('admin.intern_extras.*') || request()->routeIs('admin.rekomendasi.*'),
                                 default => request()->routeIs($item['route']),
                             };
                         @endphp

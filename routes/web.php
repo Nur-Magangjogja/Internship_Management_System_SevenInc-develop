@@ -162,7 +162,7 @@ Route::get('/internship/table', fn () => redirect()->route('admin.interns.index'
 // Dokumen Kelulusan (SKL & LOA)
 // ========================
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // Halaman daftar SKL dan LOA
     Route::get('/documents/loas', [DocumentController::class, 'listLoas'])->name('documents.loas');
     Route::get('/documents/skls', [DocumentController::class, 'listSkls'])->name('documents.skls');
@@ -208,6 +208,47 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     })->name('documents.serve')->where('filename', '[A-Za-z0-9_\-\.]+');
 });
 
+// Serve berkas privat/foto dengan proteksi otorisasi kepemilikan (Modul 5)
+Route::middleware(['auth'])->get('/media/private-serve', function (\Illuminate\Http\Request $request) {
+    $encodedPath = $request->query('path');
+    if (!$encodedPath) abort(404);
+
+    $path = base64_decode($encodedPath, true);
+    if (!$path || str_contains($path, '..') || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
+        abort(403, 'Akses path tidak sah.');
+    }
+
+    $user = auth()->user();
+    // Admin dan HR Staff berwenang melihat semua berkas operasional
+    if (!in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+        // Pemagang hanya boleh mengakses berkas miliknya sendiri
+        $isOwner = \App\Models\RegistrationAttachment::where('file_path', $path)
+            ->whereHas('registration', fn($q) => $q->where('user_id', $user->id))
+            ->exists();
+
+        if (!$isOwner) {
+            $isProfileOwner = \App\Models\InternshipRegistration::where('user_id', $user->id)
+                ->where('profile_photo', $path)
+                ->exists();
+            if (!$isProfileOwner && ($user->avatar ?? null) !== $path) {
+                abort(403, 'Anda tidak memiliki hak akses untuk melihat berkas ini.');
+            }
+        }
+    }
+
+    if (!\Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+        abort(404, 'Berkas fisik tidak ditemukan.');
+    }
+
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($path);
+    $mime = mime_content_type($fullPath) ?: 'application/octet-stream';
+
+    return response()->file($fullPath, [
+        'Content-Type'  => $mime,
+        'Cache-Control' => 'private, max-age=86400',
+    ]);
+})->name('media.private.serve');
+
 
 Route::middleware(['auth', 'role:pemagang'])->prefix('user/documents')->name('user.')->group(function () {
 
@@ -220,7 +261,7 @@ Route::middleware(['auth', 'role:pemagang'])->prefix('user/documents')->name('us
 
 });
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin/documents')->name('admin.documents.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin/documents')->name('admin.documents.')->group(function () {
     Route::get('/skl/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showSKL'])
         ->name('skl.show');
     Route::get('/loa/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showLOA'])
@@ -392,9 +433,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/cancel', [\App\Http\Controllers\Admin\LegacyImportController::class, 'cancel'])->name('cancel');
         Route::get('/template', [\App\Http\Controllers\Admin\LegacyImportController::class, 'downloadTemplate'])->name('template');
     });
+});
 
-
-
+/* =================== OPERATIONAL ROUTES (Admin & HR Staff) =================== */
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff', 'prevent-back'])->group(function () {
 
     // API: ambil pemagang selesai berdasarkan brand (HARUS sebelum resource agar tidak bentrok dengan {certificate})
     Route::get('/certificate/interns-by-brand', [CertificateController::class, 'getInternsByBrand'])->name('certificate.interns-by-brand');
@@ -543,8 +585,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
 
 
-Route::middleware(['auth', 'role:admin'])->group(function () {
-    // LOA Administratif (khusus role:admin)
+Route::middleware(['auth', 'role:admin,hr_staff'])->group(function () {
+    // LOA Administratif (role:admin,hr_staff)
     Route::get('/admin/loa/interns', [LoaController::class, 'indexInterns'])->name('admin.loa.interns');
     Route::post('/admin/loa/generate', [LoaController::class, 'generate'])->name('admin.loa.generate'); // single
     Route::post('/admin/loa/generate-batch', [LoaController::class, 'generateBatch'])->name('admin.loa.generateBatch'); // multiple (legacy)
@@ -552,7 +594,7 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/loa/generate-brand', [LoaController::class, 'generateForBrand'])->name('admin.loa.generate_brand');
 });
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // index
     Route::get('membercards', [MembercardController::class, 'index'])
         ->name('membercards.index');
@@ -629,13 +671,13 @@ Route::middleware(['auth', 'active', 'role:hr_staff,admin'])->prefix('hr')->name
 });
 
 
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('generate-pdf', [SuratPenilaianController::class, 'showForm'])->name('generateForm');
     Route::post('generate-pdf', [SuratPenilaianController::class, 'generatePdf'])->name('generatePdf');
 });
 
 
-Route::middleware(['auth', 'role:admin'])
+Route::middleware(['auth', 'role:admin,hr_staff'])
     ->prefix('admin/interns')
     ->group(function () {
 
@@ -682,6 +724,7 @@ Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pem
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
     Route::post('/daftar/draft', [PemagangRegistration::class, 'saveDraft'])->name('registration.draft');
+    Route::delete('/daftar/attachments/{attachment}', [PemagangRegistration::class, 'deleteAttachment'])->name('registration.attachment.delete');
 
     // Pengaturan Akun
     Route::get('/pengaturan', [PemagangSettings::class, 'index'])->name('settings');

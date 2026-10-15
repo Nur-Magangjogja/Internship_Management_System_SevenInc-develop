@@ -180,10 +180,13 @@ class RegistrationController extends Controller
         $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
         $existing  = $lifecycle->getOpenOrDraftRegistration($user);
 
-        if ($existing && !$existing->is_draft && !in_array($existing->internship_status, [IR::STATUS_NEW, IR::STATUS_WAITING], true)) {
-            return back()->withInput()->withErrors([
-                'status' => 'Pendaftaran Anda telah diproses oleh admin dan tidak dapat diubah lagi.'
-            ]);
+        if ($existing && !$existing->is_draft) {
+            // Pendaftaran sudah resmi disubmit: perubahan hanya diizinkan saat masih berstatus NEW/WAITING
+            if (!in_array($existing->internship_status, [IR::STATUS_NEW, IR::STATUS_WAITING], true)) {
+                return back()->withInput()->withErrors([
+                    'status' => 'Pendaftaran Anda telah diproses oleh admin dan tidak dapat diubah lagi.'
+                ]);
+            }
         }
 
         // Validasi format tanggal start_date jika dikirim (menolak non-string, array, nested array, atau kalender invalid)
@@ -780,11 +783,16 @@ class RegistrationController extends Controller
                 if ($existing) {
                     if ($isDraft) {
                         if ($existing->is_draft) {
+                            $validated['is_draft'] = 1;
+                            $validated['draft_saved_at'] = now();
                             $validated['internship_status'] = IR::STATUS_NEW;
                         } else {
+                            // Pendaftaran sudah resmi disubmit: jangan pernah demosi menjadi draft atau mengubah status
+                            $validated['is_draft'] = 0;
                             unset($validated['internship_status']);
                         }
                     } else {
+                        $validated['is_draft'] = 0;
                         if ($existing->is_draft) {
                             $validated['internship_status'] = IR::STATUS_WAITING;
                         } else {
@@ -804,12 +812,15 @@ class RegistrationController extends Controller
                     $validated['user_id'] = $user->id;
                     if (!$isDraft) {
                         $validated['internship_status'] = IR::STATUS_WAITING;
+                        $validated['is_draft'] = 0;
                         if ($user->role !== 'pemagang') {
                             $user->role = 'pemagang';
                             $user->save();
                         }
                     } else {
                         $validated['internship_status'] = IR::STATUS_NEW;
+                        $validated['is_draft'] = 1;
+                        $validated['draft_saved_at'] = now();
                     }
                     $intern = IR::create($validated);
                 }
@@ -830,32 +841,157 @@ class RegistrationController extends Controller
                 }
 
                 if ($intern) {
-                    if ($request->hasFile('cv_ktp_portofolio_pdf')) {
-                        $file = $request->file('cv_ktp_portofolio_pdf');
-                        $path = $this->storePrivateFile($file, 'private/registrations');
-                        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                        $intern->attachments()->create([
-                            'attachment_type' => 'cv_ktp_portofolio',
-                            'file_path'       => $path,
-                            'original_name'   => $file->getClientOriginalName(),
-                            'file_size'       => $file->getSize(),
-                            'mime_type'       => $file->getMimeType() ?: 'application/pdf',
-                        ]);
+                    $yearFolder = $targetYear ?? date('Y');
+                    $baseDir = "private/registrations/{$yearFolder}/{$intern->id}";
+
+                    // 1. CV
+                    if ($request->hasFile('cv')) {
+                        $file = $request->file('cv');
+                        if ($file->isValid()) {
+                            $path = $this->storePrivateFile($file, $baseDir);
+                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'cv',
+                                'category'          => 'cv',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
                     }
 
+                    // 2. KTM / KTP (Identity)
+                    if ($request->hasFile('identity')) {
+                        $file = $request->file('identity');
+                        if ($file->isValid()) {
+                            $path = $this->storePrivateFile($file, $baseDir);
+                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'identity',
+                                'category'          => 'identity',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
+                    }
+
+                    // 3. Portofolio (Bisa multi-file)
+                    if ($request->hasFile('portfolio')) {
+                        $files = is_array($request->file('portfolio')) ? $request->file('portfolio') : [$request->file('portfolio')];
+                        foreach ($files as $file) {
+                            if ($file && $file->isValid()) {
+                                $path = $this->storePrivateFile($file, $baseDir);
+                                $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                                $this->createAttachmentSafely($intern, [
+                                    'attachment_type'   => 'portfolio',
+                                    'category'          => 'portfolio',
+                                    'file_path'         => $path,
+                                    'original_name'     => $file->getClientOriginalName(),
+                                    'file_size'         => $file->getSize(),
+                                    'mime_type'         => $file->getMimeType() ?: 'application/octet-stream',
+                                    'drive_sync_status' => 'pending',
+                                ]);
+                            }
+                        }
+                    }
+
+                    // 4. Surat Pengantar
+                    if ($request->hasFile('cover_letter')) {
+                        $file = $request->file('cover_letter');
+                        if ($file->isValid()) {
+                            $path = $this->storePrivateFile($file, $baseDir);
+                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'cover_letter',
+                                'category'          => 'cover_letter',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
+                    }
+
+                    // 5. Proposal
+                    if ($request->hasFile('proposal')) {
+                        $file = $request->file('proposal');
+                        if ($file->isValid()) {
+                            $path = $this->storePrivateFile($file, $baseDir);
+                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'proposal',
+                                'category'          => 'proposal',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
+                    }
+
+                    // 6. Dokumen Pendukung Tambahan (Bisa multi-file)
+                    if ($request->hasFile('supporting_document')) {
+                        $files = is_array($request->file('supporting_document')) ? $request->file('supporting_document') : [$request->file('supporting_document')];
+                        foreach ($files as $file) {
+                            if ($file && $file->isValid()) {
+                                $path = $this->storePrivateFile($file, $baseDir);
+                                $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                                $this->createAttachmentSafely($intern, [
+                                    'attachment_type'   => 'supporting_document',
+                                    'category'          => 'supporting_document',
+                                    'file_path'         => $path,
+                                    'original_name'     => $file->getClientOriginalName(),
+                                    'file_size'         => $file->getSize(),
+                                    'mime_type'         => $file->getMimeType() ?: 'application/octet-stream',
+                                    'drive_sync_status' => 'pending',
+                                ]);
+                            }
+                        }
+                    }
+
+                    // 7. Foto Profil
                     if ($request->hasFile('profile_photo')) {
                         $file = $request->file('profile_photo');
-                        $path = $this->storeFile($file, 'uploads');
-                        $storedRegistrationFiles[] = ['disk' => 'public', 'path' => $path];
-                        $intern->profile_photo = $path;
-                        $intern->save();
-                        $intern->attachments()->create([
-                            'attachment_type' => 'profile_photo',
-                            'file_path'       => $path,
-                            'original_name'   => $file->getClientOriginalName(),
-                            'file_size'       => $file->getSize(),
-                            'mime_type'       => $file->getMimeType() ?: 'image/jpeg',
-                        ]);
+                        if ($file->isValid()) {
+                            $path = $this->storeFile($file, 'uploads');
+                            $storedRegistrationFiles[] = ['disk' => 'public', 'path' => $path];
+                            $intern->profile_photo = $path;
+                            $intern->save();
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'profile_photo',
+                                'category'          => 'profile_photo',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'image/jpeg',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
+                    }
+
+                    // 8. Berkas Gabungan Legacy (Kompatibilitas Penuh)
+                    if ($request->hasFile('cv_ktp_portofolio_pdf')) {
+                        $file = $request->file('cv_ktp_portofolio_pdf');
+                        if ($file->isValid()) {
+                            $path = $this->storePrivateFile($file, $baseDir);
+                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                            $this->createAttachmentSafely($intern, [
+                                'attachment_type'   => 'cv_ktp_portofolio',
+                                'category'          => 'legacy_bundle',
+                                'file_path'         => $path,
+                                'original_name'     => $file->getClientOriginalName(),
+                                'file_size'         => $file->getSize(),
+                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
+                                'drive_sync_status' => 'pending',
+                            ]);
+                        }
                     }
 
                     // Sync Skills
@@ -928,7 +1064,8 @@ class RegistrationController extends Controller
         }
 
         if ($isDraft) {
-            return back()->with('success', 'Draft berhasil disimpan.');
+            $savedTime = now()->format('H:i:s');
+            return back()->with('success', "Draft formulir berhasil disimpan pada pukul {$savedTime}. Seluruh isian Anda tersimpan dengan aman di server.");
         }
 
         $isNewSubmission = !$existing;
@@ -975,8 +1112,17 @@ class RegistrationController extends Controller
             'internship_interest'      => 'nullable|string|max:255',
             'start_date'               => 'nullable|string|max:255',
             'end_date'                 => 'nullable|string|max:255',
+            // Multi-Upload Kategori Berkas (Modul 10)
+            'cv'                       => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'identity'                 => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'portfolio'                => 'nullable|array',
+            'portfolio.*'              => 'nullable|file|mimes:pdf,zip,rar,mp4,doc,docx,png,jpg,jpeg|max:10240',
+            'cover_letter'             => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'proposal'                 => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'supporting_document'      => 'nullable|array',
+            'supporting_document.*'    => 'nullable|file|mimes:pdf,doc,docx,zip,rar,png,jpg,jpeg|max:10240',
+            'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'cv_ktp_portofolio_pdf'    => 'nullable|file|mimes:pdf|max:10240',
-            'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png|max:5120',
             'design_software'          => 'nullable|string|max:255',
             'video_software'           => 'nullable|string|max:255',
             'programming_languages'    => 'nullable|string|max:255',
@@ -1183,4 +1329,48 @@ class RegistrationController extends Controller
             ->activePublished()
             ->first();
     }
+
+    /**
+     * Hapus berkas attachment yang diunggah pemagang sebelum submit final / saat revisi.
+     */
+    public function deleteAttachment(\App\Models\RegistrationAttachment $attachment)
+    {
+        $user = auth()->user();
+        $registration = $attachment->registration;
+
+        if (!$registration || $registration->user_id !== $user->id) {
+            abort(403, 'Anda tidak memiliki hak akses untuk menghapus berkas ini.');
+        }
+
+        if (!$registration->is_draft && !in_array($registration->internship_status, [IR::STATUS_NEW, IR::STATUS_WAITING], true)) {
+            return back()->withErrors(['status' => 'Berkas pendaftaran yang telah diproses tidak dapat dihapus.']);
+        }
+
+        if ($attachment->file_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($attachment->file_path)) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($attachment->file_path);
+        }
+        if ($attachment->file_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($attachment->file_path)) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($attachment->file_path);
+        }
+
+        $fileName = $attachment->original_name;
+        $attachment->delete();
+
+        return back()->with('success', "Berkas '{$fileName}' berhasil dihapus.");
+    }
+
+    /**
+     * Simpan attachment dengan kompatibilitas skema database (cek keberadaan kolom category & document_version).
+     */
+    protected function createAttachmentSafely(IR $intern, array $data): \App\Models\RegistrationAttachment
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'category')) {
+            unset($data['category']);
+        }
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'document_version')) {
+            unset($data['document_version']);
+        }
+        return $intern->attachments()->create($data);
+    }
 }
+

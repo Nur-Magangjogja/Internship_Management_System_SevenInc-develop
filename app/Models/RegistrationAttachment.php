@@ -17,9 +17,35 @@ class RegistrationAttachment extends Model
     const STATUS_RETRYING   = 'retrying';
     const STATUS_FAILED     = 'failed';
 
+    public const TYPE_CV                  = 'cv';
+    public const TYPE_IDENTITY            = 'identity';
+    public const TYPE_PORTFOLIO           = 'portfolio';
+    public const TYPE_COVER_LETTER        = 'cover_letter';
+    public const TYPE_PROPOSAL            = 'proposal';
+    public const TYPE_SUPPORTING_DOCUMENT = 'supporting_document';
+    public const TYPE_PROFILE_PHOTO       = 'profile_photo';
+    public const TYPE_LEGACY_BUNDLE       = 'cv_ktp_portofolio';
+
+    public static function getCategoryLabel(string $type): string
+    {
+        return match($type) {
+            self::TYPE_CV                  => 'Curriculum Vitae (CV)',
+            self::TYPE_IDENTITY            => 'KTM / KTP',
+            self::TYPE_PORTFOLIO           => 'Portofolio',
+            self::TYPE_COVER_LETTER        => 'Surat Pengantar',
+            self::TYPE_PROPOSAL            => 'Proposal Magang',
+            self::TYPE_SUPPORTING_DOCUMENT => 'Dokumen Pendukung',
+            self::TYPE_PROFILE_PHOTO       => 'Foto Profil',
+            self::TYPE_LEGACY_BUNDLE       => 'Berkas Gabungan CV/KTM/Portofolio (Legacy)',
+            default                        => ucfirst(str_replace('_', ' ', $type)),
+        };
+    }
+
     protected $fillable = [
         'internship_registration_id',
         'attachment_type',
+        'category',
+        'document_version',
         'file_path',
         'original_name',
         'file_size',
@@ -46,6 +72,28 @@ class RegistrationAttachment extends Model
     public function registration()
     {
         return $this->belongsTo(InternshipRegistration::class, 'internship_registration_id')->withTrashed();
+    }
+
+    /**
+     * Accessor category yang mendukung fallback otomatis ke attachment_type jika kolom belum ada/kosong.
+     */
+    public function getCategoryAttribute($value): string
+    {
+        if (!empty($value)) {
+            return $value;
+        }
+
+        return match ($this->attachment_type) {
+            'cv'                     => self::TYPE_CV,
+            'identity', 'ktm', 'ktp' => self::TYPE_IDENTITY,
+            'portfolio'              => self::TYPE_PORTFOLIO,
+            'cover_letter'           => self::TYPE_COVER_LETTER,
+            'proposal'               => self::TYPE_PROPOSAL,
+            'supporting_document'    => self::TYPE_SUPPORTING_DOCUMENT,
+            'profile_photo'          => self::TYPE_PROFILE_PHOTO,
+            'cv_ktp_portofolio'      => self::TYPE_LEGACY_BUNDLE,
+            default                  => 'lampiran',
+        };
     }
 
     /**

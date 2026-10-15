@@ -49,42 +49,55 @@
       @csrf
 
       <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Username <span style="color:#ef4444;">*</span></label>
-        <input type="text" name="username" required value="{{ old('username') }}" placeholder="Masukkan username"
-               style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;color:#111;background:#fff;box-sizing:border-box;"
-               onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+        <label for="username" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Username <span style="color:#ef4444;">*</span></label>
+        <input type="text" id="username" name="username" required value="{{ old('username') }}" placeholder="Masukkan username unik"
+               style="width:100%;padding:10px 14px;border:1.5px solid {{ $errors->has('username') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;color:#111;background:#fff;box-sizing:border-box;"
+               onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('username') ? '#ef4444' : '#e5e7eb' }}'">
+        @error('username')
+          <p style="color:#dc2626;font-size:11px;margin-top:4px;margin-bottom:0;">{{ $message }}</p>
+        @enderror
       </div>
 
       <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Email <span style="color:#ef4444;">*</span></label>
-        <input type="email" name="email" required value="{{ old('email') }}" placeholder="email@contoh.com"
-               style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;color:#111;background:#fff;box-sizing:border-box;"
-               onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+        <label for="email" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Email <span style="color:#ef4444;">*</span></label>
+        <input type="email" id="email" name="email" required value="{{ old('email') }}" placeholder="email@contoh.com"
+               style="width:100%;padding:10px 14px;border:1.5px solid {{ $errors->has('email') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;color:#111;background:#fff;box-sizing:border-box;"
+               onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('email') ? '#ef4444' : '#e5e7eb' }}'">
+        @error('email')
+          <p style="color:#dc2626;font-size:11px;margin-top:4px;margin-bottom:0;">{{ $message }}</p>
+        @enderror
       </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
         <div>
           <label for="password" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Password <span style="color:#ef4444;">*</span></label>
           <div style="position:relative;">
-            <input type="password" id="password" name="password" required placeholder="Min. 8"
-                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
-                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+            <input type="password" id="password" name="password" required placeholder="Min. 8 karakter"
+                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid {{ $errors->has('password') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('password') ? '#ef4444' : '#e5e7eb' }}'">
             <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"
                     style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;">
               <svg class="eye-icon" style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
+          @error('password')
+            <p style="color:#dc2626;font-size:11px;margin-top:4px;margin-bottom:0;">{{ $message }}</p>
+          @enderror
         </div>
         <div>
           <label for="password_confirmation" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Konfirmasi <span style="color:#ef4444;">*</span></label>
           <div style="position:relative;">
-            <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi"
-                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
-                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+            <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi password"
+                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid {{ $errors->has('password_confirmation') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('password_confirmation') ? '#ef4444' : '#e5e7eb' }}'">
             <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"
                     style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;">
               <svg class="eye-icon" style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
+          @error('password_confirmation')
+            <p style="color:#dc2626;font-size:11px;margin-top:4px;margin-bottom:0;">{{ $message }}</p>
+          @enderror
         </div>
       </div>
       <button type="submit"

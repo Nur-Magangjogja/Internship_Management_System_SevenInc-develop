@@ -318,18 +318,27 @@ class RegistrationSpreadsheetMappingService
      */
     protected function resolveAttachmentUrl(InternshipRegistration $registration): ?string
     {
-        $attachment = $registration->attachments()
+        $attachments = $registration->attachments()
             ->where('drive_sync_status', \App\Models\RegistrationAttachment::STATUS_SYNCED)
             ->whereNotNull('drive_file_id')
             ->where('drive_file_id', 'not like', 'local_sim_%')
             ->whereNotNull('drive_web_view_link')
-            ->first();
+            ->get();
 
-        if ($attachment && !empty($attachment->drive_web_view_link)) {
-            return $attachment->drive_web_view_link;
+        if ($attachments->isEmpty()) {
+            return null;
         }
 
-        return null;
+        if ($attachments->count() === 1) {
+            return $attachments->first()->drive_web_view_link;
+        }
+
+        // Multi-upload: utamakan CV atau bundle berkas
+        $primary = $attachments->firstWhere('category', \App\Models\RegistrationAttachment::TYPE_CV)
+            ?? $attachments->firstWhere('category', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+            ?? $attachments->first();
+
+        return $primary?->drive_web_view_link;
     }
 
     /**

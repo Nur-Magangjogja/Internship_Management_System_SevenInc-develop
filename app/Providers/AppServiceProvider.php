@@ -50,6 +50,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Standarisasi Pagination Global SERTIF (Modul 4)
+        \Illuminate\Pagination\Paginator::defaultView('components.pagination');
+        \Illuminate\Pagination\Paginator::defaultSimpleView('components.pagination');
+
         View::composer('pemagang.layouts.app', function ($view) {
             $user = Auth::user();
             $notifications = collect();

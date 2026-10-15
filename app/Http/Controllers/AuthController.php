@@ -31,36 +31,47 @@ class AuthController extends Controller
     // Handle registration
     public function register(Request $request)
     {
+        // Normalisasi input awal
+        if ($request->has('email')) {
+            $request->merge(['email' => strtolower(trim((string) $request->email))]);
+        }
+        if ($request->has('username')) {
+            $request->merge(['username' => trim((string) $request->username)]);
+        }
+
         $request->validate([
-            'username' => ['required', 'string', 'max:150', 'unique:users,name'],
-            'email' => ['required', 'email', 'unique:users,email'],
+            'username' => ['required', 'string', 'min:3', 'max:150', 'unique:users,name'],
+            'email'    => ['required', 'string', 'email:rfc,filter', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ], [
-            'username.required' => 'Username wajib diisi.',
-            'username.unique' => 'Username sudah digunakan, silakan pilih username lain.',
-            'username.max' => 'Username maksimal 150 karakter.',
-            'email.required' => 'Email wajib diisi.',
-            'email.email' => 'Format email tidak valid.',
-            'email.unique' => 'Email sudah terdaftar.',
-            'password.required' => 'Password wajib diisi.',
-            'password.min' => 'Password minimal 8 karakter.',
+            'username.required'  => 'Username wajib diisi.',
+            'username.min'       => 'Username minimal 3 karakter.',
+            'username.max'       => 'Username maksimal 150 karakter.',
+            'username.unique'    => 'Username sudah digunakan, silakan pilih username lain.',
+            'email.required'     => 'Email wajib diisi.',
+            'email.email'        => 'Format email tidak valid.',
+            'email.max'          => 'Email maksimal 255 karakter.',
+            'email.unique'       => 'Email sudah terdaftar. Silakan login atau gunakan email lain.',
+            'password.required'  => 'Password wajib diisi.',
+            'password.min'       => 'Password minimal 8 karakter.',
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
         ]);
 
+        // Proteksi eskalasi privilege: selalu paksa role = 'user' (calon pemagang)
         $user = User::create([
-            'name' => $request->username,
-            'email' => $request->email,
+            'name'     => $request->username,
+            'email'    => $request->email,
             'password' => Hash::make($request->password),
-            'role' => 'user',
+            'role'     => 'user',
         ]);
 
         // Auto-login setelah register
         Auth::login($user);
         $request->session()->regenerate();
 
-        // Langsung ke form magang
+        // Langsung ke form pendaftaran magang
         return redirect()->route('pemagang.registration.form')
-            ->with('success', 'Akun berhasil dibuat! Silakan isi form pendaftaran magang di bawah ini.');
+            ->with('success', 'Akun berhasil dibuat! Silakan lengkapi formulir pendaftaran magang berikut.');
     }
 
     /**

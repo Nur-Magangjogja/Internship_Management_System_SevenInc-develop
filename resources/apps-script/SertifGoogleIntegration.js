@@ -229,6 +229,9 @@ function doPost(e) {
       case "update_row":
         return handleUpdateRowAction(payload);
 
+      case "lookup_row":
+        return handleLookupRowAction(payload);
+
       case "upload_attachment":
         return handleUploadAttachmentAction(payload);
 
@@ -970,6 +973,123 @@ function handleUpdateRowAction(payload) {
 }
 
 /**
+ * Handle Safe Read-Only Row Lookup Action by sync_id
+ */
+function handleLookupRowAction(payload) {
+  var connectionKey = payload.connection_key;
+  var targetTabName = payload.tab_name;
+  var syncId = payload.sync_id;
+
+  if (!syncId || typeof syncId !== "string" || syncId.trim() === "") {
+    return createJsonResponse({
+      success: false,
+      error_code: "INVALID_SYNC_ID",
+      is_retryable: false,
+      message: "sync_id wajib diisi untuk lookup."
+    }, 400);
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var regSheetId = props.getProperty("REGISTRATION_SPREADSHEET_ID");
+  var fwuSheetId = props.getProperty("FOLLOWUP_SPREADSHEET_ID");
+
+  var spreadsheetId = payload.spreadsheet_id;
+  if (!spreadsheetId) {
+    if (connectionKey === "registration") {
+      spreadsheetId = regSheetId;
+    } else if (connectionKey === "followup") {
+      spreadsheetId = fwuSheetId;
+    }
+  }
+
+  if (!spreadsheetId) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "SPREADSHEET_NOT_CONFIGURED",
+      is_retryable: false,
+      message: "Spreadsheet ID belum dikonfigurasi."
+    }, 400);
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(targetTabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab sheet '" + targetTabName + "' tidak ditemukan."
+      }, 404);
+    }
+
+    var headerRowIndex = (connectionKey === "registration") ? 12 : 1;
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    if (lastCol === 0 || lastRow < headerRowIndex) {
+      return createJsonResponse({
+        success: true,
+        sync_id: syncId,
+        found: false,
+        row_index: null,
+        message: "Sheet kosong atau belum memiliki data."
+      }, 200);
+    }
+
+    var actualHeaders = sheet.getRange(headerRowIndex, 1, 1, lastCol).getValues()[0];
+    var syncIdColIndex = -1;
+    for (var i = 0; i < actualHeaders.length; i++) {
+      if (actualHeaders[i].toString().trim().toUpperCase() === "SERTIF_SYNC_ID") {
+        syncIdColIndex = i + 1;
+        break;
+      }
+    }
+
+    if (syncIdColIndex === -1) {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "MISSING_SYNC_ID_COLUMN",
+        is_retryable: false,
+        message: "Kolom SERTIF_SYNC_ID tidak ditemukan pada header."
+      }, 400);
+    }
+
+    var numDataRows = lastRow - headerRowIndex;
+    var matchingRows = [];
+    if (numDataRows > 0) {
+      var syncIdValues = sheet.getRange(headerRowIndex + 1, syncIdColIndex, numDataRows, 1).getValues();
+      for (var r = 0; r < syncIdValues.length; r++) {
+        if (syncIdValues[r][0].toString().trim() === syncId.trim()) {
+          matchingRows.push(headerRowIndex + 1 + r);
+        }
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      sync_id: syncId,
+      found: matchingRows.length > 0,
+      row_index: matchingRows.length === 1 ? matchingRows[0] : null,
+      duplicate_count: matchingRows.length,
+      matching_rows: matchingRows,
+      timestamp: new Date().toISOString()
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      sync_id: syncId,
+      error_code: "LOOKUP_ERROR",
+      is_retryable: true,
+      message: "Gagal melakukan lookup baris: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
  * Handle Idempotent Upload Attachment to Google Drive
  */
 function handleUploadAttachmentAction(payload) {
@@ -1140,11 +1260,27 @@ function handleUploadAttachmentAction(payload) {
     var rootFolder = DriveApp.getFolderById(rootFolderId);
     
     // Subfolder hierarchy: Registrasi / {Year} / {ApplicantName}_{regId}
-    var regBaseFolder = getOrCreateSubFolder(rootFolder, "Registrasi");
-    var yearFolder = getOrCreateSubFolder(regBaseFolder, year);
     var cleanApplicantName = applicantName.replace(/[^a-zA-Z0-9_\-\s]/g, "").trim().replace(/\s+/g, "_");
+    var baseFolderName = payload.base_folder || "Registrasi";
+    var regBaseFolder = getOrCreateSubFolder(rootFolder, baseFolderName);
+    var yearFolder = getOrCreateSubFolder(regBaseFolder, year);
     var targetFolderName = cleanApplicantName + "_REG" + regId;
     var targetFolder = getOrCreateSubFolder(yearFolder, targetFolderName);
+
+    if (payload.category && typeof targetFolder.getFoldersByName === "function") {
+      var categoryFolderMap = {
+        "cv": "CV",
+        "identity": "Identitas",
+        "portfolio": "Portofolio",
+        "cover_letter": "Surat-Pengantar",
+        "proposal": "Proposal",
+        "supporting_document": "Dokumen-Pendukung",
+        "profile_photo": "Foto-Profil",
+        "legacy_bundle": "Berkas-Gabungan"
+      };
+      var subCategoryName = categoryFolderMap[payload.category.toString().toLowerCase()] || payload.category;
+      targetFolder = getOrCreateSubFolder(targetFolder, subCategoryName);
+    }
 
     // Idempotency check: check if file with this sync identity & verified checksum already exists
     var safeFilePrefix = syncId + "_";

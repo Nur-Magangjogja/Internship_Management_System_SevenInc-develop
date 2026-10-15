@@ -38,6 +38,19 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         );
     }
 
+    public function lookupRow(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif (tersedia pada Phase S9E).',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
+
     public function ensureExtensionColumns(
         SpreadsheetConnection $connection,
         string $tabName,

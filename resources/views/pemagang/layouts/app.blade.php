@@ -33,12 +33,22 @@
 
 <body class="bg-gray-50 overflow-x-hidden">
 
-  <div class="flex min-h-screen">
+  <div class="flex min-h-screen overflow-x-hidden" x-data="{ mobileSidebarOpen: false }">
+
+    {{-- Backdrop Overlay Mobile --}}
+    <div x-show="mobileSidebarOpen"
+         @click="mobileSidebarOpen = false"
+         class="fixed inset-0 z-40 bg-black/50 lg:hidden"
+         style="display: none;"
+         x-transition.opacity>
+    </div>
 
     {{-- ===== SIDEBAR ===== --}}
-    <aside class="w-56 flex-shrink-0 flex flex-col" style="background-color: #1a5c38;">
+    <aside :class="mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+           class="fixed inset-y-0 left-0 z-50 w-64 lg:static lg:w-56 flex-shrink-0 flex flex-col transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none"
+           style="background-color: #1a5c38;">
 
-      {{-- Brand --}}
+      {{-- Brand & Mobile Close Button --}}
       <div class="flex items-center gap-3 px-4 py-5 border-b border-white/10">
         <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white font-bold text-sm">
           IH
@@ -47,10 +57,16 @@
           <div class="text-sm font-semibold leading-tight">InternHub</div>
           <div class="text-xs text-white/60 leading-tight">Internship Platform</div>
         </div>
+        <button @click="mobileSidebarOpen = false"
+                type="button"
+                class="lg:hidden ml-auto text-white/70 hover:text-white p-1 rounded-lg"
+                aria-label="Tutup navigasi">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
 
       {{-- Navigation --}}
-      <nav class="flex-1 px-3 py-4 space-y-1">
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         @php
           $reg = auth()->user()->internshipRegistration;
           $hasSubmitted = $reg && !$reg->is_draft;
@@ -59,6 +75,7 @@
         {{-- Dashboard — hanya setelah submit form --}}
         @if($hasSubmitted)
         <a href="{{ route('pemagang.dashboard') }}"
+           @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.dashboard') ? 'active' : '' }}">
           <i class="fas fa-home w-4 text-center text-white/70"></i>
           Dashboard
@@ -67,6 +84,7 @@
 
         {{-- Daftar Magang — selalu tampil --}}
         <a href="{{ route('pemagang.registration.form') }}"
+           @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.registration.*') ? 'active' : '' }}">
           <i class="fas fa-file-alt w-4 text-center text-white/70"></i>
           Daftar Magang
@@ -78,6 +96,7 @@
         {{-- Menu lain — hanya setelah submit form --}}
         @if($hasSubmitted)
         <a href="{{ route('pemagang.documents') }}"
+           @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.documents') ? 'active' : '' }}">
           <i class="fas fa-folder-open w-4 text-center text-white/70"></i>
           Dokumen Saya
@@ -85,6 +104,7 @@
 
         {{-- Webinar — hanya setelah submit form --}}
         <a href="{{ route('pemagang.webinar.index') }}"
+           @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.webinar.*') ? 'active' : '' }}">
           <i class="fas fa-video w-4 text-center text-white/70"></i>
           Webinar
@@ -109,13 +129,11 @@
         @endif
 
         <a href="{{ route('pemagang.settings') }}"
+           @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.settings') ? 'active' : '' }}">
           <i class="fas fa-cog w-4 text-center text-white/70"></i>
           Pengaturan
         </a>
-
-        {{-- Tampilkan menu aktivitas hanya kalau sudah diterima/aktif/selesai --}}
-        @php $regStatus = auth()->user()->internshipRegistration?->internship_status; @endphp
       </nav>
 
       {{-- Logout --}}
@@ -132,16 +150,22 @@
     </aside>
 
     {{-- ===== MAIN AREA ===== --}}
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 overflow-x-hidden">
 
       {{-- ===== TOPBAR ===== --}}
-      <header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
-        {{-- Breadcrumb --}}
-        <div class="text-sm text-gray-500">
+      <header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
+        {{-- Mobile Hamburger & Breadcrumb --}}
+        <div class="flex items-center text-sm text-gray-500 min-w-0">
+          <button @click="mobileSidebarOpen = !mobileSidebarOpen"
+                  type="button"
+                  class="lg:hidden mr-3 p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+                  aria-label="Buka menu navigasi">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
           <span class="font-medium text-gray-700">InternHub</span>
           @hasSection('breadcrumb')
             <span class="mx-1">/</span>
-            @yield('breadcrumb')
+            <span class="truncate">@yield('breadcrumb')</span>
           @endif
         </div>
 
@@ -177,15 +201,12 @@
           </div>
 
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold overflow-hidden flex-shrink-0"
-                 style="background-color: #1a5c38;">
-              @php $authUser = auth()->user(); @endphp
-              @if($authUser->profile_picture && \Illuminate\Support\Facades\Storage::disk('public')->exists($authUser->profile_picture))
-                <img src="{{ asset('storage/' . $authUser->profile_picture) }}" alt="foto" class="w-full h-full object-cover">
-              @else
-                {{ strtoupper(substr($authUser->internshipRegistration->fullname ?? $authUser->name ?? 'U', 0, 2)) }}
-              @endif
-            </div>
+            @php
+              $authUser = auth()->user();
+              $userPhoto = $authUser->internshipRegistration?->profile_photo ?? $authUser->profile_picture ?? $authUser->avatar ?? null;
+              $userName = $authUser->internshipRegistration->fullname ?? $authUser->name ?? 'Pemagang';
+            @endphp
+            <x-image-display :src="$userPhoto" :alt="$userName" class="w-8 h-8 rounded-full object-cover shrink-0" :fallbackInitial="substr($userName, 0, 1)" type="avatar" />
             <div class="text-right hidden sm:block">
               <div class="text-sm font-medium text-gray-700 leading-tight">{{ auth()->user()->internshipRegistration->fullname ?? auth()->user()->name }}</div>
               <div class="text-xs text-gray-400 leading-tight">

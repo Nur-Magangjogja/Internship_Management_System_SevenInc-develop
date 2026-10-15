@@ -116,6 +116,36 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         );
     }
 
+    public function lookupRow(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId
+    ): SpreadsheetTransportResponse {
+        $this->callCount++;
+        $this->callHistory[] = [
+            'action'  => 'lookup_row',
+            'tab'     => $tabName,
+            'sync_id' => $syncId,
+        ];
+
+        if ($this->forcedResponse !== null) {
+            return $this->forcedResponse;
+        }
+
+        if (isset($this->remoteSheets[$tabName][$syncId])) {
+            $rowIndex = array_search($syncId, array_keys($this->remoteSheets[$tabName]), true) + 2;
+            return SpreadsheetTransportResponse::ok(
+                rowIndex: $rowIndex,
+                context: ['found' => true, 'sync_id' => $syncId]
+            );
+        }
+
+        return SpreadsheetTransportResponse::ok(
+            rowIndex: null,
+            context: ['found' => false, 'sync_id' => $syncId]
+        );
+    }
+
     public function ensureExtensionColumns(
         SpreadsheetConnection $connection,
         string $tabName,

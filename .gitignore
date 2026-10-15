@@ -17,8 +17,6 @@ yarn-error.log
 /.idea
 /.vscode
 .phpunit.result.cache
-KonteksProyek/
-KonteksProyek/*
 .env.testing
 
 

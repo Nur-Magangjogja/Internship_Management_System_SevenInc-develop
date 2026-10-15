@@ -105,6 +105,35 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
     }
 
     /**
+     * Perform safe remote row lookup by sync_id via Apps Script.
+     */
+    public function lookupRow(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        string $syncId
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'lookup_row',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'sync_id'        => $syncId,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
      * Ensure sidecar extension columns exist in Google Sheets.
      */
     public function ensureExtensionColumns(
@@ -275,6 +304,7 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'registration_id' => (string) $reg->id,
             'attachment_id'   => (string) $attachment->id,
             'applicant_name'  => (string) $reg->fullname,
+            'category'        => (string) ($attachment->category ?? 'lampiran'),
             'year'            => $year,
             'file_name'       => $attachment->original_name,
             'mime_type'       => $attachment->mime_type,
