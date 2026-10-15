@@ -136,7 +136,7 @@ class StabilizationPhaseS9DTest extends TestCase
             'has_laptop'        => true,
             'start_date'        => '2026-07-01',
             'planned_duration'  => '3 Bulan',
-            'internship_status' => InternshipRegistration::STATUS_WAITING,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
         ], $overrides));
 
         $reg->created_at = \Carbon\Carbon::create(2026, 3, 1, 10, 0, 0);

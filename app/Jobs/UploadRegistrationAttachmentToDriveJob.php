@@ -59,20 +59,32 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
             'drive_sync_status' => RegistrationAttachment::STATUS_PROCESSING,
         ]);
 
-        $localPath = Storage::disk('private')->path($attachment->file_path);
+        // S17.18G.5 Fix B: Resolusi berkas lampiran dari disk 'local' (privat), fallback ke 'public' (legacy), dan penanganan error terstruktur
+        $localPath = null;
 
-        if (!file_exists($localPath)) {
-            // Check public disk fallback if stored there
-            $fallbackPath = Storage::disk('public')->path($attachment->file_path);
-            if (file_exists($fallbackPath)) {
-                $localPath = $fallbackPath;
-            } else {
-                $attachment->update([
-                    'drive_sync_status'   => RegistrationAttachment::STATUS_FAILED,
-                    'drive_error_message' => 'Berkas lampiran fisik tidak ditemukan di storage server.',
-                ]);
-                return;
+        try {
+            if (Storage::disk('local')->exists($attachment->file_path)) {
+                $localPath = Storage::disk('local')->path($attachment->file_path);
+            } elseif (Storage::disk('public')->exists($attachment->file_path)) {
+                $localPath = Storage::disk('public')->path($attachment->file_path);
+            } elseif (array_key_exists('private', config('filesystems.disks', [])) && Storage::disk('private')->exists($attachment->file_path)) {
+                $localPath = Storage::disk('private')->path($attachment->file_path);
             }
+        } catch (Throwable $fsEx) {
+            Log::error("UploadRegistrationAttachmentToDriveJob: Gagal mengakses sistem penyimpanan untuk attachment #{$attachment->id}: " . $fsEx->getMessage());
+            $attachment->update([
+                'drive_sync_status'   => RegistrationAttachment::STATUS_FAILED,
+                'drive_error_message' => 'Kesalahan akses media penyimpanan: ' . $fsEx->getMessage(),
+            ]);
+            throw $fsEx;
+        }
+
+        if (!$localPath || !file_exists($localPath)) {
+            $attachment->update([
+                'drive_sync_status'   => RegistrationAttachment::STATUS_FAILED,
+                'drive_error_message' => 'Berkas lampiran fisik tidak ditemukan di storage server.',
+            ]);
+            return;
         }
 
         $fileSize = filesize($localPath);

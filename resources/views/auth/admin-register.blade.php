@@ -63,23 +63,35 @@
         <!-- Password -->
         <div>
           <label for="password" class="block text-sm font-medium text-gray-800 dark:text-gray-200">Password</label>
-          <input type="password" id="password" name="password" required autocomplete="new-password"
-                 placeholder="••••••••"
-                 class="mt-1 w-full px-4 py-2 rounded-lg border
-                        bg-white text-gray-900 placeholder-gray-400
-                        border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-                        dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
+          <div class="relative mt-1">
+            <input type="password" id="password" name="password" required autocomplete="new-password"
+                   placeholder="••••••••"
+                   class="w-full px-4 pr-10 py-2 rounded-lg border
+                          bg-white text-gray-900 placeholder-gray-400
+                          border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
+                          dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
+            <button type="button" onclick="togglePasswordVisibility('password', this)" aria-label="Lihat password"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition">
+              <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
 
         <!-- Confirm Password -->
         <div>
           <label for="password_confirmation" class="block text-sm font-medium text-gray-800 dark:text-gray-200">Confirm Password</label>
-          <input type="password" id="password_confirmation" name="password_confirmation" required autocomplete="new-password"
-                 placeholder="••••••••"
-                 class="mt-1 w-full px-4 py-2 rounded-lg border
-                        bg-white text-gray-900 placeholder-gray-400
-                        border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-                        dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
+          <div class="relative mt-1">
+            <input type="password" id="password_confirmation" name="password_confirmation" required autocomplete="new-password"
+                   placeholder="••••••••"
+                   class="w-full px-4 pr-10 py-2 rounded-lg border
+                          bg-white text-gray-900 placeholder-gray-400
+                          border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
+                          dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
+            <button type="button" onclick="togglePasswordVisibility('password_confirmation', this)" aria-label="Lihat konfirmasi password"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition">
+              <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
 
         <!-- Submit -->
@@ -102,5 +114,23 @@
       </div>
     </div>
   </div>
+
+  <script>
+    function togglePasswordVisibility(fieldId, btn) {
+      const input = document.getElementById(fieldId);
+      if (!input) return;
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      btn.setAttribute('aria-label', isHidden ? 'Sembunyikan password' : 'Lihat password');
+      const icon = btn.querySelector('.eye-icon');
+      if (icon) {
+        if (isHidden) {
+          icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+        } else {
+          icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+        }
+      }
+    }
+  </script>
 </body>
 </html>

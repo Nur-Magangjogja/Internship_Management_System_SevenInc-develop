@@ -649,8 +649,9 @@ class StabilizationPhaseS11Test extends TestCase
         ]);
 
         $intern = $this->createDummyRegistration($user, [
-            'name'     => 'Failing Sync Intern',
-            'fullname' => 'Failing Sync Intern',
+            'name'              => 'Failing Sync Intern',
+            'fullname'          => 'Failing Sync Intern',
+            'internship_status' => IR::STATUS_ACCEPTED,
         ]);
 
         $rowSync = SpreadsheetRowSync::create([
@@ -667,6 +668,15 @@ class StabilizationPhaseS11Test extends TestCase
         // Mock transport that always fails
         $mockTransport = new class implements SpreadsheetTransportInterface {
             public function sendRowUpsert(SpreadsheetConnection $connection, string $tabName, string $syncId, array $payload): SpreadsheetTransportResponse
+            {
+                return new SpreadsheetTransportResponse(
+                    success: false,
+                    isRetryable: false,
+                    errorMessage: 'Fatal remote error HTTP 500'
+                );
+            }
+
+            public function sendRowUpdateOnly(SpreadsheetConnection $connection, string $tabName, string $syncId, array $payload): SpreadsheetTransportResponse
             {
                 return new SpreadsheetTransportResponse(
                     success: false,

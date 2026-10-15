@@ -88,8 +88,26 @@ Route::post('/register', [AuthController::class, 'register'])
     ->middleware(['guest', 'throttle:10,1']);
 
 // Logout (user & admin)
+Route::get('/logout', fn() => redirect()->route('user.login'));
 Route::post('/logout', [AuthController::class, 'logout'])
     ->name('user.logout');
+
+// Password Reset (Guest)
+Route::middleware('guest')->group(function () {
+    Route::get('/forgot-password', [AuthController::class, 'showForgotPasswordForm'])
+        ->name('password.request');
+
+    Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail'])
+        ->name('password.email')
+        ->middleware('throttle:6,1');
+
+    Route::get('/reset-password/{token}', [AuthController::class, 'showResetPasswordForm'])
+        ->name('password.reset');
+
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])
+        ->name('password.update')
+        ->middleware('throttle:6,1');
+});
 
 /* =================== USER ROUTES (Legacy — dipertahankan untuk kompatibilitas) =================== */
 // Redirect user.dashboard ke pemagang.dashboard supaya link lama tidak broken
@@ -231,6 +249,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         // Form Fields Builder
         Route::get('/fields',                                 [\App\Http\Controllers\Admin\FormFieldController::class, 'index'])->name('fields');
         Route::post('/fields',                                [\App\Http\Controllers\Admin\FormFieldController::class, 'store'])->name('fields.store');
+        Route::post('/fields/publish',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'publish'])->name('fields.publish');
+        Route::post('/fields/{field}/archive',                [\App\Http\Controllers\Admin\FormFieldController::class, 'archive'])->name('fields.archive');
         Route::get('/fields/preview-data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'previewData'])->name('fields.preview-data');
         Route::post('/fields/reorder',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'reorder'])->name('fields.reorder');
         Route::get('/fields/{field}/data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'show'])->name('fields.show');
@@ -375,6 +395,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
         // Update status & data
         Route::patch('/{intern}/status', [InternController::class, 'updateStatus'])->name('status.update');
+        Route::patch('/{intern}/followup-status', [InternController::class, 'updateFollowupStatus'])->name('followup.update');
+        Route::patch('/{intern}/custom-answers', [InternController::class, 'updateCustomAnswers'])->name('custom-answers.update');
         Route::patch('/bulk/status', [InternController::class, 'bulkUpdateStatus'])->name('status.bulk');
         Route::patch('/{intern}', [InternController::class, 'update'])->name('update');
 
@@ -620,6 +642,11 @@ Route::middleware(['auth', 'role:admin'])
 Route::post('/log-download', [MembercardController::class, 'logDownload'])
     ->name('log.download')
     ->middleware(['auth', 'role:pemagang', 'throttle:30,1']);
+
+// Unduh berkas dokumen pendaftaran privat (hanya pemilik atau admin/hr_staff)
+Route::get('/registration/documents/{attachment}', [PemagangRegistration::class, 'downloadDocument'])
+    ->name('pemagang.registration.attachment.download')
+    ->middleware('auth');
 
 /* =================== PEMAGANG & USER ROUTES =================== */
 // Pendaftaran & Pengaturan Akun (diakses oleh user calon pemagang dan pemagang aktif)

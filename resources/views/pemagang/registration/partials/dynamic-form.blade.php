@@ -58,7 +58,7 @@
                 break;
 
             case 'date':
-                $dateVal = is_callable($toDateInput) ? $toDateInput((string)$val) : $val;
+                $dateVal = is_callable($toDateInput) ? $toDateInput($val) : (is_string($val) ? $val : '');
                 $html .= '<input type="date" name="' . e($field->field_key) . '" '
                     . $required . ' class="' . $input . '" value="' . e($dateVal) . '">';
                 break;
@@ -235,3 +235,14 @@
     </div>
 </div>
 @endif
+
+{{-- Render field kustom dari Form Builder (jika ada) --}}
+@if(!empty($customFields) && $customFields->isNotEmpty())
+<div class="border-t border-gray-100 pt-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">Pertanyaan Tambahan</h3>
+    <div class="space-y-4">
+        {!! $renderGroup($customFields) !!}
+    </div>
+</div>
+@endif
+

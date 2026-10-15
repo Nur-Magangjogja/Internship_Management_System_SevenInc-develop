@@ -16,10 +16,11 @@
             'trashed'  => 'Arsip Terhapus',
         ],
         'pemagang' => [
-            'active'    => 'Aktif',
-            'completed' => 'Selesai',
-            'exited'    => 'Keluar',
-            'trashed'   => 'Arsip Terhapus',
+            'active'       => 'Aktif',
+            'participants' => 'Peserta Administratif',
+            'completed'    => 'Selesai',
+            'exited'       => 'Keluar',
+            'trashed'      => 'Arsip Terhapus',
         ],
         'trashed' => [
             'trashed'   => 'Arsip Terhapus',
@@ -112,6 +113,64 @@
                     class="flex items-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1F5F3F]">
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                     Terima & Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Modal: Ubah Status Follow-Up --}}
+<div id="followupModal" class="fixed inset-0 z-[115] hidden">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-[2px]" id="followupModalOverlay"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="w-full max-w-lg rounded-[16px] bg-white shadow-xl overflow-hidden">
+            {{-- Header --}}
+            <div class="flex items-center gap-3 border-b border-[#DCE7E1] px-5 py-4">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[#E0F2FE]">
+                    <svg class="h-5 w-5 text-[#0284C7]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-[15px] font-bold text-[#1B3A34]">Status Follow-Up</h3>
+                    <p id="followupModalSubtitle" class="text-[11.5px] text-[#4B5F5A]">Perbarui status tindak lanjut pendaftar</p>
+                </div>
+            </div>
+            {{-- Body --}}
+            <div class="p-5 space-y-4">
+                <div id="followupModalAlert" class="hidden rounded-[8px] border border-red-200 bg-red-50 p-3 text-xs text-red-700"></div>
+
+                <div>
+                    <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
+                        Status Tindak Lanjut <span class="text-red-500">*</span>
+                    </label>
+                    <select id="followupStatusSelect"
+                        class="w-full rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2.5 text-[12.5px] text-[#1B3A34] outline-none focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                        <option value="">— Pilih Status Follow-Up —</option>
+                        @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
+                            <option value="{{ $fKey }}">{{ $fLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
+                        Catatan / Alasan (Opsional)
+                    </label>
+                    <textarea id="followupReasonInput" rows="2" placeholder="Catatan tambahan perubahan status..."
+                        class="w-full rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] text-[#1B3A34] outline-none focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]"></textarea>
+                </div>
+            </div>
+            {{-- Footer --}}
+            <div class="flex items-center justify-end gap-3 border-t border-[#DCE7E1] px-5 py-4">
+                <button id="followupModalCancel" type="button"
+                    class="rounded-[9px] border border-[#DCE7E1] bg-white px-4 py-2 text-sm font-semibold text-[#4B5F5A] hover:bg-[#F4F8F6]">
+                    Batal
+                </button>
+                <button id="followupModalConfirm" type="button"
+                    class="flex items-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1F5F3F]">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Simpan Perubahan
                 </button>
             </div>
         </div>
@@ -338,8 +397,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 @endforeach
             </div>
 
-            {{-- Search --}}
-            <div class="flex items-center gap-2">
+            {{-- Search & Follow-up Filter --}}
+            <div class="flex flex-wrap items-center gap-2">
+                <select id="followup-filter" class="rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] font-semibold text-[#1B3A34] outline-none focus:border-[#2D8659]">
+                    <option value="">Semua Status Follow-Up</option>
+                    @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
+                        <option value="{{ $fKey }}">{{ $fLabel }}</option>
+                    @endforeach
+                </select>
                 <label class="flex items-center gap-2 rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2">
                     <svg class="h-4 w-4 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -596,15 +661,59 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<option value="${val}" ${val === cur ? 'selected' : ''}>${m.label}</option>`;
         }).join('');
 
+        let followupHtml = '';
+        if (it.followup_status_label) {
+            followupHtml = `
+            <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium ${it.followup_status_class || 'bg-slate-100 text-slate-700'}">
+                    ${it.followup_status_label}
+                </span>
+                <button type="button" class="js-edit-followup text-[#4B5F5A] hover:text-[#1F5F3F] transition p-0.5 rounded" data-id="${it.id}" title="Ubah status follow-up">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+            </div>`;
+        } else if (cur === 'accepted') {
+            followupHtml = `
+            <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    Belum di-follow-up
+                </span>
+                <button type="button" class="js-edit-followup text-[#4B5F5A] hover:text-[#1F5F3F] transition p-0.5 rounded" data-id="${it.id}" title="Atur status follow-up">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+            </div>`;
+        }
+
+        let conditionHtml = '';
+        if (it.current_condition_case === 'B') {
+            conditionHtml = `
+            <div class="mt-0.5">
+                <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title="Kondisi Pelaksanaan">
+                    ${it.current_condition_label || 'Keluar setelah mulai magang (belum selesai)'}
+                </span>
+            </div>`;
+        } else if (it.current_condition_case === 'D') {
+            conditionHtml = `
+            <div class="mt-0.5">
+                <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-purple-50 text-purple-800 border border-purple-200" title="Verifikasi Riwayat Diperlukan">
+                    ${it.current_condition_label || 'Keluar — riwayat mulai perlu diverifikasi'}
+                </span>
+            </div>`;
+        }
+
         return `
-        <div class="flex flex-wrap items-center gap-2">
-            ${badgeHtml(cur, it.id)}
-            <select
-                class="js-status-select rounded-[8px] border border-[#DCE7E1] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#1B3A34] outline-none focus:border-[#2D8659]"
-                data-url="${it.status_update_url || `${ADMIN_INTERNS_BASE}/${it.id}/status`}"
-                data-id="${it.id}" data-current="${cur}" data-intern-id="${it.id}">
-                ${statusOptions}
-            </select>
+        <div class="flex flex-col gap-1">
+            <div class="flex flex-wrap items-center gap-2">
+                ${badgeHtml(cur, it.id)}
+                <select
+                    class="js-status-select rounded-[8px] border border-[#DCE7E1] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#1B3A34] outline-none focus:border-[#2D8659]"
+                    data-url="${it.status_update_url || `${ADMIN_INTERNS_BASE}/${it.id}/status`}"
+                    data-id="${it.id}" data-current="${cur}" data-intern-id="${it.id}">
+                    ${statusOptions}
+                </select>
+            </div>
+            ${followupHtml}
+            ${conditionHtml}
         </div>`;
     }
 
@@ -1000,7 +1109,100 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        // Edit Follow-Up Status (S17.18C)
+        document.querySelectorAll('.js-edit-followup').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = Number(btn.dataset.id);
+                const data = window.rowData.get(id);
+                if (!data) return;
+                openFollowupModal(data);
+            });
+        });
+
     }  // end bindRowActions
+
+    // ── Follow-Up Modal Controller (S17.18C) ────────────────────────────────────
+    const followupModal = document.getElementById('followupModal');
+    const followupStatusSelect = document.getElementById('followupStatusSelect');
+    const followupReasonInput = document.getElementById('followupReasonInput');
+    const followupModalAlert = document.getElementById('followupModalAlert');
+    const followupModalCancel = document.getElementById('followupModalCancel');
+    const followupModalConfirm = document.getElementById('followupModalConfirm');
+    const followupModalOverlay = document.getElementById('followupModalOverlay');
+    let _followupPendingData = null;
+
+    function openFollowupModal(data) {
+        _followupPendingData = data;
+        const sub = document.getElementById('followupModalSubtitle');
+        if (sub) sub.textContent = `Pendaftar: ${data.fullname || 'Tanpa nama'}`;
+        if (followupStatusSelect) followupStatusSelect.value = data.followup_status || '';
+        if (followupReasonInput) followupReasonInput.value = '';
+        if (followupModalAlert) {
+            followupModalAlert.classList.add('hidden');
+            followupModalAlert.textContent = '';
+        }
+        if (followupModal) followupModal.classList.remove('hidden');
+    }
+
+    function closeFollowupModal() {
+        if (followupModal) followupModal.classList.add('hidden');
+        _followupPendingData = null;
+    }
+
+    if (followupModalCancel) followupModalCancel.addEventListener('click', closeFollowupModal);
+    if (followupModalOverlay) followupModalOverlay.addEventListener('click', closeFollowupModal);
+
+    if (followupModalConfirm) {
+        followupModalConfirm.addEventListener('click', async () => {
+            if (!_followupPendingData) return;
+            const statusVal = followupStatusSelect.value;
+            const reasonVal = followupReasonInput.value.trim();
+
+            if (!statusVal) {
+                if (followupModalAlert) {
+                    followupModalAlert.textContent = 'Silakan pilih status follow-up.';
+                    followupModalAlert.classList.remove('hidden');
+                }
+                return;
+            }
+
+            followupModalConfirm.disabled = true;
+            if (followupModalAlert) followupModalAlert.classList.add('hidden');
+
+            try {
+                const url = _followupPendingData.followup_update_url || `${ADMIN_INTERNS_BASE}/${_followupPendingData.id}/followup-status`;
+                const res = await fetch(url, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        followup_status: statusVal,
+                        reason: reasonVal || null,
+                    }),
+                });
+
+                const json = await res.json();
+                if (!res.ok) {
+                    throw new Error(json.message || `Gagal menyimpan (HTTP ${res.status})`);
+                }
+
+                pushToast('Status follow-up berhasil diperbarui!', 'success');
+                closeFollowupModal();
+                loadPage(window.__CURRENT_PAGE || 1);
+            } catch (err) {
+                if (followupModalAlert) {
+                    followupModalAlert.textContent = err.message || 'Terjadi kesalahan saat menyimpan.';
+                    followupModalAlert.classList.remove('hidden');
+                }
+            } finally {
+                followupModalConfirm.disabled = false;
+            }
+        });
+    }
 
     // ── ============================================================
     //    MODAL GENERATE DOKUMEN — reusable untuk 4 jenis surat
@@ -1998,11 +2200,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadPage(page = 1) {
         const searchQuery = (searchInput?.value || '').trim();
+        const followupVal = (document.getElementById('followup-filter')?.value || '').trim();
         const params = new URLSearchParams({
             scope:    activeFilter,
             page:     String(page),
             per_page: '10',
         });
+
+        // Filter status follow-up
+        if (followupVal) {
+            params.set('followup_status', followupVal);
+        }
 
         // Hanya tambah q jika ada isi
         if (searchQuery) {
@@ -2043,6 +2251,11 @@ document.addEventListener('DOMContentLoaded', () => {
     window.reloadInterns   = (p) => loadPage(p || window.__CURRENT_PAGE || 1);
 
     // ── Init ─────────────────────────────────────────────────────────────────────
+    const followupFilterEl = document.getElementById('followup-filter');
+    if (followupFilterEl) {
+        followupFilterEl.addEventListener('change', () => loadPage(1));
+    }
+
     loadPage(Number(new URLSearchParams(location.search).get('page') || 1));
 
     window.addEventListener('beforeunload', (e) => {

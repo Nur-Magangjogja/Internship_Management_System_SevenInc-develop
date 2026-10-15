@@ -4,11 +4,45 @@
 <div class="min-h-screen bg-[#F4F8F6] p-4 sm:p-6 lg:p-7">
 
     {{-- Header --}}
-    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
             <p class="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Dashboard & Monitoring</p>
             <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Pengaturan Form Pendaftaran</h1>
             <p class="mt-1 text-sm text-[#4B5F5A]">Kelola pertanyaan yang tampil pada form pendaftaran pemagang. Perubahan langsung terlihat pada preview di sisi kanan.</p>
+        </div>
+
+        {{-- Year Switcher & Publication Controls --}}
+        <div class="flex flex-wrap items-center gap-3">
+            {{-- Year Selector Buttons --}}
+            <div class="inline-flex rounded-[8px] border border-[#DCE7E1] bg-white p-1 shadow-sm">
+                @foreach([2026, 2027] as $y)
+                <a href="{{ route('admin.form-settings.fields', ['year' => $y]) }}"
+                   class="rounded-[6px] px-3 py-1.5 text-xs font-bold transition {{ ($year ?? 2026) == $y ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
+                    Tahun {{ $y }}
+                </a>
+                @endforeach
+            </div>
+
+            {{-- Draft & Published Badges --}}
+            <div class="flex items-center gap-2 text-xs">
+                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]">
+                    Draft: <strong class="text-[#2D8659]">{{ $currentDraft->version_code }}</strong>
+                </span>
+                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]">
+                    Publikasi: <strong>{{ $activePublished ? $activePublished->version_code : 'Belum Terbit' }}</strong>
+                </span>
+            </div>
+
+            {{-- Publish Button --}}
+            <form method="POST" action="{{ route('admin.form-settings.fields.publish') }}" onsubmit="return confirm('Apakah Anda yakin ingin mempublikasikan draf formulir {{ $currentDraft->version_code }} untuk tahun {{ $year ?? 2026 }}? Versi publikasi sebelumnya akan diarsipkan secara otomatis.');">
+                @csrf
+                <input type="hidden" name="year" value="{{ $year ?? 2026 }}">
+                <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-[8px] bg-[#2D8659] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#1F5F3F] transition">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Publikasikan Formulir
+                </button>
+            </form>
         </div>
     </div>
 
@@ -39,11 +73,12 @@
                     <div class="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#E8F5E9]">
                         <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </div>
-                    <h2 class="text-[14px] font-bold text-[#1B3A34]">Tambah Pertanyaan Baru</h2>
+                    <h2 class="text-[14px] font-bold text-[#1B3A34]">Tambah Pertanyaan Baru (Tahun {{ $year ?? 2026 }})</h2>
                 </div>
 
                 <form id="form-add-field" method="POST" action="{{ route('admin.form-settings.fields.store') }}" class="space-y-3">
                     @csrf
+                    <input type="hidden" name="year" value="{{ $year ?? 2026 }}">
                     <div class="grid grid-cols-2 gap-3">
                         <div class="col-span-2">
                             <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Pertanyaan <span class="text-red-500">*</span></label>
@@ -541,11 +576,13 @@ function initSortable(listId, group) {
 // ================================================================
 // Live Preview
 // ================================================================
+const CURRENT_YEAR = {{ $year ?? 2026 }};
+
 function refreshPreview() {
     const container = document.getElementById('form-preview-container');
     if (!container) return;
 
-    fetch('/admin/form-settings/fields/preview-data', {
+    fetch(`/admin/form-settings/fields/preview-data?year=${CURRENT_YEAR}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
     })
     .then(r => r.json())

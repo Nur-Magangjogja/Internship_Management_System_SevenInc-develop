@@ -336,7 +336,7 @@ class StabilizationPhaseS5ATest extends TestCase
 
         $attachment = $reg->attachments()->where('attachment_type', 'cv_ktp_portofolio')->first();
         $this->assertNotNull($attachment);
-        Storage::disk('public')->assertExists($attachment->file_path);
+        $this->assertTrue(Storage::disk('local')->exists($attachment->file_path) || Storage::disk('public')->exists($attachment->file_path));
     }
 
     /**

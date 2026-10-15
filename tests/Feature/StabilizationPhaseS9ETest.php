@@ -120,7 +120,7 @@ class StabilizationPhaseS9ETest extends TestCase
             'has_laptop'        => true,
             'start_date'        => '2026-07-01',
             'planned_duration'  => '3 Bulan',
-            'internship_status' => InternshipRegistration::STATUS_WAITING,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
         ], $overrides));
 
         $reg->created_at = \Carbon\Carbon::create(2026, 3, 1, 10, 0, 0);
@@ -331,6 +331,12 @@ class StabilizationPhaseS9ETest extends TestCase
                 ]);
             }
 
+            public function sendRowUpdateOnly($c, $t, $s, $p): SpreadsheetTransportResponse
+            {
+                $this->callCount++;
+                return SpreadsheetTransportResponse::ok(10);
+            }
+
             public function testConnection($c): bool { return true; }
         };
 
@@ -372,6 +378,11 @@ class StabilizationPhaseS9ETest extends TestCase
         $mockTransport = new class implements SpreadsheetTransportInterface {
             public int $callCount = 0;
             public function sendRowUpsert($c, $t, $s, $p): SpreadsheetTransportResponse
+            {
+                $this->callCount++;
+                return SpreadsheetTransportResponse::ok();
+            }
+            public function sendRowUpdateOnly($c, $t, $s, $p): SpreadsheetTransportResponse
             {
                 $this->callCount++;
                 return SpreadsheetTransportResponse::ok();

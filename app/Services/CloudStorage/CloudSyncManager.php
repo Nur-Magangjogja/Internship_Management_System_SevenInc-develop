@@ -141,11 +141,16 @@ class CloudSyncManager
     {
         $attachment->loadMissing('registration');
 
-        $localDisk = 'private';
+        // S17.18G.5 Fix B: Resolusi berkas lampiran dari disk 'local' (privat), fallback ke 'public' (legacy)
+        $localDisk = 'local';
         if (!Storage::disk($localDisk)->exists($attachment->file_path)) {
             $localDisk = 'public';
             if (!Storage::disk($localDisk)->exists($attachment->file_path)) {
-                throw new RuntimeException("Berkas fisik lampiran tidak ditemukan di server: {$attachment->file_path}");
+                if (array_key_exists('private', config('filesystems.disks', [])) && Storage::disk('private')->exists($attachment->file_path)) {
+                    $localDisk = 'private';
+                } else {
+                    throw new RuntimeException("Berkas fisik lampiran tidak ditemukan di server: {$attachment->file_path}");
+                }
             }
         }
 

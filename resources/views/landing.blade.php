@@ -18,6 +18,8 @@
     * { font-family: 'Inter', sans-serif; }
     html { scroll-behavior: smooth; }
     @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    @media (prefers-reduced-motion: reduce) { [style*="animation:blink"] { animation: none !important; } }
     .float { animation: float 5s ease-in-out infinite; }
     .card { transition: transform .2s, box-shadow .2s; }
     .card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(26,92,56,.12); }
@@ -70,7 +72,7 @@
   <div style="max-width:1100px;margin:0 auto;padding:80px 20px;display:grid;grid-template-columns:1fr;gap:48px;align-items:center;">
     <div style="text-align:center;">
       <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:6px 16px;margin-bottom:24px;">
-        <span style="width:8px;height:8px;border-radius:50%;background:#4ade80;animation:float 2s ease-in-out infinite;"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:#4ade80;animation:blink 1.5s ease-in-out infinite;"></span>
         <span style="color:rgba(255,255,255,.8);font-size:13px;font-weight:500;">Pendaftaran Magang Dibuka</span>
       </div>
       <h1 style="color:#fff;font-size:clamp(32px,5vw,52px);font-weight:800;line-height:1.2;margin-bottom:16px;">

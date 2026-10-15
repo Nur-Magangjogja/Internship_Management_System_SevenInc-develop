@@ -290,33 +290,31 @@ class StabilizationPhaseS9BTest extends TestCase
     }
 
     /**
-     * Test 8: Submitted registrations are eligible for sync.
+     * Test 8: Submitted registrations eligibility matches S17.17 acceptance contract.
      */
     public function test_submitted_registration_is_eligible_for_sync(): void
     {
         $service = app(RegistrationSpreadsheetMappingService::class);
 
-        $eligibleStatuses = [
-            InternshipRegistration::STATUS_WAITING,
-            InternshipRegistration::STATUS_ACCEPTED,
-            InternshipRegistration::STATUS_REJECTED,
-            InternshipRegistration::STATUS_ACTIVE,
-            InternshipRegistration::STATUS_COMPLETED,
-            InternshipRegistration::STATUS_EXITED,
-            InternshipRegistration::STATUS_PENDING,
-        ];
+        // Under S17.17, STATUS_ACCEPTED is eligible
+        $acceptedReg = $this->createRegistration([
+            'fullname'          => 'Applicant Accepted',
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
+        ]);
+        $this->assertTrue($service->isEligibleForSync($acceptedReg));
 
-        foreach ($eligibleStatuses as $status) {
-            $reg = $this->createRegistration([
-                'fullname' => 'Applicant ' . $status,
-                'internship_status' => $status,
-            ]);
+        // Waiting and Pending are strictly ineligible
+        $waitingReg = $this->createRegistration([
+            'fullname'          => 'Applicant Waiting',
+            'internship_status' => InternshipRegistration::STATUS_WAITING,
+        ]);
+        $this->assertFalse($service->isEligibleForSync($waitingReg));
 
-            $this->assertTrue(
-                $service->isEligibleForSync($reg),
-                "Registration with status '{$status}' must be eligible for sync"
-            );
-        }
+        $pendingReg = $this->createRegistration([
+            'fullname'          => 'Applicant Pending',
+            'internship_status' => InternshipRegistration::STATUS_PENDING,
+        ]);
+        $this->assertFalse($service->isEligibleForSync($pendingReg));
     }
 
     /**
@@ -402,7 +400,7 @@ class StabilizationPhaseS9BTest extends TestCase
 
         $regNoLaptop = $this->createRegistration([
             'fullname' => 'Tanpa Laptop',
-            'internship_status' => InternshipRegistration::STATUS_WAITING,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
             'has_laptop' => false,
         ]);
         $regNoLaptop->created_at = \Carbon\Carbon::create(2026, 1, 1);
@@ -433,11 +431,30 @@ class StabilizationPhaseS9BTest extends TestCase
                 'fullname' => 'Test Status ' . $status,
                 'internship_status' => $status,
             ]);
-            $reg->created_at = \Carbon\Carbon::create(2026, 1, 1);
-            $reg->save();
+            $this->assertEquals($expectedLabel, $reg->status_label, "status_label for '{$status}' must match SertIF label");
 
-            $payload = $service->buildOutboundRowPayload($reg);
-            $this->assertEquals($expectedLabel, $payload['KET'], "KET for status '{$status}' must match SertIF label");
+            if (in_array($status, [InternshipRegistration::STATUS_ACCEPTED, InternshipRegistration::STATUS_ACTIVE, InternshipRegistration::STATUS_COMPLETED], true)) {
+                $reg->created_at = \Carbon\Carbon::create(2026, 1, 1);
+                $reg->save();
+
+                \App\Services\ActivityLogger::log(
+                    action: 'intern_registration_status_updated',
+                    description: 'Admin accepted registration',
+                    subject: $reg,
+                    after: ['internship_status' => InternshipRegistration::STATUS_ACCEPTED],
+                    metadata: ['new_status' => InternshipRegistration::STATUS_ACCEPTED]
+                );
+
+                $expectedKet = match ($status) {
+                    InternshipRegistration::STATUS_ACTIVE => 'Sudah masuk magang',
+                    InternshipRegistration::STATUS_COMPLETED => 'Sudah selesai magang',
+                    default => $expectedLabel,
+                };
+                $payload = $service->buildOutboundRowPayload($reg);
+                $this->assertEquals($expectedKet, $payload['KET'], "KET for status '{$status}' must match SertIF label");
+            } elseif (in_array($status, [InternshipRegistration::STATUS_WAITING, InternshipRegistration::STATUS_EXITED, InternshipRegistration::STATUS_REJECTED], true)) {
+                $this->assertFalse($service->isEligibleForSync($reg));
+            }
         }
     }
 
@@ -450,7 +467,7 @@ class StabilizationPhaseS9BTest extends TestCase
 
         $reg = $this->createRegistration([
             'fullname' => 'Attachment Test',
-            'internship_status' => InternshipRegistration::STATUS_WAITING,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
         ]);
         $reg->created_at = \Carbon\Carbon::create(2026, 1, 1);
         $reg->save();
@@ -468,7 +485,7 @@ class StabilizationPhaseS9BTest extends TestCase
 
         $reg = $this->createRegistration([
             'fullname' => 'Metadata Test',
-            'internship_status' => InternshipRegistration::STATUS_WAITING,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
         ]);
         $reg->created_at = \Carbon\Carbon::create(2026, 1, 1);
         $reg->save();

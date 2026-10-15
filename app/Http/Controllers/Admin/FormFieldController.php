@@ -4,55 +4,123 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\FormField;
+use App\Models\FormSchema;
+use App\Services\FormBuilderService;
+use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class FormFieldController extends Controller
 {
+    protected FormBuilderService $formBuilderService;
+
+    public function __construct(FormBuilderService $formBuilderService)
+    {
+        $this->formBuilderService = $formBuilderService;
+    }
+
+    /**
+     * Periksa apakah tabel database skema dan field telah siap termigrasi.
+     */
+    protected function isSchemaReady(): bool
+    {
+        // Mendukung simulasi testing kesiapan skema tanpa mutasi destruktif DDL (S17.18G.4R Fix 4)
+        if (config('internship.simulate_unmigrated_form_schema', false)) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\Schema::hasTable('form_schemas')
+            && \Illuminate\Support\Facades\Schema::hasTable('form_fields');
+    }
+
+    /**
+     * Validasi dan ekstrak parameter tahun skema formulir (2020-2099).
+     */
+    protected function resolveYear(Request $request): int
+    {
+        $raw = $request->input('year', 2026);
+        if (!is_numeric($raw)) {
+            abort(400, 'Tahun tidak valid.');
+        }
+        $year = (int) $raw;
+        if ($year < 2020 || $year > 2099) {
+            abort(400, 'Tahun formulir harus berada dalam rentang 2020 - 2099.');
+        }
+        return $year;
+    }
+
     /**
      * GET /admin/form-settings/fields
-     * Halaman utama pengaturan form dengan live preview.
+     * Halaman utama pengaturan form dengan live preview dan draft management.
      */
-    public function index()
+    public function index(Request $request)
     {
-        // Kelompokkan field berdasarkan group_name, ordered by sort_order
-        $mainFields  = FormField::orderBy('sort_order')->whereNull('group_name')->get();
-        $extraFields = FormField::orderBy('sort_order')->where('group_name', 'informasi_tambahan')->get();
+        if (!$this->isSchemaReady()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Layanan Pengaturan Formulir belum siap (tabel database belum termigrasi).',
+                ], 503);
+            }
+            return view('admin.form_settings.unavailable', [
+                'message' => 'Layanan Pengaturan Formulir Pendaftaran sedang dalam tahap persiapan. Tabel database formulir dinamis belum termigrasi.',
+            ]);
+        }
+
+        $year = $this->resolveYear($request);
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $activePublished = FormSchema::where('year', $year)->activePublished()->first();
+
+        // Ambil field dari draf aktif
+        $mainFields  = $currentDraft->fields()->whereNull('group_name')->notArchived()->get();
+        $extraFields = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->notArchived()->get();
+        $archivedFields = $currentDraft->fields()->where('is_archived', true)->get();
 
         $types  = FormField::supportedTypes();
         $groups = FormField::groups();
 
         return view('admin.form_settings.form_fields', compact(
-            'mainFields', 'extraFields', 'types', 'groups'
+            'mainFields', 'extraFields', 'archivedFields', 'types', 'groups', 'currentDraft', 'activePublished', 'year'
         ));
     }
 
     /**
      * POST /admin/form-settings/fields
-     * Tambah field baru.
+     * Tambah field baru ke dalam draf aktif.
      */
     public function store(Request $request)
     {
+        if (!$this->isSchemaReady()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'Layanan Pengaturan Formulir belum siap.'], 503);
+            }
+            return back()->with('error', 'Layanan Pengaturan Formulir belum siap.');
+        }
+
+        $year = $this->resolveYear($request);
         $validated = $request->validate([
-            'field_type'  => 'required|in:' . implode(',', array_keys(FormField::supportedTypes())),
-            'label'       => 'required|string|max:255',
-            'placeholder' => 'nullable|string|max:255',
-            'helper_text' => 'nullable|string|max:500',
-            'is_required' => 'nullable|boolean',
-            'group_name'  => 'nullable|in:,informasi_tambahan',
-            'column_span' => 'nullable|integer|in:1,2',
-            'options'     => 'nullable|string', // JSON string dari textarea
+            'field_type'       => 'required|in:' . implode(',', array_keys(FormField::supportedTypes())),
+            'label'            => 'required|string|max:255',
+            'placeholder'      => 'nullable|string|max:255',
+            'helper_text'      => 'nullable|string|max:500',
+            'is_required'      => 'nullable|boolean',
+            'group_name'       => 'nullable|in:,informasi_tambahan',
+            'column_span'      => 'nullable|integer|in:1,2',
+            'options'          => 'nullable|string', // JSON string dari textarea
+            'validation_rules' => 'nullable',
         ]);
+
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
 
         // Buat field_key unik dari label
         $baseKey = 'custom_' . Str::slug($validated['label'], '_');
         $key     = $baseKey;
         $i       = 1;
-        while (FormField::where('field_key', $key)->exists()) {
+        while ($currentDraft->fields()->where('field_key', $key)->exists()) {
             $key = $baseKey . '_' . $i++;
         }
 
-        // Parse options dari JSON text
         $options = null;
         if (!empty($validated['options'])) {
             $decoded = json_decode($validated['options'], true);
@@ -61,49 +129,70 @@ class FormFieldController extends Controller
             }
         }
 
-        // Tentukan sort_order (setelah field terakhir di grup yang sama)
-        $maxOrder = FormField::where('group_name', $validated['group_name'] ?: null)
-            ->max('sort_order') ?? 0;
-
-        FormField::create([
-            'field_key'   => $key,
-            'field_type'  => $validated['field_type'],
-            'label'       => trim($validated['label']),
-            'placeholder' => $validated['placeholder'] ?? null,
-            'helper_text' => $validated['helper_text'] ?? null,
-            'is_required' => (bool) ($validated['is_required'] ?? false),
-            'is_active'   => true,
-            'is_system'   => false,
-            'group_name'  => $validated['group_name'] ?: null,
-            'sort_order'  => $maxOrder + 10,
-            'column_span' => (int) ($validated['column_span'] ?? 1),
-            'options'     => $options,
-        ]);
-
-        if ($request->wantsJson() || $request->ajax()) {
-            return response()->json(['ok' => true, 'message' => 'Field berhasil ditambahkan.']);
+        $validationRules = null;
+        if (!empty($validated['validation_rules'])) {
+            if (is_array($validated['validation_rules'])) {
+                $validationRules = $validated['validation_rules'];
+            } elseif (is_string($validated['validation_rules'])) {
+                $decoded = json_decode($validated['validation_rules'], true);
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                    $msg = 'Format validation_rules tidak valid (harus berupa JSON object).';
+                    if ($request->wantsJson() || $request->ajax()) {
+                        return response()->json(['ok' => false, 'message' => $msg], 422);
+                    }
+                    return back()->withInput()->withErrors(['validation_rules' => $msg]);
+                }
+                $validationRules = $decoded;
+            }
         }
 
-        return redirect()->route('admin.form-settings.fields')
+        try {
+            $field = $this->formBuilderService->addFieldToDraft($currentDraft, [
+                'field_key'        => $key,
+                'field_type'       => $validated['field_type'],
+                'label'            => trim($validated['label']),
+                'placeholder'      => $validated['placeholder'] ?? null,
+                'helper_text'      => $validated['helper_text'] ?? null,
+                'is_required'      => (bool) ($validated['is_required'] ?? false),
+                'is_active'        => true,
+                'is_system'        => false,
+                'group_name'       => ($validated['group_name'] ?? null) ?: null,
+                'column_span'      => (int) ($validated['column_span'] ?? 1),
+                'options'          => $options,
+                'validation_rules' => $validationRules,
+            ]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['label' => $e->getMessage()]);
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['ok' => true, 'message' => 'Field berhasil ditambahkan ke draft.', 'field' => $field]);
+        }
+
+        return redirect()->route('admin.form-settings.fields', ['year' => $year])
             ->with('success', "Field \"{$validated['label']}\" berhasil ditambahkan.");
     }
 
     /**
      * PUT /admin/form-settings/fields/{field}
-     * Update field yang sudah ada.
+     * Update field dalam draf aktif.
      */
     public function update(Request $request, FormField $field)
     {
         $validated = $request->validate([
-            'label'       => 'required|string|max:255',
-            'placeholder' => 'nullable|string|max:255',
-            'helper_text' => 'nullable|string|max:500',
-            'is_required' => 'nullable|boolean',
-            'is_active'   => 'nullable|boolean',
-            'column_span' => 'nullable|integer|in:1,2',
-            'options'     => 'nullable|string', // JSON string
-            'field_type'  => 'nullable|in:' . implode(',', array_keys(FormField::supportedTypes())),
-            'group_name'  => 'nullable|in:,informasi_tambahan',
+            'label'            => 'required|string|max:255',
+            'placeholder'      => 'nullable|string|max:255',
+            'helper_text'      => 'nullable|string|max:500',
+            'is_required'      => 'nullable|boolean',
+            'is_active'        => 'nullable|boolean',
+            'column_span'      => 'nullable|integer|in:1,2',
+            'options'          => 'nullable|string',
+            'field_type'       => 'nullable|in:' . implode(',', array_keys(FormField::supportedTypes())),
+            'group_name'       => 'nullable|in:,informasi_tambahan',
+            'validation_rules' => 'nullable',
         ]);
 
         $updateData = [
@@ -117,9 +206,7 @@ class FormFieldController extends Controller
             'column_span' => (int) ($validated['column_span'] ?? $field->column_span),
         ];
 
-        // Field system: hanya boleh edit label, placeholder, helper_text, is_active, column_span
         if (!$field->is_system) {
-            // Non-system: boleh ubah field_type, group_name, options
             if (!empty($validated['field_type'])) {
                 $updateData['field_type'] = $validated['field_type'];
             }
@@ -128,7 +215,6 @@ class FormFieldController extends Controller
             }
         }
 
-        // Parse & update options (untuk semua field yang punya type yg butuh options)
         if (isset($validated['options']) && $validated['options'] !== null) {
             $decoded = json_decode($validated['options'], true);
             if (is_array($decoded)) {
@@ -136,13 +222,39 @@ class FormFieldController extends Controller
             }
         }
 
-        $field->update($updateData);
+        if (array_key_exists('validation_rules', $validated)) {
+            $rawRules = $validated['validation_rules'];
+            if (empty($rawRules)) {
+                $updateData['validation_rules'] = null;
+            } elseif (is_array($rawRules)) {
+                $updateData['validation_rules'] = $rawRules;
+            } elseif (is_string($rawRules)) {
+                $decoded = json_decode($rawRules, true);
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                    $msg = 'Format validation_rules tidak valid (harus berupa JSON object).';
+                    if ($request->wantsJson() || $request->ajax()) {
+                        return response()->json(['ok' => false, 'message' => $msg], 422);
+                    }
+                    return back()->withInput()->withErrors(['validation_rules' => $msg]);
+                }
+                $updateData['validation_rules'] = $decoded;
+            }
+        }
+
+        try {
+            $updated = $this->formBuilderService->updateFieldInDraft($field, $updateData);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['label' => $e->getMessage()]);
+        }
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'ok'      => true,
                 'message' => 'Field berhasil diperbarui.',
-                'field'   => $field->fresh(),
+                'field'   => $updated,
             ]);
         }
 
@@ -151,11 +263,80 @@ class FormFieldController extends Controller
     }
 
     /**
+     * POST /admin/form-settings/fields/publish
+     * Publikasikan versi formulir draf aktif secara atomik.
+     */
+    public function publish(Request $request)
+    {
+        if (!$this->isSchemaReady()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'Layanan Pengaturan Formulir belum siap.'], 503);
+            }
+            return redirect()->route('admin.form-settings.fields')
+                ->with('error', 'Layanan Pengaturan Formulir belum siap.');
+        }
+
+        $year = $this->resolveYear($request);
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+
+        try {
+            $published = $this->formBuilderService->publishVersion($currentDraft, auth()->user());
+        } catch (\Throwable $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            }
+            return redirect()->route('admin.form-settings.fields', ['year' => $year])
+                ->with('error', "Gagal mempublikasikan versi formulir: {$e->getMessage()}");
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok'      => true,
+                'message' => "Versi {$published->version_code} berhasil dipublikasikan.",
+                'schema'  => $published,
+            ]);
+        }
+
+        return redirect()->route('admin.form-settings.fields', ['year' => $year])
+            ->with('success', "Versi {$published->version_code} berhasil dipublikasikan.");
+    }
+
+    /**
+     * POST /admin/form-settings/fields/{field}/archive
+     * Arsipkan field (soft-archive).
+     */
+    public function archive(FormField $field)
+    {
+        $this->formBuilderService->archiveField($field);
+
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json([
+                'ok'      => true,
+                'message' => "Pertanyaan \"{$field->label}\" berhasil diarsipkan.",
+            ]);
+        }
+
+        return redirect()->route('admin.form-settings.fields')
+            ->with('success', "Pertanyaan \"{$field->label}\" berhasil diarsipkan.");
+    }
+
+    /**
      * POST /admin/form-settings/fields/{field}/toggle
-     * Aktifkan / nonaktifkan field (is_active).
+     * Aktifkan / nonaktifkan field (is_active) khusus pada skema draft.
      */
     public function toggle(FormField $field)
     {
+        if (!$field->schema || !$field->schema->isDraft()) {
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Hanya pertanyaan pada skema berstatus draft yang dapat diaktifkan atau dinonaktifkan.',
+                ], 422);
+            }
+            return redirect()->route('admin.form-settings.fields')
+                ->with('error', 'Hanya pertanyaan pada skema berstatus draft yang dapat diaktifkan atau dinonaktifkan.');
+        }
+
         $field->update(['is_active' => !$field->is_active]);
         $status = $field->is_active ? 'diaktifkan' : 'dinonaktifkan';
 
@@ -173,10 +354,21 @@ class FormFieldController extends Controller
 
     /**
      * POST /admin/form-settings/fields/{field}/toggle-required
-     * Toggle wajib diisi (is_required).
+     * Toggle wajib diisi (is_required) khusus pada skema draft.
      */
     public function toggleRequired(FormField $field)
     {
+        if (!$field->schema || !$field->schema->isDraft()) {
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Hanya pertanyaan pada skema berstatus draft yang dapat diubah status wajibnya.',
+                ], 422);
+            }
+            return redirect()->route('admin.form-settings.fields')
+                ->with('error', 'Hanya pertanyaan pada skema berstatus draft yang dapat diubah status wajibnya.');
+        }
+
         $field->update(['is_required' => !$field->is_required]);
         $status = $field->is_required ? 'dijadikan wajib' : 'dijadikan opsional';
 
@@ -194,26 +386,99 @@ class FormFieldController extends Controller
 
     /**
      * POST /admin/form-settings/fields/reorder
-     * Reorder via AJAX drag & drop.
-     * Body: { ids: [1, 5, 3, ...], group: 'null' | 'informasi_tambahan' }
+     * Reorder via AJAX drag & drop dengan validasi skema ketat (S17.18G.5 Wave 2A Fix 4).
      */
     public function reorder(Request $request)
     {
         $validated = $request->validate([
-            'ids'   => 'required|array',
+            'ids'   => 'required|array|min:1',
             'ids.*' => 'integer|exists:form_fields,id',
         ]);
 
-        foreach ($validated['ids'] as $order => $id) {
-            FormField::where('id', $id)->update(['sort_order' => ($order + 1) * 10]);
+        $ids = $validated['ids'];
+
+        // 1. Tolak duplikasi ID (Fix 4.5)
+        if (count($ids) !== count(array_unique($ids))) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Ditemukan ID duplikat dalam permintaan reorder.',
+            ], 422);
         }
 
-        return response()->json(['ok' => true]);
+        // 2. Muat seluruh field dengan relasi skema
+        $fields = FormField::with('schema')->whereIn('id', $ids)->get()->keyBy('id');
+
+        if ($fields->count() !== count($ids)) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Sebagian field tidak ditemukan di database.',
+            ], 422);
+        }
+
+        // 3. Validasi skema: Semua field harus memiliki skema dan berasal dari SATU skema yang sama (Fix 4.2)
+        $schemaIds = $fields->pluck('form_schema_id')->unique()->filter();
+        if ($schemaIds->count() !== 1) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Seluruh field yang direorder harus berasal dari satu skema formulir yang sama.',
+            ], 422);
+        }
+
+        $schema = $fields->first()->schema;
+        if (!$schema) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Skema formulir untuk field yang direorder tidak ditemukan.',
+            ], 422);
+        }
+
+        // 4. Tolak jika skema berstatus published atau archived (Fix 4.3)
+        if (!$schema->isDraft()) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Reorder urutan pertanyaan hanya diizinkan pada skema berstatus draft.',
+            ], 422);
+        }
+
+        // 5. Validasi tahun jika disertakan dalam request (Fix 4.4)
+        if ($request->has('year')) {
+            $expectedYear = (int) $request->input('year');
+            if ($schema->year !== $expectedYear) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => "Field yang direorder berasal dari skema tahun {$schema->year}, bukan tahun {$expectedYear}.",
+                ], 422);
+            }
+        }
+
+        // 6. Jalankan update urutan secara atomik dalam database transaction dengan model update (Fix 4.7 & 4.8)
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            foreach ($ids as $order => $id) {
+                $field = $fields->get($id);
+                // Update via Eloquent model agar model guard tetap dihormati
+                $field->update([
+                    'sort_order' => ($order + 1) * 10,
+                ]);
+            }
+            \Illuminate\Support\Facades\DB::commit();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Gagal mengubah urutan pertanyaan: ' . $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'message' => 'Urutan pertanyaan berhasil diperbarui.',
+        ]);
     }
 
     /**
      * DELETE /admin/form-settings/fields/{field}
-     * Hapus field (hanya non-system).
+     * Hapus field (hanya diizinkan jika belum dipublikasikan dan belum memiliki jawaban).
      */
     public function destroy(FormField $field)
     {
@@ -230,7 +495,15 @@ class FormFieldController extends Controller
         }
 
         $label = $field->label;
-        $field->delete();
+
+        try {
+            $this->formBuilderService->deleteFieldFromDraft($field);
+        } catch (\Throwable $e) {
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            }
+            return redirect()->route('admin.form-settings.fields')->with('error', $e->getMessage());
+        }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json(['ok' => true, 'message' => "Field \"{$label}\" berhasil dihapus."]);
@@ -242,7 +515,6 @@ class FormFieldController extends Controller
 
     /**
      * GET /admin/form-settings/fields/{field}/data
-     * Mengembalikan satu field sebagai JSON (untuk modal edit).
      */
     public function show(FormField $field)
     {
@@ -251,18 +523,31 @@ class FormFieldController extends Controller
 
     /**
      * GET /admin/form-settings/fields/preview-data
-     * Mengembalikan data field terbaru untuk live preview (AJAX).
      */
-    public function previewData()
+    public function previewData(Request $request)
     {
-        $mainFields  = FormField::active()->whereNull('group_name')->get();
-        $extraFields = FormField::active()->where('group_name', 'informasi_tambahan')->get();
+        if (!$this->isSchemaReady()) {
+            return response()->json([
+                'ok'           => false,
+                'main_fields'  => [],
+                'extra_fields' => [],
+                'divisions'    => [],
+                'draft_version'=> 'offline',
+            ], 503);
+        }
+
+        $year = $this->resolveYear($request);
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $mainFields  = $currentDraft->fields()->whereNull('group_name')->active()->get();
+        $extraFields = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->active()->get();
         $divisions   = \App\Models\Division::active()->pluck('name');
 
         return response()->json([
             'main_fields'  => $mainFields,
             'extra_fields' => $extraFields,
             'divisions'    => $divisions,
+            'draft_version'=> $currentDraft->version_code,
+            'year'         => $year,
         ]);
     }
 }

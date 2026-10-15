@@ -29,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
                 return new \App\Services\SpreadsheetTransport\NullSpreadsheetTransport();
             }
         );
+
+        // S17.18G.4R Fix 3: Scoped binding — fresh per request/job cycle, avoiding cross-request state leakage
+        $this->app->scoped(\App\Services\FormBuilderService::class);
     }
 
     /**

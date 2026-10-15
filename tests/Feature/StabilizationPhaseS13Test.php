@@ -472,7 +472,7 @@ class StabilizationPhaseS13Test extends TestCase
             'gender'            => 'L',
             'phone_number'      => '081299991111',
             'study_program'     => 'Teknik Komputer',
-            'internship_status' => InternshipRegistration::STATUS_COMPLETED,
+            'internship_status' => InternshipRegistration::STATUS_ACCEPTED,
             'is_draft'          => false,
         ]);
         $reg1->created_at = Carbon::create(2025, 1, 10, 8, 0, 0);
@@ -524,6 +524,14 @@ class StabilizationPhaseS13Test extends TestCase
         ]);
         $reg->created_at = Carbon::create(2024, 6, 1, 10, 0, 0);
         $reg->save();
+
+        \App\Services\ActivityLogger::log(
+            action: 'intern_registration_status_updated',
+            description: 'Admin accepted registration',
+            subject: $reg,
+            after: ['internship_status' => InternshipRegistration::STATUS_ACCEPTED],
+            metadata: ['new_status' => InternshipRegistration::STATUS_ACCEPTED]
+        );
 
         $initialSync = $syncEngine->queueSyncForRegistration($reg);
         $stableSyncId = $initialSync->external_sync_id;
@@ -666,6 +674,13 @@ class StabilizationPhaseS13Test extends TestCase
                 return true;
             }
             public function sendRowUpsert(SpreadsheetConnection $connection, string $tabName, string $syncId, array $payload): SpreadsheetTransportResponse {
+                return SpreadsheetTransportResponse::failure(
+                    errorMessage: "Tab sheet '{$tabName}' tidak ditemukan.",
+                    errorCode: 'TAB_NOT_FOUND',
+                    isRetryable: false
+                );
+            }
+            public function sendRowUpdateOnly(SpreadsheetConnection $connection, string $tabName, string $syncId, array $payload): SpreadsheetTransportResponse {
                 return SpreadsheetTransportResponse::failure(
                     errorMessage: "Tab sheet '{$tabName}' tidak ditemukan.",
                     errorCode: 'TAB_NOT_FOUND',

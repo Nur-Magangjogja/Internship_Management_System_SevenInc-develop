@@ -25,8 +25,8 @@
 
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:20px;padding:32px;box-shadow:0 2px 12px rgba(0,0,0,.06);">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
-      <div style="width:40px;height:40px;border-radius:10px;background:#1a5c38;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fas fa-user-plus" style="color:#fff;font-size:14px;"></i>
+      <div style="width:40px;height:40px;border-radius:10px;background:#f8faf9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-user-plus" style="color:#1a5c38;font-size:14px;"></i>
       </div>
       <div>
         <div style="font-weight:700;color:#111;font-size:15px;">Daftar Baru</div>
@@ -63,21 +63,33 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
         <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Password <span style="color:#ef4444;">*</span></label>
-          <input type="password" name="password" required placeholder="Min. 8"
-                 style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
-                 onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+          <label for="password" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Password <span style="color:#ef4444;">*</span></label>
+          <div style="position:relative;">
+            <input type="password" id="password" name="password" required placeholder="Min. 8"
+                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+            <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"
+                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;">
+              <svg class="eye-icon" style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Konfirmasi <span style="color:#ef4444;">*</span></label>
-          <input type="password" name="password_confirmation" required placeholder="Ulangi"
-                 style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
-                 onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+          <label for="password_confirmation" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Konfirmasi <span style="color:#ef4444;">*</span></label>
+          <div style="position:relative;">
+            <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi"
+                   style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='#e5e7eb'">
+            <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"
+                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;">
+              <svg class="eye-icon" style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <button type="submit"
-              style="width:100%;padding:13px;background:#1a5c38;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;transition:.2s;"
-              onmouseover="this.style.background='#145c30'" onmouseout="this.style.background='#1a5c38'">
+              style="width:100%;padding:13px;background:#145c30;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;transition:.2s;"
+              onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='#145c30'">
         <i class="fas fa-user-plus" style="margin-right:8px;font-size:12px;"></i> Buat Akun & Daftar
       </button>
     </form>
@@ -89,5 +101,30 @@
     </div>
   </div>
 </div>
+<script>
+function toggleRegisterPasswords() {
+  const pw = document.getElementById('password');
+  const pwConf = document.getElementById('password_confirmation');
+  if (!pw || !pwConf) return;
+
+  const isHidden = pw.type === 'password';
+  const newType = isHidden ? 'text' : 'password';
+  const newLabel = isHidden ? 'Sembunyikan password' : 'Lihat password';
+  const newIcon = isHidden
+    ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+    : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+
+  pw.type = newType;
+  pwConf.type = newType;
+
+  document.querySelectorAll('.toggle-register-password-btn').forEach(btn => {
+    btn.setAttribute('aria-label', newLabel);
+    const icon = btn.querySelector('.eye-icon');
+    if (icon) {
+      icon.innerHTML = newIcon;
+    }
+  });
+}
+</script>
 </body>
 </html>

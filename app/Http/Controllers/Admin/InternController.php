@@ -1006,6 +1006,50 @@ class InternController extends Controller
         return redirect()->route('admin.interns.index')->with('success', 'Status berhasil diperbarui!');
     }
 
+    /**
+     * PATCH /admin/interns/{intern}/followup-status
+     * Memperbarui status follow-up pendaftar oleh admin (S17.18C).
+     */
+    public function updateFollowupStatus(Request $request, $id)
+    {
+        $intern = $id instanceof IR ? $id : IR::findOrFail($id);
+
+        $validStatuses = implode(',', array_keys(IR::FOLLOWUP_STATUS_LABELS));
+        $validated = $request->validate([
+            'followup_status' => 'required|in:' . $validStatuses,
+            'reason'          => 'nullable|string|max:500',
+        ]);
+
+        $newFollowupStatus = $validated['followup_status'];
+        $reason = $validated['reason'] ?? null;
+
+        $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
+        try {
+            $lifecycle->updateFollowupStatus($intern, $newFollowupStatus, $request->user(), $reason);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $e->getMessage()], 403);
+            }
+            return back()->withInput()->with('error', $e->getMessage());
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok'                    => true,
+                'followup_status'       => $intern->followup_status,
+                'followup_status_label' => $intern->followup_status_label,
+                'message'               => 'Status follow-up berhasil diperbarui.',
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Status follow-up berhasil diperbarui.');
+    }
+
 
     /**
      * PATCH /admin/interns/bulk/status
@@ -1311,4 +1355,38 @@ class InternController extends Controller
             ->deleteFileAfterSend(true);
     }
 
+    /**
+     * S17.18D.2: Admin dapat mengoreksi jawaban dinamis sesuai schema snapshot pendaftaran.
+     */
+    public function updateCustomAnswers(Request $request, IR $intern)
+    {
+        $snapshot = $intern->formSnapshot;
+        $targetYear = $intern->created_at ? (int) $intern->created_at->year : (int) now()->year;
+        $schema = $snapshot ?: (\App\Models\FormSchema::where('year', $targetYear)->activePublished()->first() ?: \App\Models\FormSchema::activePublished()->first());
+
+        if (!$schema) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Skema formulir pendaftaran tidak ditemukan.',
+            ], 404);
+        }
+
+        $formBuilderService = app(\App\Services\FormBuilderService::class);
+        $validation = $formBuilderService->validateCustomAnswers($schema, $request->input('answers', []), $intern);
+
+        if (!$validation['is_valid']) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validation['errors'],
+            ], 422);
+        }
+
+        $formBuilderService->saveCustomAnswers($intern, $validation['cleaned'], $schema, auth()->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jawaban dinamis pendaftaran berhasil diperbarui.',
+            'answers' => $intern->customAnswers()->pluck('answer_value', 'field_key'),
+        ]);
+    }
 }

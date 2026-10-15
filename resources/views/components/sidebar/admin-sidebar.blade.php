@@ -119,7 +119,11 @@
                         {{ $group['label'] }}
                     </span>
 
-                    <svg class="admin-sidebar-label h-4 w-4 text-admin-text-mid transition-transform" data-nav-chevron viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <svg class="admin-sidebar-label h-4 w-4 text-admin-text-mid transition-transform {{ $isGroupActive ? '' : 'rotate-180' }}"
+                         data-nav-chevron
+                         viewBox="0 0 24 24"
+                         fill="none"
+                         stroke="currentColor">
                         <path d="m6 9 6 6 6-6"/>
                     </svg>
                 </button>
