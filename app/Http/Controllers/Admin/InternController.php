@@ -366,10 +366,10 @@ class InternController extends Controller
             'fullname'               => 'required|string|max:255',
             'born_date'              => 'nullable|string|max:255',
             'birth_place'            => 'nullable|string|max:100',
-            'religion'               => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'             => 'required|string|max:50',
             'email'                  => 'required|email|max:255',
             'gender'                 => 'nullable|string|max:50',
+            'religion'               => 'nullable|string|max:50',
             'phone_number'           => 'nullable|string|max:20',
             'current_city'           => 'nullable|string|max:255',
             // Data Akademik
@@ -499,15 +499,14 @@ class InternController extends Controller
         if (array_key_exists('internship_interest', $validatedData)) {
             if (!empty($validatedData['internship_interest'])) {
                 // frontend sends division name
-                $divName = trim($validatedData['internship_interest']);
-                $existingDiv = \App\Models\Division::whereRaw('LOWER(name) = ?', [strtolower($divName)])
-                    ->orWhere('slug', \Illuminate\Support\Str::slug($divName, '_'))
-                    ->first();
-                if ($existingDiv) {
-                    $validatedData['division_id'] = $existingDiv->id;
-                }
+                $validatedData['division_id'] = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($validatedData['internship_interest']);
             }
             unset($validatedData['internship_interest']);
+        }
+        if (array_key_exists('division_id', $validatedData)) {
+            if (!empty($validatedData['division_id'])) {
+                $validatedData['division_id'] = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($validatedData['division_id']);
+            }
         }
 
         if (array_key_exists('brand', $validatedData)) {
@@ -650,6 +649,11 @@ class InternController extends Controller
             
             // Trigger SKL generation if completed
             $this->checkAndGenerateSkl($intern, $oldStatus);
+
+            // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active)
+            if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
+                \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $validatedData['brand'] ?? null);
+            }
         } else {
             unset($validatedData['internship_status']);
             $intern->fill($validatedData)->save();
@@ -1032,6 +1036,11 @@ class InternController extends Controller
             $this->sendAcceptedEmail($intern);
         }
 
+        // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active)
+        if (in_array($newStatus, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
+            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $validated['brand'] ?? null);
+        }
+
         // Jika berubah menjadi selesai, generate SKL via Background Job
         $this->checkAndGenerateSkl($intern, $oldStatus);
         $this->checkAndGenerateCertificate($intern, $oldStatus);
@@ -1139,6 +1148,11 @@ class InternController extends Controller
                 
                 $this->checkAndGenerateSkl($intern, $old);
                 $this->checkAndGenerateCertificate($intern, $old);
+
+                // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active)
+                if (in_array($validated['internship_status'], [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
+                    \App\Services\AbsenDjuraganSyncService::syncIntern($intern);
+                }
 
                 $affected++;
             }

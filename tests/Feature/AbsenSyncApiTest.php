@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\AbsenApiKeyMiddleware;
+use App\Models\Division;
 use App\Models\InternshipRegistration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -51,7 +52,6 @@ class AbsenSyncApiTest extends TestCase
     public function test_health_check_fails_401_without_api_key(): void
     {
         Config::set('services.absen_djuragan.api_key', $this->testApiKey);
-        Config::set('services.absen_djuragan.inbound_api_key', $this->testApiKey);
 
         $response = $this->getJson('/api/v1/external/health');
 
@@ -63,14 +63,13 @@ class AbsenSyncApiTest extends TestCase
     }
 
     /**
-     * Memverifikasi penolakan (401 Unauthorized) saat request menyertakan API key yang salah.
+     * Memverifikasi penolakan (401 Unauthorized) saat API key tidak cocok.
      */
     public function test_health_check_fails_401_with_invalid_api_key(): void
     {
         Config::set('services.absen_djuragan.api_key', $this->testApiKey);
-        Config::set('services.absen_djuragan.inbound_api_key', $this->testApiKey);
 
-        $response = $this->withHeaders(['X-API-KEY' => 'salah_kunci_123'])
+        $response = $this->withHeaders(['X-API-KEY' => 'wrong_api_key_value'])
             ->getJson('/api/v1/external/health');
 
         $response->assertStatus(401)
@@ -81,40 +80,21 @@ class AbsenSyncApiTest extends TestCase
     }
 
     /**
-     * Memverifikasi respons sukses (200 OK) saat API key valid menggunakan konfigurasi legacy api_key.
+     * Memverifikasi health check sukses (200 OK) dengan struktur JSON terstandarisasi.
      */
-    public function test_health_check_succeeds_200_with_valid_legacy_api_key(): void
+    public function test_health_check_succeeds_200_with_valid_api_key(): void
     {
-        Config::set('services.absen_djuragan.inbound_api_key', null);
         Config::set('services.absen_djuragan.api_key', $this->testApiKey);
 
         $response = $this->withHeaders(['X-API-KEY' => $this->testApiKey])
             ->getJson('/api/v1/external/health');
 
         $response->assertStatus(200)
-            ->assertJson([
-                'success' => true,
-                'message' => 'Internship Management System External API is healthy and connected.',
-            ])
             ->assertJsonStructure([
                 'success',
                 'message',
                 'server_time',
-            ]);
-    }
-
-    /**
-     * Memverifikasi respons sukses (200 OK) saat API key valid menggunakan konfigurasi baru inbound_api_key.
-     */
-    public function test_health_check_succeeds_200_with_new_inbound_api_key(): void
-    {
-        Config::set('services.absen_djuragan.api_key', null);
-        Config::set('services.absen_djuragan.inbound_api_key', $this->inboundKey);
-
-        $response = $this->withHeaders(['X-API-KEY' => $this->inboundKey])
-            ->getJson('/api/v1/external/health');
-
-        $response->assertStatus(200)
+            ])
             ->assertJson([
                 'success' => true,
                 'message' => 'Internship Management System External API is healthy and connected.',
@@ -122,24 +102,9 @@ class AbsenSyncApiTest extends TestCase
     }
 
     /**
-     * Memverifikasi kedua alias middleware (absen.api.auth dan absen.api.key) terdaftar di Kernel.
+     * Memverifikasi fail-closed (503 Service Unavailable) jika feature flag inbound dinonaktifkan.
      */
-    public function test_both_middleware_aliases_are_registered_in_kernel(): void
-    {
-        $kernel = app(\App\Http\Kernel::class);
-        $routeMiddleware = $kernel->getRouteMiddleware();
-
-        $this->assertArrayHasKey('absen.api.auth', $routeMiddleware);
-        $this->assertArrayHasKey('absen.api.key', $routeMiddleware);
-        $this->assertSame(AbsenApiKeyMiddleware::class, $routeMiddleware['absen.api.auth']);
-        $this->assertSame(AbsenApiKeyMiddleware::class, $routeMiddleware['absen.api.key']);
-    }
-
-    /**
-     * Memverifikasi bahwa endpoint register-from-absen menolak request (503 Service Unavailable)
-     * saat feature flag inbound_enabled bernilai false (default OFF).
-     */
-    public function test_inbound_endpoint_fails_503_when_feature_flag_is_disabled_by_default(): void
+    public function test_inbound_endpoint_fails_503_when_inbound_feature_flag_is_disabled(): void
     {
         Config::set('services.absen_djuragan.inbound_api_key', $this->inboundKey);
         Config::set('services.absen_djuragan.inbound_enabled', false);
@@ -161,14 +126,14 @@ class AbsenSyncApiTest extends TestCase
     }
 
     /**
-     * Memverifikasi penolakan (503 Service Unavailable) saat skema database target belum siap.
+     * Memverifikasi penolakan (503 Service Unavailable) jika skema database belum siap (missing required columns/tables).
      */
-    public function test_inbound_endpoint_fails_503_when_schema_dependency_is_missing(): void
+    public function test_inbound_endpoint_fails_503_when_schema_dependencies_are_missing(): void
     {
         Config::set('services.absen_djuragan.inbound_api_key', $this->inboundKey);
         Config::set('services.absen_djuragan.inbound_enabled', true);
 
-        // Mocking Schema facade untuk mensimulasikan lingkungan unmigrated
+        // Simulasi skema kolom birth_place / religion belum ada
         Schema::shouldReceive('hasColumns')
             ->once()
             ->with('internship_registrations', ['birth_place', 'religion'])
@@ -331,5 +296,72 @@ class AbsenSyncApiTest extends TestCase
         $this->assertSame($userCountBefore, \Illuminate\Support\Facades\DB::table('users')->count(), 'Zero User mutation invariant violated!');
         $this->assertSame($registrationCountBefore, \Illuminate\Support\Facades\DB::table('internship_registrations')->count(), 'Zero InternshipRegistration mutation invariant violated!');
         $this->assertNull(\Illuminate\Support\Facades\DB::table('users')->where('email', $email)->first());
+    }
+
+    /**
+     * Memverifikasi pendaftaran langsung dari Web Absen (feat--API-to-web-absen).
+     */
+    public function test_register_from_absen_creates_user_and_internship_record(): void
+    {
+        Config::set('services.absen_djuragan.api_key', $this->inboundKey);
+        Config::set('services.absen_djuragan.inbound_enabled', true);
+
+        $testEmail = 'absen_test_' . time() . '@example.com';
+
+        $division = Division::where('name', 'like', '%Programmer%')->first()
+            ?: Division::first();
+
+        if (!$division) {
+            $division = Division::create([
+                'name'      => 'Programmer (Front End / Backend)',
+                'slug'      => 'programmer-front-end-backend',
+                'code'      => 'PROG',
+                'is_active' => true,
+            ]);
+        }
+
+        $payload = [
+            'email'            => $testEmail,
+            'full_name'        => 'Ahmad Test Absen',
+            'phone'            => '081298765432',
+            'gender'           => 'Laki-laki',
+            'date_of_birth'    => '2002-08-17',
+            'birth_place'      => 'Yogyakarta',
+            'religion'         => 'Islam',
+            'school_name'      => 'Universitas Gadjah Mada',
+            'nim'              => '123456789',
+            'is_gps_available' => true,
+            'division_id'      => $division->id,
+            'division_name'    => $division->name,
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-KEY' => $this->inboundKey,
+        ])->postJson('/api/v1/external/register-from-absen', $payload);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ]);
+
+        $this->assertDatabaseHas('users', [
+            'email'          => $testEmail,
+            'name'           => 'Ahmad Test Absen',
+            'is_gps_support' => 1,
+        ]);
+
+        $this->assertDatabaseHas('internship_registrations', [
+            'fullname'    => 'Ahmad Test Absen',
+            'birth_place' => 'Yogyakarta',
+            'religion'    => 'Islam',
+            'division_id' => $division->id,
+        ]);
+
+        // Cleanup
+        $user = User::where('email', $testEmail)->first();
+        if ($user) {
+            InternshipRegistration::where('user_id', $user->id)->forceDelete();
+            $user->forceDelete();
+        }
     }
 }

@@ -32,6 +32,11 @@ class RoleMiddleware
 
         $userRole = Auth::user()->role;
 
+        // Bypass: superadmin otomatis memiliki akses penuh ke area admin
+        if (in_array('admin', $allowedRoles, true) && in_array($userRole, ['admin', 'superadmin', 'super_admin'], true)) {
+            return $next($request);
+        }
+
         // Sudah login tapi role tidak cocok → arahkan ke dashboard masing-masing secara aman
         if (!in_array($userRole, $allowedRoles, true)) {
             if ($request->expectsJson()) {

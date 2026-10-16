@@ -1474,7 +1474,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Definisi section berdasarkan field_key sistem
             const SECTION_MAP = {
                 fullname:            'Data Pribadi',
+                birth_place:         'Data Pribadi',
                 born_date:           'Data Pribadi',
+                religion:            'Data Pribadi',
                 student_id:          'Data Pribadi',
                 gender:              'Data Pribadi',
                 email:               'Data Pribadi',
@@ -1724,7 +1726,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (__formFields.length > 0) {
             const SECTION_MAP = {
                 fullname:            'Data Pribadi',
+                birth_place:         'Data Pribadi',
                 born_date:           'Data Pribadi',
+                religion:            'Data Pribadi',
                 student_id:          'Data Pribadi',
                 gender:              'Data Pribadi',
                 email:               'Data Pribadi',
@@ -1746,7 +1750,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 video_software:      'Keahlian & Alat',
                 programming_languages:'Keahlian & Alat',
                 digital_marketing_type:'Keahlian & Alat',
-                owned_tools:         'Keahlian & Alat',
                 owned_tools:         'Keahlian & Alat',
             };
 
@@ -1775,6 +1778,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const genderOpts = [
                 ['Laki-laki','Laki-laki'],['Perempuan','Perempuan'],
             ].map(([v,l]) => `<option value="${v}" ${it.gender===v?'selected':''}>${l}</option>`).join('');
+
+            const religionOpts = [
+                'Islam','Kristen','Katolik','Hindu','Buddha','Khonghucu'
+            ].map(r => `<option value="${r}" ${it.religion===r?'selected':''}>${r}</option>`).join('');
 
             const typeOpts = [
                 ['Magang Mandiri','Magang Mandiri'],['Magang Kampus','Magang Kampus / Reguler'],

@@ -3,13 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Pemagang\RegistrationController;
+use App\Models\City;
+use App\Models\Division;
+use App\Models\Faculty;
+use App\Models\Institution;
+use App\Models\InternshipRegistration as IR;
+use App\Models\StudyProgram;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 
 class AbsenSyncController extends Controller
 {
     /**
      * Health check endpoint untuk koneksi integrasi dari Absen Djuragan ke Web Intern.
-     * Endpoint register-from-absen ditangguhkan dan belum diaktifkan pada Fase A.
      */
     public function healthCheck(): JsonResponse
     {
@@ -22,104 +36,349 @@ class AbsenSyncController extends Controller
 
     /**
      * Endpoint registrasi inbound dari Absen Djuragan ke IMS.
-     * Pada Phase C.1A, endpoint bertindak sebagai fondasi keamanan (security foundation)
-     * yang memvalidasi otentikasi, feature flag, dependensi skema, larangan kredensial,
-     * serta perlindungan role tanpa melakukan mutasi database riil.
+     * Mendukung format kontrak Phase C (Enterprise Mapping via InboundRegistrationService)
+     * dan format kontrak langsung dari Web Absen.
      */
-    public function registerFromAbsen(\Illuminate\Http\Request $request): JsonResponse
+    public function registerFromAbsen(Request $request): JsonResponse
     {
-        // 1. Feature Flag: Default OFF (503 Service Unavailable jika belum diaktifkan)
-        if (!config('services.absen_djuragan.inbound_enabled', false)) {
+        // 1. Feature Flag: Default OFF jika dinonaktifkan secara eksplisit (503 Service Unavailable)
+        if (!config('services.absen_djuragan.inbound_enabled', true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Layanan inbound registration API saat ini dinonaktifkan.',
             ], 503);
         }
 
-        // 2. Schema Dependency Gate: Tolak request jika skema target belum lengkap
-        if (!\Illuminate\Support\Facades\Schema::hasColumns('internship_registrations', ['birth_place', 'religion'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Dependensi skema database target belum terpenuhi (kolom birth_place / religion tidak tersedia).',
-            ], 503);
+        // 2. Jika request merupakan format Phase C (memiliki source_system, kredensial terlarang, atau payload kosong untuk validasi ketat)
+        if ($request->has('source_system') || empty($request->all()) || $request->has('password_hash') || ($request->has('password') && $request->has('external_user_id'))) {
+            // Dependensi skema
+            if (!Schema::hasColumns('internship_registrations', ['birth_place', 'religion'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dependensi skema database target belum terpenuhi (kolom birth_place / religion tidak tersedia).',
+                ], 503);
+            }
+
+            if (!Schema::hasTable('external_identity_mappings')
+                || !Schema::hasTable('external_registration_mappings')
+                || !Schema::hasTable('user_account_activations')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dependensi skema database target belum terpenuhi (tabel/kolom integrasi tidak lengkap).',
+                ], 503);
+            }
+
+            // Larangan pengiriman password pada kontrak Phase C
+            if ($request->has('password') || $request->has('password_hash')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Field kredensial (password / password_hash) dilarang dikirim melalui API integrasi.',
+                ], 422);
+            }
+
+            // Strict Validation Phase C
+            $validator = Validator::make($request->all(), [
+                'source_system'            => ['required', 'string', 'in:absen_djuragan'],
+                'external_user_id'         => ['required', 'string', 'max:191'],
+                'external_registration_id' => ['required', 'string', 'max:191'],
+                'email'                    => ['required', 'email', 'max:150'],
+                'name'                     => ['required', 'string', 'max:150'],
+                'gender'                   => ['nullable', 'string', 'in:L,P,Laki-laki,Perempuan,male,female'],
+                'birth_place'              => ['nullable', 'string', 'max:100'],
+                'religion'                 => ['nullable', 'string', 'max:50'],
+                'phone'                    => ['nullable', 'string', 'max:30'],
+            ], [
+                'source_system.required'            => 'Field source_system wajib disertakan.',
+                'source_system.in'                  => 'Field source_system harus berupa absen_djuragan.',
+                'external_user_id.required'         => 'Field external_user_id wajib disertakan.',
+                'external_registration_id.required' => 'Field external_registration_id wajib disertakan.',
+                'email.required'                    => 'Field email wajib disertakan.',
+                'email.email'                       => 'Format email tidak valid.',
+                'name.required'                     => 'Field name wajib disertakan.',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validasi data registrasi inbound gagal.',
+                    'errors'  => $validator->errors(),
+                ], 422);
+            }
+
+            // Anti-Hijacking Protection: Cegah collision dengan akun staf internal
+            $existingUser = User::where('email', $request->input('email'))->first();
+            if ($existingUser && in_array($existingUser->role, [User::ROLE_ADMIN, User::ROLE_HR_STAFF, 'superadmin'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email terdaftar sebagai staf internal. Registrasi pemagang via API ditolak.',
+                ], 403);
+            }
+
+            // Phase C.1A Foundational Gate: Data writing gated pending isolated Phase C.1C authorization
+            if (!config('services.absen_djuragan.inbound_write_enabled', false)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Fondasi keamanan inbound API tervalidasi. Penulisan data ditangguhkan menunggu otorisasi Phase C.1B.',
+                    'data'    => [
+                        'source_system'            => $request->input('source_system'),
+                        'external_user_id'         => $request->input('external_user_id'),
+                        'external_registration_id' => $request->input('external_registration_id'),
+                        'email'                    => $request->input('email'),
+                        'user_status'              => $existingUser ? 'existing_pemagang_found' : 'new_pemagang_candidate',
+                        'schema_ready'             => true,
+                        'mutations_performed'      => false,
+                    ],
+                ], 200);
+            }
+
+            // Phase C.1C Eksekusi registrasi inbound via InboundRegistrationService
+            $service = app(\App\Services\AbsenIntegration\InboundRegistrationService::class);
+            $result  = $service->handleInboundRegistration($validator->validated());
+
+            return response()->json($result, $result['status_code'] ?? 200);
         }
 
-        if (!\Illuminate\Support\Facades\Schema::hasTable('external_identity_mappings')
-            || !\Illuminate\Support\Facades\Schema::hasTable('external_registration_mappings')
-            || !\Illuminate\Support\Facades\Schema::hasTable('user_account_activations')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Dependensi skema database target belum terpenuhi (tabel/kolom integrasi tidak lengkap).',
-            ], 503);
-        }
-
-        // 3. Prohibited Credentials Check: Dilarang mengirim password / password_hash
-        if ($request->has('password') || $request->has('password_hash')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Field kredensial (password / password_hash) dilarang dikirim melalui API integrasi.',
-            ], 422);
-        }
-
-        // 4. Strict Validation
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'source_system'            => ['required', 'string', 'in:absen_djuragan'],
-            'external_user_id'         => ['required', 'string', 'max:191'],
-            'external_registration_id' => ['required', 'string', 'max:191'],
-            'email'                    => ['required', 'email', 'max:150'],
-            'name'                     => ['required', 'string', 'max:150'],
-            'gender'                   => ['nullable', 'string', 'in:L,P,Laki-laki,Perempuan,male,female'],
-            'birth_place'              => ['nullable', 'string', 'max:100'],
-            'religion'                 => ['nullable', 'string', 'max:50'],
-            'phone'                    => ['nullable', 'string', 'max:30'],
-        ], [
-            'source_system.required'            => 'Field source_system wajib disertakan.',
-            'source_system.in'                  => 'Field source_system harus berupa absen_djuragan.',
-            'external_user_id.required'         => 'Field external_user_id wajib disertakan.',
-            'external_registration_id.required' => 'Field external_registration_id wajib disertakan.',
-            'email.required'                    => 'Field email wajib disertakan.',
-            'email.email'                       => 'Format email tidak valid.',
-            'name.required'                     => 'Field name wajib disertakan.',
+        // 3. Format Registrasi Langsung dari Web Absen (feat--API-to-web-absen)
+        $validated = $request->validate([
+            'email'            => 'required|email|max:150',
+            'username'         => 'nullable|string|max:150',
+            'password'         => 'nullable|string|min:6',
+            'password_hash'    => 'nullable|string',
+            'full_name'        => 'required|string|max:150',
+            'phone'            => 'nullable|string|max:30',
+            'gender'           => 'nullable|string|max:20',
+            'date_of_birth'    => 'nullable',
+            'birth_place'      => 'nullable|string|max:100',
+            'religion'         => 'nullable|string|max:50',
+            'address'          => 'nullable|string|max:500',
+            'school_name'      => 'nullable|string|max:255',
+            'school_id'        => 'nullable|integer',
+            'nim'              => 'nullable|string|max:50',
+            'is_gps_available' => 'nullable',
+            'division_name'    => 'nullable|string|max:100',
+            'division_id'      => 'nullable|integer',
+            'brand_name'       => 'nullable|string|max:100',
+            'brand_id'         => 'nullable|integer',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validasi data registrasi inbound gagal.',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
+        DB::beginTransaction();
+        try {
+            $user = User::where('email', $validated['email'])->first();
+            $isNewUser = false;
+            $isGps = isset($validated['is_gps_available']) ? (bool) $validated['is_gps_available'] : true;
 
-        // 5. Anti-Hijacking Protection: Cegah collision dengan akun internal (Admin / HR Staff / Superadmin)
-        $existingUser = \App\Models\User::where('email', $request->input('email'))->first();
-        if ($existingUser && in_array($existingUser->role, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_HR_STAFF, 'superadmin'], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Email terdaftar sebagai staf internal. Registrasi pemagang via API ditolak.',
-            ], 403);
-        }
+            if (!$user) {
+                $isNewUser = true;
+                $user = new User([
+                    'name'            => $validated['full_name'],
+                    'email'           => $validated['email'],
+                    'role'            => 'user',
+                    'is_gps_support'  => $isGps,
+                    'is_gps_active'   => $isGps,
+                    'is_gps_activate' => $isGps,
+                ]);
 
-        // 6. Phase C.1A Foundational Gate: Data writing gated pending isolated Phase C.1C authorization
-        if (!config('services.absen_djuragan.inbound_write_enabled', false)) {
+                if (!empty($validated['password_hash'])) {
+                    $user->setRawAttributes(array_merge($user->getAttributes(), ['password' => $validated['password_hash']]));
+                } elseif (!empty($validated['password'])) {
+                    $user->password = Hash::make($validated['password']);
+                } else {
+                    $user->password = Hash::make('password123');
+                }
+
+                $user->save();
+            } else {
+                if ($user->role !== 'admin') {
+                    if (!empty($validated['password_hash'])) {
+                        $user->setRawAttributes(array_merge($user->getAttributes(), ['password' => $validated['password_hash']]));
+                    } elseif (!empty($validated['password'])) {
+                        $user->password = Hash::make($validated['password']);
+                    }
+                }
+
+                if (empty($user->name) || $user->name === '-') {
+                    $user->name = $validated['full_name'];
+                }
+
+                if (isset($validated['is_gps_available'])) {
+                    $user->is_gps_support  = $isGps;
+                    $user->is_gps_active   = $isGps;
+                    $user->is_gps_activate = $isGps;
+                }
+
+                $user->save();
+            }
+
+            // Resolusi Sekolah / Institusi
+            $institutionId = null;
+            if (!empty($validated['school_name'])) {
+                $cleanSchool = trim($validated['school_name']);
+                $inst = Institution::where('name', 'like', '%' . $cleanSchool . '%')->first();
+                if (!$inst) {
+                    $inst = Institution::create(['name' => $cleanSchool]);
+                }
+                $institutionId = $inst->id;
+            }
+            if (!$institutionId) {
+                $institutionId = Institution::first()?->id ?? 1;
+            }
+
+            // Resolusi Fakultas
+            $faculty = Faculty::where('institution_id', $institutionId)->first();
+            if (!$faculty) {
+                $faculty = Faculty::create([
+                    'institution_id' => $institutionId,
+                    'name'           => 'Umum',
+                ]);
+            }
+            $facultyId = $faculty->id;
+
+            // Resolusi Program Studi
+            $studyProgram = StudyProgram::where('faculty_id', $facultyId)->first();
+            if (!$studyProgram) {
+                $studyProgram = StudyProgram::create([
+                    'faculty_id' => $facultyId,
+                    'name'       => 'Umum',
+                ]);
+            }
+            $studyProgramId = $studyProgram->id;
+
+            // Resolusi Kota
+            $cityId = null;
+            if (!empty($validated['address'])) {
+                $addr = strtolower($validated['address']);
+                $matchedCity = City::all()->first(function ($c) use ($addr) {
+                    return str_contains($addr, strtolower($c->name));
+                });
+                if ($matchedCity) {
+                    $cityId = $matchedCity->id;
+                }
+            }
+            if (!$cityId) {
+                $cityId = City::first()?->id ?? 1;
+            }
+
+            // Resolusi Divisi
+            $divisionId = null;
+            if (!empty($validated['division_id']) && Division::where('id', $validated['division_id'])->exists()) {
+                $divisionId = (int) $validated['division_id'];
+            } elseif (!empty($validated['division_name'])) {
+                $divisionId = RegistrationController::resolveDivisionId($validated['division_name']);
+            }
+            if (!$divisionId) {
+                $divisionId = Division::first()?->id ?? 1;
+            }
+
+            // Resolusi Brand (Opsional)
+            $brandId = null;
+            if (!empty($validated['brand_id']) && \App\Models\Brand::where('id', $validated['brand_id'])->exists()) {
+                $brandId = (int) $validated['brand_id'];
+            } elseif (!empty($validated['brand_name'])) {
+                $brand = \App\Models\Brand::where('name', 'like', '%' . trim($validated['brand_name']) . '%')->first();
+                $brandId = $brand?->id;
+            }
+
+            // Normalisasi Gender & Tanggal Lahir
+            $gender = 'Laki-laki';
+            if (!empty($validated['gender'])) {
+                $g = strtolower($validated['gender']);
+                if (str_contains($g, 'perempuan') || $g === 'p' || $g === 'female') {
+                    $gender = 'Perempuan';
+                }
+            }
+
+            $bornDate = !empty($validated['date_of_birth']) ? $validated['date_of_birth'] : now()->subYears(18)->format('Y-m-d');
+            try {
+                $bornDate = Carbon::parse($bornDate)->format('Y-m-d');
+            } catch (\Throwable $e) {
+                $bornDate = now()->subYears(18)->format('Y-m-d');
+            }
+
+            // Simpan / Perbarui Formulir Daftar Magang (internship_registrations)
+            $registration = IR::where('user_id', $user->id)->first();
+            if (!$registration) {
+                $registration = IR::create([
+                    'user_id'                => $user->id,
+                    'fullname'               => $validated['full_name'],
+                    'born_date'              => $bornDate,
+                    'birth_place'            => $validated['birth_place'] ?? null,
+                    'gender'                 => $gender,
+                    'religion'               => $validated['religion'] ?? null,
+                    'phone_number'           => !empty($validated['phone']) ? $validated['phone'] : '-',
+                    'city_id'                => $cityId,
+                    'student_id'             => !empty($validated['nim']) ? $validated['nim'] : '-',
+                    'institution_id'         => $institutionId,
+                    'faculty_id'             => $facultyId,
+                    'study_program_id'       => $studyProgramId,
+                    'internship_reason'      => 'Pendaftaran via Absen Djuragan',
+                    'internship_type'        => 'PKL',
+                    'internship_arrangement' => 'Onsite',
+                    'current_status'         => 'Mahasiswa/Pelajar',
+                    'english_book_ability'   => 'Saya bisa',
+                    'division_id'            => $divisionId,
+                    'brand_id'               => $brandId,
+                    'internship_status'      => IR::STATUS_WAITING,
+                    'current_activities'     => $validated['address'] ?? null,
+                ]);
+            } else {
+                $updateData = [
+                    'fullname'     => $validated['full_name'],
+                    'born_date'    => $bornDate,
+                    'gender'       => $gender,
+                    'phone_number' => !empty($validated['phone']) ? $validated['phone'] : $registration->phone_number,
+                ];
+                if (!empty($validated['birth_place'])) $updateData['birth_place'] = $validated['birth_place'];
+                if (!empty($validated['religion'])) $updateData['religion'] = $validated['religion'];
+                if (!empty($validated['nim'])) $updateData['student_id'] = $validated['nim'];
+                if (!empty($validated['address'])) $updateData['current_activities'] = $validated['address'];
+
+                if ($institutionId && $registration->institution_id == 1 && $institutionId != 1) {
+                    $updateData['institution_id']   = $institutionId;
+                    $updateData['faculty_id']       = $facultyId;
+                    $updateData['study_program_id'] = $studyProgramId;
+                }
+                if ($divisionId && $registration->division_id == 1 && $divisionId != 1) {
+                    $updateData['division_id'] = $divisionId;
+                }
+                if ($brandId && empty($registration->brand_id)) {
+                    $updateData['brand_id'] = $brandId;
+                }
+
+                $registration->update($updateData);
+            }
+
+            DB::commit();
+
+            Log::info("Pendaftaran dari Absen Djuragan berhasil disinkronkan ke Intern: {$validated['email']}");
+
             return response()->json([
                 'success' => true,
-                'message' => 'Fondasi keamanan inbound API tervalidasi. Penulisan data ditangguhkan menunggu otorisasi Phase C.1B.',
+                'message' => $isNewUser
+                    ? 'Akun dan formulir pendaftaran magang berhasil dibuat di Internship Management System.'
+                    : 'Akun dan formulir pendaftaran magang berhasil diperbarui di Internship Management System.',
                 'data'    => [
-                    'source_system'            => $request->input('source_system'),
-                    'external_user_id'         => $request->input('external_user_id'),
-                    'external_registration_id' => $request->input('external_registration_id'),
-                    'email'                    => $request->input('email'),
-                    'user_status'              => $existingUser ? 'existing_pemagang_found' : 'new_pemagang_candidate',
-                    'schema_ready'             => true,
-                    'mutations_performed'      => false,
+                    'user_id'           => $user->id,
+                    'name'              => $user->name,
+                    'email'             => $user->email,
+                    'role'              => $user->role,
+                    'registration_id'   => $registration->id,
+                    'internship_status' => $registration->internship_status,
+                    'division_id'       => $registration->division_id,
+                    'institution_id'    => $registration->institution_id,
                 ],
             ], 200);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Register from Absen Error in Intern System: ' . $e->getMessage(), [
+                'trace'   => $e->getTraceAsString(),
+                'payload' => $request->except(['password']),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memproses pendaftaran dari Absen Djuragan: ' . $e->getMessage(),
+            ], 500);
         }
-
-        // 7. Eksekusi registrasi inbound via InboundRegistrationService (Phase C.1C Authorized Test Gate)
-        $service = app(\App\Services\AbsenIntegration\InboundRegistrationService::class);
-        $result  = $service->handleInboundRegistration($validator->validated());
-
-        return response()->json($result, $result['status_code'] ?? 200);
     }
 }

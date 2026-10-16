@@ -8,8 +8,9 @@ use App\Models\DocumentDownload;
 use App\Models\WebinarAttendance;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -50,6 +51,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (request()->isSecure() || config('app.env') === 'production' || str_starts_with(config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
         // Standarisasi Pagination Global SERTIF (Modul 4)
         \Illuminate\Pagination\Paginator::defaultView('components.pagination');
         \Illuminate\Pagination\Paginator::defaultSimpleView('components.pagination');

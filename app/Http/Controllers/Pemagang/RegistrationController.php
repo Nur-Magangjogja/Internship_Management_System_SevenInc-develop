@@ -35,12 +35,13 @@ class RegistrationController extends Controller
 
         if ($divisions->isEmpty()) {
             $divisions = collect([
-                'Administration', 'Human Resources (HR)', 'UI/UX Designer',
-                'Programmer (Front End / Backend)', 'Photographer', 'Videographer',
-                'Graphic Designer (Konten Kreatif)', 'Social Media Specialist',
-                'Content Writer', 'Content Planner', 'Sales & Marketing',
-                'Public Relations (Marcomm)', 'Digital Marketing', 'TikTok Creator',
-                'Project Manager', 'Pengelasan', 'Animasi', 'Customer Service',
+                'UI/UX Designer', 'Marketing / Sales', 'Social Media Specialist',
+                'Programmer', 'Marcom/Public Relation', 'Tiktok Creator',
+                'Desain Grafis', 'Content Writer', 'Host/Presenter',
+                'Fotografer', 'Content Planner', 'Voice Over Talent',
+                'Videografer', 'Administrasi', 'Las', 'Digital Marketing',
+                'Project Manager', 'Human Resource', 'Research & Development',
+                'Animasi', 'Customer Service',
             ]);
         }
 
@@ -563,17 +564,20 @@ class RegistrationController extends Controller
             'student_id.required'              => 'NIM/NPM wajib diisi.',
             'email.required'                   => 'Email wajib diisi.',
             'gender.required'                  => 'Jenis kelamin wajib dipilih.',
-            'institution_name.required'         => 'Nama universitas/sekolah wajib diisi.',
-            'study_program.required'            => 'Program studi wajib diisi.',
-            'current_city.required'             => 'Kota domisili wajib diisi.',
-            'internship_reason.required'        => 'Alasan magang wajib diisi.',
-            'internship_interest.required'      => 'Divisi yang diminati wajib dipilih.',
-            'wfo_readiness.required'            => 'Kesiapan WFO Yogyakarta wajib dipilih.',
+            'birth_place.required'             => 'Tempat lahir wajib diisi.',
+            'religion.required'                => 'Agama wajib dipilih.',
+            'institution_name.required'        => 'Nama universitas/sekolah wajib diisi.',
+            'study_program.required'           => 'Program studi wajib diisi.',
+            'faculty.required'                 => 'Fakultas wajib diisi.',
+            'current_city.required'            => 'Kota domisili wajib diisi.',
+            'internship_reason.required'       => 'Alasan magang wajib diisi.',
+            'internship_interest.required'     => 'Divisi yang diminati wajib dipilih.',
+            'wfo_readiness.required'           => 'Kesiapan WFO Yogyakarta wajib dipilih.',
             'schedule_shift_readiness.required' => 'Kesanggupan jadwal & shifting wajib dipilih.',
             'has_laptop.required'               => 'Kepemilikan laptop wajib dipilih.',
             'planned_duration.required'         => 'Durasi magang wajib dipilih/diisi.',
-            'birth_place.max'                  => 'Tempat lahir maksimal 100 karakter.',
-            'religion.in'                      => 'Pilihan agama tidak valid.',
+            'birth_place.max'                   => 'Tempat lahir maksimal 100 karakter.',
+            'religion.in'                       => 'Pilihan agama tidak valid.',
             'cv_ktp_portofolio_pdf.mimes'       => 'Berkas lampiran harus berformat PDF.',
             'cv_ktp_portofolio_pdf.max'         => 'Ukuran berkas lampiran maksimal 10MB.',
         ]);
@@ -644,16 +648,13 @@ class RegistrationController extends Controller
         unset($validated['is_draft'], $validated['draft_saved_at']);
 
         // Pra-validasi Divisi & Status Institusi sebelum transaksi
-        if (!empty($validated['internship_interest'])) {
-            $divName = trim($validated['internship_interest']);
-            $existingDiv = \App\Models\Division::whereRaw('LOWER(name) = ?', [strtolower($divName)])
-                ->orWhere('slug', \Illuminate\Support\Str::slug($divName, '_'))
-                ->orWhere('slug', \Illuminate\Support\Str::slug($divName, '-'))
-                ->first();
-            if ($existingDiv) {
-                $validated['division_id'] = $existingDiv->id;
+        $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($validated['internship_interest'] ?? null);
+        if (!empty($divisionInput) && $divisionInput !== '-') {
+            $divisionId = self::resolveDivisionId($divisionInput);
+            if ($divisionId) {
+                $validated['division_id'] = $divisionId;
             } else {
-                if ($isDraft && ($divName === '' || $divName === '-')) {
+                if ($isDraft) {
                     $validated['division_id'] = null;
                 } else {
                     return back()->withInput()->withErrors([
@@ -661,8 +662,10 @@ class RegistrationController extends Controller
                     ]);
                 }
             }
-            unset($validated['internship_interest']);
+        } elseif (!$isDraft && empty($validated['division_id'])) {
+            $validated['division_id'] = \App\Models\Division::where('is_active', true)->first()?->id ?? 1;
         }
+        unset($validated['internship_interest']);
 
         if (!empty($validated['institution_name'])) {
             $inputName = trim($validated['institution_name']);
@@ -1091,10 +1094,10 @@ class RegistrationController extends Controller
             'fullname'                 => 'nullable|string|max:150',
             'born_date'                => 'nullable|string|max:255',
             'birth_place'              => 'nullable|string|max:100',
-            'religion'                 => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'               => 'nullable|string|max:50',
             'email'                    => 'nullable|string|max:255',
             'gender'                   => 'nullable|string|max:50',
+            'religion'                 => 'nullable|string|max:50',
             'phone_number'             => 'nullable|regex:/^[0-9]{0,15}$/',
             'institution_name'         => 'nullable|string|max:255',
             'study_program'            => 'nullable|string|max:255',
@@ -1123,6 +1126,7 @@ class RegistrationController extends Controller
             'supporting_document.*'    => 'nullable|file|mimes:pdf,doc,docx,zip,rar,png,jpg,jpeg|max:10240',
             'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'cv_ktp_portofolio_pdf'    => 'nullable|file|mimes:pdf|max:10240',
+            'portofolio_visual'        => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
             'design_software'          => 'nullable|string|max:255',
             'video_software'           => 'nullable|string|max:255',
             'programming_languages'    => 'nullable|string|max:255',
@@ -1371,6 +1375,104 @@ class RegistrationController extends Controller
             unset($data['document_version']);
         }
         return $intern->attachments()->create($data);
+    }
+
+    /**
+     * Resolusi ID Divisi dengan dukungan ID numerik, nama persis, kamus sinonim, dan flexible matching.
+     */
+    public static function resolveDivisionId(mixed $input): ?int
+    {
+        if (empty($input) || $input === '-') return null;
+
+        // 1. Jika ID numerik dan ada di database
+        if (is_numeric($input)) {
+            $div = \App\Models\Division::find((int) $input);
+            if ($div) return $div->id;
+        }
+
+        $rawName = trim((string) $input);
+        $clean   = strtolower($rawName);
+
+        // 2. Cek kecocokan nama langsung (case-insensitive)
+        $div = \App\Models\Division::whereRaw('LOWER(name) = ?', [$clean])->first();
+        if ($div) return $div->id;
+
+        // 3. Kamus sinonim & variasi nama
+        $synonyms = [
+            'programmer (front end / backend)'  => 'Programmer',
+            'programmer (frontend / backend)'   => 'Programmer',
+            'web programmer'                    => 'Programmer',
+            'developer'                         => 'Programmer',
+            'frontend'                          => 'Programmer',
+            'backend'                           => 'Programmer',
+            'administration'                    => 'Administrasi',
+            'admin'                             => 'Administrasi',
+            'adm'                               => 'Administrasi',
+            'human resources (hr)'              => 'Human Resource',
+            'human resources'                   => 'Human Resource',
+            'hrd'                               => 'Human Resource',
+            'hr'                                => 'Human Resource',
+            'ui/ux'                             => 'UI/UX Designer',
+            'uiux'                              => 'UI/UX Designer',
+            'ui-ux'                             => 'UI/UX Designer',
+            'photographer'                      => 'Fotografer',
+            'fotografi'                         => 'Fotografer',
+            'videographer'                      => 'Videografer',
+            'videografi'                        => 'Videografer',
+            'graphic designer (konten kreatif)' => 'Desain Grafis',
+            'graphic designer'                  => 'Desain Grafis',
+            'desainer grafis'                   => 'Desain Grafis',
+            'social media'                      => 'Social Media Specialist',
+            'smm'                               => 'Social Media Specialist',
+            'content writter'                   => 'Content Writer',
+            'penulis konten'                    => 'Content Writer',
+            'sales & marketing'                 => 'Marketing / Sales',
+            'sales and marketing'               => 'Marketing / Sales',
+            'marketing'                         => 'Marketing / Sales',
+            'sales'                             => 'Marketing / Sales',
+            'public relations (marcomm)'        => 'Marcom/Public Relation',
+            'public relations'                  => 'Marcom/Public Relation',
+            'marcomm'                           => 'Marcom/Public Relation',
+            'marcom'                            => 'Marcom/Public Relation',
+            'pr'                                => 'Marcom/Public Relation',
+            'tiktok'                            => 'Tiktok Creator',
+            'kreator tiktok'                    => 'Tiktok Creator',
+            'pengelasan'                        => 'Las',
+            'welder'                            => 'Las',
+            'welding'                           => 'Las',
+            'animation'                         => 'Animasi',
+            'animator'                          => 'Animasi',
+            'cs'                                => 'Customer Service',
+            'layanan pelanggan'                 => 'Customer Service',
+            'host'                              => 'Host/Presenter',
+            'presenter'                         => 'Host/Presenter',
+            'voice over'                        => 'Voice Over Talent',
+            'pengisi suara'                     => 'Voice Over Talent',
+            'rnd'                               => 'Research & Development',
+            'r&d'                               => 'Research & Development',
+        ];
+
+        if (isset($synonyms[$clean])) {
+            $mapped = \App\Models\Division::where('name', $synonyms[$clean])->first();
+            if ($mapped) return $mapped->id;
+        }
+
+        // 4. Flexible LIKE search (dua arah)
+        $flexible = \App\Models\Division::where(function ($q) use ($clean) {
+            $q->whereRaw('LOWER(name) LIKE ?', ["%{$clean}%"])
+              ->orWhereRaw('? LIKE CONCAT("%", LOWER(name), "%")', [$clean]);
+        })->first();
+
+        if ($flexible) return $flexible->id;
+
+        // 5. Jika benar-benar baru, buat record divisi baru yang aktif
+        $newDiv = \App\Models\Division::create([
+            'name'      => ucwords($clean),
+            'slug'      => \Illuminate\Support\Str::slug($clean, '_'),
+            'is_active' => true,
+        ]);
+
+        return $newDiv->id;
     }
 }
 

@@ -224,18 +224,44 @@
               class="{{ $input }}" value="{{ $old('fullname') }}">
           </div>
 
-          {{-- Jenis Kelamin --}}
-          <div>
-            <label class="{{ $label }}">Jenis Kelamin <span class="text-red-500">*</span></label>
-            <div class="flex gap-6 pt-1">
-              <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="radio" name="gender" value="Laki-laki" class="{{ $radio }}"
-                  @checked($old('gender') === 'Laki-laki')> Laki-laki
-              </label>
-              <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="radio" name="gender" value="Perempuan" class="{{ $radio }}"
-                  @checked($old('gender') === 'Perempuan')> Perempuan
-              </label>
+          {{-- Tempat & Tanggal Lahir --}}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="{{ $label }}">Tempat Lahir <span class="text-red-500">*</span></label>
+              <input type="text" name="birth_place" required placeholder="Contoh: Sleman, Yogyakarta"
+                class="{{ $input }}" value="{{ $old('birth_place') }}">
+            </div>
+            <div>
+              <label class="{{ $label }}">Tanggal Lahir <span class="text-red-500">*</span></label>
+              <input type="date" name="born_date" required
+                max="{{ date('Y-m-d') }}"
+                class="{{ $input }}" value="{{ $toDateInput($old('born_date')) }}">
+            </div>
+          </div>
+
+          {{-- Jenis Kelamin & Agama --}}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="{{ $label }}">Jenis Kelamin <span class="text-red-500">*</span></label>
+              <div class="flex gap-6 pt-1">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="gender" value="Laki-laki" class="{{ $radio }}"
+                    @checked($old('gender') === 'Laki-laki')> Laki-laki
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="gender" value="Perempuan" class="{{ $radio }}"
+                    @checked($old('gender') === 'Perempuan')> Perempuan
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="{{ $label }}">Agama <span class="text-red-500">*</span></label>
+              <select name="religion" required class="{{ $input }}">
+                <option value="">-- Pilih Agama --</option>
+                @foreach(['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
+                  <option value="{{ $rel }}" @selected($old('religion') === $rel)>{{ $rel }}</option>
+                @endforeach
+              </select>
             </div>
           </div>
 

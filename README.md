@@ -2,6 +2,21 @@
 
 Sistem Manajemen Magang (Internship Management System) untuk SevenInc, dibangun menggunakan **Laravel** dan **Tailwind CSS** (beserta **Flowbite**). Aplikasi ini bertujuan untuk memfasilitasi proses pendaftaran, pengelolaan data peserta magang, dan operasional lainnya terkait program magang di SevenInc.
 
+---
+
+## 🔗 Dokumentasi Integrasi API & SSO (Web Intern ⟷ Web Absen)
+Panduan lengkap untuk menghubungkan, mengatur, dan mengganti endpoint API antara **Web Intern (`IMS`)** dan **Web Absen (`absen-djuragan`)**:
+
+👉 **[Buka Dokumentasi Lengkap Integrasi API (API_DOCS_README.md)](./API_DOCS_README.md)**
+
+Ringkasan cakupan:
+- **Konfigurasi `.env`**: Penjelasan `ABSEN_DJURAGAN_API_URL`, `ABSEN_DJURAGAN_WEB_URL`, `ABSEN_DJURAGAN_API_KEY`.
+- **Cara Mengganti Domain / Port / URL API**: Panduan migrasi Laragon, `artisan serve` port berbeda, hingga live server produksi.
+- **Spesifikasi Endpoint**: Pengiriman data pendaftaran saat di-ACC (`register-sync`), verifikasi login admin (`verify-admin`), dan Single Sign-On (`SSO`).
+- **Troubleshooting**: Solusi error 401, 404, 500, dan cara testing dengan cURL.
+
+---
+
 ## 🚀 Fitur Utama
 - **Pendaftaran Magang**: Calon peserta dapat mendaftar dan mengisi formulir magang.
 - **Manajemen Peserta**: Admin dapat melihat, memvalidasi, dan mengelola data peserta magang.

@@ -34,9 +34,9 @@ return [
     'absen_djuragan' => [
         'url'              => env('ABSEN_DJURAGAN_API_URL', 'http://absen-djuragan.test/api/v1/external'),
         'web_url'          => env('ABSEN_DJURAGAN_WEB_URL', 'http://absen-djuragan.test'),
-        'api_key'          => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
-        'inbound_api_key'  => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
-        'outbound_api_key' => env('ABSEN_DJURAGAN_OUTBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY')),
+        'api_key'          => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c')),
+        'inbound_api_key'  => env('ABSEN_DJURAGAN_INBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c')),
+        'outbound_api_key' => env('ABSEN_DJURAGAN_OUTBOUND_API_KEY', env('ABSEN_DJURAGAN_API_KEY', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c')),
         'inbound_enabled'       => (bool) env('ABSEN_DJURAGAN_INBOUND_ENABLED', false),
         'inbound_write_enabled' => (bool) env('ABSEN_DJURAGAN_INBOUND_WRITE_ENABLED', false),
         'outbox_enabled'        => (bool) env('ABSEN_DJURAGAN_OUTBOX_ENABLED', false),

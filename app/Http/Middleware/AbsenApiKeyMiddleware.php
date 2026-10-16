@@ -20,7 +20,6 @@ class AbsenApiKeyMiddleware
             ?: env('ABSEN_DJURAGAN_INBOUND_API_KEY')
             ?: env('ABSEN_DJURAGAN_API_KEY');
 
-        // Fail-closed jika kunci API pada server belum dikonfigurasi (mencegah akses dengan kunci kosong)
         if (empty($expectedKey)) {
             return response()->json([
                 'success' => false,

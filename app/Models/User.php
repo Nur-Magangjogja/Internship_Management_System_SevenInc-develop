@@ -153,6 +153,7 @@ class User extends Authenticatable
         'ban_reason',
         'is_gps_support',
         'is_gps_active',
+        'is_gps_activate',
     ];
 
     /**

@@ -70,10 +70,10 @@ class InternshipRegistrationController extends Controller
             'fullname'              => 'required|string|max:255',
             'born_date'             => 'required|string|max:255', // form pakai teks bebas
             'birth_place'           => 'nullable|string|max:100',
-            'religion'              => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'            => 'required|string|max:50',
             'email'                 => 'required|string|max:255',
             'gender'                => 'required|string|max:50',
+            'religion'              => 'nullable|string|max:50',
             'phone_number'          => 'required|string|max:30',
             'institution_name'      => 'required|string|max:255',
             'study_program'         => 'required|string|max:255',
@@ -177,6 +177,13 @@ class InternshipRegistrationController extends Controller
             );
         }
 
+        // Resolusi Divisi
+        $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($data['internship_interest'] ?? null);
+        if (!empty($divisionInput)) {
+            $data['division_id'] = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($divisionInput);
+        }
+        unset($data['internship_interest']);
+
         // Status awal & relasi user
         $data['internship_status'] = IR::STATUS_WAITING;
         $data['user_id'] = $userId;
@@ -246,10 +253,10 @@ class InternshipRegistrationController extends Controller
             'fullname'                    => 'required|string|max:255',
             'born_date'                   => 'required|string|max:255',
             'birth_place'                 => 'nullable|string|max:100',
-            'religion'                    => 'nullable|string|max:50|in:Islam,Kristen Protestan,Katolik,Hindu,Buddha,Khonghucu',
             'student_id'                  => 'required|string|max:50',
             'email'                       => 'required|string|max:255',
             'gender'                      => 'required|string|max:50',
+            'religion'                    => 'nullable|string|max:50',
             'phone_number'                => 'required|string|max:30',
             'institution_name'            => 'required|string|max:255',
             'study_program'               => 'required|string|max:255',
@@ -394,6 +401,13 @@ class InternshipRegistrationController extends Controller
         if (!$hasReligionCol) {
             unset($validated['religion']);
         }
+
+        // Resolusi Divisi
+        $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($validated['internship_interest'] ?? null);
+        if (!empty($divisionInput)) {
+            $validated['division_id'] = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($divisionInput);
+        }
+        unset($validated['internship_interest']);
 
         // Simpan
         $intern->fill($validated);
