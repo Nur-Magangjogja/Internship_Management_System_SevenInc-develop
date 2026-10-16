@@ -266,8 +266,8 @@
             <label class="{{ $label }}">Agama</label>
             <select name="religion" class="{{ $input }} pr-10 @error('religion') border-red-500 focus:ring-red-500 @enderror">
               <option value="" {{ $rel ? '' : 'selected' }}>Pilih Agama</option>
-              @foreach(['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $agama)
-                <option value="{{ $agama }}" {{ $rel === $agama ? 'selected' : '' }}>{{ $agama }}</option>
+              @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $agama)
+                <option value="{{ $agama }}" {{ ($rel === $agama || ($agama === 'Kristen Protestan' && $rel === 'Kristen')) ? 'selected' : '' }}>{{ $agama }}</option>
               @endforeach
             </select>
             @error('religion') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -287,30 +287,6 @@
                   class="{{ $input }} @error('phone_number') border-red-500 focus:ring-red-500 @enderror" required>
             @error('phone_number') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
           </div>
-
-          @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place'))
-          <div class="col-span-12 md:col-span-6 lg:col-span-6">
-            <label class="{{ $label }}">Tempat Lahir</label>
-            <input type="text" name="birth_place" value="{{ old('birth_place', $intern->birth_place) }}"
-                  placeholder="Contoh: Sleman" maxlength="100"
-                  class="{{ $input }} @error('birth_place') border-red-500 focus:ring-red-500 @enderror">
-            @error('birth_place') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
-          </div>
-          @endif
-
-          @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion'))
-          @php $relVal = old('religion', $intern->religion); @endphp
-          <div class="col-span-12 md:col-span-6 lg:col-span-6">
-            <label class="{{ $label }}">Agama</label>
-            <select name="religion" class="{{ $input }} pr-10 @error('religion') border-red-500 focus:ring-red-500 @enderror">
-              <option value="">-- Pilih Agama (Opsional) --</option>
-              @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
-                <option value="{{ $rel }}" @selected($relVal === $rel)>{{ $rel }}</option>
-              @endforeach
-            </select>
-            @error('religion') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
-          </div>
-          @endif
         </div>
       </section>
 

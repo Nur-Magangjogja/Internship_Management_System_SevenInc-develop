@@ -173,15 +173,16 @@
             'radio'        => $radio,
             'toDateInput'  => $toDateInput,
         ])
-        {{-- Hidden fields untuk kolom NOT NULL yang tidak dirender --}}
-        {{-- Nama Pembimbing --}}
+        {{-- Hidden/fallback fields untuk kolom NOT NULL jika tidak disediakan di extraFields --}}
+        @if($extraFields->where('field_key', 'supervisor_name')->isEmpty())
         <div>
           <label class="{{ $label }}">Nama Pembimbing (Opsional)</label>
           <input type="text" name="supervisor_name" placeholder="Nama pembimbing (jika ada)"
             class="{{ $input }}" value="{{ $old('supervisor_name', $reg?->supervisor_name !== '-' ? $reg?->supervisor_name : '') }}">
         </div>
+        @endif
 
-        {{-- No. WA Pembimbing --}}
+        @if($extraFields->where('field_key', 'supervisor_contact')->isEmpty())
         <div>
           <label class="{{ $label }}">No. WA Pembimbing (Opsional)</label>
           <input type="tel" name="supervisor_contact" placeholder="08xxxxxxxxxx"
@@ -189,13 +190,15 @@
             class="{{ $input }}" value="{{ $old('supervisor_contact', $reg?->supervisor_contact !== '-' ? $reg?->supervisor_contact : '') }}">
           <p class="mt-1 text-xs text-gray-400">Hanya angka</p>
         </div>
+        @endif
 
-        {{-- Kegiatan Lain --}}
+        @if($extraFields->where('field_key', 'current_activities')->isEmpty())
         <div>
           <label class="{{ $label }}">Kegiatan Lain Selain Magang</label>
           <textarea name="current_activities" rows="3" placeholder="Contoh: Kuliah malam, freelance, dll (tulis '-' jika tidak ada)"
             class="{{ $input }} resize-none">{{ $old('current_activities', $reg?->current_activities !== '-' ? $reg?->current_activities : '') }}</textarea>
         </div>
+        @endif
 
         {{-- Tanggal Mulai Magang (Pastikan selalu ada input start_date jika skema belum menyediakannya di mainFields) --}}
         @if($mainFields->where('field_key', 'start_date')->isEmpty())
@@ -228,14 +231,16 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="{{ $label }}">Tempat Lahir <span class="text-red-500">*</span></label>
-              <input type="text" name="birth_place" required placeholder="Contoh: Sleman, Yogyakarta"
-                class="{{ $input }}" value="{{ $old('birth_place') }}">
+              <input type="text" name="birth_place" required placeholder="Contoh: Sleman, Yogyakarta" maxlength="100"
+                class="{{ $input }} @error('birth_place') border-red-500 focus:ring-red-500 @enderror" value="{{ $old('birth_place') }}">
+              @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
               <label class="{{ $label }}">Tanggal Lahir <span class="text-red-500">*</span></label>
               <input type="date" name="born_date" required
                 max="{{ date('Y-m-d') }}"
-                class="{{ $input }}" value="{{ $toDateInput($old('born_date')) }}">
+                class="{{ $input }} @error('born_date') border-red-500 focus:ring-red-500 @enderror" value="{{ $toDateInput($old('born_date')) }}">
+              @error('born_date') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
             </div>
           </div>
 
@@ -253,47 +258,19 @@
                     @checked($old('gender') === 'Perempuan')> Perempuan
                 </label>
               </div>
+              @error('gender') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
               <label class="{{ $label }}">Agama <span class="text-red-500">*</span></label>
-              <select name="religion" required class="{{ $input }}">
+              <select name="religion" required class="{{ $input }} @error('religion') border-red-500 focus:ring-red-500 @enderror">
                 <option value="">-- Pilih Agama --</option>
-                @foreach(['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
-                  <option value="{{ $rel }}" @selected($old('religion') === $rel)>{{ $rel }}</option>
-                @endforeach
-              </select>
-            </div>
-          </div>
-
-          {{-- Tempat Lahir & Agama (Hanya ditampilkan jika kolom schema telah tersedia) --}}
-          @php
-            $hasBirthPlaceCol = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place');
-            $hasReligionCol   = \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion');
-          @endphp
-          @if($hasBirthPlaceCol || $hasReligionCol)
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            @if($hasBirthPlaceCol)
-            <div>
-              <label class="{{ $label }}">Tempat Lahir</label>
-              <input type="text" name="birth_place" placeholder="Contoh: Sleman" maxlength="100"
-                class="{{ $input }}" value="{{ $old('birth_place') }}">
-              @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
-            </div>
-            @endif
-            @if($hasReligionCol)
-            <div>
-              <label class="{{ $label }}">Agama</label>
-              <select name="religion" class="{{ $input }}">
-                <option value="">-- Pilih Agama (Opsional) --</option>
                 @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
-                  <option value="{{ $rel }}" @selected($old('religion') === $rel)>{{ $rel }}</option>
+                  <option value="{{ $rel }}" @selected($old('religion') === $rel || ($rel === 'Kristen Protestan' && $old('religion') === 'Kristen'))>{{ $rel }}</option>
                 @endforeach
               </select>
               @error('religion') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
             </div>
-            @endif
           </div>
-          @endif
 
           {{-- Kota Domisili --}}
           <div>
