@@ -1458,9 +1458,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render field menggunakan form_fields jika tersedia
         let fieldsHtml = '';
         if (__formFields.length > 0) {
+            // Deduplikasi defensif berdasarkan field_key
+            const seenDetailKeys = new Set();
+            const uniqueFields = __formFields.filter(f => {
+                if (!f.field_key || seenDetailKeys.has(f.field_key)) return false;
+                seenDetailKeys.add(f.field_key);
+                return true;
+            });
+
             // Kelompokkan per group_name
             const groups = {};
-            __formFields.forEach(f => {
+            uniqueFields.forEach(f => {
                 const g = f.group_name || '__main__';
                 if (!groups[g]) groups[g] = [];
                 groups[g].push(f);
@@ -1645,6 +1653,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">${title}</p>
             </div>`;
 
+        const editField = (label, name, val, type = 'text') => {
+            const v = (fmtStr(val) === '-') ? '' : fmtStr(val);
+            return `<div>
+                <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${label}</label>
+                <input type="${type}" name="${name}" value="${v}"
+                    class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+            </div>`;
+        };
+
         // Helper: render satu edit field berdasarkan definisi FormField
         function renderEditField(f, it) {
             const rawVal  = it[f.field_key] !== undefined ? it[f.field_key] : '';
@@ -1653,12 +1670,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const reqMark = f.is_required ? '<span class="text-red-500 ml-0.5">*</span>' : '';
             const inputClass = 'w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition';
 
+            // Jangan render input file di modal edit teks profil pemagang
+            if (f.field_type === 'file') {
+                return '';
+            }
+
+            // Penanganan khusus untuk Divisi / Minat Magang
+            if (f.field_key === 'internship_interest') {
+                const divisions = @json($divisions ?? []);
+                const curDivId = it.division_id ? String(it.division_id) : '';
+                const curDivName = (it.division_name || it.internship_interest || '').toLowerCase().trim();
+                const opts = divisions.map(d => {
+                    const isSel = (curDivId && String(d.id) === curDivId) ||
+                                  (curDivName && (d.name.toLowerCase() === curDivName || (d.slug && d.slug.toLowerCase() === curDivName)));
+                    return `<option value="${d.name}" ${isSel ? 'selected' : ''}>${d.name}</option>`;
+                }).join('');
+                return `<div class="${spanClass}">
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                    <select name="${f.field_key}" class="${inputClass}">
+                        <option value="">-- Pilih Divisi --</option>${opts}
+                    </select>
+                </div>`;
+            }
+
             switch (f.field_type) {
                 case 'select': {
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
-                        const sel = String(rawVal) === String(optVal) ? 'selected' : '';
+                        const sel = String(rawVal).toLowerCase().trim() === String(optVal).toLowerCase().trim() ? 'selected' : '';
                         return `<option value="${optVal}" ${sel}>${optLbl}</option>`;
                     }).join('');
                     return `<div class="${spanClass}">
@@ -1672,9 +1712,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
-                        const chk = String(rawVal) === String(optVal) ? 'checked' : '';
+                        const chk = String(rawVal).toLowerCase().trim() === String(optVal).toLowerCase().trim() ? 'checked' : '';
                         return `<label class="inline-flex items-center gap-1.5 text-[12.5px]">
                             <input type="radio" name="${f.field_key}" value="${optVal}" ${chk} class="accent-[#2D8659]"> ${optLbl}
+                        </label>`;
+                    }).join('');
+                    return `<div class="${spanClass}">
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <div class="flex flex-wrap gap-3">${opts}</div>
+                    </div>`;
+                }
+                case 'checkbox': {
+                    const curVals = Array.isArray(rawVal)
+                        ? rawVal.map(x => String(x).toLowerCase().trim())
+                        : String(rawVal || '').split(',').map(s => s.trim().toLowerCase());
+                    const opts = (f.options || []).map(o => {
+                        const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
+                        const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
+                        const chk = curVals.includes(String(optVal).toLowerCase().trim()) ? 'checked' : '';
+                        return `<label class="inline-flex items-center gap-1.5 text-[12.5px] text-[#1B3A34]">
+                            <input type="checkbox" name="${f.field_key}[]" value="${optVal}" ${chk} class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${optLbl}
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
@@ -1753,8 +1810,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 owned_tools:         'Keahlian & Alat',
             };
 
-            const mainFields = __formFields.filter(f => !f.group_name);
-            const extraFields = __formFields.filter(f => f.group_name === 'informasi_tambahan');
+            // Deduplikasi defensif berdasarkan field_key
+            const seenEditKeys = new Set();
+            const uniqueFields = __formFields.filter(f => {
+                if (!f.field_key || seenEditKeys.has(f.field_key)) return false;
+                seenEditKeys.add(f.field_key);
+                return true;
+            });
+
+            const mainFields = uniqueFields.filter(f => !f.group_name);
+            const extraFields = uniqueFields.filter(f => f.group_name === 'informasi_tambahan');
 
             let lastSection = null;
             mainFields.forEach(f => {
@@ -1793,9 +1858,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ].map(([v,l]) => `<option value="${v}" ${it.internship_arrangement===v?'selected':''}>${l}</option>`).join('');
 
             const divisions = @json($divisions ?? []);
-            const interestOpts = divisions.map(d => 
-                `<option value="${d.name}" ${it.internship_interest === d.name ? 'selected' : ''}>${d.name}</option>`
-            ).join('');
+            const curDivId = it.division_id ? String(it.division_id) : '';
+            const curDivName = (it.division_name || it.internship_interest || '').toLowerCase().trim();
+            const interestOpts = divisions.map(d => {
+                const isSel = (curDivId && String(d.id) === curDivId) ||
+                              (curDivName && (d.name.toLowerCase() === curDivName || (d.slug && d.slug.toLowerCase() === curDivName)));
+                return `<option value="${d.name}" ${isSel ? 'selected' : ''}>${d.name}</option>`;
+            }).join('');
 
             const hasBirthPlace = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place') ? 'true' : 'false' }};
             const hasReligion = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion') ? 'true' : 'false' }};
@@ -1920,7 +1989,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <select name="brand"
                         class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
                         <option value="">— Belum dipilih —</option>
-                        ${(@json($brands ?? [])).map(b => `<option value="${b.name}" ${it.brand === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
+                        ${(@json($brands ?? [])).map(b => {
+                            const isSel = (it.brand_id && String(it.brand_id) === String(b.id)) ||
+                                          (it.brand && (it.brand === b.name || it.brand === b.code)) ||
+                                          (it.brand_name && it.brand_name === b.name);
+                            return `<option value="${b.name}" ${isSel ? 'selected' : ''}>${b.name}</option>`;
+                        }).join('')}
                     </select>
                 </div>
             </div>
@@ -2254,7 +2328,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const json = await res.json();
             // Cache form_fields dari API (hanya update saat pertama atau berubah)
             if (json.form_fields && json.form_fields.length > 0) {
-                __formFields = json.form_fields;
+                const seenApiKeys = new Set();
+                __formFields = json.form_fields.filter(f => {
+                    if (!f.field_key || seenApiKeys.has(f.field_key)) return false;
+                    seenApiKeys.add(f.field_key);
+                    return true;
+                });
             }
             renderRows(json);
             window.__CURRENT_PAGE = page;

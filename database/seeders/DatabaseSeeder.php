@@ -20,6 +20,10 @@ class DatabaseSeeder extends Seeder
             StudyProgramSeeder::class,
             DivisionSeeder::class,
             AdminUserSeeder::class,
+            SpreadsheetConnectionSeeder::class,
+            Spreadsheet2026SchemaSeeder::class,
+            SpreadsheetFollowUpSchemaSeeder::class,
+            FormFieldSeeder::class,
             DummyPemagangSeeder::class,
             InternshipRegistrationSeeder::class,
         ]);

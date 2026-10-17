@@ -57,6 +57,15 @@ class SettingsController extends Controller
         $user->email = $validated['email'];
         $user->save();
 
+        $activeReg = \App\Models\InternshipRegistration::where('user_id', $user->id)
+            ->whereIn('internship_status', ['accepted', 'active'])
+            ->latest('id')
+            ->first();
+        if ($activeReg) {
+            $activeReg->setRelation('user', $user);
+            \App\Services\AbsenDjuraganSyncService::syncIntern($activeReg, null, $activeReg->internship_status);
+        }
+
         return back()->with('success', 'Pengaturan akun berhasil disimpan.');
     }
 }

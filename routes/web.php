@@ -321,6 +321,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/fields',                                 [\App\Http\Controllers\Admin\FormFieldController::class, 'index'])->name('fields');
         Route::post('/fields',                                [\App\Http\Controllers\Admin\FormFieldController::class, 'store'])->name('fields.store');
         Route::post('/fields/publish',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'publish'])->name('fields.publish');
+        Route::post('/fields/sync-previous',                  [\App\Http\Controllers\Admin\FormFieldController::class, 'syncFromPreviousYear'])->name('fields.sync-previous');
         Route::post('/fields/{field}/archive',                [\App\Http\Controllers\Admin\FormFieldController::class, 'archive'])->name('fields.archive');
         Route::get('/fields/preview-data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'previewData'])->name('fields.preview-data');
         Route::post('/fields/reorder',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'reorder'])->name('fields.reorder');
@@ -465,11 +466,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
         Route::get('/pendaftar', [InternPageController::class, 'pendaftar'])->name('pendaftar');
         Route::get('/pemagang',  [InternPageController::class, 'pemagang'])->name('pemagang');
 
-        // Update status & data
+        // Update status & data (bulk routes must be before wildcard /{intern} routes)
+        Route::patch('/bulk/status', [InternController::class, 'bulkUpdateStatus'])->name('status.bulk');
         Route::patch('/{intern}/status', [InternController::class, 'updateStatus'])->name('status.update');
         Route::patch('/{intern}/followup-status', [InternController::class, 'updateFollowupStatus'])->name('followup.update');
         Route::patch('/{intern}/custom-answers', [InternController::class, 'updateCustomAnswers'])->name('custom-answers.update');
-        Route::patch('/bulk/status', [InternController::class, 'bulkUpdateStatus'])->name('status.bulk');
         Route::patch('/{intern}', [InternController::class, 'update'])->name('update');
 
         // Sertifikat default

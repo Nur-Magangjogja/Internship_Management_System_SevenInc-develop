@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class CitySeeder extends Seeder
 {
@@ -14,7 +14,7 @@ class CitySeeder extends Seeder
     {
         $cities = ['Jakarta','Bandung','Bekasi','Depok','Tangerang','Bogor','Cimahi','Cirebon','Tasikmalaya','Semarang','Solo','Yogyakarta','Magelang','Surabaya','Sidoarjo','Gresik','Malang','Kediri','Jember','Banyuwangi','Denpasar','Mataram','Medan','Padang','Pekanbaru','Palembang','Lampung','Pontianak','Banjarmasin','Makassar', 'Sleman', 'Bantul', 'Kulonprogo'];
         foreach ($cities as $city) {
-            \Illuminate\Support\Facades\DB::table('cities')->insert(['name' => $city]);
+            DB::table('cities')->updateOrInsert(['name' => $city], ['name' => $city]);
         }
     }
 }

@@ -258,9 +258,9 @@ JS;
     }
 
     /**
-     * Test 3: Actual production JavaScript code matches all 29 actual Spreadsheet headers.
+     * Test 3: Actual production JavaScript code matches all 47 actual Spreadsheet headers.
      */
-    public function test_apps_script_exact_code_matches_all_29_actual_spreadsheet_headers_to_contract_slots(): void
+    public function test_apps_script_exact_code_matches_all_47_actual_spreadsheet_headers_to_contract_slots(): void
     {
         $nodeScript = <<<JS
 const path = require("path");
@@ -282,15 +282,33 @@ const actualSpreadsheetHeaders = [
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
   "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan",
   "Kesanggupan jadwal Senin–Sabtu dan shifting\\r\\n(full text mengikuti form/template)",
-  "Apakah ada laptop sendiri untuk magang?",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?",
   "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?",
-  "Kapan berencana mulai Magang/PKL?",
-  "Berapa lama rencana durasi akan Magang/PKL?",
-  "Dari mana Anda mengetahui sumber info magang kami?",
-  "Akun Instagram Aktif",
-  "Apakah Anda butuh info kost/kontrakan di sekitar kantor?",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)",
+  "Berapa lama Anda akan Magang/PKL?",
+  "Anda tahu info magang ini dari mana?",
+  "Sosial Media (Instagram) yang dimiliki",
+  "Apakah anda membutuhkan info kost/kontrakan deket kantor?",
   "Program Magang/PKL apa yang Anda minati?",
-  "Upload PDF CV + scan KTM/KTP + portofolio max 10MB",
+  "Tempat Lahir",
+  "Tanggal Lahir",
+  "Agama",
+  "Curriculum Vitae (CV) - Link Drive",
+  "KTM atau KTP - Link Drive",
+  "Portofolio Karya - Link Drive",
+  "Surat Pengantar Kampus / Sekolah - Link Drive",
+  "Proposal Magang / PKL - Link Drive",
+  "Dokumen Pendukung Lainnya - Link Drive",
+  "Pasfoto Resmi - Link Drive",
+  "Software Desain",
+  "Software Video",
+  "Bahasa Pemrograman",
+  "Digital Marketing",
+  "Peralatan (Laptop, Kamera, Tripod, dll)",
+  "Nama Pembimbing",
+  "No. WA Pembimbing",
+  "Kegiatan Lain Selain Magang",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB",
   "KET",
   "SERTIF_SYNC_ID",
   "SERTIF_REGISTRATION_ID",
@@ -315,15 +333,33 @@ const rowData = {
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?": "SIAP",
   "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan": "Dr. Bambang (08111111)",
   "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)": "Sanggup",
-  "Apakah ada laptop sendiri": "YA",
-  "Jika YA, alat apa yang dimiliki/dibawa": "Laptop ASUS",
-  "Kapan berencana mulai Magang/PKL": "2026-07-01",
-  "Berapa lama akan Magang/PKL": "3 Bulan",
-  "Sumber info magang": "Instagram",
-  "Instagram": "@budisantoso",
-  "Butuh info kost/kontrakan": "TIDAK",
-  "Program Magang/PKL yang diminati": "Backend Development",
-  "Upload PDF CV + scan KTM/KTP + portofolio max 10MB": "https://drive.google.com/file/d/123",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?": "YA",
+  "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?": "Laptop ASUS",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)": "2026-07-01",
+  "Berapa lama Anda akan Magang/PKL?": "3 Bulan",
+  "Anda tahu info magang ini dari mana?": "Instagram",
+  "Sosial Media (Instagram) yang dimiliki": "@budisantoso",
+  "Apakah anda membutuhkan info kost/kontrakan deket kantor?": "TIDAK",
+  "Program Magang/PKL apa yang Anda minati?": "Backend Development",
+  "Tempat Lahir": "Sleman",
+  "Tanggal Lahir": "2004-05-10",
+  "Agama": "Islam",
+  "Curriculum Vitae (CV) - Link Drive": "https://drive.google.com/file/d/cv1",
+  "KTM atau KTP - Link Drive": "https://drive.google.com/file/d/ktm1",
+  "Portofolio Karya - Link Drive": "https://drive.google.com/file/d/port1",
+  "Surat Pengantar Kampus / Sekolah - Link Drive": "https://drive.google.com/file/d/surat1",
+  "Proposal Magang / PKL - Link Drive": "https://drive.google.com/file/d/prop1",
+  "Dokumen Pendukung Lainnya - Link Drive": "https://drive.google.com/file/d/dok1",
+  "Pasfoto Resmi - Link Drive": "https://drive.google.com/file/d/foto1",
+  "Software Desain": "Figma",
+  "Software Video": "Premiere",
+  "Bahasa Pemrograman": "PHP, JS",
+  "Digital Marketing": "SEO",
+  "Peralatan (Laptop, Kamera, Tripod, dll)": "Laptop ASUS ROG",
+  "Nama Pembimbing": "Dr. Bambang",
+  "No. WA Pembimbing": "08122334455",
+  "Kegiatan Lain Selain Magang": "Kuliah",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB": "https://drive.google.com/file/d/123",
   "KET": "Waiting",
   "SERTIF_SYNC_ID": "REG-421-e0c64119",
   "SERTIF_REGISTRATION_ID": "421",
@@ -346,12 +382,13 @@ JS;
         $mappedValues = json_decode($process->getOutput(), true);
 
         $this->assertIsArray($mappedValues);
-        $this->assertCount(29, $mappedValues, 'All 29 columns must be resolved accurately.');
+        $this->assertCount(47, $mappedValues, 'All 47 columns must be resolved accurately.');
         $this->assertEquals('2026-03-01 10:00:00', $mappedValues[0]);
         $this->assertEquals('Budi Santoso', $mappedValues[1]);
         $this->assertEquals('22/498765/TK/54321', $mappedValues[2]);
         $this->assertEquals('Sanggup', $mappedValues[14], 'Multiline column O must map correctly.');
-        $this->assertEquals('REG-421-e0c64119', $mappedValues[25], 'SERTIF_SYNC_ID must map accurately.');
+        $this->assertEquals('Laptop ASUS ROG', $mappedValues[37], 'Column 38 Peralatan must map accurately.');
+        $this->assertEquals('REG-421-e0c64119', $mappedValues[43], 'SERTIF_SYNC_ID must map accurately.');
     }
 
     /**
@@ -359,7 +396,6 @@ JS;
      */
     public function test_apps_script_rejects_schema_mismatch_without_silent_dashes(): void
     {
-        // Provide valid payload for other columns so validation reaches corrupted header at col 14
         $validRowData = [
             'Timestamp' => '2026-03-01',
             'Nama Lengkap' => 'Budi',
@@ -388,9 +424,18 @@ const corruptedHeaders = [
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
   "Kolom Asing Tidak Dikenal", // Corrupted header at col 14!
   "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)",
-  "Apakah ada laptop sendiri", "Jika YA, alat apa yang dimiliki/dibawa", "Kapan berencana mulai Magang/PKL",
-  "Berapa lama akan Magang/PKL", "Sumber info magang", "Instagram", "Butuh info kost/kontrakan",
-  "Program Magang/PKL yang diminati", "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", "KET",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?",
+  "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)",
+  "Berapa lama Anda akan Magang/PKL?", "Anda tahu info magang ini dari mana?",
+  "Sosial Media (Instagram) yang dimiliki", "Apakah anda membutuhkan info kost/kontrakan deket kantor?",
+  "Program Magang/PKL apa yang Anda minati?", "Tempat Lahir", "Tanggal Lahir", "Agama",
+  "Curriculum Vitae (CV) - Link Drive", "KTM atau KTP - Link Drive", "Portofolio Karya - Link Drive",
+  "Surat Pengantar Kampus / Sekolah - Link Drive", "Proposal Magang / PKL - Link Drive",
+  "Dokumen Pendukung Lainnya - Link Drive", "Pasfoto Resmi - Link Drive", "Software Desain",
+  "Software Video", "Bahasa Pemrograman", "Digital Marketing", "Peralatan (Laptop, Kamera, Tripod, dll)",
+  "Nama Pembimbing", "No. WA Pembimbing", "Kegiatan Lain Selain Magang",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", "KET",
   "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "SERTIF_SYNC_STATUS", "SERTIF_LAST_SYNC_AT"
 ];
 
@@ -426,9 +471,18 @@ const swappedHeaders = [
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
   "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan",
   "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)",
-  "Apakah ada laptop sendiri", "Jika YA, alat apa yang dimiliki/dibawa", "Kapan berencana mulai Magang/PKL",
-  "Berapa lama akan Magang/PKL", "Sumber info magang", "Instagram", "Butuh info kost/kontrakan",
-  "Program Magang/PKL yang diminati", "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", "KET",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?",
+  "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)",
+  "Berapa lama Anda akan Magang/PKL?", "Anda tahu info magang ini dari mana?",
+  "Sosial Media (Instagram) yang dimiliki", "Apakah anda membutuhkan info kost/kontrakan deket kantor?",
+  "Program Magang/PKL apa yang Anda minati?", "Tempat Lahir", "Tanggal Lahir", "Agama",
+  "Curriculum Vitae (CV) - Link Drive", "KTM atau KTP - Link Drive", "Portofolio Karya - Link Drive",
+  "Surat Pengantar Kampus / Sekolah - Link Drive", "Proposal Magang / PKL - Link Drive",
+  "Dokumen Pendukung Lainnya - Link Drive", "Pasfoto Resmi - Link Drive", "Software Desain",
+  "Software Video", "Bahasa Pemrograman", "Digital Marketing", "Peralatan (Laptop, Kamera, Tripod, dll)",
+  "Nama Pembimbing", "No. WA Pembimbing", "Kegiatan Lain Selain Magang",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", "KET",
   "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "SERTIF_SYNC_STATUS", "SERTIF_LAST_SYNC_AT"
 ];
 
@@ -462,9 +516,18 @@ const actualHeaders = [
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
   "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan",
   "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)",
-  "Apakah ada laptop sendiri", "Jika YA, alat apa yang dimiliki/dibawa", "Kapan berencana mulai Magang/PKL",
-  "Berapa lama akan Magang/PKL", "Sumber info magang", "Instagram", "Butuh info kost/kontrakan",
-  "Program Magang/PKL yang diminati", "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", "KET",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?",
+  "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)",
+  "Berapa lama Anda akan Magang/PKL?", "Anda tahu info magang ini dari mana?",
+  "Sosial Media (Instagram) yang dimiliki", "Apakah anda membutuhkan info kost/kontrakan deket kantor?",
+  "Program Magang/PKL apa yang Anda minati?", "Tempat Lahir", "Tanggal Lahir", "Agama",
+  "Curriculum Vitae (CV) - Link Drive", "KTM atau KTP - Link Drive", "Portofolio Karya - Link Drive",
+  "Surat Pengantar Kampus / Sekolah - Link Drive", "Proposal Magang / PKL - Link Drive",
+  "Dokumen Pendukung Lainnya - Link Drive", "Pasfoto Resmi - Link Drive", "Software Desain",
+  "Software Video", "Bahasa Pemrograman", "Digital Marketing", "Peralatan (Laptop, Kamera, Tripod, dll)",
+  "Nama Pembimbing", "No. WA Pembimbing", "Kegiatan Lain Selain Magang",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", "KET",
   "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "SERTIF_SYNC_STATUS", "SERTIF_LAST_SYNC_AT"
 ];
 
@@ -547,7 +610,7 @@ JS;
     }
 
     /**
-     * Test 6b: Apps Script strictly rejects column count mismatch (must be 29 for reg, 21 for fwu).
+     * Test 6b: Apps Script strictly rejects column count mismatch (must be 47 for reg, 21 for fwu).
      */
     public function test_apps_script_rejects_column_count_mismatch_for_registration_and_followup(): void
     {
@@ -555,20 +618,25 @@ JS;
 const path = require("path");
 const appsScript = require(path.resolve("./resources/apps-script/SertifGoogleIntegration.js"));
 
-const reg29 = [
+const reg47 = [
   "Timestamp", "Nama Lengkap", "NIM (Nomor Induk Mahasiswa)", "Program Studi", "Email", "Jenis Kelamin",
   "No. HP Aktif yang bisa dihubungi dan chat WA", "Asal Sekolah/Kampus", "Nama Kota/Daerah tempat tinggal Anda saat ini",
   "Mengapa Anda ingin Magang/PKL disini?", "Jenis Magang apa yang Anda pilih?", "Status Anda saat ini",
   "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?",
   "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan",
   "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)",
-  "Apakah ada laptop sendiri untuk magang?",
+  "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?",
   "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?",
-  "Kapan berencana mulai Magang/PKL?", "Berapa lama rencana durasi akan Magang/PKL?",
-  "Dari mana Anda mengetahui sumber info magang kami?", "Akun Instagram Aktif",
-  "Apakah Anda butuh info kost/kontrakan di sekitar kantor?",
-  "Program Magang/PKL apa yang Anda minati?",
-  "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", "KET",
+  "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)",
+  "Berapa lama Anda akan Magang/PKL?", "Anda tahu info magang ini dari mana?",
+  "Sosial Media (Instagram) yang dimiliki", "Apakah anda membutuhkan info kost/kontrakan deket kantor?",
+  "Program Magang/PKL apa yang Anda minati?", "Tempat Lahir", "Tanggal Lahir", "Agama",
+  "Curriculum Vitae (CV) - Link Drive", "KTM atau KTP - Link Drive", "Portofolio Karya - Link Drive",
+  "Surat Pengantar Kampus / Sekolah - Link Drive", "Proposal Magang / PKL - Link Drive",
+  "Dokumen Pendukung Lainnya - Link Drive", "Pasfoto Resmi - Link Drive", "Software Desain",
+  "Software Video", "Bahasa Pemrograman", "Digital Marketing", "Peralatan (Laptop, Kamera, Tripod, dll)",
+  "Nama Pembimbing", "No. WA Pembimbing", "Kegiatan Lain Selain Magang",
+  "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", "KET",
   "SERTIF_SYNC_ID", "SERTIF_REGISTRATION_ID", "SERTIF_SYNC_STATUS", "SERTIF_LAST_SYNC_AT"
 ];
 
@@ -581,9 +649,9 @@ const fwu21 = [
 ];
 
 const results = {
-  reg28: appsScript.buildRowValuesForSheet(reg29.slice(0, 28), {}, "registration"),
-  reg29: appsScript.buildRowValuesForSheet(reg29, { "Timestamp": "t", "Nama Lengkap": "b" }, "registration"),
-  reg30: appsScript.buildRowValuesForSheet(reg29.concat(["Kolom Ekstra 30"]), {}, "registration"),
+  reg46: appsScript.buildRowValuesForSheet(reg47.slice(0, 46), {}, "registration"),
+  reg47: appsScript.buildRowValuesForSheet(reg47, { "Timestamp": "t", "Nama Lengkap": "b" }, "registration"),
+  reg48: appsScript.buildRowValuesForSheet(reg47.concat(["Kolom Ekstra 48"]), {}, "registration"),
   fwu20: appsScript.buildRowValuesForSheet(fwu21.slice(0, 20), {}, "followup"),
   fwu21: appsScript.buildRowValuesForSheet(fwu21, { "No.": 1, "Tahun Follow Up": 2026 }, "followup"),
   fwu22: appsScript.buildRowValuesForSheet(fwu21.concat(["Kolom Ekstra 22"]), {}, "followup")
@@ -596,16 +664,16 @@ JS;
         $process->mustRun();
         $results = json_decode($process->getOutput(), true);
 
-        // Reg 28: rejected
-        $this->assertEquals('SCHEMA_MISMATCH', $results['reg28']['error_code'] ?? null);
-        $this->assertStringContainsString('ditemukan 28 kolom', $results['reg28']['error']);
+        // Reg 46: rejected
+        $this->assertEquals('SCHEMA_MISMATCH', $results['reg46']['error_code'] ?? null);
+        $this->assertStringContainsString('ditemukan 46 kolom', $results['reg46']['error']);
 
-        // Reg 29: does not fail on column count
-        $this->assertNotEquals('ditemukan 29 kolom', $results['reg29']['error'] ?? '');
+        // Reg 47: does not fail on column count
+        $this->assertNotEquals('ditemukan 47 kolom', $results['reg47']['error'] ?? '');
 
-        // Reg 30: rejected
-        $this->assertEquals('SCHEMA_MISMATCH', $results['reg30']['error_code'] ?? null);
-        $this->assertStringContainsString('ditemukan 30 kolom', $results['reg30']['error']);
+        // Reg 48: rejected
+        $this->assertEquals('SCHEMA_MISMATCH', $results['reg48']['error_code'] ?? null);
+        $this->assertStringContainsString('ditemukan 48 kolom', $results['reg48']['error']);
 
         // FWU 20: rejected
         $this->assertEquals('SCHEMA_MISMATCH', $results['fwu20']['error_code'] ?? null);

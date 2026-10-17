@@ -114,6 +114,22 @@
                             @endif
                         </div>
 
+                        @if ($conn->connection_key === 'registration')
+                            <div>
+                                <span class="font-medium text-slate-500 block">Folder Penyimpanan Berkas Pemagang (Google Drive):</span>
+                                @if ($conn->drive_folder_url)
+                                    <a href="{{ $conn->drive_folder_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono">
+                                        {{ $conn->drive_folder_url }}
+                                    </a>
+                                    @if ($conn->drive_folder_id)
+                                        <span class="block text-[11px] font-mono text-slate-500 mt-0.5">Folder ID: {{ $conn->drive_folder_id }}</span>
+                                    @endif
+                                @else
+                                    <span class="text-slate-400 italic">Belum dikonfigurasi (klik Edit Konfigurasi untuk mengatur folder Drive)</span>
+                                @endif
+                            </div>
+                        @endif
+
                         <div>
                             <span class="font-medium text-slate-500 block mb-1">Status Koneksi:</span>
                             @php

@@ -13,7 +13,7 @@
 --}}
 
 @php
-    $renderField = function(\App\Models\FormField $field) use ($reg, $old, $input, $label, $radio, $divisions, $toDateInput) {
+    $renderField = function(\App\Models\FormField $field) use ($reg, $old, $input, $label, $radio, $divisions, $toDateInput, $cities, $institutions, $faculties, $studyPrograms) {
         $val = $old($field->field_key);
         $req = $field->is_required ? '<span class="text-red-500">*</span>' : '';
         $ph  = e($field->placeholder ?? '');
@@ -28,6 +28,8 @@
             case 'text':
             case 'email':
             case 'tel':
+            case 'number':
+            case 'url':
                 $extra = '';
                 if ($field->field_type === 'tel') {
                     $extra = 'pattern="[0-9]{10,15}" inputmode="numeric"';
@@ -88,8 +90,13 @@
                         ['value' => 'Buddha', 'label' => 'Buddha'],
                         ['value' => 'Khonghucu', 'label' => 'Khonghucu'],
                     ];
+                    $valRel = strtolower(trim((string)$val));
                     foreach ($relOptions as $opt) {
-                        $sel = ($val === $opt['value']) ? 'selected' : '';
+                        $optValLower = strtolower($opt['value']);
+                        $isSelected = ($valRel === $optValLower)
+                            || ($optValLower === 'kristen protestan' && in_array($valRel, ['kristen', 'protestan', 'kristen protestan'], true))
+                            || ($optValLower === 'khonghucu' && in_array($valRel, ['khonghucu', 'konghucu'], true));
+                        $sel = $isSelected ? 'selected' : '';
                         $opts .= '<option value="' . e($opt['value']) . '" ' . $sel . '>' . e($opt['label']) . '</option>';
                     }
                 } else {
@@ -147,8 +154,19 @@
 
             case 'radio':
                 $radioHtml = '<div class="flex gap-4">';
+                $valLower = strtolower(trim((string)$val));
                 foreach ($field->options ?? [] as $opt) {
-                    $checked = ($val === $opt['value']) ? 'checked' : '';
+                    $optValLower = strtolower((string) $opt['value']);
+                    $isMatch = ((string) $val === (string) $opt['value'])
+                        || ($field->field_key === 'gender' && (
+                            (in_array($optValLower, ['laki-laki', 'l', 'male'], true) && in_array($valLower, ['laki-laki', 'l', 'male', 'pria'], true))
+                            || (in_array($optValLower, ['perempuan', 'p', 'female'], true) && in_array($valLower, ['perempuan', 'p', 'female', 'wanita'], true))
+                        ))
+                        || ($field->field_key === 'has_laptop' && $val !== null && $val !== '' && (
+                            (in_array($optValLower, ['1', 'ya', 'true'], true) && in_array($valLower, ['1', 'ya', 'true', 'ya, punya sendiri'], true))
+                            || (in_array($optValLower, ['0', 'tidak', 'false'], true) && in_array($valLower, ['0', 'tidak', 'false'], true))
+                        ));
+                    $checked = $isMatch ? 'checked' : '';
                     $radioHtml .= '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">'
                         . '<input type="radio" name="' . e($field->field_key) . '" value="' . e($opt['value']) . '" '
                         . 'class="' . $radio . '" ' . $checked . ($field->is_required ? ' required' : '') . '>'
@@ -159,14 +177,22 @@
                 break;
 
             case 'checkbox':
-                $savedArr = is_array($val)
+                $rawArr = is_array($val)
                     ? $val
                     : array_map('trim', explode(',', (string) $val));
+                $savedArr = array_map(fn($v) => strtolower(trim((string)$v)), $rawArr);
                 $groupCls  = 'border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden';
                 $itemCls   = 'flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition cursor-pointer';
                 $checkHtml = '<div class="' . $groupCls . '">';
                 foreach ($field->options ?? [] as $opt) {
-                    $checked = in_array($opt['value'], $savedArr) ? 'checked' : '';
+                    $optValLower = strtolower((string) $opt['value']);
+                    $isMatch = in_array($opt['value'], $rawArr)
+                        || in_array($optValLower, $savedArr, true)
+                        || ($field->field_key === 'gender' && (
+                            (in_array($optValLower, ['laki-laki', 'l', 'male'], true) && count(array_intersect($savedArr, ['laki-laki', 'l', 'male', 'pria'])) > 0)
+                            || (in_array($optValLower, ['perempuan', 'p', 'female'], true) && count(array_intersect($savedArr, ['perempuan', 'p', 'female', 'wanita'])) > 0)
+                        ));
+                    $checked = $isMatch ? 'checked' : '';
                     $checkHtml .= '<label class="' . $itemCls . '">'
                         . '<input type="checkbox" name="' . e($field->field_key) . '[]" value="' . e($opt['value']) . '" '
                         . 'class="' . $radio . '" ' . $checked . '>'
@@ -178,9 +204,37 @@
                 break;
 
             case 'file':
-                $html .= '<input type="file" name="' . e($field->field_key) . '" '
-                    . $required . ' class="' . $input . ' file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer">';
-                if ($reg && $reg->{$field->field_key}) {
+                $isMultiFile = in_array($field->field_key, ['portfolio', 'supporting_document'], true);
+                $inputName = $isMultiFile ? ($field->field_key . '[]') : $field->field_key;
+                $multiAttr = $isMultiFile ? 'multiple' : '';
+
+                $acceptAttr = '';
+                $exts = $field->validation_rules['allowed_extensions'] ?? null;
+                if (is_array($exts) && !empty($exts)) {
+                    $acceptList = array_map(fn($ext) => '.' . ltrim(strtolower((string) $ext), '.'), $exts);
+                    $acceptAttr = 'accept="' . e(implode(',', $acceptList)) . '"';
+                } elseif ($field->field_key === 'profile_photo') {
+                    $acceptAttr = 'accept=".jpg,.jpeg,.png,image/jpeg,image/png"';
+                } elseif (in_array($field->field_key, ['cv_ktp_portofolio_pdf', 'cv', 'cover_letter', 'proposal'], true)) {
+                    $acceptAttr = 'accept=".pdf,application/pdf"';
+                } else {
+                    $acceptAttr = 'accept=".pdf,.jpg,.jpeg,.png"';
+                }
+
+                // Jika berkas sudah pernah diunggah sebelumnya, jangan paksa required ulang saat update
+                $hasExistingFile = false;
+                if ($reg) {
+                    if (!empty($reg->{$field->field_key})) {
+                        $hasExistingFile = true;
+                    } elseif ($reg->relationLoaded('attachments') || method_exists($reg, 'attachments')) {
+                        $hasExistingFile = $reg->attachments->where('document_category', $field->field_key)->isNotEmpty();
+                    }
+                }
+                $effectiveRequired = ($field->is_required && !$hasExistingFile) ? 'required' : '';
+
+                $html .= '<input type="file" name="' . e($inputName) . '" ' . $multiAttr . ' ' . $acceptAttr . ' '
+                    . $effectiveRequired . ' class="' . $input . ' file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer">';
+                if ($reg && !empty($reg->{$field->field_key})) {
                     $html .= '<p class="text-xs text-gray-400 mt-1">File sebelumnya: '
                            . e(basename($reg->{$field->field_key})) . '</p>';
                 }
@@ -221,6 +275,23 @@
 {{-- Render field grup utama --}}
 {!! $renderGroup($mainFields) !!}
 
+@if($reg && $reg->attachments && $reg->attachments->count() > 0)
+<div class="mt-3 p-4 rounded-xl bg-gray-50 border border-gray-200">
+    <p class="text-xs font-semibold text-gray-700 mb-2">Berkas Tersimpan di Server ({{ $reg->attachments->count() }} file):</p>
+    <ul class="space-y-1.5 text-xs text-gray-600">
+        @foreach($reg->attachments as $att)
+        <li class="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-gray-100">
+            <span class="truncate max-w-xs">
+                <strong class="uppercase text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 mr-1.5">{{ str_replace('_', ' ', $att->document_category) }}</strong>
+                {{ $att->original_filename }}
+            </span>
+            <span class="text-gray-400 text-[11px]">{{ number_format($att->file_size_bytes / 1024, 1) }} KB</span>
+        </li>
+        @endforeach
+    </ul>
+</div>
+@endif
+
 {{-- Render field grup informasi tambahan (jika ada) --}}
 @if($extraFields->isNotEmpty())
 <div class="border-t border-gray-100 pt-5">
@@ -260,4 +331,5 @@
     </div>
 </div>
 @endif
+
 

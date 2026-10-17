@@ -42,6 +42,15 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
         return 'google_drive';
     }
 
+    public function setRootFolderId(?string $folderId): self
+    {
+        if (!empty($folderId)) {
+            $this->rootFolderId = trim($folderId);
+        }
+
+        return $this;
+    }
+
     /**
      * Dapatkan access token yang valid menggunakan refresh token OAuth2.
      */

@@ -192,7 +192,7 @@ class InternApiController extends Controller
             $searchable[] = 'birth_place';
         }
 
-        $q = IR::with(['skills', 'tools']);
+        $q = IR::with(['skills', 'tools', 'user', 'division', 'brandRel', 'institution', 'city', 'facultyRel', 'studyProgramRel']);
 
         // Scope status / Trashed / Peserta Administratif
         if ($scope === 'trashed' || $req->get('status') === 'trashed') {
@@ -372,9 +372,13 @@ class InternApiController extends Controller
                 'internship_status' => $r->internship_status,
                 'gender'        => $this->labelize($this->mapGender, $r->gender),
                 'phone_number'  => $r->phone_number,
+                'institution_id' => $r->institution_id,
                 'institution_name' => $r->institution_name,
+                'study_program_id' => $r->study_program_id,
                 'study_program' => $r->study_program,
+                'faculty_id'    => $r->faculty_id,
                 'faculty'       => $r->faculty,
+                'city_id'       => $r->city_id,
                 'current_city'  => $r->current_city,
                 'internship_reason' => $r->internship_reason,
                 'internship_type' => $this->labelize($this->mapType, $r->internship_type),
@@ -383,8 +387,17 @@ class InternApiController extends Controller
                 'english_book_ability' => $r->english_book_ability,
                 'supervisor_contact' => $r->supervisor_contact,
                 'supervisor_name' => $r->supervisor_name,
-                'internship_interest' => $this->labelize($this->mapInterest, $r->internship_interest),
+                'division_id'   => $r->division_id,
+                'division_name' => $r->division?->name,
+                'internship_interest' => $r->division?->name ?: $this->labelize($this->mapInterest, $r->internship_interest),
                 'internship_interest_other' => $r->internship_interest_other,
+                'brand_id'      => $r->brand_id,
+                'brand_name'    => $r->brandRel?->name,
+                'brand'         => $r->brand,
+                'planned_duration' => $r->planned_duration,
+                'wfo_readiness' => $r->wfo_readiness,
+                'schedule_shift_readiness' => $r->schedule_shift_readiness,
+                'has_laptop'    => $r->has_laptop,
                 'design_software' => $r->skills->where('skill_category', 'design')->pluck('skill_name')->implode(', '),
                 'video_software' => $r->skills->where('skill_category', 'video')->pluck('skill_name')->implode(', '),
                 'programming_languages' => $r->skills->where('skill_category', 'programming')->pluck('skill_name')->implode(', '),
@@ -407,7 +420,6 @@ class InternApiController extends Controller
                 'portofolio_visual' => $r->portofolio_visual ? asset('storage/'.$r->portofolio_visual) : null,
                 'created_at' => optional($r->created_at)?->toIso8601String(),
                 'user_id'    => $r->user_id,
-                'brand'      => $r->brand,
                 'certificate_url' => $canCert ? route('admin.interns.certificate', $r) : null,
                 'certificate_pdf_url' => $canCert ? route('admin.interns.certificate.pdf', $r) : null,
                 'status_update_url' => route('admin.interns.status.update', $r),
@@ -490,14 +502,41 @@ class InternApiController extends Controller
         ];
 
 
-        // Ambil konfigurasi form fields untuk detail & edit modal (dinamis)
+        // Ambil konfigurasi form fields untuk detail & edit modal (dinamis sesuai skema aktif tahun berjalan)
         $formFields = [];
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
-                $formFields = \App\Models\FormField::active()
-                    ->orderBy('sort_order')
-                    ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
-                    ->toArray();
+                $targetYear = (int) now()->year;
+                $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                    ?: \App\Models\FormSchema::activePublished()->first()
+                    ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
+
+                if ($activeSchema) {
+                    $formFields = $activeSchema->fields()
+                        ->active()
+                        ->orderBy('sort_order')
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                        ->unique('field_key')
+                        ->values()
+                        ->toArray();
+                } else {
+                    $formFields = \App\Models\FormField::active()
+                        ->whereNull('form_schema_id')
+                        ->orderBy('sort_order')
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                        ->unique('field_key')
+                        ->values()
+                        ->toArray();
+
+                    if (empty($formFields)) {
+                        $formFields = \App\Models\FormField::active()
+                            ->orderBy('sort_order')
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                            ->unique('field_key')
+                            ->values()
+                            ->toArray();
+                    }
+                }
             }
         } catch (\Throwable $e) {
             // tabel belum ada, biarkan kosong

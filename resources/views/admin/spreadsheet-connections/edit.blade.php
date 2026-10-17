@@ -113,11 +113,36 @@
                     </p>
                 </div>
 
+                @if ($connection->connection_key === 'registration')
+                    <!-- Google Drive Folder URL / ID for Uploaded Intern Files -->
+                    <div>
+                        <label for="drive_folder_url" class="block text-sm font-semibold text-slate-700 mb-1">
+                            URL / ID Folder Google Drive (Penyimpanan Berkas Upload Pemagang)
+                        </label>
+                        <input
+                            type="text"
+                            name="drive_folder_url"
+                            id="drive_folder_url"
+                            value="{{ old('drive_folder_url', $connection->drive_folder_url) }}"
+                            placeholder="https://drive.google.com/drive/folders/1QRk_vowPYJfx2SmNkbg8-W2yy5o0nPRB"
+                            class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-800 font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        @if ($connection->drive_folder_id)
+                            <p class="mt-1 text-xs text-emerald-700 font-mono">
+                                Folder ID Terdeteksi: <strong>{{ $connection->drive_folder_id }}</strong>
+                            </p>
+                        @endif
+                        <p class="mt-1 text-xs text-slate-500">
+                            Masukkan URL Folder Google Drive (atau ID Folder langsung) tempat seluruh berkas yang di-upload pemagang (CV, KTM/KTP, Portofolio, Surat Pengantar, Proposal, Pasfoto) disimpan terpusat (1 folder per pemagang &amp; 1 link pada Spreadsheet).
+                        </p>
+                    </div>
+                @endif
+
                 <!-- Security Notice -->
                 <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
                     <p class="font-semibold text-slate-700 mb-1">Keamanan Kredensial:</p>
                     <p>
-                        Konfigurasi ini hanya menyimpan metadata endpoint dan target spreadsheet. Kredensial rahasia (OAuth client, refresh token, service account) tetap dikelola secara aman pada berkas server <code class="bg-white px-1 py-0.5 rounded border text-slate-800">.env</code>.
+                        Konfigurasi ini hanya menyimpan metadata endpoint, target spreadsheet, dan folder Google Drive. Kredensial rahasia (OAuth client, refresh token, service account) tetap dikelola secara aman pada berkas server <code class="bg-white px-1 py-0.5 rounded border text-slate-800">.env</code>.
                     </p>
                 </div>
 

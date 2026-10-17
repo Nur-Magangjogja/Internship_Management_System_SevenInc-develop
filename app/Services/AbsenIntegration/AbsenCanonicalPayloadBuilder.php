@@ -37,6 +37,7 @@ class AbsenCanonicalPayloadBuilder
             'full_name'                => trim((string) ($internalSnapshot['fullname'] ?? '')),
             'phone'                    => trim((string) ($internalSnapshot['phone_number'] ?? '')),
             'gender'                   => trim((string) ($internalSnapshot['gender'] ?? '')),
+            'religion'                 => trim((string) ($internalSnapshot['religion'] ?? '')),
             'born_date'                => !empty($internalSnapshot['birth_date']) ? substr((string) $internalSnapshot['birth_date'], 0, 10) : '',
             'birth_place'              => trim((string) ($internalSnapshot['birth_place'] ?? '')),
             'student_id'               => trim((string) ($internalSnapshot['student_id'] ?? '')),

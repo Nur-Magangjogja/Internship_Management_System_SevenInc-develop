@@ -35,7 +35,8 @@ class FormBuilderService
         'internship_interest', 'start_date', 'end_date', 'internship_type',
         'internship_arrangement', 'current_status', 'wfo_readiness',
         'schedule_shift_readiness', 'has_laptop', 'planned_duration',
-        'cv_ktp_portofolio_pdf', 'profile_photo', 'design_software',
+        'cv_ktp_portofolio_pdf', 'profile_photo', 'cv', 'identity', 'portfolio',
+        'cover_letter', 'proposal', 'supporting_document', 'design_software',
         'video_software', 'programming_languages', 'digital_marketing_type',
         'owned_tools', 'supervisor_name', 'supervisor_contact',
         'current_activities', 'boarding_info', 'social_media_instagram',
@@ -141,6 +142,284 @@ class FormBuilderService
             'is_active'    => false,
             'created_by'   => $creator?->id,
         ]);
+    }
+
+    /**
+     * Pastikan formulir tahun berjalan (Tahun Ini) dan tahun berikutnya (Tahun Depan)
+     * memiliki daftar pertanyaan awal yang lengkap.
+     * - Untuk Tahun Ini ($year <= tahun sekarang): otomatis mengisi field default (atau menyalin dari tahun sebelumnya saat pergantian tahun)
+     *   dan menerbitkan versi dasar pertama jika belum pernah diterbitkan sama sekali.
+     * - Untuk Tahun Depan ($year > tahun sekarang): otomatis menyalin struktur dari formulir Tahun Ini agar mirip dan siap diedit.
+     */
+    public function ensureYearFormInitialized(int $year, ?User $creator = null, bool $forceInTests = false): FormSchema
+    {
+        if (app()->runningUnitTests() && !$forceInTests) {
+            return $this->getOrCreateDraft($year, $creator);
+        }
+
+        $currentYear = (int) now()->year;
+
+        // Jika menginisialisasi tahun depan, pastikan tahun berjalan sudah terinisialisasi lebih dulu
+        if ($year > $currentYear) {
+            $this->initializeSingleYearSchema($currentYear, $creator);
+        }
+
+        return $this->initializeSingleYearSchema($year, $creator);
+    }
+
+    protected function initializeSingleYearSchema(int $year, ?User $creator = null): FormSchema
+    {
+        $currentYear = (int) now()->year;
+        $draft = $this->getOrCreateDraft($year, $creator);
+
+        // 1. Jika draf masih kosong (0 field), isi dari skema tahun sebelumnya atau dari field default
+        if ($draft->fields()->withTrashed()->count() === 0) {
+            $previousYearSchema = FormSchema::where('year', $year - 1)
+                ->where('status', FormSchema::STATUS_PUBLISHED)
+                ->where('is_active', true)
+                ->with('fields')
+                ->first();
+
+            if (!$previousYearSchema || $previousYearSchema->fields->isEmpty()) {
+                $previousYearSchema = FormSchema::where('year', $year - 1)
+                    ->with('fields')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            if ($previousYearSchema && $previousYearSchema->fields()->where('is_archived', false)->count() > 0) {
+                $this->copyFieldsFromSchemaToDraft($previousYearSchema, $draft);
+            } else {
+                $this->seedDefaultFieldsIntoDraft($draft);
+            }
+        } else {
+            // Pastikan seluruh field sistem bawaan dari FormFieldSeeder selalu lengkap (backfill jika ada yang sempat belum masuk)
+            $this->backfillMissingDefaultFields($draft);
+
+            if ($year > $currentYear) {
+                // Untuk form Tahun Depan yang belum pernah dipublikasikan, sinkronkan field baru yang sudah dipublikasikan di Tahun Ini
+                $hasYearPublished = FormSchema::where('year', $year)
+                    ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED])
+                    ->exists();
+
+                if (!$hasYearPublished) {
+                    $currentPublished = FormSchema::where('year', $currentYear)
+                        ->where('status', FormSchema::STATUS_PUBLISHED)
+                        ->where('is_active', true)
+                        ->with('fields')
+                        ->first();
+
+                    if ($currentPublished) {
+                        foreach ($currentPublished->fields()->where('is_archived', false)->get() as $srcField) {
+                            $existsInDraft = $draft->fields()->withTrashed()->where('field_key', $srcField->field_key)->exists();
+                            if (!$existsInDraft) {
+                                FormField::create([
+                                    'form_schema_id'   => $draft->id,
+                                    'field_key'        => $srcField->field_key,
+                                    'field_type'       => $srcField->field_type,
+                                    'label'            => $srcField->label,
+                                    'placeholder'      => $srcField->placeholder,
+                                    'helper_text'      => $srcField->helper_text,
+                                    'options'          => $srcField->options,
+                                    'validation_rules' => $srcField->validation_rules,
+                                    'is_required'      => $srcField->is_required,
+                                    'is_active'        => $srcField->is_active,
+                                    'is_archived'      => false,
+                                    'is_system'        => $srcField->is_system,
+                                    'group_name'       => $srcField->group_name,
+                                    'sort_order'       => $srcField->sort_order,
+                                    'column_span'      => $srcField->column_span,
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Jika ini adalah Tahun Ini (atau saat pergantian tahun masuk ke tahun baru)
+        // dan belum ada versi yang terbit sama sekali, publikasikan baseline awal secara otomatis
+        // sehingga form langsung aktif dan field bawaan terkunci dari penghapusan.
+        if ($year <= $currentYear) {
+            $activePublished = FormSchema::where('year', $year)
+                ->where('status', FormSchema::STATUS_PUBLISHED)
+                ->where('is_active', true)
+                ->first();
+
+            if ($activePublished) {
+                $this->backfillMissingDefaultFields($activePublished);
+            }
+
+            $hasAnyPublishedForYear = FormSchema::where('year', $year)
+                ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED])
+                ->exists();
+
+            if (!$hasAnyPublishedForYear && $draft->fields()->count() > 0) {
+                $this->publishVersion($draft, $creator);
+                $draft = $this->getOrCreateDraft($year, $creator);
+            }
+        }
+
+        return $draft;
+    }
+
+    /**
+     * Lengkapi field sistem bawaan yang belum ada pada skema eksisting tanpa menimpa kustomisasi admin.
+     */
+    protected function backfillMissingDefaultFields(FormSchema $schema): void
+    {
+        $defaultFields = \Database\Seeders\FormFieldSeeder::getDefaultFields();
+        $existingByKey = $schema->fields()->withTrashed()->get()->keyBy('field_key');
+
+        foreach ($defaultFields as $fieldDef) {
+            $key = $fieldDef['field_key'];
+            $existing = $existingByKey->get($key);
+
+            if (!$existing) {
+                FormField::create([
+                    'form_schema_id'   => $schema->id,
+                    'field_key'        => $key,
+                    'field_type'       => $fieldDef['field_type'],
+                    'label'            => $fieldDef['label'],
+                    'placeholder'      => $fieldDef['placeholder'] ?? null,
+                    'helper_text'      => $fieldDef['helper_text'] ?? null,
+                    'options'          => $fieldDef['options'] ?? null,
+                    'validation_rules' => $fieldDef['validation_rules'] ?? null,
+                    'is_required'      => (bool) ($fieldDef['is_required'] ?? false),
+                    'is_active'        => (bool) ($fieldDef['is_active'] ?? true),
+                    'is_archived'      => false,
+                    'is_system'        => (bool) ($fieldDef['is_system'] ?? true),
+                    'group_name'       => $fieldDef['group_name'] ?? null,
+                    'sort_order'       => (int) ($fieldDef['sort_order'] ?? 10),
+                    'column_span'      => (int) ($fieldDef['column_span'] ?? 1),
+                ]);
+            } elseif ($key === 'has_laptop' && is_array($existing->options)) {
+                // Pastikan opsi has_laptop mendukung nilai '1'/'0' sesuai validasi controller
+                $vals = collect($existing->options)->pluck('value')->all();
+                if (in_array('Ya', $vals, true) && !in_array('1', $vals, true)) {
+                    $existing->update(['options' => $fieldDef['options']]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Salin / sinkronkan struktur pertanyaan dari Tahun Ini ke draf Tahun Depan.
+     * Mempertahankan pertanyaan sementara (belum publish) yang sudah ditambahkan khusus di Tahun Depan.
+     */
+    public function syncDraftFromPreviousYear(int $targetYear, ?User $actor = null): FormSchema
+    {
+        $sourceYear = $targetYear - 1;
+        $this->initializeSingleYearSchema($sourceYear, $actor);
+
+        $sourceSchema = FormSchema::where('year', $sourceYear)
+            ->where('status', FormSchema::STATUS_PUBLISHED)
+            ->where('is_active', true)
+            ->with('fields')
+            ->first()
+            ?? FormSchema::where('year', $sourceYear)->with('fields')->orderByDesc('id')->first();
+
+        $draft = $this->getOrCreateDraft($targetYear, $actor);
+
+        if (!$sourceSchema) {
+            return $draft;
+        }
+
+        return DB::transaction(function () use ($sourceSchema, $draft) {
+            foreach ($sourceSchema->fields()->where('is_archived', false)->get() as $srcField) {
+                $existing = $draft->fields()->withTrashed()->where('field_key', $srcField->field_key)->first();
+                if ($existing) {
+                    if ($existing->trashed()) {
+                        $existing->restore();
+                    }
+                    $existing->update([
+                        'label'            => $srcField->label,
+                        'placeholder'      => $srcField->placeholder,
+                        'helper_text'      => $srcField->helper_text,
+                        'options'          => $srcField->options,
+                        'validation_rules' => $srcField->validation_rules,
+                        'is_required'      => $srcField->is_required,
+                        'is_active'        => $srcField->is_active,
+                        'is_archived'      => false,
+                        'group_name'       => $srcField->group_name,
+                        'sort_order'       => $srcField->sort_order,
+                        'column_span'      => $srcField->column_span,
+                    ]);
+                } else {
+                    FormField::create([
+                        'form_schema_id'   => $draft->id,
+                        'field_key'        => $srcField->field_key,
+                        'field_type'       => $srcField->field_type,
+                        'label'            => $srcField->label,
+                        'placeholder'      => $srcField->placeholder,
+                        'helper_text'      => $srcField->helper_text,
+                        'options'          => $srcField->options,
+                        'validation_rules' => $srcField->validation_rules,
+                        'is_required'      => $srcField->is_required,
+                        'is_active'        => $srcField->is_active,
+                        'is_archived'      => false,
+                        'is_system'        => $srcField->is_system,
+                        'group_name'       => $srcField->group_name,
+                        'sort_order'       => $srcField->sort_order,
+                        'column_span'      => $srcField->column_span,
+                    ]);
+                }
+            }
+
+            return $draft->fresh();
+        });
+    }
+
+    protected function copyFieldsFromSchemaToDraft(FormSchema $sourceSchema, FormSchema $targetDraft): void
+    {
+        foreach ($sourceSchema->fields()->where('is_archived', false)->orderBy('sort_order')->get() as $field) {
+            FormField::create([
+                'form_schema_id'   => $targetDraft->id,
+                'field_key'        => $field->field_key,
+                'field_type'       => $field->field_type,
+                'label'            => $field->label,
+                'placeholder'      => $field->placeholder,
+                'helper_text'      => $field->helper_text,
+                'options'          => $field->options,
+                'validation_rules' => $field->validation_rules,
+                'is_required'      => $field->is_required,
+                'is_active'        => $field->is_active,
+                'is_archived'      => false,
+                'is_system'        => $field->is_system,
+                'group_name'       => $field->group_name,
+                'sort_order'       => $field->sort_order,
+                'column_span'      => $field->column_span,
+            ]);
+        }
+    }
+
+    protected function seedDefaultFieldsIntoDraft(FormSchema $draft): void
+    {
+        $defaultFields = \Database\Seeders\FormFieldSeeder::getDefaultFields();
+        $legacyByKey = FormField::whereNull('form_schema_id')->get()->keyBy('field_key');
+
+        foreach ($defaultFields as $fieldDef) {
+            $key = $fieldDef['field_key'];
+            $legacy = $legacyByKey->get($key);
+
+            FormField::create([
+                'form_schema_id'   => $draft->id,
+                'field_key'        => $key,
+                'field_type'       => $fieldDef['field_type'],
+                'label'            => $legacy?->label ?? $fieldDef['label'],
+                'placeholder'      => $legacy?->placeholder ?? ($fieldDef['placeholder'] ?? null),
+                'helper_text'      => $legacy?->helper_text ?? ($fieldDef['helper_text'] ?? null),
+                'options'          => $legacy?->options ?? ($fieldDef['options'] ?? null),
+                'validation_rules' => $legacy?->validation_rules ?? ($fieldDef['validation_rules'] ?? null),
+                'is_required'      => $legacy !== null ? (bool) $legacy->is_required : (bool) ($fieldDef['is_required'] ?? false),
+                'is_active'        => $legacy !== null ? (bool) $legacy->is_active : (bool) ($fieldDef['is_active'] ?? true),
+                'is_archived'      => false,
+                'is_system'        => (bool) ($fieldDef['is_system'] ?? true),
+                'group_name'       => $fieldDef['group_name'] ?? null,
+                'sort_order'       => (int) ($fieldDef['sort_order'] ?? 10),
+                'column_span'      => (int) ($fieldDef['column_span'] ?? 1),
+            ]);
+        }
     }
 
     /**
@@ -355,8 +634,29 @@ class FormBuilderService
      */
     public function updateFieldInDraft(FormField $field, array $data): FormField
     {
-        if (!$field->schema || !$field->schema->isDraft()) {
-            throw new DomainException("Hanya pertanyaan pada skema draft yang dapat diperbarui.");
+        // Jika field pada skema yang telah dipublikasikan/diarsipkan, hanya izinkan pembaruan teks aman
+        if ($field->schema && ($field->schema->isPublished() || $field->schema->isArchived())) {
+            $safePayload = [];
+            if (array_key_exists('label', $data)) $safePayload['label'] = trim((string)$data['label']);
+            if (array_key_exists('placeholder', $data)) $safePayload['placeholder'] = $data['placeholder'];
+            if (array_key_exists('helper_text', $data)) $safePayload['helper_text'] = $data['helper_text'];
+            if (array_key_exists('column_span', $data)) $safePayload['column_span'] = (int) $data['column_span'];
+            if (array_key_exists('options', $data)) {
+                $newOpts = is_array($data['options']) ? $data['options'] : (json_decode((string) $data['options'], true) ?? null);
+                if ($newOpts !== null) {
+                    $safePayload['options'] = $this->mergeAllowedOptions($field->options, $newOpts);
+                }
+            }
+            $field->update($safePayload);
+            return $field->fresh();
+        }
+
+        // Jika field sudah pernah digunakan/terkunci secara struktural, pertahankan tipe aslinya dan tolak perubahan inkompatibel
+        if (isset($data['field_type']) && $data['field_type'] !== $field->field_type) {
+            $isLocked = method_exists($field, 'isStructuralLocked') && $field->isStructuralLocked();
+            if ($isLocked) {
+                throw new InvalidArgumentException("Tipe field untuk '{$field->field_key}' telah dikunci permanen sebagai '{$field->field_type}' dan tidak dapat diubah.");
+            }
         }
 
         $newType = $data['field_type'] ?? $field->field_type;
@@ -379,8 +679,8 @@ class FormBuilderService
         $updatePayload = [
             'field_type'       => $newType,
             'label'            => $newLabel,
-            'placeholder'      => $data['placeholder'] ?? $field->placeholder,
-            'helper_text'      => $data['helper_text'] ?? $field->helper_text,
+            'placeholder'      => array_key_exists('placeholder', $data) ? $data['placeholder'] : $field->placeholder,
+            'helper_text'      => array_key_exists('helper_text', $data) ? $data['helper_text'] : $field->helper_text,
             'options'          => is_array($newOptions) ? $newOptions : (json_decode((string) $newOptions, true) ?? null),
             'validation_rules' => $validationRules,
             'is_required'      => array_key_exists('is_required', $data) ? (bool) $data['is_required'] : $field->is_required,
@@ -414,16 +714,25 @@ class FormBuilderService
      */
     public function deleteFieldFromDraft(FormField $field): bool
     {
-        if ($field->schema && $field->schema->isPublished()) {
+        if ($field->is_system) {
+            throw new DomainException("Pertanyaan inti sistem tidak dapat dihapus.");
+        }
+
+        if ($field->schema && ($field->schema->isPublished() || $field->schema->isArchived())) {
             throw new DomainException("Pertanyaan pada skema yang telah dipublikasikan dilarang dihapus fisik. Gunakan arsipkan.");
         }
 
         // Cek apakah pernah dipublikasikan di versi lain atau memiliki jawaban
         $isRegistered = FormFieldRegistry::where('field_key', $field->field_key)->where('is_locked', true)->exists();
+        $existsInPublishedSchema = FormField::where('field_key', $field->field_key)
+            ->whereHas('schema', function ($q) {
+                $q->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED]);
+            })
+            ->exists();
         $hasAnswers = RegistrationCustomAnswer::where('field_key', $field->field_key)->exists();
 
-        if ($isRegistered || $hasAnswers) {
-            throw new DomainException("Pertanyaan '{$field->field_key}' telah memiliki rekam jejak historis atau jawaban dan tidak boleh dihapus fisik. Gunakan arsipkan.");
+        if ($isRegistered || $existsInPublishedSchema || $hasAnswers) {
+            throw new DomainException("Pertanyaan '{$field->label}' telah dipublikasikan atau memiliki jawaban historis dan tidak boleh dihapus sama sekali.");
         }
 
         return (bool) $field->delete();

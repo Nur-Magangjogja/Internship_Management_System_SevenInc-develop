@@ -1,26 +1,39 @@
 @extends('layouts.dashboard')
 
 @section('content')
+@php
+    $currentYear = $currentYear ?? (int) now()->year;
+    $nextYear    = $nextYear ?? ($currentYear + 1);
+    $activeYear  = $year ?? $currentYear;
+    $isNextYear  = ((int) $activeYear === (int) $nextYear);
+    $previewMainFields  = $mainFields->where('is_active', true)->values();
+    $previewExtraFields = $extraFields->where('is_active', true)->values();
+    $previewDivisions   = ($divisions ?? collect())->values();
+@endphp
 <div class="min-h-screen bg-[#F4F8F6] p-4 sm:p-6 lg:p-7">
 
     {{-- Header --}}
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
             <p class="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Dashboard & Monitoring</p>
             <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Pengaturan Form Pendaftaran</h1>
-            <p class="mt-1 text-sm text-[#4B5F5A]">Kelola pertanyaan yang tampil pada form pendaftaran pemagang. Perubahan langsung terlihat pada preview di sisi kanan.</p>
+            <p class="mt-1 text-sm text-[#4B5F5A]">Kelola pertanyaan form pendaftaran pemagang. Live Preview ditampilkan terlebih dahulu dan diperbarui secara langsung.</p>
         </div>
 
-        {{-- Year Switcher & Publication Controls --}}
+        {{-- Dynamic Current Year / Next Year Switcher & Publication Controls --}}
         <div class="flex flex-wrap items-center gap-3">
-            {{-- Year Selector Buttons --}}
-            <div class="inline-flex rounded-[8px] border border-[#DCE7E1] bg-white p-1 shadow-sm">
-                @foreach([2026, 2027] as $y)
-                <a href="{{ route('admin.form-settings.fields', ['year' => $y]) }}"
-                   class="rounded-[6px] px-3 py-1.5 text-xs font-bold transition {{ ($year ?? 2026) == $y ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
-                    Tahun {{ $y }}
+            {{-- Mode Tahun Ini vs Persiapan Tahun Depan --}}
+            <div class="inline-flex rounded-[10px] border border-[#DCE7E1] bg-white p-1 shadow-sm">
+                <a href="{{ route('admin.form-settings.fields', ['year' => $currentYear]) }}"
+                   class="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-xs font-bold transition {{ !$isNextYear ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
+                    <span class="h-2 w-2 rounded-full {{ !$isNextYear ? 'bg-white' : 'bg-emerald-500' }}"></span>
+                    Form Tahun Ini ({{ $currentYear }})
                 </a>
-                @endforeach
+                <a href="{{ route('admin.form-settings.fields', ['year' => $nextYear]) }}"
+                   class="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-xs font-bold transition {{ $isNextYear ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    Persiapan Tahun Depan ({{ $nextYear }})
+                </a>
             </div>
 
             {{-- Draft & Published Badges --}}
@@ -34,9 +47,9 @@
             </div>
 
             {{-- Publish Button --}}
-            <form method="POST" action="{{ route('admin.form-settings.fields.publish') }}" onsubmit="return confirm('Apakah Anda yakin ingin mempublikasikan draf formulir {{ $currentDraft->version_code }} untuk tahun {{ $year ?? 2026 }}? Versi publikasi sebelumnya akan diarsipkan secara otomatis.');">
+            <form method="POST" action="{{ route('admin.form-settings.fields.publish') }}" onsubmit="return confirm('Publikasikan draf formulir {{ $currentDraft->version_code }} untuk tahun {{ $activeYear }}?\n\nPerhatian: Setelah dipublikasikan, pertanyaan baru yang ditambahkan akan dikunci permanen dan tidak dapat dihapus lagi (hanya dapat diedit).');">
                 @csrf
-                <input type="hidden" name="year" value="{{ $year ?? 2026 }}">
+                <input type="hidden" name="year" value="{{ $activeYear }}">
                 <button type="submit"
                     class="inline-flex items-center gap-2 rounded-[8px] bg-[#2D8659] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#1F5F3F] transition">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -44,6 +57,37 @@
                 </button>
             </form>
         </div>
+    </div>
+
+    {{-- Banner Informasi Mode Tahun & Aturan Hapus --}}
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border {{ $isNextYear ? 'border-amber-200 bg-amber-50/90 text-amber-900' : 'border-[#DCE7E1] bg-white text-[#1B3A34]' }} px-4 py-3 text-xs shadow-xs">
+        <div class="flex items-start gap-2.5">
+            <svg class="mt-0.5 h-4 w-4 shrink-0 {{ $isNextYear ? 'text-amber-600' : 'text-[#2D8659]' }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <div class="space-y-0.5 leading-relaxed">
+                @if($isNextYear)
+                    <p class="font-bold">Mode Persiapan Formulir Tahun Depan ({{ $nextYear }})</p>
+                    <p class="text-[11.5px] opacity-90">
+                        Struktur awal formulir tahun <strong>{{ $nextYear }}</strong> disamakan dengan formulir tahun <strong>{{ $currentYear }}</strong>. Ketika tahun kalender melewati {{ $currentYear }} (memasuki {{ $nextYear }}), formulir tahun {{ $nextYear }} ini akan <strong>otomatis menjadi formulir aktif</strong> yang digunakan pemagang.
+                    </p>
+                @else
+                    <p class="font-bold">Mode Formulir Tahun Berjalan ({{ $currentYear }} — Aktif Digunakan)</p>
+                    <p class="text-[11.5px] text-[#4B5F5A]">
+                        Anda dapat <strong>Tambah</strong> dan <strong>Edit</strong> pertanyaan kapan saja. Tombol <strong>Hapus</strong> hanya tersedia untuk pertanyaan baru yang masih berstatus <em>Sementara (Belum Publish)</em>. Pertanyaan yang sudah dipublikasikan tidak dapat dihapus sama sekali.
+                    </p>
+                @endif
+            </div>
+        </div>
+
+        @if($isNextYear)
+        <form method="POST" action="{{ route('admin.form-settings.fields.sync-previous') }}" onsubmit="return confirm('Samakan kembali pertanyaan dasar Form Tahun {{ $nextYear }} dengan Form Tahun {{ $currentYear }}?');">
+            @csrf
+            <button type="submit"
+                class="inline-flex items-center gap-1.5 rounded-[7px] border border-amber-300 bg-white px-3 py-1.5 text-[11.5px] font-bold text-amber-800 hover:bg-amber-100 transition">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                Samakan dari Form {{ $currentYear }}
+            </button>
+        </form>
+        @endif
     </div>
 
     {{-- Alert --}}
@@ -61,28 +105,80 @@
         <button onclick="document.getElementById('alert-error').remove()" class="ml-auto text-red-400 hover:opacity-70">✕</button>
     </div>
     @endif
+    @if($errors->any())
+    <div id="alert-validation" class="mb-4 flex items-start gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-[#D32F2F]">
+        <svg class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div class="space-y-1">
+            @foreach($errors->all() as $err)
+                <div>{{ $err }}</div>
+            @endforeach
+        </div>
+        <button onclick="document.getElementById('alert-validation').remove()" class="ml-auto text-red-400 hover:opacity-70">✕</button>
+    </div>
+    @endif
 
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
 
-        {{-- ===== KIRI: FIELD MANAGER ===== --}}
-        <div class="xl:col-span-3 space-y-5">
+        {{-- ===== PERTAMA / KIRI: LIVE PREVIEW FORM PEMAGANG (NAMPAK TERLEBIH DAHULU) ===== --}}
+        <div class="lg:col-span-5">
+            <div class="lg:sticky lg:top-6">
+                <div class="rounded-[12px] border border-[#DCE7E1] bg-white shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between border-b border-[#DCE7E1] bg-[#F8FBF9] px-5 py-3.5">
+                        <div class="flex items-center gap-2">
+                            <span class="flex h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <h2 class="text-[13.5px] font-bold text-[#1B3A34]">Live Preview Form Pemagang</h2>
+                        </div>
+                        <span class="rounded-full bg-[#E8F5E9] px-2.5 py-0.5 text-[11px] font-semibold text-[#1F5F3F]">
+                            Tampilan Aktual ({{ $activeYear }})
+                        </span>
+                    </div>
+                    <div class="max-h-[calc(100vh-160px)] overflow-y-auto">
+                        <div id="form-preview-container" class="p-5">
+                            {{-- SSR Fallback + langsung dirender dari INITIAL_PREVIEW_DATA saat halaman tampil --}}
+                            <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang ({{ $activeYear }})</h3>
+                            <p class="text-xs text-gray-500 mb-4">Lengkapi data berikut untuk mendaftar program magang</p>
+                            <div class="space-y-3">
+                                @foreach($previewMainFields as $pf)
+                                    <div>
+                                        <label class="block mb-1 text-xs font-medium text-gray-700">
+                                            {{ $pf->label }}
+                                            @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                        </label>
+                                        <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                            class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- ===== KEDUA / KANAN: FIELD MANAGER (TAMBAH, EDIT, HAPUS SEMENTARA) ===== --}}
+        <div class="lg:col-span-7 space-y-5">
 
             {{-- Tambah Field Baru --}}
             <div class="rounded-[12px] border border-[#DCE7E1] bg-white p-5 shadow-sm">
-                <div class="flex items-center gap-2 mb-4">
-                    <div class="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#E8F5E9]">
-                        <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <div class="flex items-center justify-between gap-2 mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#E8F5E9]">
+                            <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </div>
+                        <div>
+                            <h2 class="text-[14px] font-bold text-[#1B3A34]">Tambah Pertanyaan Baru (Tahun {{ $activeYear }})</h2>
+                            <p class="text-[11px] text-[#4B5F5A]">Pertanyaan baru bersifat sementara (dapat diedit & dihapus) sampai Anda menekan tombol <strong>Publikasikan Formulir</strong>.</p>
+                        </div>
                     </div>
-                    <h2 class="text-[14px] font-bold text-[#1B3A34]">Tambah Pertanyaan Baru (Tahun {{ $year ?? 2026 }})</h2>
                 </div>
 
                 <form id="form-add-field" method="POST" action="{{ route('admin.form-settings.fields.store') }}" class="space-y-3">
                     @csrf
-                    <input type="hidden" name="year" value="{{ $year ?? 2026 }}">
+                    <input type="hidden" name="year" value="{{ $activeYear }}">
                     <div class="grid grid-cols-2 gap-3">
                         <div class="col-span-2">
                             <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Pertanyaan <span class="text-red-500">*</span></label>
-                            <input type="text" name="label" id="new-label" required placeholder="Contoh: Pengalaman Kerja"
+                            <input type="text" name="label" id="new-label" required placeholder="Contoh: Link Portofolio GitHub / Behance"
                                 class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
                         </div>
                         <div>
@@ -180,120 +276,118 @@
 
         </div>
 
-        {{-- ===== KANAN: LIVE PREVIEW ===== --}}
-        <div class="xl:col-span-2">
-            <div class="sticky top-20">
-                <div class="rounded-[12px] border border-[#DCE7E1] bg-white shadow-sm overflow-hidden">
-                    <div class="flex items-center justify-between border-b border-[#DCE7E1] px-5 py-3">
-                        <div class="flex items-center gap-2">
-                            <span class="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <h2 class="text-[13px] font-bold text-[#1B3A34]">Live Preview Form Pemagang</h2>
-                        </div>
-                        <span class="text-[11px] text-[#4B5F5A]">Tampilan aktual</span>
-                    </div>
-                    <div class="h-[calc(100vh-180px)] overflow-y-auto">
-                        <div id="form-preview-container" class="p-4">
-                            {{-- Preview diisi oleh JavaScript --}}
-                            <div class="flex items-center justify-center h-40 text-[13px] text-[#4B5F5A]">
-                                <div class="text-center">
-                                    <svg class="h-8 w-8 mx-auto mb-2 text-[#DCE7E1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                                    Memuat preview...
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </div>
 </div>
 
 {{-- ===== MODAL EDIT FIELD ===== --}}
-<div id="modal-edit" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-    <div class="w-full max-w-lg rounded-[14px] bg-white shadow-2xl">
-        <div class="flex items-center justify-between border-b border-[#DCE7E1] px-6 py-4">
-            <h3 class="text-[15px] font-bold text-[#1B3A34]">Edit Pertanyaan</h3>
+<div id="modal-edit" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-[2px] p-3 sm:p-4 md:p-6 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="relative w-full max-w-lg rounded-[16px] bg-white shadow-2xl overflow-hidden flex flex-col my-auto max-h-[90vh]">
+        {{-- Sticky Header --}}
+        <div class="flex items-center justify-between border-b border-[#DCE7E1] px-6 py-4 shrink-0 bg-white z-10">
+            <div>
+                <h3 class="text-[15px] font-bold text-[#1B3A34]">Edit Pertanyaan</h3>
+                <p id="edit-lock-badge" class="text-[11px] text-[#4B5F5A] mt-0.5"></p>
+            </div>
             <button type="button" onclick="closeEditModal()"
                 class="flex h-8 w-8 items-center justify-center rounded-full text-[#4B5F5A] hover:bg-[#F4F8F6] transition">
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
-        <form id="form-edit-field" method="POST" class="p-6 space-y-4">
+
+        {{-- Form with scrollable body and pinned footer --}}
+        <form id="form-edit-field" method="POST" class="flex flex-col flex-1 min-h-0 overflow-hidden">
             @csrf @method('PUT')
+            <input type="hidden" name="year" value="{{ $activeYear }}">
             <input type="hidden" id="edit-field-id">
 
-            <div>
-                <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Pertanyaan <span class="text-red-500">*</span></label>
-                <input type="text" name="label" id="edit-label" required
-                    class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <div id="edit-type-wrap">
-                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Tipe Input</label>
-                    <select name="field_type" id="edit-field-type"
-                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
-                        @foreach($types as $val => $name)
-                        <option value="{{ $val }}">{{ $name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+            {{-- Scrollable Content Body --}}
+            <div class="p-6 space-y-4 overflow-y-auto flex-1">
                 <div>
-                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Lebar Kolom</label>
-                    <select name="column_span" id="edit-column-span"
+                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Pertanyaan <span class="text-red-500">*</span></label>
+                    <input type="text" name="label" id="edit-label" required
                         class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
-                        <option value="1">Penuh (1 kolom)</option>
-                        <option value="2">Setengah (2 kolom)</option>
-                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div id="edit-type-wrap">
+                        <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Tipe Input</label>
+                        <select name="field_type" id="edit-field-type"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            @foreach($types as $val => $name)
+                            <option value="{{ $val }}">{{ $name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Grup</label>
+                        <select name="group_name" id="edit-group-name"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            @foreach($groups as $val => $name)
+                            <option value="{{ $val }}">{{ $name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Lebar Kolom</label>
+                        <select name="column_span" id="edit-column-span"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            <option value="1">Penuh (1 kolom)</option>
+                            <option value="2">Setengah (2 kolom)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Placeholder</label>
+                        <input type="text" name="placeholder" id="edit-placeholder"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Teks Bantuan</label>
+                        <input type="text" name="helper_text" id="edit-helper-text"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                    </div>
+                </div>
+
+                {{-- Options (untuk select/radio/checkbox) --}}
+                <div id="edit-options-wrap" class="hidden">
+                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Opsi Pilihan</label>
+                    <p id="edit-options-note" class="mb-2 text-[11px] text-[#4B5F5A]"></p>
+                    <div id="edit-options-list" class="space-y-2 mb-2 max-h-48 overflow-y-auto pr-1"></div>
+                    <button type="button" onclick="addOptionRow('edit-options-list', '', '', '', false)"
+                        class="flex items-center gap-1.5 text-[12px] font-medium text-[#2D8659] hover:underline">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Tambah Opsi Baru
+                    </button>
+                    <input type="hidden" name="options" id="edit-options-json">
+                </div>
+
+                <div class="flex items-center gap-4 pt-1">
+                    <input type="hidden" name="is_required" value="0">
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-medium text-[#1B3A34]">
+                        <input type="checkbox" name="is_required" id="edit-is-required" value="1"
+                            class="w-4 h-4 rounded accent-[#2D8659]">
+                        Wajib diisi
+                    </label>
+
+                    <input type="hidden" name="is_active" value="0">
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-medium text-[#1B3A34]">
+                        <input type="checkbox" name="is_active" id="edit-is-active" value="1"
+                            class="w-4 h-4 rounded accent-[#2D8659]">
+                        Aktif (tampil di form)
+                    </label>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Placeholder</label>
-                    <input type="text" name="placeholder" id="edit-placeholder"
-                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
-                </div>
-                <div>
-                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Teks Bantuan</label>
-                    <input type="text" name="helper_text" id="edit-helper-text"
-                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
-                </div>
-            </div>
-
-            {{-- Options (untuk select/radio/checkbox) --}}
-            <div id="edit-options-wrap" class="hidden">
-                <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Opsi Pilihan</label>
-                <div id="edit-options-list" class="space-y-2 mb-2"></div>
-                <button type="button" onclick="addOptionRow('edit-options-list')"
-                    class="flex items-center gap-1.5 text-[12px] font-medium text-[#2D8659] hover:underline">
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Tambah Opsi
-                </button>
-                <input type="hidden" name="options" id="edit-options-json">
-            </div>
-
-            <div class="flex items-center gap-2">
-                <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-medium text-[#1B3A34]">
-                    <input type="checkbox" name="is_required" id="edit-is-required" value="1"
-                        class="w-4 h-4 rounded accent-[#2D8659]">
-                    Wajib diisi
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-medium text-[#1B3A34] ml-4">
-                    <input type="checkbox" name="is_active" id="edit-is-active" value="1"
-                        class="w-4 h-4 rounded accent-[#2D8659]">
-                    Aktif (tampil di form)
-                </label>
-            </div>
-
-            <div class="flex items-center justify-end gap-3 pt-2 border-t border-[#DCE7E1]">
+            {{-- Sticky Footer --}}
+            <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#DCE7E1] bg-[#F4F8F6]/60 shrink-0">
                 <button type="button" onclick="closeEditModal()"
-                    class="rounded-[8px] border border-[#DCE7E1] px-4 py-2 text-[13px] font-medium text-[#4B5F5A] hover:bg-[#F4F8F6] transition">
+                    class="rounded-[8px] border border-[#DCE7E1] bg-white px-4 py-2 text-[13px] font-medium text-[#4B5F5A] hover:bg-[#F4F8F6] transition">
                     Batal
                 </button>
                 <button type="submit"
-                    class="rounded-[8px] bg-[#2D8659] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#1F5F3F] transition">
+                    class="rounded-[8px] bg-[#2D8659] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#1F5F3F] shadow-sm transition">
                     Simpan Perubahan
                 </button>
             </div>
@@ -304,9 +398,17 @@
 @push('scripts')
 <script>
 // ================================================================
-// CSRF Token
+// CSRF Token & Initial Preview Data (Server-Side Hydrated)
 // ================================================================
 const CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+const CURRENT_YEAR = {{ (int) $activeYear }};
+const INITIAL_PREVIEW_DATA = {
+    main_fields: @json($previewMainFields),
+    extra_fields: @json($previewExtraFields),
+    divisions: @json($previewDivisions),
+    draft_version: @json($currentDraft->version_code),
+    year: {{ (int) $activeYear }}
+};
 
 // ================================================================
 // Tipe yg butuh options
@@ -314,9 +416,9 @@ const CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('con
 const TYPES_WITH_OPTIONS = ['select', 'radio', 'checkbox'];
 
 // ================================================================
-// Toggle opsi wrapper saat tipe berubah (form tambah)
+// Toggle opsi wrapper saat tipe berubah (form tambah & edit)
 // ================================================================
-document.getElementById('new-field-type').addEventListener('change', function () {
+document.getElementById('new-field-type')?.addEventListener('change', function () {
     const wrap = document.getElementById('new-options-wrap');
     wrap.classList.toggle('hidden', !TYPES_WITH_OPTIONS.includes(this.value));
 });
@@ -329,26 +431,37 @@ document.getElementById('edit-field-type')?.addEventListener('change', function 
 // ================================================================
 // Tambah baris opsi (dipakai oleh form tambah & edit)
 // ================================================================
-function addOptionRow(containerId, value = '', label = '') {
+function addOptionRow(containerId, value = '', label = '', description = '', isLockedOption = false) {
     const list = document.getElementById(containerId);
     const row = document.createElement('div');
     row.className = 'option-row flex items-center gap-2';
-    row.innerHTML = `
-        <input type="text" placeholder="Value (contoh: ya)" data-role="value" value="${escHtml(value)}"
-            class="flex-1 rounded-[7px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 text-[12px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
-        <input type="text" placeholder="Label (contoh: Ya, saya bisa)" data-role="label" value="${escHtml(label)}"
-            class="flex-1 rounded-[7px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 text-[12px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
-        <button type="button" onclick="this.closest('.option-row').remove()" title="Hapus"
+    row.dataset.description = description || '';
+
+    const readonlyAttr = isLockedOption ? 'readonly title="Nilai opsi yang sudah pernah dipublikasikan dikunci agar data historis tetap aman"' : '';
+    const valueBgCls   = isLockedOption ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white text-[#1B3A34]';
+    const removeBtnHtml = isLockedOption
+        ? `<button type="button" disabled title="Opsi yang sudah pernah dipublikasikan tidak dapat dihapus"
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] border border-gray-200 bg-gray-100 text-gray-300 cursor-not-allowed">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>`
+        : `<button type="button" onclick="this.closest('.option-row').remove()" title="Hapus opsi"
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] border border-red-200 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition">
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>`;
+
+    row.innerHTML = `
+        <input type="text" placeholder="Value (contoh: ya)" data-role="value" value="${escHtml(value)}" ${readonlyAttr}
+            class="flex-1 rounded-[7px] border border-[#DCE7E1] ${valueBgCls} px-2.5 py-1.5 text-[12px] outline-none focus:border-[#2D8659]">
+        <input type="text" placeholder="Label (contoh: Ya, saya bisa)" data-role="label" value="${escHtml(label)}"
+            class="flex-1 rounded-[7px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 text-[12px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
+        ${removeBtnHtml}`;
     list.appendChild(row);
 }
 
 document.getElementById('btn-add-option')?.addEventListener('click', () => addOptionRow('new-options-list'));
 
 function escHtml(str) {
-    return String(str)
+    return String(str || '')
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;')
@@ -366,7 +479,12 @@ function collectOptions(listId) {
     rows.forEach(row => {
         const v = row.querySelector('[data-role="value"]').value.trim();
         const l = row.querySelector('[data-role="label"]').value.trim();
-        if (v || l) opts.push({ value: v || l, label: l || v });
+        const d = row.dataset.description || '';
+        if (v || l) {
+            const item = { value: v || l, label: l || v };
+            if (d) item.description = d;
+            opts.push(item);
+        }
     });
     return opts.length ? JSON.stringify(opts) : null;
 }
@@ -374,7 +492,7 @@ function collectOptions(listId) {
 // ================================================================
 // Submit form tambah: inject options JSON sebelum kirim
 // ================================================================
-document.getElementById('form-add-field').addEventListener('submit', function (e) {
+document.getElementById('form-add-field')?.addEventListener('submit', function () {
     const type = document.getElementById('new-field-type').value;
     if (TYPES_WITH_OPTIONS.includes(type)) {
         const opts = collectOptions('new-options-list');
@@ -392,44 +510,63 @@ function openEditModal(id) {
     .then(r => r.json())
     .then(data => {
         const f = data.field;
+        const isDeletable = !!f.is_deletable;
 
         document.getElementById('edit-field-id').value = f.id;
 
-        // Ubah action form sesuai ID
         const form = document.getElementById('form-edit-field');
         form.action = `/admin/form-settings/fields/${f.id}`;
 
-        document.getElementById('edit-label').value       = f.label ?? '';
-        document.getElementById('edit-placeholder').value = f.placeholder ?? '';
-        document.getElementById('edit-helper-text').value = f.helper_text ?? '';
+        document.getElementById('edit-label').value         = f.label ?? '';
+        document.getElementById('edit-placeholder').value   = f.placeholder ?? '';
+        document.getElementById('edit-helper-text').value   = f.helper_text ?? '';
         document.getElementById('edit-is-required').checked = !!f.is_required;
         document.getElementById('edit-is-active').checked   = !!f.is_active;
 
         const typeSelect = document.getElementById('edit-field-type');
         typeSelect.value = f.field_type ?? 'text';
 
+        const groupSelect = document.getElementById('edit-group-name');
+        if (groupSelect) {
+            groupSelect.value = f.group_name ?? '';
+        }
+
         const colSpan = document.getElementById('edit-column-span');
         colSpan.value = f.column_span ?? 1;
 
-        // Sembunyikan tipe utk field system
-        document.getElementById('edit-type-wrap').style.opacity = f.is_system ? '0.5' : '1';
-        typeSelect.disabled = !!f.is_system;
+        const isStructuralLocked = !!f.is_structural_locked;
+
+        const lockBadge = document.getElementById('edit-lock-badge');
+        if (isStructuralLocked) {
+            lockBadge.textContent = '🔒 Status: Terkunci Permanen — Pertanyaan ini sudah dipublikasikan/pernah digunakan. Tipe input dan identitas dikunci agar tidak merusak data/integrasi spreadsheet. Anda tetap dapat mengedit teks label, placeholder, dan teks bantuan.';
+            lockBadge.className = 'text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 font-medium';
+        } else {
+            lockBadge.textContent = '✏️ Status: Draf Sementara — Belum dipublikasikan. Anda bebas mengubah tipe input atau menghapusnya.';
+            lockBadge.className = 'text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1 font-medium';
+        }
+
+        // Kunci tipe input jika struktur terkunci
+        document.getElementById('edit-type-wrap').style.opacity = isStructuralLocked ? '0.6' : '1';
+        typeSelect.disabled = isStructuralLocked;
 
         // Options
         const optsWrap = document.getElementById('edit-options-wrap');
         const optsList = document.getElementById('edit-options-list');
+        const optsNote = document.getElementById('edit-options-note');
         optsList.innerHTML = '';
 
         if (TYPES_WITH_OPTIONS.includes(f.field_type)) {
             optsWrap.classList.remove('hidden');
+            optsNote.textContent = isDeletable
+                ? 'Anda dapat menambah, mengubah, atau menghapus opsi pilihan.'
+                : 'Label opsi dapat diperbarui dan Anda dapat menambah opsi baru (opsi yang sudah terbit tidak dapat dihapus).';
             if (Array.isArray(f.options)) {
-                f.options.forEach(opt => addOptionRow('edit-options-list', opt.value, opt.label));
+                f.options.forEach(opt => addOptionRow('edit-options-list', opt.value, opt.label, opt.description || '', !isDeletable));
             }
         } else {
             optsWrap.classList.add('hidden');
         }
 
-        // Tampilkan modal
         const modal = document.getElementById('modal-edit');
         modal.classList.remove('hidden');
         modal.classList.add('flex');
@@ -443,8 +580,7 @@ function closeEditModal() {
     modal.classList.remove('flex');
 }
 
-// Submit form edit: inject options JSON
-document.getElementById('form-edit-field').addEventListener('submit', function (e) {
+document.getElementById('form-edit-field')?.addEventListener('submit', function () {
     const type = document.getElementById('edit-field-type').value;
     if (TYPES_WITH_OPTIONS.includes(type)) {
         const opts = collectOptions('edit-options-list');
@@ -452,8 +588,7 @@ document.getElementById('form-edit-field').addEventListener('submit', function (
     }
 });
 
-// Tutup modal saat klik overlay
-document.getElementById('modal-edit').addEventListener('click', function (e) {
+document.getElementById('modal-edit')?.addEventListener('click', function (e) {
     if (e.target === this) closeEditModal();
 });
 
@@ -475,13 +610,13 @@ function toggleRequired(id) {
             const btn   = document.getElementById('btn-req-' + id);
             const label = document.getElementById('req-label-' + id);
             if (data.is_required) {
-                btn.className   = btn.className
+                btn.className = btn.className
                     .replace(/border-gray-200 bg-gray-50 text-gray-400 hover:border-\[#2D8659\] hover:text-\[#2D8659\]/g, '')
                     + ' border-red-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white';
                 label.textContent = '*wajib';
                 btn.title = 'Jadikan Opsional';
             } else {
-                btn.className   = btn.className
+                btn.className = btn.className
                     .replace(/border-red-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white/g, '')
                     + ' border-gray-200 bg-gray-50 text-gray-400 hover:border-[#2D8659] hover:text-[#2D8659]';
                 label.textContent = 'opsional';
@@ -511,7 +646,7 @@ function toggleField(id) {
     .then(data => {
         if (data.ok) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 800);
+            setTimeout(() => location.reload(), 500);
         } else {
             showToast(data.message || 'Terjadi kesalahan.', 'error');
         }
@@ -519,10 +654,10 @@ function toggleField(id) {
 }
 
 // ================================================================
-// Hapus field via AJAX
+// Hapus field sementara (belum dipublikasikan) via AJAX
 // ================================================================
 function deleteField(id, label) {
-    if (!confirm(`Hapus field "${label}"?\nAksi ini tidak dapat dibatalkan.`)) return;
+    if (!confirm(`Hapus pertanyaan sementara "${label}"?\n\nCatatan: Pertanyaan ini masih berstatus sementara (belum dipublikasikan) sehingga dapat dihapus.`)) return;
     fetch(`/admin/form-settings/fields/${id}`, {
         method: 'DELETE',
         headers: {
@@ -538,7 +673,7 @@ function deleteField(id, label) {
             document.getElementById('field-row-' + id)?.remove();
             refreshPreview();
         } else {
-            showToast(data.message || 'Field tidak bisa dihapus.', 'error');
+            showToast(data.message || 'Pertanyaan tidak dapat dihapus.', 'error');
         }
     });
 }
@@ -565,7 +700,7 @@ function initSortable(listId, group) {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ ids, group })
+                body: JSON.stringify({ ids, group, year: CURRENT_YEAR })
             })
             .then(r => r.json())
             .then(() => refreshPreview());
@@ -576,8 +711,6 @@ function initSortable(listId, group) {
 // ================================================================
 // Live Preview
 // ================================================================
-const CURRENT_YEAR = {{ $year ?? 2026 }};
-
 function refreshPreview() {
     const container = document.getElementById('form-preview-container');
     if (!container) return;
@@ -600,7 +733,7 @@ function buildPreviewHtml(data) {
     const reqStar  = '<span class="text-red-500">*</span>';
 
     let html = `
-        <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang (${escHtml(data.year || CURRENT_YEAR)})</h3>
         <p class="text-xs text-gray-500 mb-4">Lengkapi data berikut untuk mendaftar program magang</p>
         <div class="space-y-3">`;
 
@@ -609,12 +742,11 @@ function buildPreviewHtml(data) {
         let inner = '';
 
         if (f.field_key === 'internship_interest') {
-            // Khusus divisi — pakai data divisions dari response
             let opts = `<option value="">-- Pilih Divisi --</option>`;
             (data.divisions || []).forEach(d => { opts += `<option>${escHtml(d)}</option>`; });
             inner = `<select class="${inputCls}" disabled>${opts}</select>`;
-        } else if (f.field_type === 'text' || f.field_type === 'email' || f.field_type === 'tel') {
-            inner = `<input type="${f.field_type}" placeholder="${escHtml(f.placeholder || '')}" class="${inputCls}" disabled>`;
+        } else if (['text', 'email', 'tel', 'number', 'url'].includes(f.field_type)) {
+            inner = `<input type="${escHtml(f.field_type)}" placeholder="${escHtml(f.placeholder || '')}" class="${inputCls}" disabled>`;
         } else if (f.field_type === 'date') {
             inner = `<input type="date" class="${inputCls}" disabled>`;
         } else if (f.field_type === 'textarea') {
@@ -623,7 +755,6 @@ function buildPreviewHtml(data) {
             const placeholder = f.placeholder || '-- Pilih --';
             const opts = (f.options || []).map(o => `<option>${escHtml(o.label)}</option>`).join('');
             inner = `<select class="${inputCls}" disabled><option>${escHtml(placeholder)}</option>${opts}</select>`;
-            // Jika ada opsi dengan description, tampilkan info box di bawah
             const hasDesc = (f.options || []).some(o => o.description);
             if (hasDesc) {
                 inner += `<div class="mt-1.5 space-y-1 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">`;
@@ -666,7 +797,6 @@ function buildPreviewHtml(data) {
         </div>`;
     }
 
-    // Render main fields, handle column_span=2 (pair them in grid)
     const mainFields  = data.main_fields  || [];
     const extraFields = data.extra_fields || [];
 
@@ -690,7 +820,6 @@ function renderFieldGroup(fields, renderFn) {
     while (i < fields.length) {
         const f = fields[i];
         if (f.column_span === 2 && i + 1 < fields.length && fields[i + 1].column_span === 2) {
-            // Pasangkan dua field setengah dalam satu grid row
             html += `<div class="grid grid-cols-2 gap-2">
                 ${renderFn(f)}
                 ${renderFn(fields[i + 1])}
@@ -704,14 +833,6 @@ function renderFieldGroup(fields, renderFn) {
     return html;
 }
 
-function escHtml(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
 // ================================================================
 // Toast notification
 // ================================================================
@@ -723,8 +844,8 @@ function showToast(message, type = 'success') {
         toast.className = 'fixed bottom-5 right-5 z-[9999] flex items-center gap-2 rounded-[10px] border px-4 py-3 text-sm font-semibold shadow-lg transition-all';
         document.body.appendChild(toast);
     }
+    toast.className = 'fixed bottom-5 right-5 z-[9999] flex items-center gap-2 rounded-[10px] border px-4 py-3 text-sm font-semibold shadow-lg transition-all';
     if (type === 'success') {
-        toast.className = toast.className.replace(/border-\S+ bg-\S+ text-\S+/g, '');
         toast.classList.add('border-[#A5D6A7]', 'bg-[#E8F5E9]', 'text-[#1F5F3F]');
     } else {
         toast.classList.add('border-red-200', 'bg-red-50', 'text-red-700');
@@ -735,10 +856,14 @@ function showToast(message, type = 'success') {
 }
 
 // ================================================================
-// Init
+// Init: Render Live Preview seketika dari INITIAL_PREVIEW_DATA
 // ================================================================
+const initialContainer = document.getElementById('form-preview-container');
+if (initialContainer && typeof INITIAL_PREVIEW_DATA !== 'undefined') {
+    initialContainer.innerHTML = buildPreviewHtml(INITIAL_PREVIEW_DATA);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-    // Load SortableJS CDN jika belum ada
     if (typeof Sortable === 'undefined') {
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js';
@@ -751,9 +876,6 @@ document.addEventListener('DOMContentLoaded', function () {
         initSortable('field-list-main', 'main');
         initSortable('field-list-extra', 'informasi_tambahan');
     }
-
-    // Muat preview awal
-    refreshPreview();
 });
 </script>
 @endpush

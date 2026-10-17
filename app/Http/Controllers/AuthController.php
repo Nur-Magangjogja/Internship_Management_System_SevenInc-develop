@@ -206,6 +206,20 @@ class AuthController extends Controller
             return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil login sebagai Admin (Bypass Super Admin Absen Djuragan).');
         }
 
+        // Fallback 2: Cek apakah kredensial ini adalah milik Pemagang yang terdaftar di Absen Djuragan
+        $remoteIntern = $this->verifyRemoteIntern($loginInput, $request->password);
+        if ($remoteIntern) {
+            $user = $this->syncOrProvisionRemoteIntern(
+                $remoteIntern['email'],
+                $remoteIntern,
+                $request->password
+            );
+
+            Auth::login($user, $remember);
+            $request->session()->regenerate();
+            return redirect()->route('pemagang.dashboard')->with('success', 'Berhasil masuk ke InternHub.');
+        }
+
         // Jika login gagal
         return back()
             ->with('error', 'Email/Username atau password salah!')
@@ -257,7 +271,247 @@ class AuthController extends Controller
     }
 
     /**
-     * Single Sign-On (SSO) login dari Absen Djuragan untuk Admin & Super Admin.
+     * Helper untuk memverifikasi kredensial Pemagang ke Absen Djuragan.
+     */
+    protected function verifyRemoteIntern(string $login, string $password): ?array
+    {
+        $primaryUrl = rtrim(config('services.absen_djuragan.url', 'http://absen-djuragan.test/api/v1/external'), '/');
+        $apiKey = config('services.absen_djuragan.api_key', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c');
+
+        $candidateUrls = [];
+
+        // Jika request aman (HTTPS) atau URL dikonfigurasi HTTPS, prioritaskan HTTPS
+        if (request()->isSecure() || str_starts_with(config('app.url'), 'https://') || str_starts_with($primaryUrl, 'https://')) {
+            $candidateUrls[] = preg_replace('/^http:\/\//i', 'https://', $primaryUrl) . '/verify-intern';
+        }
+        $candidateUrls[] = $primaryUrl . '/verify-intern';
+
+        // Tambahkan fallback URL jika di lingkungan lokal
+        if (str_contains($primaryUrl, '.test')) {
+            $candidateUrls[] = 'http://127.0.0.1:8000/api/v1/external/verify-intern';
+        } elseif (str_contains($primaryUrl, '127.0.0.1') || str_contains($primaryUrl, 'localhost')) {
+            $candidateUrls[] = 'http://absen-djuragan.test/api/v1/external/verify-intern';
+        }
+
+        foreach ($candidateUrls as $url) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(4)->withoutVerifying()->withHeaders([
+                    'X-API-KEY' => $apiKey,
+                    'Accept'    => 'application/json',
+                ])->post($url, [
+                    'login'    => $login,
+                    'password' => $password,
+                ]);
+
+                if ($response->successful() && $response->json('success') === true) {
+                    return $response->json('user');
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Koneksi verify-intern ke {$url} gagal: " . $e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Helper untuk membuat atau memperbarui akun Pemagang dan data InternshipRegistration dari Absen Djuragan.
+     */
+    protected function syncOrProvisionRemoteIntern(string $email, array $data, ?string $rawPassword = null): User
+    {
+        $user = User::where('email', $email)->first();
+
+        $name = !empty($data['full_name'])
+            ? $data['full_name']
+            : (!empty($data['name']) ? $data['name'] : ($data['username'] ?? 'Pemagang'));
+
+        if (!$user) {
+            $user = User::create([
+                'name'     => $name,
+                'email'    => $email,
+                'password' => Hash::make($rawPassword ?: Str::random(32)),
+                'role'     => 'pemagang',
+            ]);
+        } else {
+            if ($rawPassword) {
+                $user->password = Hash::make($rawPassword);
+            }
+            if (!in_array($user->role, ['admin', 'hr_staff'], true)) {
+                $user->role = 'pemagang';
+            }
+            if (!empty($name) && $name !== 'Pemagang') {
+                $user->name = $name;
+            }
+            $user->save();
+        }
+
+        // Cek apakah sudah ada entri InternshipRegistration di IMS
+        $registration = \App\Models\InternshipRegistration::where('user_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        // Resolusi Division di IMS
+        $divisionId = null;
+        $divName = $data['division_name'] ?? null;
+        if (!empty($divName)) {
+            $divisionId = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($divName);
+        }
+
+        // Resolusi Brand di IMS (Prioritaskan brand_name lintas sistem sebelum fallback ke brand_id)
+        $brandId = null;
+        $brandName = $data['brand_name'] ?? null;
+        if (!empty($brandName)) {
+            $cleanBrand = strtolower(str_replace([' ', '-', '_'], '', trim($brandName)));
+            $brand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim($brandName))])
+                ->orWhereRaw("LOWER(REPLACE(REPLACE(name, ' ', ''), '-', '')) = ?", [$cleanBrand])
+                ->first();
+            if (!$brand) {
+                $brand = \App\Models\Brand::create([
+                    'code' => Str::slug($brandName),
+                    'name' => trim($brandName),
+                ]);
+            }
+            $brandId = $brand?->id;
+        } elseif (!empty($data['brand_id']) && \App\Models\Brand::where('id', $data['brand_id'])->exists()) {
+            $brandId = (int) $data['brand_id'];
+        }
+
+        // Resolusi Institution / Sekolah di IMS
+        $institutionId = null;
+        $schoolName = $data['school_name'] ?? null;
+        if (!empty($schoolName)) {
+            $cleanSchool = trim($schoolName);
+            $normName = \App\Models\Institution::normalizeName($cleanSchool);
+            $institution = \App\Models\Institution::whereRaw('LOWER(name) = ?', [strtolower($cleanSchool)])
+                ->orWhere('normalized_name', $normName)
+                ->orWhere('name', 'like', '%' . $cleanSchool . '%')
+                ->first();
+            if (!$institution) {
+                $institution = \App\Models\Institution::create([
+                    'name'            => ucwords(strtolower($cleanSchool)),
+                    'normalized_name' => $normName,
+                    'is_active'       => true,
+                ]);
+            }
+            $institutionId = $institution?->id;
+        }
+        if (!$institutionId && $registration?->institution_id) {
+            $institutionId = $registration->institution_id;
+        }
+        if (!$institutionId) {
+            $institution = \App\Models\Institution::firstOrCreate(
+                ['name' => 'Umum'],
+                ['is_active' => true]
+            );
+            $institutionId = $institution->id;
+        }
+
+        // Resolusi Faculty di IMS (pertahankan fakultas asli jika sudah ada pada institusi yang sama)
+        $facultyId = ($registration && (int) $registration->institution_id === (int) $institutionId && !empty($registration->faculty_id))
+            ? $registration->faculty_id
+            : null;
+        if (!$facultyId) {
+            $faculty = \App\Models\Faculty::where('institution_id', $institutionId)->first();
+            if (!$faculty) {
+                $faculty = \App\Models\Faculty::create([
+                    'institution_id' => $institutionId,
+                    'name'           => 'Fakultas Umum',
+                ]);
+            }
+            $facultyId = $faculty->id;
+        }
+
+        // Resolusi Study Program di IMS (pertahankan prodi asli jika sudah ada pada fakultas yang sama)
+        $studyProgramId = ($registration && (int) $registration->faculty_id === (int) $facultyId && !empty($registration->study_program_id))
+            ? $registration->study_program_id
+            : null;
+        if (!$studyProgramId) {
+            $studyProgram = \App\Models\StudyProgram::where('faculty_id', $facultyId)->first();
+            if (!$studyProgram) {
+                $studyProgram = \App\Models\StudyProgram::create([
+                    'faculty_id' => $facultyId,
+                    'name'       => 'Program Studi Umum',
+                ]);
+            }
+            $studyProgramId = $studyProgram->id;
+        }
+
+        // Tentukan status magang (pastikan enum valid & jangan menimpa status akhir jika akun non-aktif di Absen)
+        $allowedStatuses = ['new', 'waiting', 'active', 'completed', 'exited', 'pending', 'accepted', 'rejected'];
+        $status = $data['status'] ?? null;
+        if (!empty($data['is_active'])) {
+            $status = ($registration && $registration->internship_status === 'completed') ? 'completed' : 'active';
+        } elseif ($registration && in_array($registration->internship_status, ['completed', 'exited', 'rejected', 'accepted', 'waiting', 'pending'], true)) {
+            $status = $registration->internship_status;
+        } elseif (empty($status) || !in_array($status, $allowedStatuses, true)) {
+            $status = 'accepted';
+        }
+
+        // Normalisasi format Gender
+        $gender = null;
+        if (!empty($data['gender'])) {
+            $gLower = strtolower(trim((string) $data['gender']));
+            if (in_array($gLower, ['p', 'perempuan', 'female', 'wanita'], true)) {
+                $gender = 'Perempuan';
+            } elseif (in_array($gLower, ['l', 'laki-laki', 'male', 'pria'], true)) {
+                $gender = 'Laki-laki';
+            } else {
+                $gender = trim((string) $data['gender']);
+            }
+        }
+
+        // Normalisasi format Agama
+        $religion = null;
+        if (!empty($data['religion'])) {
+            $rLower = strtolower(trim((string) $data['religion']));
+            if (in_array($rLower, ['kristen', 'kristen protestan', 'protestan'], true)) {
+                $religion = 'Kristen Protestan';
+            } elseif (in_array($rLower, ['khonghucu', 'konghucu'], true)) {
+                $religion = 'Khonghucu';
+            } elseif ($rLower === 'islam') {
+                $religion = 'Islam';
+            } elseif ($rLower === 'katolik') {
+                $religion = 'Katolik';
+            } elseif ($rLower === 'hindu') {
+                $religion = 'Hindu';
+            } elseif (in_array($rLower, ['buddha', 'budha'], true)) {
+                $religion = 'Buddha';
+            } else {
+                $religion = trim((string) $data['religion']);
+            }
+        }
+
+        $regData = [
+            'user_id'            => $user->id,
+            'fullname'           => $name,
+            'gender'             => $gender ?: ($registration?->gender ?? null),
+            'phone_number'       => !empty($data['phone']) ? $data['phone'] : ($registration?->phone_number ?? null),
+            'supervisor_contact' => !empty($data['parent_whatsapp_number']) ? $data['parent_whatsapp_number'] : ($registration?->supervisor_contact ?? null),
+            'student_id'         => !empty($data['student_id']) ? $data['student_id'] : ($registration?->student_id ?? null),
+            'birth_place'        => !empty($data['birth_place']) ? $data['birth_place'] : ($registration?->birth_place ?? null),
+            'born_date'          => !empty($data['born_date']) ? $data['born_date'] : ($registration?->born_date ?? null),
+            'religion'           => $religion ?: ($registration?->religion ?? null),
+            'division_id'        => $divisionId ?: ($registration?->division_id ?? null),
+            'brand_id'           => $brandId ?: ($registration?->brand_id ?? null),
+            'institution_id'     => $institutionId,
+            'faculty_id'         => $facultyId,
+            'study_program_id'   => $studyProgramId,
+            'start_date'         => !empty($data['start_date']) ? $data['start_date'] : ($registration?->start_date ?? null),
+            'end_date'           => !empty($data['end_date']) ? $data['end_date'] : ($registration?->end_date ?? null),
+            'internship_status'  => $status,
+        ];
+
+        if ($registration) {
+            $registration->update(array_filter($regData, fn($val) => $val !== null));
+        } else {
+            \App\Models\InternshipRegistration::create($regData);
+        }
+
+        return $user;
+    }
+
+    /**
+     * Single Sign-On (SSO) login dari Absen Djuragan untuk Admin, Super Admin, dan Pemagang.
      */
     public function ssoLogin(Request $request)
     {
@@ -267,16 +521,35 @@ class AuthController extends Controller
         }
 
         [$payloadBase64, $signature] = explode('.', $token, 2);
-        $payloadJson = base64_decode($payloadBase64);
+
+        // Dekode Base64 yang toleran terhadap format standard, Base64URL, dan spasi
+        $normalizedBase64 = str_replace(' ', '+', $payloadBase64);
+        $normalizedBase64 = strtr($normalizedBase64, '-_', '+/');
+        $padLen = strlen($normalizedBase64) % 4;
+        if ($padLen > 0) {
+            $normalizedBase64 .= str_repeat('=', 4 - $padLen);
+        }
+        $payloadJson = base64_decode($normalizedBase64);
+
         if (!$payloadJson) {
             return redirect()->route('user.login')->with('error', 'Format token SSO rusak.');
         }
 
-        $secret = config('services.absen_djuragan.api_key', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c');
+        $secret = config('services.absen_djuragan.api_key')
+            ?: config('services.absen_djuragan.inbound_api_key')
+            ?: config('services.absen_djuragan.outbound_api_key')
+            ?: 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c';
+
         $expectedSignature = hash_hmac('sha256', $payloadJson, $secret);
 
         if (!hash_equals($expectedSignature, $signature)) {
-            return redirect()->route('user.login')->with('error', 'Tanda tangan token SSO tidak sah.');
+            // Fallback second-chance jika secret kustom berbeda dengan secret default Absen Djuragan
+            $fallbackSecret = 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c';
+            $fallbackExpectedSignature = hash_hmac('sha256', $payloadJson, $fallbackSecret);
+
+            if (!hash_equals($fallbackExpectedSignature, $signature)) {
+                return redirect()->route('user.login')->with('error', 'Tanda tangan token SSO tidak sah.');
+            }
         }
 
         $payload = json_decode($payloadJson, true);
@@ -284,39 +557,53 @@ class AuthController extends Controller
             return redirect()->route('user.login')->with('error', 'Data identitas SSO tidak lengkap.');
         }
 
-        // Periksa waktu kadaluarsa (60 detik)
-        if (isset($payload['expires']) && time() > (int) $payload['expires']) {
+        // Periksa waktu kadaluarsa (toleransi clock drift 60 detik)
+        if (isset($payload['expires']) && (time() - 60) > (int) $payload['expires']) {
             return redirect()->route('user.login')->with('error', 'Token SSO telah kadaluarsa. Silakan klik kembali tombol di Absen Djuragan.');
         }
 
-        // Validasi role admin / super admin
-        $isAllowed = ($payload['role'] ?? '') === 'admin'
+        // Validasi role admin / super admin / pemagang
+        $roleId = (int) ($payload['role_id'] ?? 0);
+        $role = $payload['role'] ?? '';
+        $isAdmin = $role === 'admin'
             || !empty($payload['is_super_admin'])
-            || in_array((int) ($payload['role_id'] ?? 0), [1, 7], true);
+            || in_array($roleId, [1, 7], true);
+        $isPemagang = $role === 'pemagang' || $roleId === 3;
 
-        if (!$isAllowed) {
-            return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Bukan akun Admin atau Super Admin.');
+        if (!$isAdmin && !$isPemagang) {
+            return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Peran akun tidak diizinkan.');
         }
 
-        // Cari atau buatkan akun Admin di IMS (Bypass Super Admin jadi Admin)
-        $user = User::where('email', $payload['email'])->first();
-        if (!$user) {
-            $user = User::create([
-                'name'     => $payload['name'] ?? $payload['username'] ?? 'Admin Absen',
-                'email'    => $payload['email'],
-                'password' => Hash::make(\Illuminate\Support\Str::random(32)),
-                'role'     => 'admin', // BYPASS
-            ]);
-        } else {
-            // Apapun role sebelumnya di IMS, BYPASS menjadi 'admin'!
-            $user->role = 'admin';
-            $user->save();
+        if ($isAdmin) {
+            // Cari atau buatkan akun Admin di IMS (Bypass Super Admin jadi Admin)
+            $user = User::where('email', $payload['email'])->first();
+            if (!$user) {
+                $user = User::create([
+                    'name'     => $payload['name'] ?? $payload['username'] ?? 'Admin Absen',
+                    'email'    => $payload['email'],
+                    'password' => Hash::make(\Illuminate\Support\Str::random(32)),
+                    'role'     => 'admin', // BYPASS
+                ]);
+            } else {
+                // Apapun role sebelumnya di IMS, BYPASS menjadi 'admin'!
+                $user->role = 'admin';
+                $user->save();
+            }
+
+            Auth::login($user);
+            $request->session()->regenerate();
+
+            return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil masuk sebagai Admin via Absen Djuragan.');
         }
+
+        // Role Pemagang
+        $internData = $payload['intern_data'] ?? $payload;
+        $user = $this->syncOrProvisionRemoteIntern($payload['email'], $internData, null);
 
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil masuk sebagai Admin via Absen Djuragan.');
+        return redirect()->route('pemagang.dashboard')->with('success', 'Berhasil masuk ke InternHub via Absen Djuragan.');
     }
 
     /**

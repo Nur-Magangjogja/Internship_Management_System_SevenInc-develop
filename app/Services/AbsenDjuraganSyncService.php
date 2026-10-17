@@ -9,19 +9,22 @@ use Illuminate\Support\Facades\Log;
 class AbsenDjuraganSyncService
 {
     /**
-     * Sinkronkan data pemagang yang disetujui/di-ACC oleh Admin ke Absen Djuragan.
+     * Sinkronkan data pemagang yang disetujui/di-ACC oleh Admin ke Absen Djuragan (Cross-API V2).
      */
-    public static function syncIntern(InternshipRegistration $intern, ?string $brandName = null): bool
+    public static function syncIntern(InternshipRegistration $intern, ?string $brandName = null, ?string $status = null): bool
     {
         try {
+            $intern->loadMissing('user');
             $user = $intern->user;
             if (!$user) {
                 Log::warning("Sinkronisasi ke Absen Djuragan dilewati: User terkait tidak ditemukan untuk Intern ID {$intern->id}.");
                 return false;
             }
 
-            $apiUrl = config('services.absen_djuragan.url', 'http://127.0.0.1:8000/api/v1/external') . '/register-sync';
-            $apiKey = config('services.absen_djuragan.api_key', 'djuragan_ext_140633f34edfaf504a3d6812c8c2485c');
+            $existingSyncUserId = null;
+            if (\Illuminate\Support\Facades\Schema::hasTable('absen_sync_states')) {
+                $existingSyncUserId = \App\Models\AbsenSyncState::where('registration_id', $intern->id)->value('absen_user_id');
+            }
 
             // Resolusi nama divisi
             $divName = null;
@@ -71,7 +74,10 @@ class AbsenDjuraganSyncService
                 $effectiveBrand = $intern->brand;
             }
 
+            $effectiveStatus = $status ?: ($intern->internship_status ?? 'accepted');
+
             $payload = [
+                'absen_user_id'          => $existingSyncUserId ? (int) $existingSyncUserId : null,
                 'email'                  => $user->email,
                 'password_hash'          => $user->password, // Hash bcrypt dari IMS
                 'full_name'              => $intern->fullname ?: $user->name,
@@ -85,8 +91,10 @@ class AbsenDjuraganSyncService
                 'student_id'             => $intern->student_id,
                 'division_name'          => $divName,
                 'brand_name'             => $effectiveBrand,
+                'brand_id'               => $intern->brand_id,
                 'start_date'             => $intern->start_date,
                 'end_date'               => $intern->end_date,
+                'status'                 => $effectiveStatus,
             ];
 
             $primaryUrl = rtrim(config('services.absen_djuragan.url', 'http://absen-djuragan.test/api/v1/external'), '/');
@@ -114,10 +122,31 @@ class AbsenDjuraganSyncService
                     ])->post($url, $payload);
 
                     if ($response->successful()) {
-                        Log::info("Sinkronisasi ACC pemagang {$user->email} ke Absen Djuragan berhasil via {$url}.");
+                        $resData = $response->json('data') ?? [];
+                        $absenUserId = $resData['absen_user_id'] ?? null;
+                        $absenInternId = $resData['intern_id'] ?? null;
+
+                        // Simpan status durable jika skema absen_sync_states tersedia
+                        if (\Illuminate\Support\Facades\Schema::hasTable('absen_sync_states')) {
+                            \App\Models\AbsenSyncState::updateOrCreate(
+                                ['registration_id' => $intern->id],
+                                [
+                                    'sync_status'          => in_array($effectiveStatus, ['exited', 'completed', 'rejected'], true)
+                                        ? \App\Models\AbsenSyncState::STATUS_REMOTE_ACTION_REQUIRED
+                                        : \App\Models\AbsenSyncState::STATUS_SYNCED,
+                                    'absen_user_id'        => $absenUserId,
+                                    'intern_id'            => $absenInternId,
+                                    'last_synced_at'       => now(),
+                                    'last_response_status' => $response->status(),
+                                    'last_error_message'   => null,
+                                ]
+                            );
+                        }
+
+                        Log::info("Sinkronisasi ACC/Update pemagang {$user->email} ({$effectiveStatus}) ke Absen Djuragan berhasil via {$url}. Ref Absen User ID: {$absenUserId}.");
                         return true;
                     } else {
-                        Log::warning("Sinkronisasi ACC pemagang {$user->email} ke {$url} gagal (HTTP {$response->status()}): " . $response->body());
+                        Log::warning("Sinkronisasi ACC/Update pemagang {$user->email} ke {$url} gagal (HTTP {$response->status()}): " . $response->body());
                     }
                 } catch (\Throwable $err) {
                     Log::warning("Koneksi sinkronisasi ke {$url} gagal: " . $err->getMessage());

@@ -28,7 +28,9 @@ class RegistrationController extends Controller
     {
         $user         = auth()->user();
         $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
-        $registration = $lifecycle->getOpenOrDraftRegistration($user);
+        $registration = $lifecycle->getOpenOrDraftRegistration($user)
+            ?? \App\Models\InternshipRegistration::where('user_id', $user->id)->latest('id')->first();
+        $registration?->loadMissing(['institution', 'city', 'facultyRel', 'studyProgramRel', 'division', 'brandRel']);
 
         // Ambil divisi aktif dari DB; fallback ke list hardcode jika DB kosong
         $divisions = \App\Models\Division::active()->pluck('name');
@@ -182,8 +184,13 @@ class RegistrationController extends Controller
         $existing  = $lifecycle->getOpenOrDraftRegistration($user);
 
         if ($existing && !$existing->is_draft) {
-            // Pendaftaran sudah resmi disubmit: perubahan hanya diizinkan saat masih berstatus NEW/WAITING
-            if (!in_array($existing->internship_status, [IR::STATUS_NEW, IR::STATUS_WAITING], true)) {
+            // Pendaftaran sudah resmi disubmit: perubahan hanya diizinkan saat masih berstatus NEW/WAITING,
+            // atau jika akun di-provisioning otomatis dari Absen Djuragan dan belum pernah melengkapi form pendaftaran.
+            $isAutoProvisionedFromAbsen = in_array($existing->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE], true)
+                && empty($existing->formSnapshot)
+                && empty($existing->internship_reason);
+
+            if (!in_array($existing->internship_status, [IR::STATUS_NEW, IR::STATUS_WAITING], true) && !$isAutoProvisionedFromAbsen) {
                 return back()->withInput()->withErrors([
                     'status' => 'Pendaftaran Anda telah diproses oleh admin dan tidak dapat diubah lagi.'
                 ]);
@@ -243,7 +250,7 @@ class RegistrationController extends Controller
                 }
 
                 if ($targetYear !== null) {
-                    $targetYearSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first();
+                    $targetYearSchema = $this->resolveActiveSchemaForYear($targetYear);
 
                     if (!$targetYearSchema && !$isDraft && $hasAnyPublishedSchema) {
                         return back()
@@ -626,7 +633,7 @@ class RegistrationController extends Controller
         }
 
         // Checkbox arrays → CSV
-        $validated['owned_tools'] = $request->input('owned_tools');
+        $validated['owned_tools'] = $this->arrayToCsv($request->input('owned_tools'));
         $infoSourcesArr = $request->input('internship_info_sources', []);
 
         // Draft atau submit? Unanswered fields in draft remain null (No fake defaults)
@@ -1066,6 +1073,10 @@ class RegistrationController extends Controller
             session()->flash('schema_adjusted', $schemaAdjustedNotice);
         }
 
+        if ($intern && in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE], true)) {
+            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $intern->internship_status);
+        }
+
         if ($isDraft) {
             $savedTime = now()->format('H:i:s');
             return back()->with('success', "Draft formulir berhasil disimpan pada pukul {$savedTime}. Seluruh isian Anda tersimpan dengan aman di server.");
@@ -1328,10 +1339,21 @@ class RegistrationController extends Controller
             return null;
         }
 
-        return \App\Models\FormSchema::with('activeFields')
+        // Saat sudah masuk ke tahun berjalan (atau tahun berganti ke tahun berikutnya),
+        // otomatis aktifkan & lengkapi skema tahun berjalan jika belum terbit/belum lengkap (di luar unit test).
+        if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
+            try {
+                app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+            } catch (\Throwable) {
+            }
+        }
+
+        $schema = \App\Models\FormSchema::with('activeFields')
             ->where('year', $targetYear)
             ->activePublished()
             ->first();
+
+        return $schema;
     }
 
     /**

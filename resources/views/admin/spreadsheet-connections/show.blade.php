@@ -62,7 +62,7 @@
                     <span class="text-slate-500 font-mono">({{ $connection->connection_status }})</span>
                 </div>
             </div>
-            <div class="md:col-span-2">
+            <div class="{{ $connection->connection_key === 'registration' ? '' : 'md:col-span-2' }}">
                 <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Target Google Spreadsheet</span>
                 @if ($connection->spreadsheet_url)
                     <a href="{{ $connection->spreadsheet_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-mono truncate block mt-1">
@@ -72,6 +72,21 @@
                     <span class="text-slate-400 italic mt-1 block">Belum dikonfigurasi</span>
                 @endif
             </div>
+            @if ($connection->connection_key === 'registration')
+                <div>
+                    <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Folder Google Drive (Berkas Pemagang)</span>
+                    @if ($connection->drive_folder_url)
+                        <a href="{{ $connection->drive_folder_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-mono truncate block mt-1">
+                            {{ $connection->drive_folder_url }}
+                        </a>
+                        @if ($connection->drive_folder_id)
+                            <span class="text-[10px] font-mono text-slate-500 block mt-0.5">ID: {{ $connection->drive_folder_id }}</span>
+                        @endif
+                    @else
+                        <span class="text-slate-400 italic mt-1 block">Belum dikonfigurasi</span>
+                    @endif
+                </div>
+            @endif
         </div>
     </div>
 
@@ -294,19 +309,19 @@
                                     {{ $sync->error_message ?: '-' }}
                                 </td>
                                 <td class="px-4 py-3 text-right">
-                                    @if ($sync->canRetry())
+                                    @if ($sync->canRetry() || $sync->isSynced())
                                         <form action="{{ route('admin.spreadsheet-connections.retry-row', [$connection, $sync]) }}" method="POST" class="inline-block">
                                             @csrf
                                             <button
                                                 type="submit"
                                                 class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                                                title="Retry baris ini"
+                                                title="{{ $sync->isSynced() ? 'Sinkronkan ulang baris ini' : 'Retry baris ini' }}"
                                             >
                                                 <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                     <polyline points="23 4 23 10 17 10"/>
                                                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                                                 </svg>
-                                                Retry
+                                                {{ $sync->isSynced() ? 'Sync Ulang' : 'Retry' }}
                                             </button>
                                         </form>
                                     @else

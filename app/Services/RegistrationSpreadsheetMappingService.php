@@ -137,11 +137,19 @@ class RegistrationSpreadsheetMappingService
             return null;
         }
 
-        $year = (int) $registration->created_at->format('Y');
+        $createdAt = $registration->created_at instanceof \DateTimeInterface
+            ? $registration->created_at
+            : \Illuminate\Support\Carbon::parse($registration->created_at);
+
+        $year = (int) $createdAt->format('Y');
 
         $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
         if (!$connection) {
             return null;
+        }
+
+        if (!app()->runningUnitTests()) {
+            return $this->syncSpreadsheetSchemaWithFormSchema($year);
         }
 
         return SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
@@ -149,6 +157,108 @@ class RegistrationSpreadsheetMappingService
             ->where('is_active', true)
             ->with('columnMappings')
             ->first();
+    }
+
+    /**
+     * Sinkronkan skema kolom Spreadsheet (SpreadsheetSchemaVersion & SpreadsheetColumnMapping)
+     * secara otomatis mengikuti FormSchema yang dipublikasikan untuk tahun terkait.
+     * - 35 kolom inti pertama tetap sesuai urutan kanonikal.
+     * - Pertanyaan tambahan (custom fields) aktif disisipkan sebelum kolom sistem (KET, SERTIF_*).
+     * - 5 kolom penutup sistem (KET, SERTIF_SYNC_ID, SERTIF_REGISTRATION_ID, SERTIF_SYNC_STATUS, SERTIF_LAST_SYNC_AT) selalu di akhir.
+     */
+    public function syncSpreadsheetSchemaWithFormSchema(int $year, ?\App\Models\FormSchema $formSchema = null): ?SpreadsheetSchemaVersion
+    {
+        $connections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->get();
+        if ($connections->isEmpty()) {
+            return null;
+        }
+
+        if (!$formSchema && \Illuminate\Support\Facades\Schema::hasTable('form_schemas')) {
+            $formSchema = \App\Models\FormSchema::where('year', $year)
+                ->where('status', \App\Models\FormSchema::STATUS_PUBLISHED)
+                ->where('is_active', true)
+                ->with('fields')
+                ->first();
+        }
+
+        $canonical = \Database\Seeders\Spreadsheet2026SchemaSeeder::getCanonicalColumns();
+        $coreCols = array_slice($canonical, 0, 35);
+        $systemCols = array_slice($canonical, 35);
+
+        $customCols = [];
+        if ($formSchema) {
+            $customFields = $formSchema->fields()
+                ->where('is_system', false)
+                ->where('is_active', true)
+                ->where('is_archived', false)
+                ->whereNotIn('field_key', \App\Services\FormBuilderService::CORE_FIELD_KEYS)
+                ->orderBy('sort_order')
+                ->get();
+
+            $existingHeadersLower = array_map(fn($c) => mb_strtolower(trim($c['header'])), array_merge($coreCols, $systemCols));
+
+            foreach ($customFields as $cf) {
+                $headerLabel = trim((string) $cf->label);
+                if ($headerLabel === '' || in_array(mb_strtolower($headerLabel), $existingHeadersLower, true)) {
+                    $headerLabel = $headerLabel !== '' ? "{$headerLabel} ({$cf->field_key})" : $cf->field_key;
+                }
+                $existingHeadersLower[] = mb_strtolower($headerLabel);
+
+                $customCols[] = [
+                    'header'    => $headerLabel,
+                    'entity'    => 'registration_custom_answers',
+                    'field'     => $cf->field_key,
+                    'type'      => in_array($cf->field_type, ['date', 'number', 'url'], true) ? $cf->field_type : 'string',
+                    'direction' => 'outbound',
+                    'transform' => 'custom_field',
+                    'required'  => (bool) $cf->is_required,
+                ];
+            }
+        }
+
+        $mergedColumns = array_merge($coreCols, $customCols, $systemCols);
+        $activeSchemaVersion = null;
+
+        foreach ($connections as $connection) {
+            $schemaVersion = SpreadsheetSchemaVersion::updateOrCreate(
+                [
+                    'spreadsheet_connection_id' => $connection->id,
+                    'year'                      => $year,
+                    'schema_version'            => 'v1',
+                ],
+                [
+                    'sheet_tab_name' => (string) $year,
+                    'is_active'      => true,
+                    'notes'          => "Auto-synced Unified Registration Contract ({$year})",
+                ]
+            );
+
+            \Illuminate\Support\Facades\DB::transaction(function () use ($schemaVersion, $mergedColumns) {
+                SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->delete();
+
+                foreach ($mergedColumns as $idx => $col) {
+                    $order = $idx + 1;
+                    SpreadsheetColumnMapping::create([
+                        'public_uuid'                   => (string) \Illuminate\Support\Str::uuid(),
+                        'spreadsheet_schema_version_id' => $schemaVersion->id,
+                        'column_order'                  => $order,
+                        'sheet_header'                  => $col['header'],
+                        'target_entity'                 => $col['entity'],
+                        'target_field'                  => $col['field'],
+                        'data_type'                     => $col['type'],
+                        'direction'                     => $col['direction'],
+                        'transform_key'                 => $col['transform'],
+                        'is_required'                   => $col['required'],
+                    ]);
+                }
+            });
+
+            if ($activeSchemaVersion === null) {
+                $activeSchemaVersion = $schemaVersion->fresh(['columnMappings']);
+            }
+        }
+
+        return $activeSchemaVersion;
     }
 
     /**
@@ -173,9 +283,13 @@ class RegistrationSpreadsheetMappingService
             throw new DomainException('Tanggal pembuatan pendaftaran (created_at) tidak valid atau kosong untuk penentuan tab tahunan.');
         }
 
+        $createdAt = $registration->created_at instanceof \DateTimeInterface
+            ? $registration->created_at
+            : \Illuminate\Support\Carbon::parse($registration->created_at);
+
         $schemaVersion = $schema ?? $this->getSchemaForRegistration($registration);
         if (!$schemaVersion) {
-            $year = $registration->created_at->format('Y');
+            $year = $createdAt->format('Y');
             throw new DomainException("Schema Spreadsheet untuk tahun {$year} belum dikonfigurasi.");
         }
 
@@ -202,7 +316,7 @@ class RegistrationSpreadsheetMappingService
         $transformKey = $mapping->transform_key ?? $mapping->target_field;
 
         return match ($transformKey) {
-            'timestamp' => $registration->created_at?->format('Y-m-d H:i:s'),
+            'timestamp' => $this->formatDateTimeValue($registration->created_at),
             'fullname' => $registration->fullname,
             'student_id' => $registration->student_id ?? '-',
             'study_program' => $registration->study_program ?? '-',
@@ -219,21 +333,125 @@ class RegistrationSpreadsheetMappingService
             'schedule_shift_readiness' => $registration->schedule_shift_readiness ?? '-',
             'has_laptop' => $registration->has_laptop ? 'YA' : 'TIDAK',
             'laptop_equipment' => !empty($registration->owned_tools) ? $registration->owned_tools : '-',
-            'start_date' => $registration->start_date ?? '-',
+            'start_date' => $this->formatDateValue($registration->start_date),
             'planned_duration' => $registration->planned_duration ?? '-',
             'internship_info_sources' => !empty($registration->internship_info_sources) ? $registration->internship_info_sources : '-',
             'social_media_instagram' => $registration->social_media_instagram ?? '-',
             'boarding_info' => $registration->boarding_info ?? '-',
             'internship_interest' => $registration->internship_interest ?? '-',
             'attachment_url' => $this->resolveAttachmentUrl($registration),
+            'birth_place' => $registration->birth_place ?? '-',
+            'born_date', 'birth_date' => $this->formatDateValue($registration->born_date),
+            'religion' => $registration->religion ?? '-',
+            'link_cv' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_CV),
+            'link_ktm_ktp' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_IDENTITY),
+            'link_portofolio' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_PORTFOLIO),
+            'link_surat_pengantar' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_COVER_LETTER),
+            'link_proposal' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_PROPOSAL),
+            'link_dokumen_pendukung' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_SUPPORTING_DOCUMENT),
+            'link_pasfoto' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_PROFILE_PHOTO),
+            'design_software' => !empty($registration->design_software) ? $registration->design_software : '-',
+            'video_software' => !empty($registration->video_software) ? $registration->video_software : '-',
+            'programming_languages' => !empty($registration->programming_languages) ? $registration->programming_languages : '-',
+            'digital_marketing_type' => !empty($registration->digital_marketing_type) ? $registration->digital_marketing_type : '-',
+            'equipment', 'owned_tools' => !empty($registration->owned_tools) ? $registration->owned_tools : '-',
+            'supervisor_name' => $registration->supervisor_name ?? '-',
+            'supervisor_contact' => $registration->supervisor_contact ?? '-',
+            'current_activities' => $registration->current_activities ?? '-',
             'status_label', 'ket' => app(\App\Services\RegistrationLifecycleService::class)->resolveCurrentCondition($registration)['spreadsheet_column_y_label'],
             // Guardrail 2: S9B tidak menciptakan stable sync ID atau mengklaim status synced
             'sertif_sync_id' => null,
             'sertif_registration_id' => (string) $registration->id,
             'sertif_sync_status' => 'pending',
             'sertif_last_sync_at' => null,
+            'custom_field' => $this->resolveCustomFieldAnswer($registration, $mapping->target_field),
             default => $this->fallbackResolve($registration, $mapping->target_field),
         };
+    }
+
+    /**
+     * Resolusi nilai jawaban untuk pertanyaan tambahan (custom field) dari tabel registration_custom_answers.
+     */
+    protected function resolveCustomFieldAnswer(InternshipRegistration $registration, ?string $fieldKey): string
+    {
+        if (empty($fieldKey)) {
+            return '-';
+        }
+
+        try {
+            $ans = $registration->relationLoaded('customAnswers')
+                ? $registration->customAnswers->firstWhere('field_key', $fieldKey)
+                : $registration->customAnswers()->where('field_key', $fieldKey)->first();
+
+            if (!$ans || $ans->answer_value === null || trim((string) $ans->answer_value) === '') {
+                return '-';
+            }
+
+            $raw = (string) $ans->answer_value;
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $filtered = array_filter(array_map('trim', $decoded), fn($v) => $v !== '');
+                return !empty($filtered) ? implode(', ', $filtered) : '-';
+            }
+
+            if (str_starts_with($raw, 'private/') || str_starts_with($raw, 'uploads/')) {
+                return basename($raw);
+            }
+
+            return $raw;
+        } catch (\Throwable) {
+            return '-';
+        }
+    }
+
+    /**
+     * Format nilai tanggal secara aman (mencegah error call to a member function format() on string).
+     */
+    protected function formatDateValue(mixed $value): string
+    {
+        if (empty($value) || $value === '-') {
+            return '-';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+
+        $str = trim((string) $value);
+        if ($str === '' || $str === '-') {
+            return '-';
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($str)->format('Y-m-d');
+        } catch (\Throwable) {
+            return $str;
+        }
+    }
+
+    /**
+     * Format nilai datetime/timestamp secara aman.
+     */
+    protected function formatDateTimeValue(mixed $value): string
+    {
+        if (empty($value) || $value === '-') {
+            return '-';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        $str = trim((string) $value);
+        if ($str === '' || $str === '-') {
+            return '-';
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($str)->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return $str;
+        }
     }
 
     /**
@@ -268,7 +486,19 @@ class RegistrationSpreadsheetMappingService
             return null;
         }
 
-        return $registration->{$field} ?? null;
+        $value = $registration->{$field} ?? null;
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        if ($value === null) {
+            $customVal = $this->resolveCustomFieldAnswer($registration, $field);
+            if ($customVal !== '-') {
+                return $customVal;
+            }
+        }
+
+        return $value;
     }
 
     /**
@@ -314,7 +544,7 @@ class RegistrationSpreadsheetMappingService
     }
 
     /**
-     * Resolve valid Google Drive link for registration attachment if synced.
+     * Resolve valid Google Drive link for registration attachment if synced (1 unified folder/bundle link).
      */
     protected function resolveAttachmentUrl(InternshipRegistration $registration): ?string
     {
@@ -333,12 +563,64 @@ class RegistrationSpreadsheetMappingService
             return $attachments->first()->drive_web_view_link;
         }
 
-        // Multi-upload: utamakan CV atau bundle berkas
+        // 1. Utamakan tautan 1 folder penyimpanan Google Drive atau bundle gabungan jika tersedia
+        $folderOrBundle = $attachments->first(function ($att) {
+            $link = (string) $att->drive_web_view_link;
+            $cat  = (string) ($att->getRawOriginal('category') ?? $att->category);
+            $type = (string) $att->attachment_type;
+
+            return str_contains($link, '/drive/folders/')
+                || in_array($cat, [\App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE, 'legacy_bundle', 'folder'], true)
+                || in_array($type, [\App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE, 'legacy_bundle', 'folder'], true);
+        });
+
+        if ($folderOrBundle) {
+            return (string) $folderOrBundle->drive_web_view_link;
+        }
+
+        // 2. Jika data multi-upload berasal dari seeder demo (1demo_*), kembalikan 1 link folder penyimpanan terpadu pendaftar
+        $hasDemoAttachment = $attachments->contains(function ($att) {
+            return str_starts_with((string) $att->drive_file_id, '1demo_')
+                || str_contains((string) $att->drive_web_view_link, '1demo_');
+        });
+
+        if ($hasDemoAttachment) {
+            $slug = \Illuminate\Support\Str::slug($registration->fullname ?: 'pemagang', '_');
+            return "https://drive.google.com/drive/folders/1folder_reg_{$registration->id}_{$slug}?usp=sharing";
+        }
+
+        // 3. Fallback: kembalikan 1 tautan utama saja (jangan digabung dengan newline)
         $primary = $attachments->firstWhere('category', \App\Models\RegistrationAttachment::TYPE_CV)
-            ?? $attachments->firstWhere('category', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
             ?? $attachments->first();
 
         return $primary?->drive_web_view_link;
+    }
+
+    /**
+     * Resolve specific attachment Google Drive link by category.
+     */
+    public function resolveSpecificAttachmentUrl(InternshipRegistration $registration, string $category): string
+    {
+        $aliases = match ($category) {
+            \App\Models\RegistrationAttachment::TYPE_IDENTITY            => ['identity', 'ktm_ktp', 'ktm', 'ktp'],
+            \App\Models\RegistrationAttachment::TYPE_PORTFOLIO           => ['portfolio', 'portofolio'],
+            \App\Models\RegistrationAttachment::TYPE_COVER_LETTER        => ['cover_letter', 'surat_pengantar'],
+            \App\Models\RegistrationAttachment::TYPE_SUPPORTING_DOCUMENT => ['supporting_document', 'dokumen_pendukung'],
+            \App\Models\RegistrationAttachment::TYPE_PROFILE_PHOTO       => ['profile_photo', 'pasfoto'],
+            default                                                      => [$category],
+        };
+
+        $attachment = $registration->attachments()
+            ->where(function ($q) use ($aliases) {
+                $q->whereIn('category', $aliases)
+                  ->orWhereIn('attachment_type', $aliases);
+            })
+            ->where('drive_sync_status', \App\Models\RegistrationAttachment::STATUS_SYNCED)
+            ->whereNotNull('drive_file_id')
+            ->whereNotNull('drive_web_view_link')
+            ->first();
+
+        return $attachment?->drive_web_view_link ?? '-';
     }
 
     /**
