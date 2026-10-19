@@ -50,6 +50,68 @@
           }
           return !empty($effectiveStartDate) ? $effectiveStartDate : ($ans->get($field) ?? $reg?->$field ?? '');
       }
+
+      if ($field === 'institution_name') {
+          $val = old('institution_name');
+          if ($val !== null && $val !== '') return $val;
+          if ($ans->has('institution_name') && !empty($ans->get('institution_name'))) return $ans->get('institution_name');
+          if (!empty($reg?->institution_name)) return $reg->institution_name;
+          if (!empty($reg?->institution?->name)) return $reg->institution->name;
+          if (!empty($reg?->institution_id)) {
+              $inst = \App\Models\Institution::find($reg->institution_id);
+              if ($inst) return $inst->name;
+          }
+          return '';
+      }
+
+      if ($field === 'current_city') {
+          $val = old('current_city');
+          if ($val !== null && $val !== '') return $val;
+          if ($ans->has('current_city') && !empty($ans->get('current_city'))) return $ans->get('current_city');
+          if (!empty($reg?->current_city)) return $reg->current_city;
+          if (!empty($reg?->city?->name)) return $reg->city->name;
+          if (!empty($reg?->city_id)) {
+              $c = \App\Models\City::find($reg->city_id);
+              if ($c) return $c->name;
+          }
+          return '';
+      }
+
+      if ($field === 'study_program') {
+          $val = old('study_program');
+          if ($val !== null && $val !== '') return $val;
+          if ($ans->has('study_program') && !empty($ans->get('study_program'))) return $ans->get('study_program');
+          if (!empty($reg?->study_program)) return $reg->study_program;
+          if (!empty($reg?->studyProgramRel?->name)) return $reg->studyProgramRel->name;
+          if (!empty($reg?->study_program_id)) {
+              $sp = \App\Models\StudyProgram::find($reg->study_program_id);
+              if ($sp) return $sp->name;
+          }
+          return '';
+      }
+
+      if ($field === 'faculty') {
+          $val = old('faculty');
+          if ($val !== null && $val !== '') return $val;
+          if ($ans->has('faculty') && !empty($ans->get('faculty'))) return $ans->get('faculty');
+          if (!empty($reg?->faculty)) return $reg->faculty;
+          if (!empty($reg?->facultyRel?->name)) return $reg->facultyRel->name;
+          if (!empty($reg?->faculty_id)) {
+              $fac = \App\Models\Faculty::find($reg->faculty_id);
+              if ($fac) return $fac->name;
+          }
+          return '';
+      }
+
+      if ($field === 'gender') {
+          $val = old('gender');
+          if ($val !== null && $val !== '') return $val;
+          if ($ans->has('gender') && !empty($ans->get('gender'))) return $ans->get('gender');
+          if (!empty($reg?->gender)) return $reg->gender;
+          if (!empty($reg?->getRawOriginal('gender'))) return $reg->getRawOriginal('gender');
+          return '';
+      }
+
       return old(
           $field,
           ($ans->get($field) ?? $reg?->$field ?? '')
@@ -162,16 +224,20 @@
       @if(!empty($useFormFields) && $useFormFields)
         {{-- ===== FORM DINAMIS (dari pengaturan admin) ===== --}}
         @include('pemagang.registration.partials.dynamic-form', [
-            'mainFields'   => $mainFields,
-            'extraFields'  => $extraFields,
-            'customFields' => $customFields ?? collect(),
-            'divisions'    => $divisions,
-            'reg'          => $reg,
-            'old'          => $old,
-            'input'        => $input,
-            'label'        => $label,
-            'radio'        => $radio,
-            'toDateInput'  => $toDateInput,
+            'mainFields'    => $mainFields,
+            'extraFields'   => $extraFields,
+            'customFields'  => $customFields ?? collect(),
+            'divisions'     => $divisions,
+            'institutions'  => $institutions ?? collect(),
+            'cities'        => $cities ?? collect(),
+            'faculties'     => $faculties ?? collect(),
+            'studyPrograms' => $studyPrograms ?? collect(),
+            'reg'           => $reg,
+            'old'           => $old,
+            'input'         => $input,
+            'label'         => $label,
+            'radio'         => $radio,
+            'toDateInput'   => $toDateInput,
         ])
         {{-- Hidden/fallback fields untuk kolom NOT NULL jika tidak disediakan di extraFields --}}
         @if($extraFields->where('field_key', 'supervisor_name')->isEmpty())
@@ -248,24 +314,38 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="{{ $label }}">Jenis Kelamin <span class="text-red-500">*</span></label>
+              @php
+                $valGender = strtolower(trim((string) $old('gender')));
+                $isMale = in_array($valGender, ['laki-laki', 'l', 'male', 'pria'], true);
+                $isFemale = in_array($valGender, ['perempuan', 'p', 'female', 'wanita'], true);
+              @endphp
               <div class="flex gap-6 pt-1">
                 <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="radio" name="gender" value="Laki-laki" class="{{ $radio }}"
-                    @checked($old('gender') === 'Laki-laki')> Laki-laki
+                    @checked($isMale)> Laki-laki
                 </label>
                 <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="radio" name="gender" value="Perempuan" class="{{ $radio }}"
-                    @checked($old('gender') === 'Perempuan')> Perempuan
+                    @checked($isFemale)> Perempuan
                 </label>
               </div>
               @error('gender') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
               <label class="{{ $label }}">Agama <span class="text-red-500">*</span></label>
+              @php
+                $valRel = strtolower(trim((string) $old('religion')));
+              @endphp
               <select name="religion" required class="{{ $input }} @error('religion') border-red-500 focus:ring-red-500 @enderror">
                 <option value="">-- Pilih Agama --</option>
                 @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
-                  <option value="{{ $rel }}" @selected($old('religion') === $rel || ($rel === 'Kristen Protestan' && $old('religion') === 'Kristen'))>{{ $rel }}</option>
+                  @php
+                    $optRelLower = strtolower($rel);
+                    $isSelected = ($valRel === $optRelLower)
+                      || ($optRelLower === 'kristen protestan' && in_array($valRel, ['kristen', 'protestan', 'kristen protestan'], true))
+                      || ($optRelLower === 'khonghucu' && in_array($valRel, ['khonghucu', 'konghucu'], true));
+                  @endphp
+                  <option value="{{ $rel }}" @selected($isSelected)>{{ $rel }}</option>
                 @endforeach
               </select>
               @error('religion') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
@@ -1196,13 +1276,28 @@
         var rawOptions = el.getAttribute('data-options');
         var options = [];
         if (rawOptions) {
-            options = JSON.parse(rawOptions).map(function(name) {
-                return { value: name, text: name };
-            });
+            try {
+                options = JSON.parse(rawOptions).map(function(name) {
+                    return { value: name, text: name };
+                });
+            } catch (e) {
+                options = [];
+            }
         }
         
-        new TomSelect(el, {
+        var currentVal = el.value ? el.value.trim() : '';
+        if (currentVal) {
+            var exists = options.some(function(o) {
+                return o.value.toLowerCase() === currentVal.toLowerCase();
+            });
+            if (!exists) {
+                options.unshift({ value: currentVal, text: currentVal });
+            }
+        }
+
+        var ts = new TomSelect(el, {
             options: options,
+            items: currentVal ? [currentVal] : [],
             create: true,
             maxItems: 1,
             maxOptions: 50,
@@ -1219,6 +1314,10 @@
                 }
             }
         });
+
+        if (currentVal) {
+            ts.setValue(currentVal, true);
+        }
     });
   });
 </script>

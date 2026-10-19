@@ -402,6 +402,53 @@ class InternshipRegistrationController extends Controller
             unset($validated['religion']);
         }
 
+        // Resolusi Kota, Institusi, Fakultas, dan Program Studi
+        $getRelationId = function ($modelClass, $name, $extra = []) {
+            if (empty($name)) return null;
+            $name = ucwords(strtolower(trim($name)));
+            $query = $modelClass::whereRaw('LOWER(name) = ?', [strtolower($name)]);
+            foreach ($extra as $col => $val) {
+                if ($val !== null) {
+                    $query->where($col, $val);
+                }
+            }
+            $existingModel = $query->first();
+            if ($existingModel) return $existingModel->id;
+            return $modelClass::create(array_merge(['name' => $name], $extra))->id;
+        };
+
+        if (!empty($validated['current_city'])) {
+            $validated['city_id'] = $getRelationId(\App\Models\City::class, $validated['current_city']);
+            unset($validated['current_city']);
+        }
+        if (!empty($validated['institution_name'])) {
+            $instName = trim($validated['institution_name']);
+            $normName = \App\Models\Institution::normalizeName($instName);
+            $existingInst = \App\Models\Institution::whereRaw('LOWER(name) = ?', [strtolower($instName)])
+                ->orWhere('normalized_name', $normName)
+                ->first();
+            if ($existingInst) {
+                $validated['institution_id'] = $existingInst->id;
+            } else {
+                $validated['institution_id'] = \App\Models\Institution::create([
+                    'name'            => ucwords(strtolower($instName)),
+                    'normalized_name' => $normName,
+                    'is_active'       => true,
+                ])->id;
+            }
+            unset($validated['institution_name']);
+        }
+        if (!empty($validated['faculty'])) {
+            $extra = isset($validated['institution_id']) ? ['institution_id' => $validated['institution_id']] : [];
+            $validated['faculty_id'] = $getRelationId(\App\Models\Faculty::class, $validated['faculty'], $extra);
+            unset($validated['faculty']);
+        }
+        if (!empty($validated['study_program'])) {
+            $extra = isset($validated['faculty_id']) ? ['faculty_id' => $validated['faculty_id']] : [];
+            $validated['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $validated['study_program'], $extra);
+            unset($validated['study_program']);
+        }
+
         // Resolusi Divisi
         $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($validated['internship_interest'] ?? null);
         if (!empty($divisionInput)) {
@@ -413,9 +460,12 @@ class InternshipRegistrationController extends Controller
         $intern->fill($validated);
         $intern->save();
 
+        if (in_array($intern->internship_status, ['accepted', 'active'], true)) {
+            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $intern->internship_status);
+        }
+
         return redirect()
             ->route('user.editProfile')
             ->with('success', 'Profil berhasil diperbarui!');
     }
-
 }

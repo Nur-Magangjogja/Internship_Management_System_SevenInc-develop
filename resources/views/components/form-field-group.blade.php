@@ -25,8 +25,12 @@
     @else
     <ul id="field-list-{{ $group === 'main' ? 'main' : 'extra' }}" class="divide-y divide-[#F4F8F6]">
         @foreach($fields as $field)
+        @php
+            $isDeletable = $field->isDeletable();
+        @endphp
         <li id="field-row-{{ $field->id }}"
             data-field-id="{{ $field->id }}"
+            data-is-active="{{ $field->is_active ? '1' : '0' }}"
             class="flex items-center gap-3 px-4 py-3 transition hover:bg-[#F4F8F6] {{ !$field->is_active ? 'opacity-50' : '' }}">
 
             {{-- Drag handle --}}
@@ -45,7 +49,16 @@
                     </span>
                     @if($field->is_system)
                     <span class="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
-                        sistem
+                        Sistem
+                    </span>
+                    @endif
+                    @if($isDeletable)
+                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700" title="Pertanyaan ini masih bersifat sementara (belum dipublikasikan) sehingga masih dapat dihapus">
+                        Sementara (Belum Publish)
+                    </span>
+                    @else
+                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600" title="Pertanyaan ini sudah dipublikasikan dan tidak dapat dihapus (hanya dapat diedit)">
+                        Terpublikasi
                     </span>
                     @endif
                 </div>
@@ -82,7 +95,7 @@
             {{-- Aksi --}}
             <div class="flex items-center gap-1 shrink-0">
                 {{-- Edit --}}
-                <button type="button" title="Edit"
+                <button type="button" title="Edit Pertanyaan"
                     onclick="openEditModal({{ $field->id }})"
                     class="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-amber-400 hover:text-amber-600">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -114,15 +127,18 @@
                     @endif
                 </button>
 
-                {{-- Hapus (hanya non-system) --}}
-                @if(!$field->is_system)
-                <button type="button" title="Hapus"
+                {{-- Hapus: HANYA bisa menghapus field yang belum pernah dipublikasikan (masih sementara/draft) --}}
+                @if($isDeletable)
+                <button type="button" title="Hapus pertanyaan sementara (belum dipublikasikan)"
                     onclick="deleteField({{ $field->id }}, {{ json_encode($field->label) }})"
                     class="flex h-7 w-7 items-center justify-center rounded-[7px] border border-red-200 bg-red-50 text-[#D32F2F] transition hover:bg-red-500 hover:text-white">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                 </button>
                 @else
-                <div class="h-7 w-7"></div>{{-- placeholder agar layout tidak geser --}}
+                <button type="button" disabled title="Pertanyaan yang sudah dipublikasikan tidak dapat dihapus (hanya dapat diedit)"
+                    class="flex h-7 w-7 items-center justify-center rounded-[7px] border border-gray-200 bg-gray-100 text-gray-300 cursor-not-allowed">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
                 @endif
             </div>
         </li>

@@ -52,15 +52,13 @@ class FormField extends Model
         static::updating(function (FormField $field) {
             // Jika field berelasi dengan skema yang telah dipublikasikan atau diarsipkan
             if ($field->schema && ($field->schema->isPublished() || $field->schema->isArchived())) {
-                // Hanya mengizinkan pengarsipan (is_archived = true, is_active = false).
-                // Perubahan definisi (label, tipe, opsi, aturan validasi, dll.) dilarang keras.
+                // Perubahan struktural kritis yang merusak integrasi dan data jawaban dilarang keras.
+                // Perubahan teks tampilan (label, placeholder, helper_text) dan opsi non-destruktif diizinkan agar tidak mengganggu sistem.
                 $forbiddenDirty = [
-                    'field_key', 'field_type', 'label', 'placeholder', 'options',
-                    'validation_rules', 'is_required', 'is_active', 'is_archived',
-                    'is_system', 'group_name', 'sort_order', 'column_span', 'form_schema_id', 'helper_text'
+                    'field_key', 'field_type', 'form_schema_id'
                 ];
                 if ($field->isDirty($forbiddenDirty)) {
-                    throw new \DomainException("Field pada skema formulir yang telah dipublikasikan atau diarsipkan bersifat imutabel permanen. Modifikasi pertanyaan harus dilakukan melalui draf versi penerus.");
+                    throw new \DomainException("Field pada skema formulir yang telah dipublikasikan atau diarsipkan tidak boleh diubah kunci (field_key) atau tipe datanya (field_type). Modifikasi struktural harus dilakukan melalui draf versi penerus.");
                 }
             }
 
@@ -139,5 +137,91 @@ class FormField extends Model
             null                 => 'Form Utama',
             'informasi_tambahan' => 'Informasi Tambahan',
         ];
+    }
+
+    /**
+     * Periksa apakah field masih bersifat sementara/draft (belum pernah dipublikasikan)
+     * sehingga masih diizinkan untuk dihapus.
+     * Field yang sudah dipublikasikan atau field sistem tidak dapat dihapus sama sekali.
+     */
+    public function isDeletable(): bool
+    {
+        if ($this->is_system) {
+            return false;
+        }
+
+        if ($this->schema && ($this->schema->isPublished() || $this->schema->isArchived())) {
+            return false;
+        }
+
+        try {
+            $isLockedInRegistry = FormFieldRegistry::where('field_key', $this->field_key)
+                ->where('is_locked', true)
+                ->exists();
+            if ($isLockedInRegistry) {
+                return false;
+            }
+
+            $existsInPublishedSchema = static::where('field_key', $this->field_key)
+                ->whereHas('schema', function ($q) {
+                    $q->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED]);
+                })
+                ->exists();
+            if ($existsInPublishedSchema) {
+                return false;
+            }
+
+            $hasAnswers = RegistrationCustomAnswer::where('field_key', $this->field_key)->exists();
+            if ($hasAnswers) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Cek apakah struktur field (field_key dan field_type) sudah dikunci permanen
+     * karena sudah pernah dipublikasikan, memiliki jawaban, atau merupakan field sistem.
+     * Field yang terkunci hanya dapat diedit teks tampilannya (label, placeholder, helper_text).
+     */
+    public function isStructuralLocked(): bool
+    {
+        if ($this->is_system) {
+            return true;
+        }
+
+        if ($this->schema && ($this->schema->isPublished() || $this->schema->isArchived())) {
+            return true;
+        }
+
+        try {
+            $isLockedInRegistry = FormFieldRegistry::where('field_key', $this->field_key)
+                ->where('is_locked', true)
+                ->exists();
+            if ($isLockedInRegistry) {
+                return true;
+            }
+
+            $existsInPublishedSchema = static::where('field_key', $this->field_key)
+                ->whereHas('schema', function ($q) {
+                    $q->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED]);
+                })
+                ->exists();
+            if ($existsInPublishedSchema) {
+                return true;
+            }
+
+            $hasAnswers = RegistrationCustomAnswer::where('field_key', $this->field_key)->exists();
+            if ($hasAnswers) {
+                return true;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return false;
     }
 }

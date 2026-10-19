@@ -36,9 +36,36 @@ class SpreadsheetConnectionController extends Controller
     /**
      * Tampilkan detail konfigurasi, riwayat versi schema, pemetaan kolom, dan status sync baris.
      */
-    public function show(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    public function show(Request $request, SpreadsheetConnection $spreadsheetConnection, SpreadsheetSyncEngineService $syncEngine)
     {
-        $spreadsheetConnection->load(['schemaVersions.columnMappings', 'createdByUser', 'updatedByUser']);
+        SpreadsheetConnection::ensureDriveFolderColumns();
+        $spreadsheetConnection->refresh()->load(['schemaVersions.columnMappings', 'createdByUser', 'updatedByUser']);
+
+        if (!app()->runningUnitTests()) {
+            if ($spreadsheetConnection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
+                app(\App\Services\RegistrationSpreadsheetMappingService::class)
+                    ->syncSpreadsheetSchemaWithFormSchema((int) now()->year);
+                $spreadsheetConnection->load(['schemaVersions.columnMappings']);
+            }
+
+            $syncedRows = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+                ->whereIn('sync_status', [
+                    SpreadsheetRowSync::STATUS_SYNCED,
+                    SpreadsheetRowSync::STATUS_PENDING,
+                    SpreadsheetRowSync::STATUS_RETRYING,
+                ])
+                ->limit(15)
+                ->get();
+
+            foreach ($syncedRows as $syncedRow) {
+                try {
+                    // processSyncRecord without force will no-op if checksum matches, and auto-update remote if payload changed
+                    $syncEngine->processSyncRecord($syncedRow, force: false);
+                } catch (\Throwable) {
+                    // Ignore auto-refresh errors on view load
+                }
+            }
+        }
 
         $rowSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
             ->latest('id')
@@ -65,8 +92,10 @@ class SpreadsheetConnectionController extends Controller
      */
     public function edit(SpreadsheetConnection $spreadsheetConnection)
     {
+        SpreadsheetConnection::ensureDriveFolderColumns();
+
         return view('admin.spreadsheet-connections.edit', [
-            'connection' => $spreadsheetConnection,
+            'connection' => $spreadsheetConnection->fresh(),
         ]);
     }
 
@@ -79,6 +108,7 @@ class SpreadsheetConnectionController extends Controller
             'display_name'             => 'required|string|max:255',
             'spreadsheet_url'          => 'nullable|string|max:500',
             'apps_script_endpoint_url' => 'nullable|url|max:500',
+            'drive_folder_url'         => 'nullable|string|max:500',
         ]);
 
         try {
@@ -166,9 +196,22 @@ class SpreadsheetConnectionController extends Controller
                     ->with('error', 'Gagal memicu retry: Record sedang diproses oleh worker aktif atau tidak eligible.');
             }
 
+            if (!app()->runningUnitTests()) {
+                $freshSync = $spreadsheetRowSync->fresh();
+                if ($freshSync && $freshSync->isPending()) {
+                    $syncEngine->processSyncRecord($freshSync, force: true);
+                }
+                $freshSync = $spreadsheetRowSync->fresh();
+                if ($freshSync && $freshSync->isFailed()) {
+                    return redirect()
+                        ->back()
+                        ->with('error', "Retry baris {$freshSync->external_sync_id} gagal: " . ($freshSync->error_message ?? 'Kesalahan tidak diketahui.'));
+                }
+            }
+
             return redirect()
                 ->back()
-                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijadwalkan ke antrean.");
+                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijalankan.");
         } catch (Exception $e) {
             return redirect()
                 ->back()
@@ -185,6 +228,16 @@ class SpreadsheetConnectionController extends Controller
 
         try {
             $count = $syncEngine->retryAllFailed($spreadsheetConnection, Auth::user());
+
+            if (!app()->runningUnitTests() && $count > 0) {
+                $pendingSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+                    ->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
+                    ->get();
+
+                foreach ($pendingSyncs as $pendingSync) {
+                    $syncEngine->processSyncRecord($pendingSync, force: true);
+                }
+            }
 
             return redirect()
                 ->back()

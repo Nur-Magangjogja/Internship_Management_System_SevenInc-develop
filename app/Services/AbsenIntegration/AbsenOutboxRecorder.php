@@ -117,6 +117,7 @@ class AbsenOutboxRecorder
             'end_date'          => $this->formatDate($registration->end_date),
             'fullname'          => trim((string) $registration->fullname),
             'gender'            => trim((string) ($registration->gender ?? '')),
+            'religion'          => trim((string) ($registration->religion ?? '')),
             'institution_id'    => (int) ($registration->institution_id ?? 0),
             'internship_status' => trim($status),
             'phone_number'      => trim((string) ($registration->phone_number ?? '')),

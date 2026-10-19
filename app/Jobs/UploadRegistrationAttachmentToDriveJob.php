@@ -278,6 +278,29 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
                 return;
             }
 
+            // Simpan 1 tautan folder penyimpanan terpadu pendaftar jika dikembalikan oleh Apps Script Gateway
+            $folderId = $response?->rawResponse['folder_id'] ?? $response?->rawResponse['data']['folder_id'] ?? null;
+            $folderUrl = $response?->rawResponse['folder_url'] ?? $response?->rawResponse['data']['folder_url'] ?? null;
+            if (!app()->runningUnitTests() && !empty($folderId) && !empty($folderUrl) && $attachment->internship_registration_id) {
+                RegistrationAttachment::updateOrCreate(
+                    [
+                        'internship_registration_id' => $attachment->internship_registration_id,
+                        'attachment_type'            => RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                    ],
+                    [
+                        'category'            => RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                        'file_path'           => dirname((string) $attachment->file_path),
+                        'original_name'       => 'Folder_Berkas_REG_' . $attachment->internship_registration_id,
+                        'file_size'           => 0,
+                        'mime_type'           => 'application/vnd.google-apps.folder',
+                        'drive_file_id'       => $folderId,
+                        'drive_web_view_link' => $folderUrl,
+                        'drive_sync_status'   => RegistrationAttachment::STATUS_SYNCED,
+                        'drive_synced_at'     => now(),
+                    ]
+                );
+            }
+
             // Trigger row sync re-evaluation so spreadsheet row is refreshed with attachment URL (D22, D23)
             // A failure in spreadsheet re-queue MUST NEVER cause Drive re-upload or revert Drive status to failed.
             if ($attachment->registration) {

@@ -9,8 +9,8 @@
  * 3. Hapus kode bawaan, lalu salin seluruh isi file ini ke dalam editor (Code.gs).
  * 4. Buka Project Settings (ikon gerigi) -> Script Properties -> Add Script Property:
  *    - SHARED_API_KEY             : [Kunci rahasia panjang acak, sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
- *    - REGISTRATION_SPREADSHEET_ID: 1sSDFQKTvifpKS9HZuyzSsu8sUzoVdpzqKGrTKzlcXug
- *    - FOLLOWUP_SPREADSHEET_ID    : 1Hyvbz8oY92-FxvSOE864j4pVEx6D-JFg4A4rCkL4GW4
+ *    - REGISTRATION_SPREADSHEET_ID: 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU
+ *    - FOLLOWUP_SPREADSHEET_ID    : 1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
  *    - ATTACHMENTS_ROOT_FOLDER_ID : 1QRk_vowPYJfx2SmNkbg8-W2yy5o0nPRB
  * 5. Klik "Deploy" -> "New deployment" -> Select type: "Web app":
  *    - Description : SertIF Integration V1
@@ -21,37 +21,59 @@
  *    atau masukkan ke antarmuka admin SertIF di /admin/spreadsheet-connections.
  */
 
-// Canonical 29-Column Contract Definition for Registration Tab 2026 (Order 1 to 29)
+// Canonical 40-Column Contract Definition for Registration Tab 2026 (Order 1 to 40)
 var REG_CONTRACT_2026 = [
   { order: 1, dbKey: "Timestamp", test: function(h) { return /timestamp|waktu/i.test(h); } },
-  { order: 2, dbKey: "Nama Lengkap", test: function(h) { return /nama\s+lengkap/i.test(h) || /^nama$/i.test(h); } },
-  { order: 3, dbKey: "NIM (Nomor Induk Mahasiswa)", test: function(h) { return /nim|nisn/i.test(h); } },
-  { order: 4, dbKey: "Program Studi", test: function(h) { return /program\s+studi|jurusan|prodi/i.test(h); } },
+  { order: 2, dbKey: "Nama Lengkap", aliases: ["Nama"], test: function(h) { return (/nama\s+lengkap/i.test(h) || /^nama$/i.test(h)) && !/pembimbing/i.test(h); } },
+  { order: 3, dbKey: "NIM (Nomor Induk Mahasiswa)", aliases: ["NIM", "NISN"], test: function(h) { return /nim|nisn/i.test(h); } },
+  { order: 4, dbKey: "Program Studi", aliases: ["Jurusan", "Prodi"], test: function(h) { return /program\s+studi|jurusan|prodi/i.test(h); } },
   { order: 5, dbKey: "Email", test: function(h) { return /email/i.test(h); } },
-  { order: 6, dbKey: "Jenis Kelamin", test: function(h) { return /jenis\s+kelamin|gender/i.test(h); } },
-  { order: 7, dbKey: "No. HP Aktif yang bisa dihubungi dan chat WA", test: function(h) { return (/no.*hp|whats?app/i.test(h) && !/dosen|pembimbing/i.test(h)); } },
-  { order: 8, dbKey: "Asal Sekolah/Kampus", test: function(h) { return /sekolah.*kampus|institusi/i.test(h); } },
-  { order: 9, dbKey: "Nama Kota/Daerah tempat tinggal Anda saat ini", test: function(h) { return /kota.*tinggal|kota.*daerah|kota\s+asal/i.test(h); } },
-  { order: 10, dbKey: "Mengapa Anda ingin Magang/PKL disini?", test: function(h) { return /mengapa.*ingin|alasan.*magang/i.test(h); } },
-  { order: 11, dbKey: "Jenis Magang apa yang Anda pilih?", test: function(h) { return /jenis\s+magang|jalur/i.test(h); } },
-  { order: 12, dbKey: "Status Anda saat ini", test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
-  { order: 13, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
-  { order: 14, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", test: function(h) { return /dosen|guru\s+pembimbing|pembimbing/i.test(h); } },
-  { order: 15, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", test: function(h) { return (/senin.*sabtu/i.test(h) || /shifting/i.test(h) || /kesiapan\s+shift/i.test(h)); } },
-  { order: 16, dbKey: "Apakah ada laptop sendiri", test: function(h) { return (/laptop/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h)); } },
-  { order: 17, dbKey: "Jika YA, alat apa yang dimiliki/dibawa", test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)|peralatan/i.test(h); } },
-  { order: 18, dbKey: "Kapan berencana mulai Magang/PKL", test: function(h) { return /mulai\s+magang|kapan.*mulai|rencana.*mulai/i.test(h); } },
-  { order: 19, dbKey: "Berapa lama akan Magang/PKL", test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
-  { order: 20, dbKey: "Sumber info magang", test: function(h) { return /sumber.*info|dapat.*info|tahu.*info|mengetahui.*info/i.test(h); } },
-  { order: 21, dbKey: "Instagram", test: function(h) { return /instagram/i.test(h); } },
-  { order: 22, dbKey: "Butuh info kost/kontrakan", test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
-  { order: 23, dbKey: "Program Magang/PKL yang diminati", test: function(h) { return /minat|bidang.*magang/i.test(h); } },
-  { order: 24, dbKey: "Upload PDF CV + scan KTM/KTP + portofolio max 10MB", test: function(h) { return /cv|portofolio|upload\s+pdf|attachment|ktm|ktp/i.test(h); } },
-  { order: 25, dbKey: "KET", test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
-  { order: 26, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
-  { order: 27, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
-  { order: 28, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
-  { order: 29, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
+  { order: 6, dbKey: "Jenis Kelamin", aliases: ["Gender"], test: function(h) { return /jenis\s+kelamin|gender/i.test(h); } },
+  { order: 7, dbKey: "No. HP Aktif yang bisa dihubungi dan chat WA", aliases: ["No. HP", "Nomor WhatsApp", "No WA", "No. HP Aktif"], test: function(h) { return (/no.*hp|whats?app/i.test(h) && !/dosen|guru|pembimbing/i.test(h)); } },
+  { order: 8, dbKey: "Asal Sekolah/Kampus", aliases: ["Sekolah/Kampus", "Asal Kampus", "Institusi"], test: function(h) { return /sekolah.*kampus|asal.*sekolah|institusi/i.test(h); } },
+  { order: 9, dbKey: "Nama Kota/Daerah tempat tinggal Anda saat ini", aliases: ["Kota Tinggal", "Domisili", "Kota Asal"], test: function(h) { return /kota.*tinggal|kota.*daerah|kota\s+asal|domisili/i.test(h); } },
+  { order: 10, dbKey: "Mengapa Anda ingin Magang/PKL disini?", aliases: ["Alasan Magang", "Alasan PKL", "Mengapa Anda ingin Magang/PKL disini"], test: function(h) { return /mengapa.*ingin|alasan.*magang|alasan.*pkl/i.test(h); } },
+  { order: 11, dbKey: "Jenis Magang apa yang Anda pilih?", aliases: ["Jenis Magang", "Jalur Magang", "Jenis Magang apa yang Anda pilih"], test: function(h) { return /jenis\s+magang|jalur.*magang/i.test(h); } },
+  { order: 12, dbKey: "Status Anda saat ini", aliases: ["Status Saat Ini", "Status"], test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
+  { order: 13, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", aliases: ["Kesiapan WFO", "Siap WFO", "Apakah Anda siap dengan Sistem Magang WFO"], test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
+  { order: 14, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", aliases: ["No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).", "Kontak Dosen/Guru Pembimbing", "Pembimbing PKL/Magang"], test: function(h) { return (/dosen|guru\s+pembimbing/i.test(h) || (/pembimbing/i.test(h) && /jabatan/i.test(h))) && !/^nama\s+pembimbing/i.test(h) && !/(no|wa).*pembimbing$/i.test(h); } },
+  { order: 15, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", aliases: ["Hari magang adalah Senin - Sabtu. Jam magangnya dijadwalkan shifting bergantian antara : Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB). Apakah Anda sanggup?", "Kesanggupan Jadwal", "Kesiapan Shifting", "Kesanggupan jadwal Senin–Sabtu dan shifting"], test: function(h) { return /senin.*sabtu|shifting|kesiapan\s+shift|apakah\s+anda\s+sanggup/i.test(h); } },
+  { order: 16, dbKey: "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?", legacyKey: "Apakah ada laptop sendiri", aliases: ["Punya Laptop Sendiri", "Apakah ada laptop sendiri", "Apakah Anda ada alat kerja sendiri (LAPTOP)"], test: function(h) { return /laptop/i.test(h) && !/peralatan/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h); } },
+  { order: 17, dbKey: "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?", legacyKey: "Jika YA, alat apa yang dimiliki/dibawa", aliases: ["Alat yang dibawa", "Jika YA, alat apa yang dimiliki/dibawa", "Jika YA, alat apa yang Anda miliki"], test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)/i.test(h) && !/peralatan/i.test(h); } },
+  { order: 18, dbKey: "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)", legacyKey: "Kapan berencana mulai Magang/PKL", aliases: ["Rencana Mulai Magang", "Tanggal Mulai", "Kapan berencana mulai Magang/PKL", "Kapan Anda berencana mulai Magang/PKL"], test: function(h) { return /kapan.*mulai|rencana.*mulai|mulai.*magang/i.test(h); } },
+  { order: 19, dbKey: "Berapa lama Anda akan Magang/PKL?", legacyKey: "Berapa lama akan Magang/PKL", aliases: ["Durasi Magang", "Lama Magang", "Berapa lama akan Magang/PKL", "Berapa lama Anda akan Magang/PKL"], test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
+  { order: 20, dbKey: "Anda tahu info magang ini dari mana?", legacyKey: "Sumber info magang", aliases: ["Sumber Informasi", "Sumber info magang", "Anda tahu info magang ini dari mana"], test: function(h) { return /tahu.*info|sumber.*info|dapat.*info/i.test(h); } },
+  { order: 21, dbKey: "Sosial Media (Instagram) yang dimiliki", legacyKey: "Instagram", aliases: ["Akun Instagram", "Instagram", "Sosial Media (Instagram)"], test: function(h) { return /instagram|sosial\s+media/i.test(h); } },
+  { order: 22, dbKey: "Apakah anda membutuhkan info kost/kontrakan deket kantor?", legacyKey: "Butuh info kost/kontrakan", aliases: ["Info Kost", "Butuh Kost", "Butuh info kost/kontrakan", "Apakah anda membutuhkan info kost/kontrakan"], test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
+  { order: 23, dbKey: "Program Magang/PKL apa yang Anda minati?", legacyKey: "Program Magang/PKL yang diminati", aliases: ["Bidang Minat", "Divisi Magang", "Program Magang/PKL yang diminati", "Program Magang/PKL apa yang Anda minati"], test: function(h) { return /minat|bidang.*magang/i.test(h); } },
+  { order: 24, dbKey: "Tempat Lahir", aliases: ["Tempat Kelahiran", "Birth Place"], test: function(h) { return /tempat\s+lahir/i.test(h); } },
+  { order: 25, dbKey: "Tanggal Lahir", aliases: ["Tgl Lahir", "Birth Date"], test: function(h) { return /tanggal\s+lahir|tgl\s+lahir|birth\s*date/i.test(h); } },
+  { order: 26, dbKey: "Agama", aliases: ["Religion"], test: function(h) { return /^agama$|^religion$/i.test(h); } },
+  { order: 27, dbKey: "Software Desain", aliases: ["Design Software", "Software Desain yang Dikuasai"], test: function(h) { return /software\s+desain/i.test(h); } },
+  { order: 28, dbKey: "Software Video", aliases: ["Video Editing Software", "Software Video yang Dikuasai"], test: function(h) { return /software\s+video/i.test(h); } },
+  { order: 29, dbKey: "Bahasa Pemrograman", aliases: ["Programming Languages", "Bahasa Koding"], test: function(h) { return /bahasa\s+pemrograman|programming/i.test(h); } },
+  { order: 30, dbKey: "Digital Marketing", aliases: ["Keahlian Digital Marketing"], test: function(h) { return /digital\s+marketing/i.test(h); } },
+  { order: 31, dbKey: "Peralatan (Laptop, Kamera, Tripod, dll)", aliases: ["Peralatan", "Alat Milik Sendiri", "Peralatan (Laptop, Kamera, Tripod dll)"], test: function(h) { return /^peralatan/i.test(h) || /peralatan.*laptop/i.test(h); } },
+  { order: 32, dbKey: "Nama Pembimbing", aliases: ["Nama Guru Pembimbing", "Nama Dosen Pembimbing"], test: function(h) { return /^nama\s+pembimbing/i.test(h); } },
+  { order: 33, dbKey: "No. WA Pembimbing", aliases: ["Nomor WA Pembimbing", "No HP Pembimbing"], test: function(h) { return /(no|wa).*pembimbing/i.test(h) && !/dosen|guru|jabatan/i.test(h); } },
+  { order: 34, dbKey: "Kegiatan Lain Selain Magang", aliases: ["Aktivitas Lain", "Kegiatan Lain"], test: function(h) { return /kegiatan\s+lain/i.test(h); } },
+  { 
+    order: 35, 
+    dbKey: "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", 
+    legacyKey: "Upload PDF CV + scan KTM/KTP + portofolio max 10MB",
+    aliases: [
+      "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB",
+      "Upload PDF CV + scan KTM/KTP + portofolio max 10MB",
+      "attachment_url",
+      "cv_ktp_portofolio"
+    ],
+    test: function(h) { return /silakan\s+upload|upload.*pdf|attachment|cv.*ktm.*portofolio/i.test(h); } 
+  },
+  { order: 36, dbKey: "KET", aliases: ["Keterangan", "Status Approval"], test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
+  { order: 37, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
+  { order: 38, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
+  { order: 39, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
+  { order: 40, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
 ];
 
 // Canonical 21-Column Contract Definition for Follow Up Tab (Order 1 to 21)
@@ -80,50 +102,298 @@ var FOLLOWUP_CONTRACT = [
 ];
 
 /**
- * Match a raw spreadsheet header string to a canonical registration slot (1-29).
+ * Match a raw spreadsheet header string to a canonical registration slot (1-40).
+ * Uses a robust two-pass strategy:
+ * Pass 1: Strict exact matching on dbKey, legacyKey, and known aliases across all slots.
+ * Pass 2: Fallback regex pattern matching if no exact header match was found.
  */
 function matchRegistrationSlot(headerRaw) {
   if (headerRaw === undefined || headerRaw === null) return null;
   var clean = headerRaw.toString().replace(/[\r\n]+/g, " ").trim();
   if (clean === "") return null;
 
+  var lowerClean = clean.toLowerCase();
+
+  // Pass 1: Strict exact matches against canonical dbKey, legacyKey, or aliases
   for (var i = 0; i < REG_CONTRACT_2026.length; i++) {
     var slot = REG_CONTRACT_2026[i];
-    if (slot.dbKey === clean || slot.test(clean)) {
+    if (slot.dbKey === clean || slot.dbKey.toLowerCase() === lowerClean) {
       return slot;
     }
+    if (slot.legacyKey && (slot.legacyKey === clean || slot.legacyKey.toLowerCase() === lowerClean)) {
+      return slot;
+    }
+    if (slot.aliases && Array.isArray(slot.aliases)) {
+      for (var a = 0; a < slot.aliases.length; a++) {
+        if (slot.aliases[a] === clean || slot.aliases[a].toLowerCase() === lowerClean) {
+          return slot;
+        }
+      }
+    }
   }
+
+  // Pass 2: Fallback pattern matching (only reached if exact match failed)
+  for (var j = 0; j < REG_CONTRACT_2026.length; j++) {
+    var slotFallback = REG_CONTRACT_2026[j];
+    if (slotFallback.test && slotFallback.test(clean)) {
+      return slotFallback;
+    }
+  }
+
   return null;
 }
 
 /**
  * Match a raw spreadsheet header string to a canonical follow-up slot (1-21).
+ * Uses a robust two-pass strategy:
+ * Pass 1: Strict exact matching on dbKey and aliases across all slots.
+ * Pass 2: Fallback regex pattern matching if no exact header match was found.
  */
 function matchFollowUpSlot(headerRaw) {
   if (headerRaw === undefined || headerRaw === null) return null;
   var clean = headerRaw.toString().replace(/[\r\n]+/g, " ").trim();
   if (clean === "") return null;
 
+  var lowerClean = clean.toLowerCase();
+
+  // Pass 1: Exact matches against canonical dbKey or aliases
   for (var i = 0; i < FOLLOWUP_CONTRACT.length; i++) {
     var slot = FOLLOWUP_CONTRACT[i];
-    if (slot.dbKey === clean || slot.test(clean)) {
+    if (slot.dbKey === clean || slot.dbKey.toLowerCase() === lowerClean) {
       return slot;
     }
+    if (slot.aliases && Array.isArray(slot.aliases)) {
+      for (var a = 0; a < slot.aliases.length; a++) {
+        if (slot.aliases[a] === clean || slot.aliases[a].toLowerCase() === lowerClean) {
+          return slot;
+        }
+      }
+    }
   }
+
+  // Pass 2: Fallback pattern matching
+  for (var j = 0; j < FOLLOWUP_CONTRACT.length; j++) {
+    var slotFallback = FOLLOWUP_CONTRACT[j];
+    if (slotFallback.test && slotFallback.test(clean)) {
+      return slotFallback;
+    }
+  }
+
   return null;
+}
+
+/**
+ * Ensure target sheet tab exists and automatically synchronize Row 12 headers
+ * (plus realign existing data rows if columns were added, renamed, or reordered).
+ */
+function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet && typeof ss.insertSheet === "function") {
+    sheet = ss.insertSheet(tabName);
+  }
+  if (!sheet || !Array.isArray(schemaHeaders) || schemaHeaders.length === 0) {
+    return sheet;
+  }
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+
+  if (lastCol === 0 || lastRow < headerRowIndex) {
+    sheet.getRange(headerRowIndex, 1, 1, schemaHeaders.length).setValues([schemaHeaders]);
+    return sheet;
+  }
+
+  var oldHeaders = sheet.getRange(headerRowIndex, 1, 1, lastCol).getValues()[0];
+  var headersIdentical = (oldHeaders.length === schemaHeaders.length);
+  if (headersIdentical) {
+    for (var i = 0; i < schemaHeaders.length; i++) {
+      var oldClean = (oldHeaders[i] || "").toString().replace(/[\r\n]+/g, " ").trim();
+      var newClean = (schemaHeaders[i] || "").toString().replace(/[\r\n]+/g, " ").trim();
+      if (oldClean !== newClean) {
+        headersIdentical = false;
+        break;
+      }
+    }
+  }
+
+  if (headersIdentical) {
+    return sheet;
+  }
+
+  // Build mapping from each new header index -> old column index (0-based)
+  var colMap = [];
+  var usedOldIndices = {};
+  for (var n = 0; n < schemaHeaders.length; n++) {
+    var targetHeader = (schemaHeaders[n] || "").toString().replace(/[\r\n]+/g, " ").trim();
+    var targetLower = targetHeader.toLowerCase();
+    var foundOldIdx = -1;
+
+    for (var o = 0; o < oldHeaders.length; o++) {
+      if (usedOldIndices[o]) continue;
+      var oldH = (oldHeaders[o] || "").toString().replace(/[\r\n]+/g, " ").trim();
+      if (oldH.toLowerCase() === targetLower && oldH !== "") {
+        foundOldIdx = o;
+        usedOldIndices[o] = true;
+        break;
+      }
+    }
+
+    if (foundOldIdx === -1) {
+      var targetSlot = matchRegistrationSlot(targetHeader);
+      if (targetSlot) {
+        for (var o2 = 0; o2 < oldHeaders.length; o2++) {
+          if (usedOldIndices[o2]) continue;
+          var oldSlot = matchRegistrationSlot(oldHeaders[o2]);
+          if (oldSlot && oldSlot.order === targetSlot.order) {
+            foundOldIdx = o2;
+            usedOldIndices[o2] = true;
+            break;
+          }
+        }
+      }
+    }
+
+    colMap.push(foundOldIdx);
+  }
+
+  // Realign existing data rows (Row 13+) so KET and SERTIF_SYNC_ID never shift into wrong columns
+  var numDataRows = lastRow - headerRowIndex;
+  if (numDataRows > 0) {
+    var oldData = sheet.getRange(headerRowIndex + 1, 1, numDataRows, lastCol).getValues();
+    var newData = [];
+    for (var r = 0; r < oldData.length; r++) {
+      var newRow = [];
+      for (var c = 0; c < schemaHeaders.length; c++) {
+        var mappedOldIdx = colMap[c];
+        if (mappedOldIdx >= 0 && mappedOldIdx < oldData[r].length) {
+          var val = oldData[r][mappedOldIdx];
+          newRow.push(val === "" || val === null || val === undefined ? "-" : val);
+        } else {
+          newRow.push("-");
+        }
+      }
+      newData.push(newRow);
+    }
+    sheet.getRange(headerRowIndex + 1, 1, numDataRows, schemaHeaders.length).setValues(newData);
+  }
+
+  // Write updated headers on headerRowIndex
+  sheet.getRange(headerRowIndex, 1, 1, schemaHeaders.length).setValues([schemaHeaders]);
+
+  // If new headers require columns beyond current max columns, ensure sheet has enough columns
+  var currentMaxCols = sheet.getMaxColumns();
+  if (schemaHeaders.length > currentMaxCols) {
+    sheet.insertColumnsAfter(currentMaxCols, schemaHeaders.length - currentMaxCols);
+  }
+
+  // Unhide any columns within the active schema range in case they were previously hidden
+  try {
+    if (typeof sheet.unhideColumn === "function") {
+      sheet.unhideColumn(sheet.getRange(headerRowIndex, 1, 1, schemaHeaders.length));
+    }
+  } catch (uhErr) {}
+
+  // Clear and delete/hide leftover columns to the right if column count shrank (e.g. fields disabled)
+  if (lastCol > schemaHeaders.length) {
+    var extraCols = lastCol - schemaHeaders.length;
+    var clearRows = Math.max(1, lastRow - headerRowIndex + 1);
+    var extraRange = sheet.getRange(headerRowIndex, schemaHeaders.length + 1, clearRows, extraCols);
+    try {
+      if (typeof extraRange.clear === "function") {
+        extraRange.clear({ contentsOnly: false, formatOnly: false });
+      } else if (typeof extraRange.clearContent === "function") {
+        extraRange.clearContent();
+      }
+    } catch (clrErr) {
+      try { extraRange.clearContent(); } catch (clrErr2) {}
+    }
+
+    // Attempt to permanently delete excess columns or hide them so they disappear from view
+    try {
+      if (typeof sheet.deleteColumns === "function" && sheet.getMaxColumns() > schemaHeaders.length) {
+        var colsToDelete = Math.min(extraCols, sheet.getMaxColumns() - schemaHeaders.length);
+        if (colsToDelete > 0) {
+          sheet.deleteColumns(schemaHeaders.length + 1, colsToDelete);
+        }
+      }
+    } catch (delErr) {
+      try {
+        if (typeof sheet.hideColumns === "function") {
+          sheet.hideColumns(schemaHeaders.length + 1, extraCols);
+        }
+      } catch (hideErr) {}
+    }
+  }
+
+  return sheet;
 }
 
 /**
  * Build mapped row values for sheet columns, strictly validating contract compatibility.
  */
-function buildRowValuesForSheet(actualHeaders, rowData, connectionKey) {
+function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDynamicRegistrationCols) {
   var isRegistration = (connectionKey === "registration");
-  var contract = isRegistration ? REG_CONTRACT_2026 : FOLLOWUP_CONTRACT;
-  var expectedCols = isRegistration ? 29 : 21;
+  var expectedCols = isRegistration ? 40 : 21;
+
+  if (isRegistration && allowDynamicRegistrationCols === true) {
+    if (!actualHeaders || actualHeaders.length < 40) {
+      return {
+        error: "Jumlah kolom spreadsheet pendaftaran minimal 40 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+        error_code: "SCHEMA_MISMATCH"
+      };
+    }
+
+    var dynValues = [];
+    for (var dh = 0; dh < actualHeaders.length; dh++) {
+      var dRawHeader = actualHeaders[dh];
+      if (dRawHeader === undefined || dRawHeader === null || dRawHeader.toString().trim() === "") {
+        return {
+          error: "Header spreadsheet pada kolom " + (dh + 1) + " kosong.",
+          error_code: "SCHEMA_MISMATCH"
+        };
+      }
+
+      var dRawStr = dRawHeader.toString();
+      var dCleanStr = dRawStr.replace(/[\r\n]+/g, " ").trim();
+      var dSlot = matchRegistrationSlot(dRawHeader);
+      var dVal = undefined;
+
+      if (rowData.hasOwnProperty(dRawStr)) {
+        dVal = rowData[dRawStr];
+      } else if (rowData.hasOwnProperty(dRawStr.trim())) {
+        dVal = rowData[dRawStr.trim()];
+      } else if (rowData.hasOwnProperty(dCleanStr)) {
+        dVal = rowData[dCleanStr];
+      } else if (dSlot && rowData.hasOwnProperty(dSlot.dbKey)) {
+        dVal = rowData[dSlot.dbKey];
+      } else if (dSlot && dSlot.legacyKey && rowData.hasOwnProperty(dSlot.legacyKey)) {
+        dVal = rowData[dSlot.legacyKey];
+      }
+
+      if (dVal === undefined) {
+        for (var dk in rowData) {
+          if (rowData.hasOwnProperty(dk)) {
+            var cleanDk = dk.toString().replace(/[\r\n]+/g, " ").trim();
+            if (cleanDk.toLowerCase() === dCleanStr.toLowerCase() || (dSlot && (cleanDk === dSlot.dbKey || (dSlot.test && dSlot.test(cleanDk))))) {
+              dVal = rowData[dk];
+              break;
+            }
+          }
+        }
+      }
+
+      if (dVal === undefined || dVal === null || dVal === "") {
+        dVal = "-";
+      }
+      dynValues.push(dVal);
+    }
+
+    return { values: dynValues };
+  }
 
   if (!actualHeaders || actualHeaders.length !== expectedCols) {
     return {
-      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (harus tepat 29 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (harus tepat 40 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
       error_code: "SCHEMA_MISMATCH"
     };
   }
@@ -165,13 +435,24 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey) {
       cellVal = rowData[rawStr.trim()];
     } else if (rowData.hasOwnProperty(slot.dbKey)) {
       cellVal = rowData[slot.dbKey];
+    } else if (slot.legacyKey && rowData.hasOwnProperty(slot.legacyKey)) {
+      cellVal = rowData[slot.legacyKey];
     } else if (rowData.hasOwnProperty(cleanStr)) {
       cellVal = rowData[cleanStr];
-    } else {
+    } else if (slot.aliases) {
+      for (var a = 0; a < slot.aliases.length; a++) {
+        if (rowData.hasOwnProperty(slot.aliases[a])) {
+          cellVal = rowData[slot.aliases[a]];
+          break;
+        }
+      }
+    }
+
+    if (cellVal === undefined) {
       for (var k in rowData) {
         if (rowData.hasOwnProperty(k)) {
           var cleanK = k.toString().replace(/[\r\n]+/g, " ").trim();
-          if (cleanK === cleanStr || cleanK === slot.dbKey) {
+          if (cleanK === cleanStr || cleanK === slot.dbKey || cleanK === slot.legacyKey || (slot.test && slot.test(cleanK))) {
             cellVal = rowData[k];
             break;
           }
@@ -228,6 +509,9 @@ function doPost(e) {
 
       case "update_row":
         return handleUpdateRowAction(payload);
+
+      case "sync_sheet_schema":
+        return handleSyncSheetSchemaAction(payload);
 
       case "lookup_row":
         return handleLookupRowAction(payload);
@@ -528,7 +812,10 @@ function handleUpsertRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var sheet = ss.getSheetByName(targetTabName);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var sheet = autoSyncHeaders
+      ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
+      : ss.getSheetByName(targetTabName);
 
     if (!sheet) {
       return createJsonResponse({
@@ -576,7 +863,7 @@ function handleUpsertRowAction(payload) {
     }
 
     // Map row values and strictly validate schema compatibility against contract
-    var mappingResult = buildRowValuesForSheet(actualHeaders, rowData, connectionKey);
+    var mappingResult = buildRowValuesForSheet(actualHeaders, rowData, connectionKey, autoSyncHeaders);
     if (mappingResult.error) {
       return createJsonResponse({
         success: false,
@@ -830,7 +1117,10 @@ function handleUpdateRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var sheet = ss.getSheetByName(targetTabName);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var sheet = autoSyncHeaders
+      ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
+      : ss.getSheetByName(targetTabName);
 
     if (!sheet) {
       return createJsonResponse({
@@ -931,7 +1221,7 @@ function handleUpdateRowAction(payload) {
     }
 
     // Map row values and strictly validate schema compatibility against contract
-    var mappingResult = buildRowValuesForSheet(actualHeaders, rowData, connectionKey);
+    var mappingResult = buildRowValuesForSheet(actualHeaders, rowData, connectionKey, autoSyncHeaders);
     if (mappingResult.error) {
       return createJsonResponse({
         success: false,
@@ -969,6 +1259,85 @@ function handleUpdateRowAction(payload) {
     }, 500);
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * Handle Automatic Sheet Schema Synchronization (sync_sheet_schema)
+ * Creates the target year tab if missing, updates Row 12 headers, and realigns existing rows.
+ */
+function handleSyncSheetSchemaAction(payload) {
+  var connectionKey = payload.connection_key || "registration";
+  var targetTabName = (payload.tab_name || "").toString().trim();
+  var headers = payload.headers || [];
+
+  if (!Array.isArray(headers) || headers.length === 0) {
+    return createJsonResponse({
+      success: false,
+      error_code: "INVALID_HEADERS",
+      is_retryable: false,
+      message: "Daftar headers wajib berupa array tidak kosong."
+    }, 400);
+  }
+
+  var props = null;
+  try {
+    if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+      props = PropertiesService.getScriptProperties();
+    }
+  } catch (e) {}
+  if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+    props = global._mockScriptProperties;
+  }
+
+  var regSheetId = (props && typeof props.getProperty === "function")
+    ? (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim()
+    : "";
+  var spreadsheetId = (payload.spreadsheet_id || regSheetId).toString().trim();
+
+  if (!spreadsheetId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "SPREADSHEET_ID_MISSING",
+      is_retryable: false,
+      message: "Spreadsheet ID belum dikonfigurasi."
+    }, 400);
+  }
+
+  var headerRowIndex = (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) ? 12 : 1;
+  var lock = (typeof LockService !== "undefined" && LockService && LockService.getScriptLock)
+    ? LockService.getScriptLock()
+    : null;
+
+  var lockAcquired = false;
+  if (lock) {
+    try { lockAcquired = lock.tryLock(30000); } catch (e) {}
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    ensureSheetAndSyncHeaders(ss, targetTabName, headers, headerRowIndex);
+    SpreadsheetApp.flush();
+
+    return createJsonResponse({
+      success: true,
+      action: "sync_sheet_schema",
+      tab_name: targetTabName,
+      header_row_index: headerRowIndex,
+      column_count: headers.length,
+      timestamp: new Date().toISOString()
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "SPREADSHEET_SCHEMA_SYNC_ERROR",
+      is_retryable: true,
+      message: "Gagal menyinkronkan skema kolom Spreadsheet: " + err.toString()
+    }, 500);
+  } finally {
+    if (lock && lockAcquired) {
+      lock.releaseLock();
+    }
   }
 }
 
@@ -1094,14 +1463,14 @@ function handleLookupRowAction(payload) {
  */
 function handleUploadAttachmentAction(payload) {
   var props = PropertiesService.getScriptProperties();
-  var rootFolderId = props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID");
+  var rootFolderId = (payload.drive_folder_id || props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") || "1d3TqOQO7x1REOYPNSRlZRLc7nH4K5G3u").toString().trim();
 
   if (!rootFolderId) {
     return createJsonResponse({
       success: false,
       error_code: "DRIVE_FOLDER_NOT_CONFIGURED",
       is_retryable: false,
-      message: "Root folder ID Google Drive belum dikonfigurasi di Script Properties."
+      message: "Root folder ID Google Drive belum dikonfigurasi pada pengaturan Integrasi Spreadsheet maupun Script Properties."
     }, 400);
   }
 
@@ -1259,28 +1628,22 @@ function handleUploadAttachmentAction(payload) {
   try {
     var rootFolder = DriveApp.getFolderById(rootFolderId);
     
-    // Subfolder hierarchy: Registrasi / {Year} / {ApplicantName}_{regId}
+    // Subfolder per pendaftar di dalam folder Google Drive yang dikonfigurasi: {ApplicantName}_REG{regId}
     var cleanApplicantName = applicantName.replace(/[^a-zA-Z0-9_\-\s]/g, "").trim().replace(/\s+/g, "_");
-    var baseFolderName = payload.base_folder || "Registrasi";
-    var regBaseFolder = getOrCreateSubFolder(rootFolder, baseFolderName);
-    var yearFolder = getOrCreateSubFolder(regBaseFolder, year);
     var targetFolderName = cleanApplicantName + "_REG" + regId;
-    var targetFolder = getOrCreateSubFolder(yearFolder, targetFolderName);
-
-    if (payload.category && typeof targetFolder.getFoldersByName === "function") {
-      var categoryFolderMap = {
-        "cv": "CV",
-        "identity": "Identitas",
-        "portfolio": "Portofolio",
-        "cover_letter": "Surat-Pengantar",
-        "proposal": "Proposal",
-        "supporting_document": "Dokumen-Pendukung",
-        "profile_photo": "Foto-Profil",
-        "legacy_bundle": "Berkas-Gabungan"
-      };
-      var subCategoryName = categoryFolderMap[payload.category.toString().toLowerCase()] || payload.category;
-      targetFolder = getOrCreateSubFolder(targetFolder, subCategoryName);
+    var targetFolder = null;
+    if (payload.direct_applicant_folder || payload.drive_folder_id) {
+      targetFolder = getOrCreateSubFolder(rootFolder, targetFolderName);
+    } else {
+      var baseFolderName = payload.base_folder || "Registrasi";
+      var regBaseFolder = getOrCreateSubFolder(rootFolder, baseFolderName);
+      var yearFolder = getOrCreateSubFolder(regBaseFolder, year);
+      targetFolder = getOrCreateSubFolder(yearFolder, targetFolderName);
     }
+    var folderId = (targetFolder && typeof targetFolder.getId === "function") ? targetFolder.getId() : null;
+    var folderUrl = (targetFolder && typeof targetFolder.getUrl === "function")
+      ? targetFolder.getUrl()
+      : (folderId ? "https://drive.google.com/drive/folders/" + folderId : null);
 
     // Idempotency check: check if file with this sync identity & verified checksum already exists
     var safeFilePrefix = syncId + "_";
@@ -1333,6 +1696,8 @@ function handleUploadAttachmentAction(payload) {
           file_id: file.getId(),
           file_name: file.getName(),
           web_view_link: file.getUrl(),
+          folder_id: folderId,
+          folder_url: folderUrl,
           operation: "reused_existing",
           timestamp: new Date().toISOString()
         });
@@ -1356,6 +1721,8 @@ function handleUploadAttachmentAction(payload) {
       file_id: createdFile.getId(),
       file_name: createdFile.getName(),
       web_view_link: createdFile.getUrl(),
+      folder_id: folderId,
+      folder_url: folderUrl,
       operation: "created",
       timestamp: new Date().toISOString()
     });

@@ -15,12 +15,12 @@ class AbsenApiKeyMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $expectedKey = config('services.absen_djuragan.inbound_api_key')
-            ?: config('services.absen_djuragan.api_key')
-            ?: env('ABSEN_DJURAGAN_INBOUND_API_KEY')
-            ?: env('ABSEN_DJURAGAN_API_KEY');
+        $validKeys = array_values(array_filter([
+            config('services.absen_djuragan.inbound_api_key'),
+            config('services.absen_djuragan.api_key'),
+        ]));
 
-        if (empty($expectedKey)) {
+        if (empty($validKeys)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Layanan API eksternal belum dikonfigurasi pada server.',
@@ -28,11 +28,21 @@ class AbsenApiKeyMiddleware
         }
 
         // Baca kunci dari header X-API-KEY, Authorization Bearer, atau query string api_key
-        $providedKey = $request->header('X-API-KEY') 
+        $providedKey = (string) ($request->header('X-API-KEY') 
             ?: $request->bearerToken() 
-            ?: $request->query('api_key');
+            ?: $request->query('api_key'));
 
-        if (empty($providedKey) || !hash_equals((string) $expectedKey, (string) $providedKey)) {
+        $isAuthorized = false;
+        if (!empty($providedKey)) {
+            foreach ($validKeys as $key) {
+                if (!empty($key) && hash_equals((string) $key, $providedKey)) {
+                    $isAuthorized = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$isAuthorized) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Kunci API (X-API-KEY) tidak valid atau tidak disertakan.',

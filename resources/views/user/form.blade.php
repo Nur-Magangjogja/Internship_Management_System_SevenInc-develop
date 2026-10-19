@@ -86,10 +86,19 @@
           <!-- Agama -->
           <div>
             <label for="religion" class="{{ $label }}">Agama</label>
+            @php
+              $valRel = strtolower(trim((string) old('religion')));
+            @endphp
             <select id="religion" name="religion" class="{{ $input }}">
               <option value="">-- Pilih Agama (Opsional) --</option>
               @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $rel)
-                <option value="{{ $rel }}" @selected(old('religion') === $rel)>{{ $rel }}</option>
+                @php
+                  $optLower = strtolower($rel);
+                  $isSelected = ($valRel === $optLower)
+                    || ($optLower === 'kristen protestan' && in_array($valRel, ['kristen', 'protestan', 'kristen protestan'], true))
+                    || ($optLower === 'khonghucu' && in_array($valRel, ['khonghucu', 'konghucu'], true));
+                @endphp
+                <option value="{{ $rel }}" @selected($isSelected)>{{ $rel }}</option>
               @endforeach
             </select>
             @error('religion') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
@@ -111,16 +120,21 @@
           <!-- Jenis Kelamin (value Indonesia) -->
           <div>
             <h3 class="{{ $label }}">Jenis Kelamin</h3>
+            @php
+              $valGender = strtolower(trim((string) old('gender')));
+              $isMale = in_array($valGender, ['laki-laki', 'l', 'male', 'pria'], true);
+              $isFemale = in_array($valGender, ['perempuan', 'p', 'female', 'wanita'], true);
+            @endphp
             <ul class="{{ $group }}">
               <li class="border-b border-zinc-200">
                 <label for="gender-lk" class="{{ $item }}">
-                  <input id="gender-lk" type="radio" value="Laki-laki" name="gender" class="{{ $radio }}" @checked(old('gender') === 'Laki-laki') />
+                  <input id="gender-lk" type="radio" value="Laki-laki" name="gender" class="{{ $radio }}" @checked($isMale) />
                   <span class="text-sm">Laki-laki</span>
                 </label>
               </li>
               <li>
                 <label for="gender-pr" class="{{ $item }}">
-                  <input id="gender-pr" type="radio" value="Perempuan" name="gender" class="{{ $radio }}" @checked(old('gender') === 'Perempuan') />
+                  <input id="gender-pr" type="radio" value="Perempuan" name="gender" class="{{ $radio }}" @checked($isFemale) />
                   <span class="text-sm">Perempuan</span>
                 </label>
               </li>

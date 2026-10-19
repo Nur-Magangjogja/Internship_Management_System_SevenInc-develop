@@ -27,6 +27,7 @@ class DynamicFormBuilderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         $this->service = app(FormBuilderService::class);
     }
 
@@ -664,6 +665,55 @@ class DynamicFormBuilderTest extends TestCase
             // Kembalikan konfigurasi simulasi ke default
             config(['internship.simulate_unmigrated_form_schema' => false]);
         }
+    }
+
+    /**
+     * 15. InternApiController form_fields deduplication: pastikan tidak ada duplikasi field_key
+     * meskipun terdapat multi-versi skema form di database.
+     */
+    public function test_intern_api_controller_form_fields_deduplicated_across_multiple_schemas(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin);
+
+        // Buat schema 1 (published) dengan custom fields
+        $draft1 = $this->service->getOrCreateDraft(2026, $admin);
+        $this->service->addFieldToDraft($draft1, [
+            'field_key'   => 'custom_skill',
+            'field_type'  => 'text',
+            'label'       => 'Keahlian Khusus',
+            'is_required' => false,
+        ]);
+        $this->service->addFieldToDraft($draft1, [
+            'field_key'   => 'custom_hobi',
+            'field_type'  => 'text',
+            'label'       => 'Hobi',
+            'is_required' => false,
+        ]);
+        $published1 = $this->service->publishVersion($draft1, $admin);
+
+        // Buat schema 2 (draf versi kloning berikutnya yang mewarisi field yang sama di DB)
+        $draft2 = $this->service->getOrCreateDraft(2026, $admin);
+
+        $res = $this->getJson('/admin/interns.json');
+        $res->assertOk();
+
+        $formFields = $res->json('form_fields');
+        $this->assertIsArray($formFields);
+        $this->assertNotEmpty($formFields);
+
+        // Kumpulkan semua field_key
+        $fieldKeys = array_column($formFields, 'field_key');
+        $uniqueFieldKeys = array_unique($fieldKeys);
+
+        // Pastikan jumlah fieldKey sama dengan jumlah uniqueFieldKeys (tidak ada duplikasi)
+        $this->assertCount(
+            count($uniqueFieldKeys),
+            $fieldKeys,
+            'Daftar form_fields tidak boleh memiliki duplikasi field_key'
+        );
+        $this->assertContains('custom_skill', $fieldKeys);
+        $this->assertContains('custom_hobi', $fieldKeys);
     }
 }
 

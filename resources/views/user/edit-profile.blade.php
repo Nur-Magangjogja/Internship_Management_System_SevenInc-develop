@@ -250,24 +250,36 @@
             @error('born_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
           </div>
 
-          @php $g = old('gender', $intern->gender); @endphp
+          @php
+            $rawGender = strtolower(trim((string) old('gender', $intern->gender)));
+            $isMale = in_array($rawGender, ['male', 'laki-laki', 'l', 'pria'], true);
+            $isFemale = in_array($rawGender, ['female', 'perempuan', 'p', 'wanita'], true);
+          @endphp
           <div class="col-span-12 md:col-span-6 lg:col-span-4">
             <label class="{{ $label }}">Jenis Kelamin</label>
             <select name="gender" class="{{ $input }} pr-10 @error('gender') border-red-500 focus:ring-red-500 @enderror" required>
-              <option value="" disabled {{ $g ? '' : 'selected' }}>Pilih gender</option>
-              <option value="male"   {{ $g === 'male' ? 'selected' : '' }}>Laki-laki</option>
-              <option value="female" {{ $g === 'female' ? 'selected' : '' }}>Perempuan</option>
+              <option value="" disabled {{ ($isMale || $isFemale) ? '' : 'selected' }}>Pilih gender</option>
+              <option value="male"   {{ $isMale ? 'selected' : '' }}>Laki-laki</option>
+              <option value="female" {{ $isFemale ? 'selected' : '' }}>Perempuan</option>
             </select>
             @error('gender') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
           </div>
 
-          @php $rel = old('religion', $intern->religion); @endphp
+          @php
+            $rel = strtolower(trim((string) old('religion', $intern->religion)));
+          @endphp
           <div class="col-span-12 md:col-span-6 lg:col-span-4">
             <label class="{{ $label }}">Agama</label>
             <select name="religion" class="{{ $input }} pr-10 @error('religion') border-red-500 focus:ring-red-500 @enderror">
-              <option value="" {{ $rel ? '' : 'selected' }}>Pilih Agama</option>
+              <option value="" {{ empty($rel) ? 'selected' : '' }}>Pilih Agama</option>
               @foreach(['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'] as $agama)
-                <option value="{{ $agama }}" {{ ($rel === $agama || ($agama === 'Kristen Protestan' && $rel === 'Kristen')) ? 'selected' : '' }}>{{ $agama }}</option>
+                @php
+                  $optLower = strtolower($agama);
+                  $isSelected = ($rel === $optLower)
+                    || ($optLower === 'kristen protestan' && in_array($rel, ['kristen', 'protestan', 'kristen protestan'], true))
+                    || ($optLower === 'khonghucu' && in_array($rel, ['khonghucu', 'konghucu'], true));
+                @endphp
+                <option value="{{ $agama }}" {{ $isSelected ? 'selected' : '' }}>{{ $agama }}</option>
               @endforeach
             </select>
             @error('religion') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror

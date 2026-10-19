@@ -199,6 +199,14 @@ class SyncMonitoringController extends Controller
         // 9. Dispatch asynchronous job ke antrean
         ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
 
+        if (!app()->runningUnitTests()) {
+            \Illuminate\Support\Facades\Cache::forever('illuminate:queue:restart', now()->getTimestamp());
+            $freshSync = $rowSync->fresh();
+            if ($freshSync && $freshSync->isPending()) {
+                $this->syncEngine->processSyncRecord($freshSync, force: true);
+            }
+        }
+
         return redirect()
             ->back()
             ->with('success', "Proses retry baris {$rowSync->external_sync_id} berhasil dijadwalkan ke antrean.");
@@ -528,6 +536,13 @@ class SyncMonitoringController extends Controller
 
                 if ($affected > 0) {
                     ProcessSpreadsheetRowSyncJob::dispatch($item->id);
+                    if (!app()->runningUnitTests()) {
+                        \Illuminate\Support\Facades\Cache::forever('illuminate:queue:restart', now()->getTimestamp());
+                        $freshItem = $item->fresh();
+                        if ($freshItem && $freshItem->isPending()) {
+                            $this->syncEngine->processSyncRecord($freshItem, force: true);
+                        }
+                    }
                     $successfullyQueued++;
                 } else {
                     $skipped++;

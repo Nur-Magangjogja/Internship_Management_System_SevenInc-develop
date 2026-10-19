@@ -20,6 +20,8 @@ class SpreadsheetConnectionService
      */
     public function getAllConnections(): Collection
     {
+        SpreadsheetConnection::ensureDriveFolderColumns();
+
         return SpreadsheetConnection::orderBy('id', 'asc')->get();
     }
 
@@ -28,6 +30,8 @@ class SpreadsheetConnectionService
      */
     public function getConnectionByKey(string $key): SpreadsheetConnection
     {
+        SpreadsheetConnection::ensureDriveFolderColumns();
+
         if (!in_array($key, SpreadsheetConnection::VALID_KEYS, true)) {
             throw new InvalidArgumentException("Tipe koneksi '{$key}' tidak valid.");
         }
@@ -49,11 +53,15 @@ class SpreadsheetConnectionService
      */
     public function updateConnection(SpreadsheetConnection $connection, array $data, ?User $actor = null): SpreadsheetConnection
     {
+        SpreadsheetConnection::ensureDriveFolderColumns();
+
         $before = $connection->only([
             'display_name',
             'spreadsheet_url',
             'spreadsheet_id',
             'apps_script_endpoint_url',
+            'drive_folder_url',
+            'drive_folder_id',
             'is_enabled',
             'connection_status',
         ]);
@@ -94,6 +102,25 @@ class SpreadsheetConnectionService
             }
         }
 
+        if ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION && array_key_exists('drive_folder_url', $data)) {
+            $driveFolderUrl = isset($data['drive_folder_url']) ? trim((string) $data['drive_folder_url']) : null;
+            $driveFolderId = null;
+
+            if (!empty($driveFolderUrl)) {
+                $driveFolderId = SpreadsheetConnection::extractDriveFolderId($driveFolderUrl);
+                if (empty($driveFolderId)) {
+                    throw new DomainException('Format URL atau ID Folder Google Drive tidak valid. Pastikan menyertakan URL folder Google Drive yang benar (contoh: https://drive.google.com/drive/folders/ID) atau ID Folder langsung.');
+                }
+
+                if (!str_starts_with($driveFolderUrl, 'http://') && !str_starts_with($driveFolderUrl, 'https://')) {
+                    $driveFolderUrl = "https://drive.google.com/drive/folders/{$driveFolderId}";
+                }
+            }
+
+            $connection->drive_folder_url = $driveFolderUrl ?: null;
+            $connection->drive_folder_id = $driveFolderId;
+        }
+
         $connection->display_name = $data['display_name'] ?? $connection->display_name;
         $connection->spreadsheet_url = $spreadsheetUrl;
         $connection->spreadsheet_id = $spreadsheetId;
@@ -115,6 +142,8 @@ class SpreadsheetConnectionService
             'spreadsheet_url',
             'spreadsheet_id',
             'apps_script_endpoint_url',
+            'drive_folder_url',
+            'drive_folder_id',
             'is_enabled',
             'connection_status',
         ]);

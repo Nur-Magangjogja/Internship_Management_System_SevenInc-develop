@@ -11,9 +11,9 @@ class FormFieldSeeder extends Seeder
      * Seed field-field default yang sudah ada di form pendaftaran pemagang.
      * Urutan mengikuti tampilan form saat ini.
      */
-    public function run(): void
+    public static function getDefaultFields(): array
     {
-        $fields = [
+        return [
             // ===== FORM UTAMA =====
             [
                 'field_key'   => 'fullname',
@@ -39,6 +39,17 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
+                'field_key'   => 'birth_place',
+                'field_type'  => 'text',
+                'label'       => 'Tempat Lahir',
+                'placeholder' => 'Sleman, Yogyakarta',
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 25,
+                'column_span' => 2,
+            ],
+            [
                 'field_key'   => 'born_date',
                 'field_type'  => 'date',
                 'label'       => 'Tanggal Lahir',
@@ -49,9 +60,28 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
+                'field_key'   => 'religion',
+                'field_type'  => 'select',
+                'label'       => 'Agama',
+                'placeholder' => '-- Pilih Agama --',
+                'options'     => [
+                    ['value' => 'Islam',             'label' => 'Islam'],
+                    ['value' => 'Kristen Protestan', 'label' => 'Kristen Protestan'],
+                    ['value' => 'Katolik',           'label' => 'Katolik'],
+                    ['value' => 'Hindu',             'label' => 'Hindu'],
+                    ['value' => 'Buddha',            'label' => 'Buddha'],
+                    ['value' => 'Khonghucu',         'label' => 'Khonghucu'],
+                ],
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 35,
+                'column_span' => 2,
+            ],
+            [
                 'field_key'   => 'institution_name',
                 'field_type'  => 'text',
-                'label'       => 'Universitas',
+                'label'       => 'Universitas / Sekolah',
                 'placeholder' => 'Telkom University',
                 'is_required' => true,
                 'is_system'   => true,
@@ -62,7 +92,7 @@ class FormFieldSeeder extends Seeder
             [
                 'field_key'   => 'study_program',
                 'field_type'  => 'text',
-                'label'       => 'Program Studi',
+                'label'       => 'Program Studi / Jurusan',
                 'placeholder' => 'Rekayasa Perangkat Lunak',
                 'is_required' => true,
                 'is_system'   => true,
@@ -120,8 +150,8 @@ class FormFieldSeeder extends Seeder
                 'field_type'  => 'radio',
                 'label'       => 'Jenis Kelamin',
                 'options'     => [
-                    ['value' => 'Laki-laki',  'label' => 'Laki-laki'],
-                    ['value' => 'Perempuan',  'label' => 'Perempuan'],
+                    ['value' => 'Laki-laki', 'label' => 'Laki-laki'],
+                    ['value' => 'Perempuan', 'label' => 'Perempuan'],
                 ],
                 'is_required' => true,
                 'is_system'   => true,
@@ -132,7 +162,7 @@ class FormFieldSeeder extends Seeder
             [
                 'field_key'   => 'internship_interest',
                 'field_type'  => 'select',
-                'label'       => 'Divisi Diminati',
+                'label'       => 'Program Magang/PKL yang Diminati (Divisi)',
                 'placeholder' => '-- Pilih Divisi --',
                 'is_required' => true,
                 'is_system'   => true,
@@ -144,8 +174,8 @@ class FormFieldSeeder extends Seeder
             [
                 'field_key'   => 'start_date',
                 'field_type'  => 'date',
-                'label'       => 'Tanggal Mulai',
-                'is_required' => false,
+                'label'       => 'Rencana Tanggal Mulai Magang',
+                'is_required' => true,
                 'is_system'   => true,
                 'group_name'  => null,
                 'sort_order'  => 120,
@@ -154,11 +184,31 @@ class FormFieldSeeder extends Seeder
             [
                 'field_key'   => 'end_date',
                 'field_type'  => 'date',
-                'label'       => 'Tanggal Selesai',
+                'label'       => 'Rencana Tanggal Selesai Magang',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
                 'sort_order'  => 130,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'planned_duration',
+                'field_type'  => 'select',
+                'label'       => 'Berapa Lama Akan Magang/PKL?',
+                'placeholder' => '-- Pilih Durasi --',
+                'options'     => [
+                    ['value' => '1 Bulan',            'label' => '1 Bulan'],
+                    ['value' => '2 Bulan',            'label' => '2 Bulan'],
+                    ['value' => '3 Bulan',            'label' => '3 Bulan'],
+                    ['value' => '4 Bulan',            'label' => '4 Bulan'],
+                    ['value' => '5 Bulan',            'label' => '5 Bulan'],
+                    ['value' => '6 Bulan',            'label' => '6 Bulan'],
+                    ['value' => 'Lebih dari 6 Bulan', 'label' => 'Lebih dari 6 Bulan'],
+                ],
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 135,
                 'column_span' => 2,
             ],
             [
@@ -190,6 +240,36 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
+                'field_key'   => 'wfo_readiness',
+                'field_type'  => 'select',
+                'label'       => 'Kesiapan Sistem Magang WFO di Yogyakarta',
+                'placeholder' => '-- Pilih Kesiapan WFO --',
+                'options'     => [
+                    ['value' => 'Siap WFO di Yogyakarta', 'label' => 'Siap WFO di Yogyakarta'],
+                    ['value' => 'Tidak Siap',             'label' => 'Tidak Siap'],
+                ],
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 145,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'schedule_shift_readiness',
+                'field_type'  => 'select',
+                'label'       => 'Kesanggupan Jadwal Senin - Sabtu & Shifting',
+                'placeholder' => '-- Pilih Kesanggupan --',
+                'options'     => [
+                    ['value' => 'Sanggup',       'label' => 'Sanggup'],
+                    ['value' => 'Tidak Sanggup', 'label' => 'Tidak Sanggup'],
+                ],
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 148,
+                'column_span' => 2,
+            ],
+            [
                 'field_key'   => 'internship_arrangement',
                 'field_type'  => 'select',
                 'label'       => 'Sistem Magang',
@@ -199,10 +279,36 @@ class FormFieldSeeder extends Seeder
                 ],
                 'is_required' => true,
                 'is_system'   => true,
-                'is_active'   => false, // Selalu Onsite, disembunyikan dari form
+                'is_active'   => false,
                 'group_name'  => null,
                 'sort_order'  => 150,
                 'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'has_laptop',
+                'field_type'  => 'radio',
+                'label'       => 'Apakah Memiliki Alat Kerja (Laptop) Sendiri?',
+                'options'     => [
+                    ['value' => '1', 'label' => 'Ya, Punya Sendiri'],
+                    ['value' => '0', 'label' => 'Tidak'],
+                ],
+                'is_required' => true,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 155,
+                'column_span' => 1,
+            ],
+            [
+                'field_key'   => 'owned_tools',
+                'field_type'  => 'text',
+                'label'       => 'Peralatan yang Dimiliki (Laptop, Kamera, Tripod, dll)',
+                'placeholder' => 'Contoh: Laptop Asus ROG, Kamera, Tripod',
+                'helper_text' => 'Tuliskan alat kerja yang Anda miliki dan bisa dibawa selama Magang/PKL',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 158,
+                'column_span' => 1,
             ],
             [
                 'field_key'   => 'internship_reason',
@@ -232,26 +338,10 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 1,
             ],
             [
-                'field_key'   => 'english_book_ability',
-                'field_type'  => 'select',
-                'label'       => 'Kemampuan Membaca Buku Bahasa Inggris',
-                'placeholder' => '-- Pilih --',
-                'options'     => [
-                    ['value' => 'Saya bisa',   'label' => 'Saya bisa'],
-                    ['value' => 'Kurang bisa', 'label' => 'Kurang bisa'],
-                    ['value' => 'Tidak bisa',  'label' => 'Tidak bisa'],
-                ],
-                'is_required' => false,
-                'is_system'   => true,
-                'group_name'  => null,
-                'sort_order'  => 180,
-                'column_span' => 1,
-            ],
-            [
                 'field_key'   => 'design_software',
                 'field_type'  => 'text',
                 'label'       => 'Software Desain',
-                'placeholder' => 'Figma, Photoshop',
+                'placeholder' => 'Figma, Photoshop, Canva',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
@@ -259,10 +349,10 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
-                'field_key'   => 'programming_languages',
+                'field_key'   => 'video_software',
                 'field_type'  => 'text',
-                'label'       => 'Bahasa Pemrograman',
-                'placeholder' => 'PHP, JS',
+                'label'       => 'Software Video',
+                'placeholder' => 'Premiere Pro, CapCut, After Effects',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
@@ -270,10 +360,10 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
-                'field_key'   => 'video_software',
+                'field_key'   => 'programming_languages',
                 'field_type'  => 'text',
-                'label'       => 'Materi Digital Marketing',
-                'placeholder' => 'SEO, Ads',
+                'label'       => 'Bahasa Pemrograman',
+                'placeholder' => 'PHP, JavaScript, Python',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
@@ -281,10 +371,22 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
-                'field_key'   => 'cv_ktp_portofolio_pdf',
+                'field_key'   => 'digital_marketing_type',
+                'field_type'  => 'text',
+                'label'       => 'Materi Digital Marketing',
+                'placeholder' => 'SEO, Social Media Ads, Copywriting',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 215,
+                'column_span' => 2,
+            ],
+            // ===== BERKAS PENDAFTARAN (OTOMATIS DISIMPAN KE 1 FOLDER GOOGLE DRIVE PENDAFTAR) =====
+            [
+                'field_key'   => 'cv',
                 'field_type'  => 'file',
-                'label'       => 'Surat Pengantar (PDF)',
-                'helper_text' => 'Maks. 2MB, format PDF saja',
+                'label'       => 'Curriculum Vitae (CV)',
+                'helper_text' => 'Format PDF/DOC/DOCX, Maks. 10MB',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
@@ -292,23 +394,99 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
-                'field_key'   => 'portofolio_visual',
+                'field_key'   => 'identity',
                 'field_type'  => 'file',
-                'label'       => 'CV / Portfolio (PDF)',
-                'helper_text' => 'Maks. 2MB, format PDF saja',
+                'label'       => 'KTM atau KTP',
+                'helper_text' => 'Kartu identitas mahasiswa atau KTP (PDF/JPG/PNG, Maks. 5MB)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 225,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'portfolio',
+                'field_type'  => 'file',
+                'label'       => 'Portofolio Karya (Mendukung Banyak File)',
+                'helper_text' => 'Pilih satu atau beberapa file portofolio/sertifikat/karya (PDF, ZIP, RAR, MP4, DOCX, Gambar, Maks. 10MB/berkas)',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => null,
                 'sort_order'  => 230,
+                'column_span' => 1,
+            ],
+            [
+                'field_key'   => 'cover_letter',
+                'field_type'  => 'file',
+                'label'       => 'Surat Pengantar Kampus / Sekolah',
+                'helper_text' => 'Surat permohonan magang dari institusi pendidikan (PDF/DOCX, Maks. 10MB)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 235,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'proposal',
+                'field_type'  => 'file',
+                'label'       => 'Proposal Magang / PKL',
+                'helper_text' => 'Opsional jika kampus mensyaratkan proposal kegiatan (PDF/DOCX, Maks. 10MB)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 240,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'supporting_document',
+                'field_type'  => 'file',
+                'label'       => 'Dokumen Pendukung Lainnya (Multi-File)',
+                'helper_text' => 'Transkrip nilai, sertifikat keahlian, atau surat izin (Maks. 10MB/berkas)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 245,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'profile_photo',
+                'field_type'  => 'file',
+                'label'       => 'Pasfoto Resmi',
+                'helper_text' => 'Pasfoto formal untuk identitas pemagang (JPG/PNG/WEBP, Maks. 5MB)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => null,
+                'sort_order'  => 250,
                 'column_span' => 2,
             ],
 
             // ===== INFORMASI TAMBAHAN =====
-
+            [
+                'field_key'   => 'supervisor_name',
+                'field_type'  => 'text',
+                'label'       => 'Nama Dosen / Guru Pembimbing',
+                'placeholder' => 'Nama pembimbing beserta gelar/jabatan (bisa menyusul)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => 'informasi_tambahan',
+                'sort_order'  => 10,
+                'column_span' => 2,
+            ],
+            [
+                'field_key'   => 'supervisor_contact',
+                'field_type'  => 'tel',
+                'label'       => 'No. HP / WA Dosen atau Guru Pembimbing',
+                'placeholder' => '08xxxxxxxxxx (bisa diisi menyusul)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => 'informasi_tambahan',
+                'sort_order'  => 15,
+                'column_span' => 2,
+            ],
             [
                 'field_key'   => 'boarding_info',
                 'field_type'  => 'select',
-                'label'       => 'Butuh Informasi Kost?',
+                'label'       => 'Apakah Membutuhkan Info Kost/Kontrakan Dekat Kantor?',
                 'options'     => [
                     ['value' => 'Tidak', 'label' => 'Tidak'],
                     ['value' => 'Ya',    'label' => 'Ya'],
@@ -317,24 +495,23 @@ class FormFieldSeeder extends Seeder
                 'is_system'   => true,
                 'group_name'  => 'informasi_tambahan',
                 'sort_order'  => 20,
-                'column_span' => 1,
+                'column_span' => 2,
             ],
-
             [
                 'field_key'   => 'social_media_instagram',
                 'field_type'  => 'text',
-                'label'       => 'Instagram',
+                'label'       => 'Sosial Media (Instagram)',
                 'placeholder' => 'username_kamu',
                 'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => 'informasi_tambahan',
                 'sort_order'  => 40,
-                'column_span' => 1,
+                'column_span' => 2,
             ],
             [
                 'field_key'   => 'internship_info_sources',
                 'field_type'  => 'checkbox',
-                'label'       => 'Tahu Info Magang Dari',
+                'label'       => 'Tahu Info Magang Ini Dari Mana?',
                 'options'     => [
                     ['value' => 'Instagram',      'label' => 'Instagram'],
                     ['value' => 'TikTok',         'label' => 'TikTok'],
@@ -350,9 +527,31 @@ class FormFieldSeeder extends Seeder
                 'sort_order'  => 50,
                 'column_span' => 1,
             ],
+            [
+                'field_key'   => 'current_activities',
+                'field_type'  => 'textarea',
+                'label'       => 'Kegiatan Lain Selain Magang',
+                'placeholder' => 'Contoh: Kuliah malam, organisasi, freelance (tulis - jika tidak ada)',
+                'is_required' => false,
+                'is_system'   => true,
+                'group_name'  => 'informasi_tambahan',
+                'sort_order'  => 60,
+                'column_span' => 1,
+            ],
         ];
+    }
 
-        foreach ($fields as $field) {
+    public function run(): void
+    {
+        if (\Illuminate\Support\Facades\Schema::hasTable('form_schemas') && \Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
+            $currentYear = (int) now()->year;
+            $service = app(\App\Services\FormBuilderService::class);
+            $service->ensureYearFormInitialized($currentYear, null, true);
+            $service->ensureYearFormInitialized($currentYear + 1, null, true);
+            return;
+        }
+
+        foreach (self::getDefaultFields() as $field) {
             FormField::updateOrCreate(
                 ['field_key' => $field['field_key']],
                 $field

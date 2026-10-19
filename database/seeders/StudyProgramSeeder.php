@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class StudyProgramSeeder extends Seeder
 {
@@ -17,16 +17,21 @@ class StudyProgramSeeder extends Seeder
             'Manajemen','Akuntansi','Ilmu Komunikasi','Desain Komunikasi Visual','Desain Produk',
             'Agribisnis','Teknik Sipil','Teknik Arsitektur','Teknologi Informasi','Ilmu Hukum'
         ];
-        $facultyIds = \Illuminate\Support\Facades\DB::table('faculties')->pluck('id')->toArray();
+        $facultyIds = DB::table('faculties')->pluck('id')->toArray();
         
         foreach ($facultyIds as $facId) {
-            // Pick a few random study programs for each faculty to simulate realism
             $randomProdis = collect($prodis)->random(5);
             foreach ($randomProdis as $prodi) {
-                \Illuminate\Support\Facades\DB::table('study_programs')->insert([
-                    'faculty_id' => $facId,
-                    'name' => $prodi
-                ]);
+                DB::table('study_programs')->updateOrInsert(
+                    [
+                        'faculty_id' => $facId,
+                        'name' => $prodi
+                    ],
+                    [
+                        'faculty_id' => $facId,
+                        'name' => $prodi
+                    ]
+                );
             }
         }
     }

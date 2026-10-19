@@ -14,8 +14,12 @@ class InternPageController extends Controller
     protected function renderIndex(array $data)
     {
         $default = [
-            'divisions' => Division::where('is_active', true)->get(),
-            'brands'    => Brand::all(),
+            'divisions'     => Division::where('is_active', true)->orderBy('name')->get(),
+            'brands'        => Brand::orderBy('name')->get(),
+            'cities'        => \App\Models\City::orderBy('name')->get(),
+            'institutions'  => \App\Models\Institution::where('is_active', true)->orderBy('name')->get(),
+            'faculties'     => \App\Models\Faculty::orderBy('name')->get(),
+            'studyPrograms' => \App\Models\StudyProgram::orderBy('name')->get(),
         ];
 
         return view('interns.index', array_merge($default, $data));

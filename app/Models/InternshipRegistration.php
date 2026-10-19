@@ -170,6 +170,44 @@ class InternshipRegistration extends Model
         );
     }
 
+    /** gender: normalisasi string get & set menjadi 'Laki-laki' atau 'Perempuan' */
+    protected function gender(): Attribute
+    {
+        $normalize = function ($value) {
+            if ($value === null || trim((string)$value) === '') return null;
+            $g = strtolower(trim((string)$value));
+            if (in_array($g, ['l', 'laki-laki', 'male', 'pria'], true)) return 'Laki-laki';
+            if (in_array($g, ['p', 'perempuan', 'female', 'wanita'], true)) return 'Perempuan';
+            return (string)$value;
+        };
+
+        return Attribute::make(
+            get: $normalize,
+            set: $normalize
+        );
+    }
+
+    /** religion: normalisasi nama agama standar */
+    protected function religion(): Attribute
+    {
+        $normalize = function ($value) {
+            if ($value === null || trim((string)$value) === '') return null;
+            $r = strtolower(trim((string)$value));
+            if (in_array($r, ['kristen', 'kristen protestan', 'protestan'], true)) return 'Kristen Protestan';
+            if (in_array($r, ['khonghucu', 'konghucu'], true)) return 'Khonghucu';
+            if ($r === 'katolik') return 'Katolik';
+            if ($r === 'islam') return 'Islam';
+            if ($r === 'hindu') return 'Hindu';
+            if (in_array($r, ['buddha', 'budha'], true)) return 'Buddha';
+            return (string)$value;
+        };
+
+        return Attribute::make(
+            get: $normalize,
+            set: $normalize
+        );
+    }
+
     /* ============================================================
      |  Scopes (query helper)
      * ============================================================ */

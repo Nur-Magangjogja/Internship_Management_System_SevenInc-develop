@@ -11,6 +11,14 @@
 |
 */
 
+\Illuminate\Support\Env::disablePutenv();
+if (class_exists(\Dotenv\Dotenv::class) && is_file(dirname(__DIR__) . '/.env')) {
+    \Dotenv\Dotenv::create(
+        \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters()->make(),
+        dirname(__DIR__)
+    )->safeLoad();
+}
+
 $app = new Illuminate\Foundation\Application(
     $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
 );

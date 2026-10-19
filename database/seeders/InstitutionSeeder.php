@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class InstitutionSeeder extends Seeder
 {
@@ -20,7 +20,7 @@ class InstitutionSeeder extends Seeder
             'SMK Negeri 1 Yogyakarta','SMK Negeri 2 Surabaya','SMK Telkom Malang', 'Universitas Atma Jaya', 'AMKOM Yogyakarta', 'Universitas Mercu Buana', 'SMK N 2 Yogyakarta', 'Universitas Sanata Dharma'
         ];
         foreach ($institutions as $inst) {
-            \Illuminate\Support\Facades\DB::table('institutions')->insert(['name' => $inst]);
+            DB::table('institutions')->updateOrInsert(['name' => $inst], ['name' => $inst]);
         }
     }
 }

@@ -9,37 +9,9 @@ use Illuminate\Database\Seeder;
 
 class Spreadsheet2026SchemaSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
-    public function run(): void
+    public static function getCanonicalColumns(): array
     {
-        // 1. Pastikan koneksi registration tersedia
-        $connection = SpreadsheetConnection::firstOrCreate(
-            ['connection_key' => SpreadsheetConnection::KEY_REGISTRATION],
-            [
-                'display_name' => 'Spreadsheet Pendaftaran Magang',
-                'is_enabled' => false,
-                'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
-            ]
-        );
-
-        // 2. Buat atau perbarui schema version 2026
-        $schemaVersion = SpreadsheetSchemaVersion::firstOrCreate(
-            [
-                'spreadsheet_connection_id' => $connection->id,
-                'year' => 2026,
-                'schema_version' => 'v1',
-            ],
-            [
-                'sheet_tab_name' => '2026',
-                'is_active' => true,
-                'notes' => 'Official 2026 29-Column Registration Contract from 2026 register.xlsx',
-            ]
-        );
-
-        // 3. Kolom-kolom kanonikal 2026 (29 kolom persis sesuai Guardrail 1)
-        $columns = [
+        return [
             [
                 'order' => 1,
                 'header' => 'Timestamp',
@@ -128,7 +100,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'type' => 'string',
                 'direction' => 'outbound',
                 'transform' => 'current_city',
-                'required' => false,
+                'required' => true,
             ],
             [
                 'order' => 10,
@@ -138,7 +110,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'type' => 'text',
                 'direction' => 'outbound',
                 'transform' => 'internship_reason',
-                'required' => false,
+                'required' => true,
             ],
             [
                 'order' => 11,
@@ -172,7 +144,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 14,
-                'header' => 'No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan',
+                'header' => 'No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).',
                 'entity' => 'internship_registration',
                 'field' => 'supervisor_info',
                 'type' => 'string',
@@ -192,7 +164,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 16,
-                'header' => 'Apakah ada laptop sendiri',
+                'header' => 'Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?',
                 'entity' => 'internship_registration',
                 'field' => 'has_laptop',
                 'type' => 'boolean',
@@ -202,7 +174,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 17,
-                'header' => 'Jika YA, alat apa yang dimiliki/dibawa',
+                'header' => 'Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?',
                 'entity' => 'intern_tools',
                 'field' => 'owned_tools',
                 'type' => 'string',
@@ -212,7 +184,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 18,
-                'header' => 'Kapan berencana mulai Magang/PKL',
+                'header' => 'Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)',
                 'entity' => 'internship_registration',
                 'field' => 'start_date',
                 'type' => 'date',
@@ -222,7 +194,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 19,
-                'header' => 'Berapa lama akan Magang/PKL',
+                'header' => 'Berapa lama Anda akan Magang/PKL?',
                 'entity' => 'internship_registration',
                 'field' => 'planned_duration',
                 'type' => 'string',
@@ -232,7 +204,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 20,
-                'header' => 'Sumber info magang',
+                'header' => 'Anda tahu info magang ini dari mana?',
                 'entity' => 'intern_info_sources',
                 'field' => 'internship_info_sources',
                 'type' => 'string',
@@ -242,7 +214,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 21,
-                'header' => 'Instagram',
+                'header' => 'Sosial Media (Instagram) yang dimiliki',
                 'entity' => 'internship_registration',
                 'field' => 'social_media_instagram',
                 'type' => 'string',
@@ -252,7 +224,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 22,
-                'header' => 'Butuh info kost/kontrakan',
+                'header' => 'Apakah anda membutuhkan info kost/kontrakan deket kantor?',
                 'entity' => 'internship_registration',
                 'field' => 'boarding_info',
                 'type' => 'string',
@@ -262,7 +234,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 23,
-                'header' => 'Program Magang/PKL yang diminati',
+                'header' => 'Program Magang/PKL apa yang Anda minati?',
                 'entity' => 'division',
                 'field' => 'internship_interest',
                 'type' => 'string',
@@ -272,7 +244,117 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ],
             [
                 'order' => 24,
-                'header' => 'Upload PDF CV + scan KTM/KTP + portofolio max 10MB',
+                'header' => 'Tempat Lahir',
+                'entity' => 'internship_registration',
+                'field' => 'birth_place',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'birth_place',
+                'required' => false,
+            ],
+            [
+                'order' => 25,
+                'header' => 'Tanggal Lahir',
+                'entity' => 'internship_registration',
+                'field' => 'born_date',
+                'type' => 'date',
+                'direction' => 'outbound',
+                'transform' => 'born_date',
+                'required' => false,
+            ],
+            [
+                'order' => 26,
+                'header' => 'Agama',
+                'entity' => 'internship_registration',
+                'field' => 'religion',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'religion',
+                'required' => false,
+            ],
+            [
+                'order' => 27,
+                'header' => 'Software Desain',
+                'entity' => 'internship_registration',
+                'field' => 'design_software',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'design_software',
+                'required' => false,
+            ],
+            [
+                'order' => 28,
+                'header' => 'Software Video',
+                'entity' => 'internship_registration',
+                'field' => 'video_software',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'video_software',
+                'required' => false,
+            ],
+            [
+                'order' => 29,
+                'header' => 'Bahasa Pemrograman',
+                'entity' => 'internship_registration',
+                'field' => 'programming_languages',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'programming_languages',
+                'required' => false,
+            ],
+            [
+                'order' => 30,
+                'header' => 'Digital Marketing',
+                'entity' => 'internship_registration',
+                'field' => 'digital_marketing_type',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'digital_marketing_type',
+                'required' => false,
+            ],
+            [
+                'order' => 31,
+                'header' => 'Peralatan (Laptop, Kamera, Tripod, dll)',
+                'entity' => 'internship_registration',
+                'field' => 'owned_tools',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'equipment',
+                'required' => false,
+            ],
+            [
+                'order' => 32,
+                'header' => 'Nama Pembimbing',
+                'entity' => 'internship_registration',
+                'field' => 'supervisor_name',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'supervisor_name',
+                'required' => false,
+            ],
+            [
+                'order' => 33,
+                'header' => 'No. WA Pembimbing',
+                'entity' => 'internship_registration',
+                'field' => 'supervisor_contact',
+                'type' => 'string',
+                'direction' => 'outbound',
+                'transform' => 'supervisor_contact',
+                'required' => false,
+            ],
+            [
+                'order' => 34,
+                'header' => 'Kegiatan Lain Selain Magang',
+                'entity' => 'internship_registration',
+                'field' => 'current_activities',
+                'type' => 'text',
+                'direction' => 'outbound',
+                'transform' => 'current_activities',
+                'required' => false,
+            ],
+            [
+                'order' => 35,
+                'header' => 'Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB',
                 'entity' => 'registration_attachments',
                 'field' => 'attachment_url',
                 'type' => 'url',
@@ -281,7 +363,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => false,
             ],
             [
-                'order' => 25,
+                'order' => 36,
                 'header' => 'KET',
                 'entity' => 'internship_registration',
                 'field' => 'status_label',
@@ -291,7 +373,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => true,
             ],
             [
-                'order' => 26,
+                'order' => 37,
                 'header' => 'SERTIF_SYNC_ID',
                 'entity' => 'spreadsheet_row_syncs',
                 'field' => 'sertif_sync_id',
@@ -301,7 +383,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => false,
             ],
             [
-                'order' => 27,
+                'order' => 38,
                 'header' => 'SERTIF_REGISTRATION_ID',
                 'entity' => 'internship_registration',
                 'field' => 'id',
@@ -311,7 +393,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => false,
             ],
             [
-                'order' => 28,
+                'order' => 39,
                 'header' => 'SERTIF_SYNC_STATUS',
                 'entity' => 'spreadsheet_row_syncs',
                 'field' => 'sync_status',
@@ -321,7 +403,7 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => false,
             ],
             [
-                'order' => 29,
+                'order' => 40,
                 'header' => 'SERTIF_LAST_SYNC_AT',
                 'entity' => 'spreadsheet_row_syncs',
                 'field' => 'last_synced_at',
@@ -331,23 +413,65 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 'required' => false,
             ],
         ];
+    }
 
-        foreach ($columns as $col) {
-            SpreadsheetColumnMapping::updateOrCreate(
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        // 1. Dapatkan seluruh koneksi registration yang ada, atau buat baru jika belum ada
+        $connections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->get();
+        if ($connections->isEmpty()) {
+            $connections = collect([
+                SpreadsheetConnection::create([
+                    'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                    'display_name' => 'Spreadsheet Pendaftaran Magang',
+                    'is_enabled' => false,
+                    'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
+                ])
+            ]);
+        }
+
+        // 3. Kolom-kolom kanonikal 2026 (40 kolom lengkap terpadu)
+        $columns = self::getCanonicalColumns();
+
+        foreach ($connections as $connection) {
+            $schemaVersion = SpreadsheetSchemaVersion::updateOrCreate(
                 [
-                    'spreadsheet_schema_version_id' => $schemaVersion->id,
-                    'column_order' => $col['order'],
+                    'spreadsheet_connection_id' => $connection->id,
+                    'year' => 2026,
+                    'schema_version' => 'v1',
                 ],
                 [
-                    'sheet_header' => $col['header'],
-                    'target_entity' => $col['entity'],
-                    'target_field' => $col['field'],
-                    'data_type' => $col['type'],
-                    'direction' => $col['direction'],
-                    'transform_key' => $col['transform'],
-                    'is_required' => $col['required'],
+                    'sheet_tab_name' => '2026',
+                    'is_active' => true,
+                    'notes' => 'Official 2026 40-Column Unified Registration Contract',
                 ]
             );
+
+            // Hapus kolom lama di atas urutan 40 agar tidak tersisa 47 kolom
+            SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)
+                ->where('column_order', '>', count($columns))
+                ->delete();
+
+            foreach ($columns as $col) {
+                SpreadsheetColumnMapping::updateOrCreate(
+                    [
+                        'spreadsheet_schema_version_id' => $schemaVersion->id,
+                        'column_order' => $col['order'],
+                    ],
+                    [
+                        'sheet_header' => $col['header'],
+                        'target_entity' => $col['entity'],
+                        'target_field' => $col['field'],
+                        'data_type' => $col['type'],
+                        'direction' => $col['direction'],
+                        'transform_key' => $col['transform'],
+                        'is_required' => $col['required'],
+                    ]
+                );
+            }
         }
     }
 }

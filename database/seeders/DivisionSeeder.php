@@ -32,23 +32,28 @@ class DivisionSeeder extends Seeder
             18 => ['name' => 'Customer Service', 'code' => 'CS'],
         ];
 
-        foreach ($idMap as $id => $data) {
-            DB::table('divisions')->where('id', $id)->update([
-                'name'      => $data['name'],
-                'slug'      => Str::slug($data['name'], '_'),
-                'code'      => $data['code'],
-                'is_active' => true,
-            ]);
-        }
-
-        // 2. Insert any additional standard divisions if they do not exist
-        $additional = [
+        $allDivisions = array_merge(array_values($idMap), [
             ['name' => 'Host/Presenter', 'code' => 'HOST'],
             ['name' => 'Voice Over Talent', 'code' => 'VO'],
             ['name' => 'Research & Development', 'code' => 'RND'],
-        ];
+        ]);
 
-        foreach ($additional as $div) {
+        $protectedNames = ['Host/Presenter', 'Voice Over Talent', 'Research & Development'];
+
+        foreach ($idMap as $id => $data) {
+            DB::table('divisions')
+                ->where('id', $id)
+                ->whereNotIn('name', $protectedNames)
+                ->update([
+                    'name'      => $data['name'],
+                    'slug'      => Str::slug($data['name'], '_'),
+                    'code'      => $data['code'],
+                    'is_active' => true,
+                ]);
+        }
+
+        // 2. Insert or update all 21 standard divisions by name so none are ever missing
+        foreach ($allDivisions as $div) {
             DB::table('divisions')->updateOrInsert(
                 ['name' => $div['name']],
                 [

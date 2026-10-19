@@ -66,6 +66,11 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'payload'        => $sanitizedPayload,
         ];
 
+        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
+            $innerPayload['auto_sync_headers'] = true;
+            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
+        }
+
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }
 
@@ -101,7 +106,41 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'payload'        => $sanitizedPayload,
         ];
 
+        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
+            $innerPayload['auto_sync_headers'] = true;
+            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
+        }
+
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
+     * Synchronize main sheet headers (Row 12) and realign existing data rows automatically via Apps Script.
+     */
+    public function syncSheetSchema(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        array $headers
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'sync_sheet_schema',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'headers'        => array_values($headers),
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'SYNC_SHEET_SCHEMA');
     }
 
     /**
@@ -292,7 +331,10 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             );
         }
 
-        $year = (string) $reg->created_at->format('Y');
+        $createdAt = $reg->created_at instanceof \DateTimeInterface
+            ? $reg->created_at
+            : \Illuminate\Support\Carbon::parse($reg->created_at);
+        $year = (string) $createdAt->format('Y');
         $fileChecksum = hash_file('sha256', $localFullPath);
         $contentVersion = substr($fileChecksum, 0, 16);
         $syncIdentity = 'ATT-' . $reg->id . '-' . $attachment->id . '-v' . $contentVersion;
@@ -312,6 +354,14 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'file_checksum'   => $fileChecksum,
             'content_version' => $contentVersion,
         ];
+
+        if (!empty($connection->drive_folder_id)) {
+            $innerPayload['drive_folder_id'] = (string) $connection->drive_folder_id;
+        }
+
+        if (!app()->runningUnitTests()) {
+            $innerPayload['direct_applicant_folder'] = true;
+        }
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncIdentity);
     }

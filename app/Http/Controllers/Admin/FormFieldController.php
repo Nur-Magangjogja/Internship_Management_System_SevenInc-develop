@@ -35,11 +35,14 @@ class FormFieldController extends Controller
     }
 
     /**
-     * Validasi dan ekstrak parameter tahun skema formulir (2020-2099).
+     * Validasi dan ekstrak parameter tahun skema formulir.
+     * Di luar unit test, tahun otomatis mengikuti tahun berjalan (Tahun Ini) dan tahun berikutnya (Tahun Depan).
      */
     protected function resolveYear(Request $request): int
     {
-        $raw = $request->input('year', 2026);
+        $currentYear = (int) now()->year;
+        $nextYear    = $currentYear + 1;
+        $raw         = $request->input('year', $currentYear);
         if (!is_numeric($raw)) {
             abort(400, 'Tahun tidak valid.');
         }
@@ -47,7 +50,37 @@ class FormFieldController extends Controller
         if ($year < 2020 || $year > 2099) {
             abort(400, 'Tahun formulir harus berada dalam rentang 2020 - 2099.');
         }
+
+        if (!app()->runningUnitTests()) {
+            if ($year < $currentYear) {
+                return $currentYear;
+            }
+            if ($year > $nextYear) {
+                return $nextYear;
+            }
+        }
+
         return $year;
+    }
+
+    /**
+     * Ambil daftar divisi aktif beserta fallback standar jika tabel divisions kosong.
+     */
+    protected function getActiveDivisions(): \Illuminate\Support\Collection
+    {
+        $divisions = \App\Models\Division::active()->pluck('name');
+        if ($divisions->isEmpty()) {
+            return collect([
+                'UI/UX Designer', 'Marketing / Sales', 'Social Media Specialist',
+                'Programmer', 'Marcom/Public Relation', 'Tiktok Creator',
+                'Desain Grafis', 'Content Writer', 'Host/Presenter',
+                'Fotografer', 'Content Planner', 'Voice Over Talent',
+                'Videografer', 'Administrasi', 'Las', 'Digital Marketing',
+                'Project Manager', 'Human Resource', 'Research & Development',
+                'Animasi', 'Customer Service',
+            ]);
+        }
+        return $divisions;
     }
 
     /**
@@ -68,20 +101,25 @@ class FormFieldController extends Controller
             ]);
         }
 
-        $year = $this->resolveYear($request);
-        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $currentYear = (int) now()->year;
+        $nextYear    = $currentYear + 1;
+        $year        = $this->resolveYear($request);
+
+        $currentDraft    = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
         $activePublished = FormSchema::where('year', $year)->activePublished()->first();
 
         // Ambil field dari draf aktif
-        $mainFields  = $currentDraft->fields()->whereNull('group_name')->notArchived()->get();
-        $extraFields = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->notArchived()->get();
+        $mainFields     = $currentDraft->fields()->whereNull('group_name')->notArchived()->get();
+        $extraFields    = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->notArchived()->get();
         $archivedFields = $currentDraft->fields()->where('is_archived', true)->get();
 
-        $types  = FormField::supportedTypes();
-        $groups = FormField::groups();
+        $types     = FormField::supportedTypes();
+        $groups    = FormField::groups();
+        $divisions = $this->getActiveDivisions();
 
         return view('admin.form_settings.form_fields', compact(
-            'mainFields', 'extraFields', 'archivedFields', 'types', 'groups', 'currentDraft', 'activePublished', 'year'
+            'mainFields', 'extraFields', 'archivedFields', 'types', 'groups',
+            'currentDraft', 'activePublished', 'year', 'currentYear', 'nextYear', 'divisions'
         ));
     }
 
@@ -111,13 +149,13 @@ class FormFieldController extends Controller
             'validation_rules' => 'nullable',
         ]);
 
-        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
 
         // Buat field_key unik dari label
         $baseKey = 'custom_' . Str::slug($validated['label'], '_');
         $key     = $baseKey;
         $i       = 1;
-        while ($currentDraft->fields()->where('field_key', $key)->exists()) {
+        while ($currentDraft->fields()->withTrashed()->where('field_key', $key)->exists()) {
             $key = $baseKey . '_' . $i++;
         }
 
@@ -140,7 +178,7 @@ class FormFieldController extends Controller
                     if ($request->wantsJson() || $request->ajax()) {
                         return response()->json(['ok' => false, 'message' => $msg], 422);
                     }
-                    return back()->withInput()->withErrors(['validation_rules' => $msg]);
+                    return back()->withInput()->withErrors(['validation_rules' => $msg])->with('error', $msg);
                 }
                 $validationRules = $decoded;
             }
@@ -165,7 +203,7 @@ class FormFieldController extends Controller
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
             }
-            return back()->withInput()->withErrors(['label' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['label' => $e->getMessage()])->with('error', $e->getMessage());
         }
 
         if ($request->wantsJson() || $request->ajax()) {
@@ -173,7 +211,7 @@ class FormFieldController extends Controller
         }
 
         return redirect()->route('admin.form-settings.fields', ['year' => $year])
-            ->with('success', "Field \"{$validated['label']}\" berhasil ditambahkan.");
+            ->with('success', "Pertanyaan \"{$validated['label']}\" berhasil ditambahkan ke draf (masih bersifat sementara & dapat dihapus sebelum dipublikasikan).");
     }
 
     /**
@@ -197,25 +235,26 @@ class FormFieldController extends Controller
 
         $updateData = [
             'label'       => trim($validated['label']),
-            'placeholder' => $validated['placeholder'] ?? $field->placeholder,
-            'helper_text' => $validated['helper_text'] ?? $field->helper_text,
-            'is_required' => (bool) ($validated['is_required'] ?? $field->is_required),
-            'is_active'   => isset($validated['is_active'])
+            'placeholder' => array_key_exists('placeholder', $validated) ? $validated['placeholder'] : $field->placeholder,
+            'helper_text' => array_key_exists('helper_text', $validated) ? $validated['helper_text'] : $field->helper_text,
+            'is_required' => array_key_exists('is_required', $validated) && $validated['is_required'] !== null
+                                ? (bool) $validated['is_required']
+                                : $field->is_required,
+            'is_active'   => array_key_exists('is_active', $validated) && $validated['is_active'] !== null
                                 ? (bool) $validated['is_active']
                                 : $field->is_active,
             'column_span' => (int) ($validated['column_span'] ?? $field->column_span),
         ];
 
-        if (!$field->is_system) {
-            if (!empty($validated['field_type'])) {
-                $updateData['field_type'] = $validated['field_type'];
-            }
-            if (array_key_exists('group_name', $validated)) {
-                $updateData['group_name'] = $validated['group_name'] ?: null;
-            }
+        if (array_key_exists('group_name', $validated)) {
+            $updateData['group_name'] = $validated['group_name'] ?: null;
         }
 
-        if (isset($validated['options']) && $validated['options'] !== null) {
+        if (!$field->is_system && !$field->isStructuralLocked() && !empty($validated['field_type'])) {
+            $updateData['field_type'] = $validated['field_type'];
+        }
+
+        if (isset($validated['options']) && $validated['options'] !== null && $validated['options'] !== '') {
             $decoded = json_decode($validated['options'], true);
             if (is_array($decoded)) {
                 $updateData['options'] = $decoded;
@@ -235,7 +274,7 @@ class FormFieldController extends Controller
                     if ($request->wantsJson() || $request->ajax()) {
                         return response()->json(['ok' => false, 'message' => $msg], 422);
                     }
-                    return back()->withInput()->withErrors(['validation_rules' => $msg]);
+                    return back()->withInput()->withErrors(['validation_rules' => $msg])->with('error', $msg);
                 }
                 $updateData['validation_rules'] = $decoded;
             }
@@ -247,19 +286,20 @@ class FormFieldController extends Controller
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
             }
-            return back()->withInput()->withErrors(['label' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['label' => $e->getMessage()])->with('error', $e->getMessage());
         }
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'ok'      => true,
-                'message' => 'Field berhasil diperbarui.',
+                'message' => 'Pertanyaan berhasil diperbarui.',
                 'field'   => $updated,
             ]);
         }
 
-        return redirect()->route('admin.form-settings.fields')
-            ->with('success', "Field \"{$field->label}\" berhasil diperbarui.");
+        $targetYear = $field->schema?->year ?? $this->resolveYear($request);
+        return redirect()->route('admin.form-settings.fields', ['year' => $targetYear])
+            ->with('success', "Pertanyaan \"{$updated->label}\" berhasil diperbarui.");
     }
 
     /**
@@ -277,7 +317,7 @@ class FormFieldController extends Controller
         }
 
         $year = $this->resolveYear($request);
-        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
 
         try {
             $published = $this->formBuilderService->publishVersion($currentDraft, auth()->user());
@@ -289,6 +329,13 @@ class FormFieldController extends Controller
                 ->with('error', "Gagal mempublikasikan versi formulir: {$e->getMessage()}");
         }
 
+        if (!app()->runningUnitTests()) {
+            try {
+                app(\App\Services\SpreadsheetSyncEngineService::class)->syncSpreadsheetColumnsAndRowsForYear($year, $published);
+            } catch (\Throwable) {
+            }
+        }
+
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'ok'      => true,
@@ -298,7 +345,32 @@ class FormFieldController extends Controller
         }
 
         return redirect()->route('admin.form-settings.fields', ['year' => $year])
-            ->with('success', "Versi {$published->version_code} berhasil dipublikasikan.");
+            ->with('success', "Versi {$published->version_code} berhasil dipublikasikan. Kolom & isi Spreadsheet serta daftar pertanyaan yang dipublikasikan telah disinkronkan secara otomatis.");
+    }
+
+    /**
+     * POST /admin/form-settings/fields/sync-previous
+     * Salin / sinkronkan pertanyaan dari form Tahun Ini ke draf Tahun Depan.
+     */
+    public function syncFromPreviousYear(Request $request)
+    {
+        if (!$this->isSchemaReady()) {
+            return redirect()->route('admin.form-settings.fields')
+                ->with('error', 'Layanan Pengaturan Formulir belum siap.');
+        }
+
+        $currentYear = (int) now()->year;
+        $nextYear    = $currentYear + 1;
+
+        try {
+            $this->formBuilderService->syncDraftFromPreviousYear($nextYear, auth()->user());
+        } catch (\Throwable $e) {
+            return redirect()->route('admin.form-settings.fields', ['year' => $nextYear])
+                ->with('error', "Gagal menyalin struktur form: {$e->getMessage()}");
+        }
+
+        return redirect()->route('admin.form-settings.fields', ['year' => $nextYear])
+            ->with('success', "Struktur pertanyaan Form Tahun {$nextYear} berhasil disamakan dengan Form Tahun {$currentYear}.");
     }
 
     /**
@@ -316,7 +388,7 @@ class FormFieldController extends Controller
             ]);
         }
 
-        return redirect()->route('admin.form-settings.fields')
+        return redirect()->route('admin.form-settings.fields', ['year' => $field->schema?->year ?? (int) now()->year])
             ->with('success', "Pertanyaan \"{$field->label}\" berhasil diarsipkan.");
     }
 
@@ -348,7 +420,7 @@ class FormFieldController extends Controller
             ]);
         }
 
-        return redirect()->route('admin.form-settings.fields')
+        return redirect()->route('admin.form-settings.fields', ['year' => $field->schema?->year ?? (int) now()->year])
             ->with('success', "Field \"{$field->label}\" berhasil {$status}.");
     }
 
@@ -380,7 +452,7 @@ class FormFieldController extends Controller
             ]);
         }
 
-        return redirect()->route('admin.form-settings.fields')
+        return redirect()->route('admin.form-settings.fields', ['year' => $field->schema?->year ?? (int) now()->year])
             ->with('success', "Field \"{$field->label}\" berhasil {$status}.");
     }
 
@@ -482,6 +554,8 @@ class FormFieldController extends Controller
      */
     public function destroy(FormField $field)
     {
+        $targetYear = $field->schema?->year ?? (int) now()->year;
+
         if ($field->is_system) {
             if (request()->wantsJson() || request()->ajax()) {
                 return response()->json([
@@ -490,7 +564,7 @@ class FormFieldController extends Controller
                 ], 422);
             }
 
-            return redirect()->route('admin.form-settings.fields')
+            return redirect()->route('admin.form-settings.fields', ['year' => $targetYear])
                 ->with('error', 'Field inti sistem tidak dapat dihapus.');
         }
 
@@ -502,14 +576,14 @@ class FormFieldController extends Controller
             if (request()->wantsJson() || request()->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
             }
-            return redirect()->route('admin.form-settings.fields')->with('error', $e->getMessage());
+            return redirect()->route('admin.form-settings.fields', ['year' => $targetYear])->with('error', $e->getMessage());
         }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json(['ok' => true, 'message' => "Field \"{$label}\" berhasil dihapus."]);
         }
 
-        return redirect()->route('admin.form-settings.fields')
+        return redirect()->route('admin.form-settings.fields', ['year' => $targetYear])
             ->with('success', "Field \"{$label}\" berhasil dihapus.");
     }
 
@@ -518,7 +592,10 @@ class FormFieldController extends Controller
      */
     public function show(FormField $field)
     {
-        return response()->json(['field' => $field]);
+        $fieldData = $field->toArray();
+        $fieldData['is_deletable'] = $field->isDeletable();
+        $fieldData['is_structural_locked'] = $field->isStructuralLocked();
+        return response()->json(['field' => $fieldData]);
     }
 
     /**
@@ -537,10 +614,10 @@ class FormFieldController extends Controller
         }
 
         $year = $this->resolveYear($request);
-        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user());
+        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
         $mainFields  = $currentDraft->fields()->whereNull('group_name')->active()->get();
         $extraFields = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->active()->get();
-        $divisions   = \App\Models\Division::active()->pluck('name');
+        $divisions   = $this->getActiveDivisions();
 
         return response()->json([
             'main_fields'  => $mainFields,

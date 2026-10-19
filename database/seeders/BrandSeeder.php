@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class BrandSeeder extends Seeder
 {
@@ -12,19 +12,23 @@ class BrandSeeder extends Seeder
      */
     public function run(): void
     {
-        \Illuminate\Support\Facades\DB::table('brands')->insert([
-            'code' => 'SVII',
-            'name' => 'SevenInc',
-            'company_address' => 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul',
-            'signatory_name' => 'John Doe',
-            'signatory_position' => 'CEO',
-        ]);
-        \Illuminate\Support\Facades\DB::table('brands')->insert([
-            'code' => 'ALB',
-            'name' => 'Alona',
-            'company_address' => 'Yogyakarta',
-            'signatory_name' => 'Jane Smith',
-            'signatory_position' => 'Manager',
-        ]);
+        DB::table('brands')->updateOrInsert(
+            ['code' => 'SVII'],
+            [
+                'name' => 'SevenInc',
+                'company_address' => 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul',
+                'signatory_name' => 'John Doe',
+                'signatory_position' => 'CEO',
+            ]
+        );
+        DB::table('brands')->updateOrInsert(
+            ['code' => 'ALB'],
+            [
+                'name' => 'Alona',
+                'company_address' => 'Yogyakarta',
+                'signatory_name' => 'Jane Smith',
+                'signatory_position' => 'Manager',
+            ]
+        );
     }
 }

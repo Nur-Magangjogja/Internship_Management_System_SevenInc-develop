@@ -244,6 +244,12 @@ class RegistrationLifecycleService
             return true;
         }
 
+        // Pemagang aktif yang berasal dari integrasi Absen Djuragan atau berstatus pemagang resmi (active / completed)
+        if (str_contains((string) $registration->internship_reason, 'Absen')
+            || (isset($registration->user) && $registration->user->role === 'pemagang' && in_array($registration->internship_status, [IR::STATUS_ACTIVE, IR::STATUS_COMPLETED], true))) {
+            return true;
+        }
+
         $logs = $this->getLogsForRegistration($registration, $preloadedLogs);
 
         foreach ($logs as $log) {

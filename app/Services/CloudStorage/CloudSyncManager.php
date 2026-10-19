@@ -160,25 +160,27 @@ class CloudSyncManager
         $fullPath = Storage::disk($localDisk)->path($attachment->file_path);
         $year = $attachment->registration?->created_at ? $attachment->registration->created_at->format('Y') : date('Y');
         $regId = $attachment->internship_registration_id;
-        $applicantName = $attachment->registration?->user?->name ?? ($attachment->registration?->name ?? 'Pemagang');
+        $applicantName = $attachment->registration?->fullname ?? ($attachment->registration?->user?->name ?? ($attachment->registration?->name ?? 'Pemagang'));
         $cleanName = Str::slug($applicantName, '_');
-        $categoryFolder = match ($attachment->category) {
-            'cv' => 'CV',
-            'identity' => 'Identitas',
-            'portfolio' => 'Portofolio',
-            'cover_letter' => 'Surat-Pengantar',
-            'proposal' => 'Proposal',
-            'supporting_document' => 'Dokumen-Pendukung',
-            'profile_photo' => 'Foto-Profil',
-            'legacy_bundle' => 'Berkas-Gabungan',
-            default => 'Lampiran',
-        };
-        $remoteFolder = "Pemagang/{$year}/REG-{$regId}_{$cleanName}/{$categoryFolder}";
+        $remoteFolder = "Registrasi/{$year}/{$cleanName}_REG{$regId}";
 
         $fileChecksum = hash_file('sha256', $fullPath);
         $contentVersion = substr($fileChecksum, 0, 16);
         $baseFileName = $attachment->original_name ?: basename($attachment->file_path);
         $customFileName = "ATT-{$regId}-{$attachment->id}-v{$contentVersion}_{$baseFileName}";
+
+        if ($this->driver instanceof GoogleDriveStorageDriver) {
+            try {
+                \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
+                $configuredFolderId = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)
+                    ->value('drive_folder_id');
+                if (!empty($configuredFolderId)) {
+                    $this->driver->setRootFolderId((string) $configuredFolderId);
+                }
+            } catch (\Throwable) {
+                // Abaikan jika tabel belum tersedia di unit test ringan
+            }
+        }
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $customFileName);
         $uploadResult['file_checksum'] = $fileChecksum;

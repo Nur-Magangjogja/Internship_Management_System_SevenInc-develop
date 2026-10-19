@@ -49,8 +49,8 @@ class AbsenSyncController extends Controller
             ], 503);
         }
 
-        // 2. Jika request merupakan format Phase C (memiliki source_system, kredensial terlarang, atau payload kosong untuk validasi ketat)
-        if ($request->has('source_system') || empty($request->all()) || $request->has('password_hash') || ($request->has('password') && $request->has('external_user_id'))) {
+        // 2. Jika request merupakan format Phase C (memiliki source_system, kredensial terlarang pada Phase C, atau payload kosong untuk validasi ketat)
+        if ($request->has('source_system') || empty($request->all()) || ($request->has('external_user_id') && ($request->has('password') || $request->has('password_hash')))) {
             // Dependensi skema
             if (!Schema::hasColumns('internship_registrations', ['birth_place', 'religion'])) {
                 return response()->json([
@@ -155,10 +155,15 @@ class AbsenSyncController extends Controller
             'school_id'        => 'nullable|integer',
             'nim'              => 'nullable|string|max:50',
             'is_gps_available' => 'nullable',
-            'division_name'    => 'nullable|string|max:100',
-            'division_id'      => 'nullable|integer',
-            'brand_name'       => 'nullable|string|max:100',
-            'brand_id'         => 'nullable|integer',
+            'division_name'          => 'nullable|string|max:100',
+            'division_id'            => 'nullable|integer',
+            'brand_name'             => 'nullable|string|max:100',
+            'brand_id'               => 'nullable|integer',
+            'parent_whatsapp_number' => 'nullable|string|max:50',
+            'start_date'             => 'nullable',
+            'end_date'               => 'nullable',
+            'is_active'              => 'nullable',
+            'status'                 => 'nullable|string|max:50',
         ]);
 
         DB::beginTransaction();
@@ -167,12 +172,14 @@ class AbsenSyncController extends Controller
             $isNewUser = false;
             $isGps = isset($validated['is_gps_available']) ? (bool) $validated['is_gps_available'] : true;
 
+            $targetRole = 'pemagang';
+
             if (!$user) {
                 $isNewUser = true;
                 $user = new User([
                     'name'            => $validated['full_name'],
                     'email'           => $validated['email'],
-                    'role'            => 'user',
+                    'role'            => $targetRole,
                     'is_gps_support'  => $isGps,
                     'is_gps_active'   => $isGps,
                     'is_gps_activate' => $isGps,
@@ -188,7 +195,8 @@ class AbsenSyncController extends Controller
 
                 $user->save();
             } else {
-                if ($user->role !== 'admin') {
+                if (!in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+                    $user->role = $targetRole;
                     if (!empty($validated['password_hash'])) {
                         $user->setRawAttributes(array_merge($user->getAttributes(), ['password' => $validated['password_hash']]));
                     } elseif (!empty($validated['password'])) {
@@ -213,9 +221,17 @@ class AbsenSyncController extends Controller
             $institutionId = null;
             if (!empty($validated['school_name'])) {
                 $cleanSchool = trim($validated['school_name']);
-                $inst = Institution::where('name', 'like', '%' . $cleanSchool . '%')->first();
+                $normName = Institution::normalizeName($cleanSchool);
+                $inst = Institution::whereRaw('LOWER(name) = ?', [strtolower($cleanSchool)])
+                    ->orWhere('normalized_name', $normName)
+                    ->orWhere('name', 'like', '%' . $cleanSchool . '%')
+                    ->first();
                 if (!$inst) {
-                    $inst = Institution::create(['name' => $cleanSchool]);
+                    $inst = Institution::create([
+                        'name'            => ucwords(strtolower($cleanSchool)),
+                        'normalized_name' => $normName,
+                        'is_active'       => true,
+                    ]);
                 }
                 $institutionId = $inst->id;
             }
@@ -258,32 +274,45 @@ class AbsenSyncController extends Controller
                 $cityId = City::first()?->id ?? 1;
             }
 
-            // Resolusi Divisi
+            // Resolusi Divisi (Prioritaskan nama divisi via kamus sinonim)
             $divisionId = null;
-            if (!empty($validated['division_id']) && Division::where('id', $validated['division_id'])->exists()) {
-                $divisionId = (int) $validated['division_id'];
-            } elseif (!empty($validated['division_name'])) {
+            if (!empty($validated['division_name'])) {
                 $divisionId = RegistrationController::resolveDivisionId($validated['division_name']);
+            } elseif (!empty($validated['division_id']) && Division::where('id', $validated['division_id'])->exists()) {
+                $divisionId = (int) $validated['division_id'];
             }
             if (!$divisionId) {
                 $divisionId = Division::first()?->id ?? 1;
             }
 
-            // Resolusi Brand (Opsional)
+            // Resolusi Brand (Prioritaskan nama brand lintas sistem)
             $brandId = null;
-            if (!empty($validated['brand_id']) && \App\Models\Brand::where('id', $validated['brand_id'])->exists()) {
-                $brandId = (int) $validated['brand_id'];
-            } elseif (!empty($validated['brand_name'])) {
-                $brand = \App\Models\Brand::where('name', 'like', '%' . trim($validated['brand_name']) . '%')->first();
+            if (!empty($validated['brand_name'])) {
+                $cleanBrand = strtolower(str_replace([' ', '-', '_'], '', trim($validated['brand_name'])));
+                $brand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim($validated['brand_name']))])
+                    ->orWhereRaw("LOWER(REPLACE(REPLACE(name, ' ', ''), '-', '')) = ?", [$cleanBrand])
+                    ->first();
+                if (!$brand) {
+                    $brand = \App\Models\Brand::create([
+                        'code' => \Illuminate\Support\Str::slug($validated['brand_name']),
+                        'name' => trim($validated['brand_name']),
+                    ]);
+                }
                 $brandId = $brand?->id;
+            } elseif (!empty($validated['brand_id']) && \App\Models\Brand::where('id', $validated['brand_id'])->exists()) {
+                $brandId = (int) $validated['brand_id'];
             }
 
             // Normalisasi Gender & Tanggal Lahir
-            $gender = 'Laki-laki';
+            $gender = null;
             if (!empty($validated['gender'])) {
-                $g = strtolower($validated['gender']);
-                if (str_contains($g, 'perempuan') || $g === 'p' || $g === 'female') {
+                $g = strtolower(trim((string) $validated['gender']));
+                if (in_array($g, ['perempuan', 'p', 'female', 'wanita'], true) || str_contains($g, 'perempuan')) {
                     $gender = 'Perempuan';
+                } elseif (in_array($g, ['laki-laki', 'l', 'male', 'pria'], true) || str_contains($g, 'laki')) {
+                    $gender = 'Laki-laki';
+                } else {
+                    $gender = $validated['gender'];
                 }
             }
 
@@ -294,22 +323,37 @@ class AbsenSyncController extends Controller
                 $bornDate = now()->subYears(18)->format('Y-m-d');
             }
 
+            // Tentukan status pendaftaran: pemagang dari Absen terdaftar sebagai aktif (atau sesuai status eksplisit)
+            $targetStatus = !empty($validated['status']) ? $validated['status'] : IR::STATUS_ACTIVE;
+            if (isset($validated['is_active']) && !$validated['is_active']) {
+                $targetStatus = IR::STATUS_WAITING;
+            }
+
             // Simpan / Perbarui Formulir Daftar Magang (internship_registrations)
             $registration = IR::where('user_id', $user->id)->first();
+            if (!$registration) {
+                $registration = IR::whereHas('user', function ($q) use ($validated) {
+                    $q->where('email', $validated['email']);
+                })->first();
+            }
+
             if (!$registration) {
                 $registration = IR::create([
                     'user_id'                => $user->id,
                     'fullname'               => $validated['full_name'],
                     'born_date'              => $bornDate,
                     'birth_place'            => $validated['birth_place'] ?? null,
-                    'gender'                 => $gender,
+                    'gender'                 => $gender ?? 'Laki-laki',
                     'religion'               => $validated['religion'] ?? null,
                     'phone_number'           => !empty($validated['phone']) ? $validated['phone'] : '-',
+                    'supervisor_contact'     => !empty($validated['parent_whatsapp_number']) ? $validated['parent_whatsapp_number'] : null,
                     'city_id'                => $cityId,
                     'student_id'             => !empty($validated['nim']) ? $validated['nim'] : '-',
                     'institution_id'         => $institutionId,
                     'faculty_id'             => $facultyId,
                     'study_program_id'       => $studyProgramId,
+                    'start_date'             => !empty($validated['start_date']) ? $validated['start_date'] : null,
+                    'end_date'               => !empty($validated['end_date']) ? $validated['end_date'] : null,
                     'internship_reason'      => 'Pendaftaran via Absen Djuragan',
                     'internship_type'        => 'PKL',
                     'internship_arrangement' => 'Onsite',
@@ -317,37 +361,79 @@ class AbsenSyncController extends Controller
                     'english_book_ability'   => 'Saya bisa',
                     'division_id'            => $divisionId,
                     'brand_id'               => $brandId,
-                    'internship_status'      => IR::STATUS_WAITING,
+                    'internship_status'      => $targetStatus,
+                    'followup_status'        => ($targetStatus === IR::STATUS_ACTIVE) ? IR::FOLLOWUP_INTERNSHIP_STARTED : null,
                     'current_activities'     => $validated['address'] ?? null,
                 ]);
             } else {
                 $updateData = [
                     'fullname'     => $validated['full_name'],
                     'born_date'    => $bornDate,
-                    'gender'       => $gender,
                     'phone_number' => !empty($validated['phone']) ? $validated['phone'] : $registration->phone_number,
+                    'user_id'      => $user->id,
                 ];
+
+                if (empty($registration->internship_reason)) {
+                    $updateData['internship_reason'] = 'Pendaftaran via Absen Djuragan';
+                }
+                if ($gender !== null) {
+                    $updateData['gender'] = $gender;
+                }
+                if (!empty($validated['parent_whatsapp_number'])) $updateData['supervisor_contact'] = $validated['parent_whatsapp_number'];
                 if (!empty($validated['birth_place'])) $updateData['birth_place'] = $validated['birth_place'];
                 if (!empty($validated['religion'])) $updateData['religion'] = $validated['religion'];
                 if (!empty($validated['nim'])) $updateData['student_id'] = $validated['nim'];
                 if (!empty($validated['address'])) $updateData['current_activities'] = $validated['address'];
+                if (!empty($validated['start_date'])) $updateData['start_date'] = $validated['start_date'];
+                if (!empty($validated['end_date'])) $updateData['end_date'] = $validated['end_date'];
 
-                if ($institutionId && $registration->institution_id == 1 && $institutionId != 1) {
+                if ($institutionId) {
                     $updateData['institution_id']   = $institutionId;
                     $updateData['faculty_id']       = $facultyId;
                     $updateData['study_program_id'] = $studyProgramId;
                 }
-                if ($divisionId && $registration->division_id == 1 && $divisionId != 1) {
+                if ($divisionId) {
                     $updateData['division_id'] = $divisionId;
                 }
-                if ($brandId && empty($registration->brand_id)) {
+                if ($brandId) {
                     $updateData['brand_id'] = $brandId;
+                }
+
+                // Update status aktif jika dikirim atau sebelumnya berstatus belum diputuskan
+                if ($targetStatus === IR::STATUS_ACTIVE || in_array($registration->internship_status, [IR::STATUS_WAITING, IR::STATUS_NEW, IR::STATUS_PENDING, null], true)) {
+                    $updateData['internship_status'] = $targetStatus;
+                    if ($targetStatus === IR::STATUS_ACTIVE && empty($registration->followup_status)) {
+                        $updateData['followup_status'] = IR::FOLLOWUP_INTERNSHIP_STARTED;
+                    }
                 }
 
                 $registration->update($updateData);
             }
 
+            // Catat verifikasi penerimaan ke ActivityLog untuk jaminan kelayakan sinkronisasi spreadsheet (S17.17)
+            if (in_array($targetStatus, [IR::STATUS_ACTIVE, IR::STATUS_ACCEPTED], true)) {
+                \App\Services\ActivityLogger::log(
+                    action: 'intern_registration_status_updated',
+                    description: "Pendaftaran pemagang dari Absen Djuragan terverifikasi aktif.",
+                    subject: $registration,
+                    before: ['internship_status' => $registration->internship_status],
+                    after: ['internship_status' => $targetStatus],
+                    metadata: [
+                        'registration_id' => $registration->id,
+                        'user_id'         => $registration->user_id,
+                        'new_status'      => IR::STATUS_ACCEPTED,
+                    ]
+                );
+            }
+
             DB::commit();
+
+            // Antrekan sinkronisasi otomatis ke Google Spreadsheet
+            try {
+                app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForRegistration($registration);
+            } catch (\Throwable $sheetErr) {
+                Log::warning("Spreadsheet queue sync error for Absen registration #{$registration->id}: " . $sheetErr->getMessage());
+            }
 
             Log::info("Pendaftaran dari Absen Djuragan berhasil disinkronkan ke Intern: {$validated['email']}");
 
