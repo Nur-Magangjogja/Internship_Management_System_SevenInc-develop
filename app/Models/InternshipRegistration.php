@@ -557,11 +557,20 @@ class InternshipRegistration extends Model
      */
     public function resolveDriveFolderId(): ?string
     {
+        $hasCategory = \Illuminate\Support\Facades\Schema::hasTable('registration_attachments')
+            && \Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'category');
+
         // 1. Cek dari lampiran bertipe folder Google Drive atau legacy bundle dari proses registrasi
         $folderAtt = $this->attachments()
-            ->where(function ($q) {
+            ->where(function ($q) use ($hasCategory) {
                 $q->where('mime_type', 'application/vnd.google-apps.folder')
-                  ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE);
+                  ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                  ->orWhere('attachment_type', 'folder');
+
+                if ($hasCategory) {
+                    $q->orWhere('category', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                      ->orWhere('category', 'folder');
+                }
             })
             ->whereNotNull('drive_file_id')
             ->first();
@@ -574,7 +583,9 @@ class InternshipRegistration extends Model
                     return $extracted;
                 }
             }
-            return $id;
+            if (!str_starts_with($id, 'drive_root:')) {
+                return $id;
+            }
         }
 
         // 2. Cek apakah ada lampiran registrasi dengan tautan folder di drive_web_view_link
@@ -592,6 +603,7 @@ class InternshipRegistration extends Model
 
         return null;
     }
+
 
     public function hasDocuments(): bool
     {
