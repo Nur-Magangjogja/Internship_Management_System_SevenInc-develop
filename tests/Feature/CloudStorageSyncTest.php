@@ -30,6 +30,8 @@ class CloudStorageSyncTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+
         $this->unique = uniqid('cloud_test_', true);
 
         $this->admin = User::create([
