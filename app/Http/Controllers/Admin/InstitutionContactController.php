@@ -11,10 +11,34 @@ use Illuminate\Http\Request;
 class InstitutionContactController extends Controller
 {
     /**
+     * Pastikan pengguna memiliki role staf berwenang (Admin, Super Admin, HR Staff).
+     */
+    protected function authorizeStaff(Request $request): void
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'super_admin', 'hr_staff'], true)) {
+            abort(403, 'Anda tidak memiliki hak akses untuk mengelola kontak institusi.');
+        }
+    }
+
+    /**
+     * Pastikan pengguna memiliki wewenang Admin khusus untuk tindakan destruktif.
+     */
+    protected function authorizeAdminOnly(Request $request): void
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'super_admin'], true)) {
+            abort(403, 'Hanya Admin yang berwenang menghapus kontak pembimbing institusi.');
+        }
+    }
+
+    /**
      * Simpan kontak pembimbing baru di bawah institusi tertentu.
      */
     public function store(Request $request, Institution $institution)
     {
+        $this->authorizeStaff($request);
+
         $request->validate([
             'name'           => 'required|string|max:255',
             'position_title' => 'nullable|string|max:100',
@@ -68,6 +92,8 @@ class InstitutionContactController extends Controller
      */
     public function update(Request $request, InstitutionContact $contact)
     {
+        $this->authorizeStaff($request);
+
         $request->validate([
             'name'           => 'required|string|max:255',
             'position_title' => 'nullable|string|max:100',
@@ -118,8 +144,10 @@ class InstitutionContactController extends Controller
     /**
      * Ubah status aktif / nonaktif kontak pembimbing.
      */
-    public function toggleStatus(InstitutionContact $contact)
+    public function toggleStatus(Request $request, InstitutionContact $contact)
     {
+        $this->authorizeStaff($request);
+
         $contact->is_active = !$contact->is_active;
         $contact->save();
 
@@ -134,10 +162,12 @@ class InstitutionContactController extends Controller
     }
 
     /**
-     * Hapus lembut (soft delete) kontak pembimbing.
+     * Hapus lembut (soft delete) kontak pembimbing (Khusus Admin).
      */
-    public function destroy(InstitutionContact $contact)
+    public function destroy(Request $request, InstitutionContact $contact)
     {
+        $this->authorizeAdminOnly($request);
+
         $contactName = $contact->name;
         $contact->delete();
 
@@ -153,8 +183,10 @@ class InstitutionContactController extends Controller
     /**
      * Verifikasi kontak pembimbing (dari status kandidat menjadi kontak resmi).
      */
-    public function verify(InstitutionContact $contact)
+    public function verify(Request $request, InstitutionContact $contact)
     {
+        $this->authorizeStaff($request);
+
         $contact->is_verified = true;
         $contact->verified_by = auth()->id();
         $contact->verified_at = now();

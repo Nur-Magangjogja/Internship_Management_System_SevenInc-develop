@@ -26,6 +26,8 @@ class InstitutionContactManagementTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+
         $this->unique = uniqid('cnt_', true);
 
         $this->admin = User::create([
@@ -260,6 +262,20 @@ class InstitutionContactManagementTest extends TestCase
 
         $res2 = $this->actingAs($this->pemagang)->delete(route('admin.institution-contacts.destroy', $contact));
         $res2->assertRedirect(route('user.dashboard'));
+    }
+
+    public function test_hr_staff_cannot_delete_institution_contact(): void
+    {
+        $institution = Institution::create(['name' => 'Kampus HR Protect ' . $this->unique]);
+        $contact = InstitutionContact::create([
+            'institution_id' => $institution->id,
+            'name'           => 'Kontak Terlindungi ' . $this->unique,
+        ]);
+
+        // HR Staff mencoba mengirim request DELETE ke admin.institution-contacts.destroy
+        $response = $this->actingAs($this->hrStaff)->delete(route('admin.institution-contacts.destroy', $contact));
+        $this->assertTrue(in_array($response->status(), [403, 302], true));
+        $this->assertDatabaseHas('institution_contacts', ['id' => $contact->id]);
     }
 
     public function test_registration_with_supervisor_creates_institution_contact_and_link(): void

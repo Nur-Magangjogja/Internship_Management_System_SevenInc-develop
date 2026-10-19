@@ -374,7 +374,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::put('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'update'])->name('institution-contacts.update');
     Route::post('institution-contacts/{contact}/toggle-status', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'toggleStatus'])->name('institution-contacts.toggle-status');
     Route::post('institution-contacts/{contact}/verify', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'verify'])->name('institution-contacts.verify');
-    Route::delete('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'destroy'])->name('institution-contacts.destroy');
+    Route::delete('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'destroy'])
+        ->middleware('role:admin')
+        ->name('institution-contacts.destroy');
 
     // Review Kontak Pembimbing -> admin.contact-review.*
     Route::get('/contact-review', [\App\Http\Controllers\Admin\ContactReviewController::class, 'index'])->name('contact-review.index');
