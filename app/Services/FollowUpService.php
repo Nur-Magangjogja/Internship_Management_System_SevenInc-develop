@@ -65,6 +65,13 @@ class FollowUpService
             actor: $creator
         );
 
+        // Enqueue outbound spreadsheet sync (Follow-Up Tab)
+        try {
+            app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForFollowUpCycle($cycle);
+        } catch (\Throwable) {
+            // Outbound sync queue failure must never abort follow-up operations
+        }
+
         return $cycle;
     }
 

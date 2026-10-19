@@ -426,6 +426,15 @@ class AbsenSyncController extends Controller
                 );
             }
 
+            // Auto-generate LOA untuk pemagang yang masuk dari Absen Djuragan
+            if (in_array($targetStatus, [IR::STATUS_ACTIVE, IR::STATUS_ACCEPTED], true)) {
+                try {
+                    app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($registration);
+                } catch (\Throwable $loaErr) {
+                    Log::warning("Gagal auto-generate LOA pemagang Absen #{$registration->id}: " . $loaErr->getMessage());
+                }
+            }
+
             DB::commit();
 
             // Antrekan sinkronisasi otomatis ke Google Spreadsheet

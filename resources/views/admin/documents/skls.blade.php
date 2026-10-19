@@ -10,7 +10,7 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Riwayat Unduhan SKL</h1>
-                <p class="mt-1 text-sm text-[#4B5F5A]">Daftar pengguna yang telah mengunduh Surat Keterangan Lulus magang.</p>
+                <p class="mt-1 text-sm text-[#4B5F5A]">Daftar dokumen Surat Keterangan Lulus (SKL) untuk pemagang yang telah menyelesaikan magang.</p>
             </div>
         </div>
     </div>
@@ -39,8 +39,8 @@
                     <tr class="transition hover:bg-[#F4F8F6]">
                         <td class="px-5 py-4 text-[13px] text-[#4B5F5A]">{{ $skls->firstItem() + $key }}</td>
                         <td class="px-5 py-4">
-                            <p class="font-semibold text-[#1B3A34]">{{ $skl->user?->name ?? '-' }}</p>
-                            <p class="mt-0.5 text-[11.5px] text-[#4B5F5A]">{{ $skl->user?->email ?? '' }}</p>
+                            <p class="font-semibold text-[#1B3A34]">{{ $skl->fullname ?? $skl->user?->name ?? '-' }}</p>
+                            <p class="mt-0.5 text-[11.5px] text-[#4B5F5A]">{{ $skl->user?->email ?? '-' }}</p>
                         </td>
                         <td class="whitespace-nowrap px-5 py-4 text-[13px] text-[#4B5F5A]">
                             {{ $skl->downloaded_at?->format('d M Y, H:i') ?? '-' }}
@@ -51,15 +51,13 @@
                                 <span class="h-1.5 w-1.5 rounded-full bg-[#388E3C]"></span>Berhasil
                             </span>
                             @else
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-[#D32F2F] border border-red-200">
-                                <span class="h-1.5 w-1.5 rounded-full bg-[#D32F2F]"></span>Gagal
-                            </span>
+                            <span class="text-[13px] text-[#4B5F5A] font-medium">-</span>
                             @endif
                         </td>
                         <td class="px-5 py-4">
-                            @if($skl->file_path)
+                            @if(!empty($skl->file_path))
                             @if($skl->file_path === 'skl_generated')
-                            <a href="{{ route('admin.skl.download.for_user', $skl->user->id) }}"
+                            <a href="{{ route('admin.skl.download.for_user', $skl->user?->id ?? $skl->intern_id) }}"
                                target="_blank"
                                 class="inline-flex items-center gap-1.5 rounded-[8px] border border-[#DCE7E1] px-3 py-1.5 text-[12.5px] font-semibold text-[#2D8659] transition hover:bg-[#F4F8F6]">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -94,7 +92,7 @@
                     @empty
                     <tr>
                         <td colspan="5" class="px-5 py-12 text-center text-sm text-[#4B5F5A]">
-                            Belum ada riwayat unduhan SKL.
+                            Belum ada data pemagang selesai magang atau riwayat unduhan SKL.
                         </td>
                     </tr>
                     @endforelse

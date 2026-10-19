@@ -192,7 +192,14 @@ class InternApiController extends Controller
             $searchable[] = 'birth_place';
         }
 
-        $q = IR::with(['skills', 'tools', 'user', 'division', 'brandRel', 'institution', 'city', 'facultyRel', 'studyProgramRel']);
+        $relations = ['skills', 'tools', 'user', 'division', 'brandRel', 'institution', 'city', 'facultyRel', 'studyProgramRel'];
+        if (\Illuminate\Support\Facades\Schema::hasTable('registration_custom_answers')) {
+            $relations[] = 'customAnswers';
+        }
+        if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
+            $relations[] = 'attachments';
+        }
+        $q = IR::with($relations);
 
         // Scope status / Trashed / Peserta Administratif
         if ($scope === 'trashed' || $req->get('status') === 'trashed') {
@@ -360,7 +367,7 @@ class InternApiController extends Controller
             $logsForR = $preloadedLogs->get($r->id, collect());
             $condition = $lifecycleService->resolveCurrentCondition($r, $logsForR);
 
-            return [
+            $rowObj = [
                 'id'            => $r->id,
                 'fullname'      => $r->fullname,
                 'born_date'     => $this->formatIndoDateOut($r->born_date),
@@ -436,6 +443,59 @@ class InternApiController extends Controller
                 'deleted_at'               => optional($r->deleted_at)?->toIso8601String(),
                 'is_trashed'               => $r->trashed(),
             ];
+
+            // Mapping lampiran berkas pendaftaran
+            $attMap = [];
+            if ($r->relationLoaded('attachments')) {
+                foreach ($r->attachments as $att) {
+                    $normKey = match ($att->attachment_type) {
+                        'cv'                                       => 'cv',
+                        'identity', 'ktm', 'ktp', 'ktm_ktp'        => 'identity',
+                        'portfolio', 'portofolio'                  => 'portfolio',
+                        'cover_letter', 'surat_pengantar'          => 'cover_letter',
+                        'proposal'                                 => 'proposal',
+                        'supporting_document', 'dokumen_pendukung' => 'supporting_document',
+                        'profile_photo', 'pasfoto'                 => 'profile_photo',
+                        default                                    => $att->attachment_type,
+                    };
+                    $url = $att->drive_web_view_link ?: ($att->file_path ? asset('storage/'.$att->file_path) : null);
+                    $attData = [
+                        'name'       => $att->original_name ?: basename($att->file_path ?: 'Berkas'),
+                        'url'        => $url,
+                        'drive_link' => $att->drive_web_view_link,
+                        'type'       => $att->attachment_type,
+                    ];
+                    $attMap[$normKey] = $attData;
+                    if (!isset($attMap[$att->attachment_type])) {
+                        $attMap[$att->attachment_type] = $attData;
+                    }
+                }
+            }
+
+            // Fallback profile_photo dari kolom registrasi jika belum ada di lampiran
+            if (!isset($attMap['profile_photo']) && !empty($r->profile_photo)) {
+                $attMap['profile_photo'] = [
+                    'name'       => 'Pasfoto Resmi',
+                    'url'        => asset('storage/' . $r->profile_photo),
+                    'drive_link' => null,
+                    'type'       => 'profile_photo',
+                ];
+            }
+
+            $rowObj['attachments'] = $attMap;
+            foreach ($attMap as $ak => $av) {
+                if (!isset($rowObj[$ak])) {
+                    $rowObj[$ak] = $av;
+                }
+            }
+
+            if ($r->relationLoaded('customAnswers')) {
+                foreach ($r->customAnswers as $ca) {
+                    $rowObj[$ca->field_key] = $ca->answer_value;
+                }
+            }
+
+            return $rowObj;
         }, $list);
         
 
@@ -515,7 +575,7 @@ class InternApiController extends Controller
                     $formFields = $activeSchema->fields()
                         ->active()
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
@@ -523,7 +583,7 @@ class InternApiController extends Controller
                     $formFields = \App\Models\FormField::active()
                         ->whereNull('form_schema_id')
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
@@ -531,7 +591,7 @@ class InternApiController extends Controller
                     if (empty($formFields)) {
                         $formFields = \App\Models\FormField::active()
                             ->orderBy('sort_order')
-                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system'])
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
                             ->unique('field_key')
                             ->values()
                             ->toArray();

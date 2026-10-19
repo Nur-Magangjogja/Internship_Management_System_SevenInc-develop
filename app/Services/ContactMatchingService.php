@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\FollowUpCycle;
 use App\Models\InstitutionContact;
 use App\Models\InternshipRegistration;
 use App\Models\RegistrationContactLink;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\SpreadsheetSyncEngineService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ContactMatchingService
 {
@@ -239,6 +242,9 @@ class ContactMatchingService
             actor: $actor
         );
 
+        $year = $link->relation_year ?? (int) date('Y');
+        self::ensureFollowUpCycleForContact($contact, $year);
+
         return $link;
     }
 
@@ -295,6 +301,140 @@ class ContactMatchingService
             actor: $actor
         );
 
+        $year = $link->relation_year ?? (int) date('Y');
+        self::ensureFollowUpCycleForContact($contact, $year);
+
         return $link;
+    }
+
+    /**
+     * Memastikan siklus follow-up (FollowUpCycle) untuk kontak pada tahun tertentu terbentuk
+     * dan mengantrekan sinkronisasi ke Spreadsheet Follow-Up Guru/Dosen.
+     */
+    public static function ensureFollowUpCycleForContact(InstitutionContact $contact, int $year): FollowUpCycle
+    {
+        $cycle = FollowUpCycle::firstOrCreate(
+            [
+                'institution_contact_id' => $contact->id,
+                'cycle_year'             => $year,
+            ],
+            [
+                'institution_id'        => $contact->institution_id,
+                'status'                => FollowUpCycle::STATUS_OPEN,
+                'current_attempt_count' => 0,
+            ]
+        );
+
+        try {
+            app(SpreadsheetSyncEngineService::class)->queueSyncForFollowUpCycle($cycle);
+        } catch (\Throwable $e) {
+            Log::warning("Spreadsheet queue sync error for FollowUpCycle #{$cycle->id}: " . $e->getMessage());
+        }
+
+        return $cycle;
+    }
+
+    /**
+     * Memastikan kontak pembimbing institusi (InstitutionContact) dan siklus follow-up tahunan (FollowUpCycle)
+     * terbentuk secara otomatis dari data pendaftaran pemagang yang valid, lalu memicu sinkronisasi ke Spreadsheet Follow-Up.
+     */
+    public static function ensureContactAndFollowUpCycle(InternshipRegistration $registration): ?FollowUpCycle
+    {
+        if (empty($registration->institution_id)) {
+            return null;
+        }
+
+        // Guardrail: Hanya pendaftaran yang resmi di-ACC (accepted, active, completed) yang boleh masuk siklus follow-up
+        $acceptedStatuses = [
+            InternshipRegistration::STATUS_ACCEPTED,
+            InternshipRegistration::STATUS_ACTIVE,
+            InternshipRegistration::STATUS_COMPLETED,
+        ];
+
+        if (!in_array($registration->internship_status, $acceptedStatuses, true)) {
+            return null;
+        }
+
+        $rawName = trim($registration->supervisor_name ?? '');
+        $rawPhone = trim($registration->supervisor_contact ?? '');
+
+        // Jika nama dan kontak sama-sama placeholder atau kosong, abaikan
+        if (self::isPlaceholder($rawName) && self::isPlaceholder($rawPhone)) {
+            return null;
+        }
+
+        $normalizedPhone = InstitutionContact::normalizePhone($rawPhone);
+        $normalizedName = InstitutionContact::normalizeName($rawName);
+
+        // 1. Cari kontak yang sudah ada di institusi yang sama
+        $contact = null;
+        if (!empty($normalizedPhone)) {
+            $contact = InstitutionContact::where('institution_id', $registration->institution_id)
+                ->where('normalized_phone', $normalizedPhone)
+                ->first();
+        }
+
+        if (!$contact && !empty($normalizedName)) {
+            $contact = InstitutionContact::where('institution_id', $registration->institution_id)
+                ->where('normalized_name', $normalizedName)
+                ->first();
+        }
+
+        // 2. Buat atau perbarui kontak
+        if ($contact) {
+            $dirty = false;
+            if (!$contact->is_active) {
+                $contact->is_active = true;
+                $dirty = true;
+            }
+            if (!$contact->is_verified) {
+                $contact->is_verified = true;
+                $contact->verified_at = now();
+                $dirty = true;
+            }
+            if (empty($contact->phone) && !empty($rawPhone)) {
+                $contact->phone = $rawPhone;
+                $dirty = true;
+            }
+            if ($dirty) {
+                $contact->save();
+            }
+        } else {
+            $contact = InstitutionContact::create([
+                'institution_id'   => $registration->institution_id,
+                'name'             => !empty($rawName) ? $rawName : 'Pembimbing Institusi',
+                'phone'            => !empty($rawPhone) ? $rawPhone : null,
+                'is_active'        => true,
+                'is_verified'      => true,
+                'verified_at'      => now(),
+                'notes'            => 'Terdaftar otomatis dari formulir pendaftaran pemagang #' . $registration->id . ' (' . ($registration->fullname ?? '-') . ')',
+            ]);
+        }
+
+        // 3. Tautkan pendaftaran ke kontak pembimbing
+        $year = (int) (
+            $registration->start_date
+                ? (\Illuminate\Support\Carbon::parse($registration->start_date)->format('Y'))
+                : ($registration->created_at ? $registration->created_at->format('Y') : date('Y'))
+        );
+        if ($year < 2020 || $year > 2099) {
+            $year = (int) date('Y');
+        }
+
+        RegistrationContactLink::firstOrCreate(
+            [
+                'internship_registration_id' => $registration->id,
+                'institution_contact_id'     => $contact->id,
+            ],
+            [
+                'relation_year' => $year,
+                'is_primary'    => true,
+                'source'        => 'registration_auto',
+                'confirmed_at'  => now(),
+            ]
+        );
+
+        // 4. Pastikan FollowUpCycle terbentuk dan tersinkronkan
+        return self::ensureFollowUpCycleForContact($contact, $year);
     }
 }

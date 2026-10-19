@@ -292,10 +292,131 @@ class LoaController extends Controller
             abort(403, 'Anda tidak memiliki hak untuk membuat LOA.');
         }
 
-        // Delegate to generateForBrand which now generates on the fly
-        $request->merge(['intern_ids' => [$intern->id]]);
-        return $this->generateForBrand($request);
+        // Delegate to downloadSingle
+        return $this->downloadSingle($request, $intern->id);
+    }
 
+    /**
+     * Unduh atau buka langsung PDF LOA untuk satu pemagang.
+     */
+    public function downloadSingle(Request $request, $internId = null)
+    {
+        $id = $internId ?? $request->get('intern_id');
+        if (!$id) {
+            abort(404, 'ID pemagang tidak diberikan.');
+        }
+
+        $intern = IR::findOrFail($id);
+        $user = $request->user();
+
+        // Hak akses: admin / hr_staff, atau pemagang yang bersangkutan
+        if ($user && $user->role === 'pemagang') {
+            if ((int)$intern->user_id !== (int)$user->id) {
+                abort(403, 'Anda tidak berhak mengakses LOA milik pengguna lain.');
+            }
+            $this->ensureCanAccessCompletedDocs($user, $intern);
+        }
+
+        /** @var \App\Services\DocumentGeneratorService $docService */
+        $docService = app(\App\Services\DocumentGeneratorService::class);
+        $internLoa = $docService->ensureLoaGenerated($intern, $user);
+
+        $safeLoaNumber = str_replace(['/', '\\'], '-', $internLoa->loa_number);
+        $safeName = Str::slug($intern->fullname ?? 'intern', '-');
+        $fileName = "{$safeLoaNumber}-{$safeName}.pdf";
+
+        $candidates = [
+            storage_path("app/documents/loa/{$fileName}"),
+            storage_path("app/public/documents/loa/{$fileName}"),
+        ];
+
+        $fullPath = null;
+        foreach ($candidates as $candidate) {
+            if (file_exists($candidate) && filesize($candidate) > 0) {
+                $fullPath = $candidate;
+                break;
+            }
+        }
+
+        if (!$fullPath) {
+            abort(404, 'File LOA belum dapat ditemukan.');
+        }
+
+        // Jika dipanggil via POST (misal tombol Unduh PDF di portal pemagang) atau download=1
+        if ($request->isMethod('POST') || $request->query('download') === '1' || $request->query('inline') === '0') {
+            return response()->download($fullPath, $fileName, [
+                'Content-Type' => 'application/pdf',
+            ]);
+        }
+
+        return response()->file($fullPath, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+        ]);
+    }
+
+    /**
+     * Halaman review & pratinjau LOA sebelum / sesudah generate (S17).
+     * GET /admin/loa/generate/{intern}
+     */
+    public function review(Request $request, $id)
+    {
+        $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        return view('admin.documents.loa_review', compact('intern'));
+    }
+
+    /**
+     * Konten raw HTML LOA untuk iframe pratinjau visual A4.
+     * GET /admin/loa/raw/{intern}
+     */
+    public function rawPreview(Request $request, $id)
+    {
+        $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+        $user   = $request->user();
+
+        $brandCode = $intern->brandRel?->code ?? $intern->brand;
+        $brandData = $intern->brandRel ?? Brand::whereRaw('LOWER(name) = ?', [strtolower(trim((string)$brandCode))])
+            ->orWhere('code', $brandCode)
+            ->first();
+
+        $companyName       = $brandData->name ?? $brandCode ?? 'Seven Inc';
+        $signatoryName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
+        $signatoryPosition = $brandData->signatory_position ?? 'HRD';
+
+        $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
+        $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+
+        // Jika sudah ada record snapshot LOA, gunakan nomor yang sama
+        $loaRecord = InternLoa::where('intern_id', $intern->id)->latest('id')->first();
+        if ($loaRecord && !empty($loaRecord->loa_number)) {
+            $loaNumber = $loaRecord->loa_number;
+        } else {
+            /** @var \App\Services\DocumentGeneratorService $docService */
+            $docService = app(\App\Services\DocumentGeneratorService::class);
+            $loaNumber  = $docService->generateUniqueLoaNumber($intern, $brandData);
+        }
+
+        $rows = $this->buildRows([$intern]);
+
+        return view('user.loa', [
+            'intern'          => $intern,
+            'loaNumber'       => $loaNumber,
+            'user'            => $user,
+            'loaSettings'     => (object)[
+                'header_text'        => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+                'footer_text'        => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+                'company_name'       => $companyName,
+                'company_address'    => $brandData?->company_address,
+                'signatory_name'     => $signatoryName,
+                'signatory_position' => $signatoryPosition,
+            ],
+            'rows'            => $rows,
+            'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+            'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+            'logoData'        => $logoData,
+            'stampData'       => $stampData,
+        ]);
     }
 
     public function generateBatch(Request $request)

@@ -265,9 +265,9 @@ Route::middleware(['auth', 'role:pemagang'])->prefix('user/documents')->name('us
 });
 
 Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin/documents')->name('admin.documents.')->group(function () {
-    Route::get('/skl/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showSKL'])
+    Route::get('/skl/{intern}', [\App\Http\Controllers\SKLController::class, 'review'])
         ->name('skl.show');
-    Route::get('/loa/{intern}', [\App\Http\Controllers\Admin\InternController::class, 'showLOA'])
+    Route::get('/loa/{intern}', [\App\Http\Controllers\LoaController::class, 'review'])
         ->name('loa.show');
 });
 
@@ -579,6 +579,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
     Route::post('/rekomendasi/generate-brand',     [\App\Http\Controllers\Admin\RekomendasiController::class, 'generateBulk'])->name('rekomendasi.generate_brand');
     Route::post('/rekomendasi/generate/{intern}',  [\App\Http\Controllers\Admin\RekomendasiController::class, 'generate'])->name('rekomendasi.generate');
 
+    // Review & Raw Preview SKL
+    Route::get('/skl/generate/{intern}', [SKLController::class, 'review'])->name('skl.review');
+    Route::get('/skl/raw/{intern}', [SKLController::class, 'rawPreview'])->name('skl.raw');
+
     // Preview untuk panel editor (dipanggil dari iframe)
     Route::get('/skl/preview', [SKLController::class, 'preview'])->name('skl.preview');
 
@@ -594,9 +598,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
 
 Route::middleware(['auth', 'role:admin,hr_staff'])->group(function () {
     // LOA Administratif (role:admin,hr_staff)
+    Route::get('/admin/loa/generate/{intern}', [LoaController::class, 'review'])->name('admin.loa.review');
+    Route::get('/admin/loa/raw/{intern}', [LoaController::class, 'rawPreview'])->name('admin.loa.raw');
     Route::get('/admin/loa/interns', [LoaController::class, 'indexInterns'])->name('admin.loa.interns');
     Route::post('/admin/loa/generate', [LoaController::class, 'generate'])->name('admin.loa.generate'); // single
     Route::post('/admin/loa/generate-batch', [LoaController::class, 'generateBatch'])->name('admin.loa.generateBatch'); // multiple (legacy)
+    Route::get('/admin/loa/download/{intern}', [LoaController::class, 'downloadSingle'])->name('admin.loa.download');
     Route::get('/admin/loa/interns-by-brand', [LoaController::class, 'getInternsByBrand'])->name('admin.loa.interns_by_brand');
     Route::post('/admin/loa/generate-brand', [LoaController::class, 'generateForBrand'])->name('admin.loa.generate_brand');
 });

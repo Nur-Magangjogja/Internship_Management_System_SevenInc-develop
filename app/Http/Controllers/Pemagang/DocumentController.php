@@ -52,10 +52,17 @@ class DocumentController extends Controller
             $sklDownload = true;
         }
 
-        // LOA: cek di tabel intern_loas
+        // LOA: cek di tabel intern_loas, jika berstatus accepted/active tapi belum ada, buat otomatis
         $loaRecord = null;
-        if ($registration) {
+        if ($registration && $isAccepted) {
             $loaRecord = InternLoa::where('intern_id', $registration->id)->latest('id')->first();
+            if (!$loaRecord) {
+                try {
+                    $loaRecord = app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($registration);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal auto-generate LOA pemagang #{$registration->id}: " . $e->getMessage());
+                }
+            }
         }
 
         // Sertifikat: cek di tabel intern_certificates berdasarkan intern_id
@@ -85,7 +92,7 @@ class DocumentController extends Controller
                 'pending'     => $isAccepted && $loaRecord === null,
                 'route'       => null, // pakai form POST di view karena butuh intern_id
                 'intern_id'   => $registration?->id,
-                'date'        => null,
+                'date'        => $loaRecord?->created_at,
             ],
             'skl' => [
                 'label'       => 'SKL (Surat Keterangan Lulus)',

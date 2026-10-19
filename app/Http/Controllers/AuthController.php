@@ -155,16 +155,23 @@ class AuthController extends Controller
                     ->withInput($request->only('login', 'email', 'username'));
             }
 
-            // BYPASS SUPERADMIN: Jika akun di IMS bukan admin (misal pemagang/user),
-            // cek apakah merupakan Super Admin / Admin di Absen Djuragan. Jika ya, otomatis bypass jadi admin!
-            if ($user->role !== 'admin') {
-                $remoteAdmin = $this->verifyRemoteAdmin($user->email, $request->password);
-                if ($remoteAdmin) {
-                    $user->role = 'admin';
-                    $user->save();
-                    $request->session()->regenerate();
-                    return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil masuk sebagai Admin (Bypass Super Admin Absen Djuragan).');
+            // Sinkronisasi status peran Admin / Super Admin dari Absen Djuragan jika akun terhubung
+            $remoteAdmin = $this->verifyRemoteAdmin($user->email, $request->password);
+            if ($remoteAdmin) {
+                $isSuperAdmin = !empty($remoteAdmin['is_super_admin']) || ((int)($remoteAdmin['role_id'] ?? 0) === 7);
+                $targetRole = $isSuperAdmin ? User::ROLE_ADMIN : ($remoteAdmin['intern_role'] ?? $remoteAdmin['role'] ?? User::ROLE_ADMIN);
+
+                if ($targetRole === 'none') {
+                    auth()->logout();
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                    return back()
+                        ->with('error', 'Akses ditolak: Akun Anda tidak memiliki hak akses ke Web Intern.')
+                        ->withInput($request->only('login', 'email', 'username'));
                 }
+
+                $user->role = $targetRole;
+                $user->save();
             }
 
             // Regenerasi session untuk keamanan
@@ -186,24 +193,40 @@ class AuthController extends Controller
         // Fallback: Jika belum ada akun di IMS, cek apakah kredensial ini adalah milik Admin / Super Admin di Absen Djuragan
         $remoteAdmin = $this->verifyRemoteAdmin($loginInput, $request->password);
         if ($remoteAdmin) {
+            $isSuperAdmin = !empty($remoteAdmin['is_super_admin']) || ((int)($remoteAdmin['role_id'] ?? 0) === 7);
+            $targetRole = $isSuperAdmin ? User::ROLE_ADMIN : ($remoteAdmin['intern_role'] ?? $remoteAdmin['role'] ?? User::ROLE_ADMIN);
+
+            if ($targetRole === 'none') {
+                return back()
+                    ->with('error', 'Akses ditolak: Akun Anda tidak memiliki hak akses ke Web Intern.')
+                    ->withInput($request->only('login', 'email', 'username'));
+            }
+
             $user = User::where('email', $remoteAdmin['email'])->first();
 
             if (!$user) {
                 $user = User::create([
-                    'name'     => $remoteAdmin['name'] ?? $remoteAdmin['username'] ?? 'Admin Absen',
+                    'name'     => $remoteAdmin['name'] ?? $remoteAdmin['username'] ?? 'Staff Absen',
                     'email'    => $remoteAdmin['email'],
                     'password' => Hash::make($request->password),
-                    'role'     => 'admin', // BYPASS: Otomatis jadi admin di Web Intern
+                    'role'     => $targetRole,
                 ]);
             } else {
                 $user->password = Hash::make($request->password);
-                $user->role = 'admin'; // BYPASS: Otomatis jadi admin di Web Intern
+                $user->role = $targetRole;
                 $user->save();
             }
 
             Auth::login($user, $remember);
             $request->session()->regenerate();
-            return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil login sebagai Admin (Bypass Super Admin Absen Djuragan).');
+
+            if ($targetRole === User::ROLE_ADMIN) {
+                return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil login sebagai Admin via Absen Djuragan.');
+            } elseif ($targetRole === User::ROLE_HR_STAFF) {
+                return redirect()->route('hr.dashboard')->with('success', 'Berhasil login sebagai Staf HR via Absen Djuragan.');
+            } else {
+                return redirect()->route('home')->with('success', 'Berhasil login via Absen Djuragan.');
+            }
         }
 
         // Fallback 2: Cek apakah kredensial ini adalah milik Pemagang yang terdaftar di Absen Djuragan
@@ -504,7 +527,16 @@ class AuthController extends Controller
         if ($registration) {
             $registration->update(array_filter($regData, fn($val) => $val !== null));
         } else {
-            \App\Models\InternshipRegistration::create($regData);
+            $registration = \App\Models\InternshipRegistration::create($regData);
+        }
+
+        // Auto-generate LOA jika pemagang berstatus active atau accepted dari Absen / SSO
+        if (in_array($status, ['active', 'accepted'], true)) {
+            try {
+                app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($registration);
+            } catch (\Throwable $loaErr) {
+                \Illuminate\Support\Facades\Log::warning("Gagal auto-generate LOA pemagang SSO #{$registration->id}: " . $loaErr->getMessage());
+            }
         }
 
         return $user;
@@ -563,47 +595,73 @@ class AuthController extends Controller
         }
 
         // Validasi role admin / super admin / pemagang
+        // Aturan: Selain role Admin (1) dan Super Admin (7) di Absen Djuragan, role ke Web Intern selalu Pemagang
         $roleId = (int) ($payload['role_id'] ?? 0);
         $role = $payload['role'] ?? '';
-        $isAdmin = $role === 'admin'
-            || !empty($payload['is_super_admin'])
-            || in_array($roleId, [1, 7], true);
-        $isPemagang = $role === 'pemagang' || $roleId === 3;
+        $isSuperAdmin = !empty($payload['is_super_admin']) || ($roleId === 7);
+        $isAbsenAdmin = ($roleId === 1) && ($role !== 'pemagang') && (isset($payload['intern_role']) || $role === 'admin');
+        $isPemagang = ($role === 'pemagang') || !in_array($roleId, [1, 7], true);
 
-        if (!$isAdmin && !$isPemagang) {
-            return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Peran akun tidak diizinkan.');
+        // Role Pemagang
+        if ($isPemagang) {
+            $internData = $payload['intern_data'] ?? $payload;
+            $user = $this->syncOrProvisionRemoteIntern($payload['email'], $internData, null);
+
+            Auth::login($user);
+            $request->session()->regenerate();
+
+            return redirect()->route('pemagang.dashboard')->with('success', 'Berhasil masuk ke InternHub via Absen Djuragan.');
         }
 
-        if ($isAdmin) {
-            // Cari atau buatkan akun Admin di IMS (Bypass Super Admin jadi Admin)
+        // Role Admin / Super Admin dari Absen Djuragan
+        if ($isSuperAdmin || $isAbsenAdmin) {
+            // Super Admin dari Absen selalu mendapatkan wewenang 'admin' penuh di IMS
+            if ($isSuperAdmin) {
+                $targetRole = User::ROLE_ADMIN;
+            } else {
+                // Admin biasa menggunakan role spesifik yang ditentukan di Superadmin Absen Djuragan
+                $targetRole = $payload['intern_role'] ?? $payload['role'] ?? User::ROLE_ADMIN;
+            }
+
+            // Jika hak akses dinonaktifkan
+            if ($targetRole === 'none') {
+                return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Akun Anda tidak memiliki hak akses ke Web Intern.');
+            }
+
+            // Validasi role yang diizinkan di Web Intern
+            if (!in_array($targetRole, [User::ROLE_ADMIN, User::ROLE_HR_STAFF, User::ROLE_USER], true)) {
+                return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Peran akun tidak diizinkan.');
+            }
+
             $user = User::where('email', $payload['email'])->first();
             if (!$user) {
                 $user = User::create([
-                    'name'     => $payload['name'] ?? $payload['username'] ?? 'Admin Absen',
+                    'name'     => $payload['name'] ?? $payload['username'] ?? 'Staff Absen',
                     'email'    => $payload['email'],
                     'password' => Hash::make(\Illuminate\Support\Str::random(32)),
-                    'role'     => 'admin', // BYPASS
+                    'role'     => $targetRole,
                 ]);
             } else {
-                // Apapun role sebelumnya di IMS, BYPASS menjadi 'admin'!
-                $user->role = 'admin';
+                $user->role = $targetRole;
+                if (!empty($payload['name'])) {
+                    $user->name = $payload['name'];
+                }
                 $user->save();
             }
 
             Auth::login($user);
             $request->session()->regenerate();
 
-            return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil masuk sebagai Admin via Absen Djuragan.');
+            if ($targetRole === User::ROLE_ADMIN) {
+                return redirect()->route('admin.dashboard.index')->with('success', 'Berhasil masuk sebagai Admin via Absen Djuragan.');
+            } elseif ($targetRole === User::ROLE_HR_STAFF) {
+                return redirect()->route('hr.dashboard')->with('success', 'Berhasil masuk sebagai Staf HR via Absen Djuragan.');
+            } else {
+                return redirect()->route('home')->with('success', 'Berhasil masuk via Absen Djuragan.');
+            }
         }
 
-        // Role Pemagang
-        $internData = $payload['intern_data'] ?? $payload;
-        $user = $this->syncOrProvisionRemoteIntern($payload['email'], $internData, null);
-
-        Auth::login($user);
-        $request->session()->regenerate();
-
-        return redirect()->route('pemagang.dashboard')->with('success', 'Berhasil masuk ke InternHub via Absen Djuragan.');
+        return redirect()->route('user.login')->with('error', 'Akses SSO ditolak: Peran akun tidak diizinkan.');
     }
 
     /**
