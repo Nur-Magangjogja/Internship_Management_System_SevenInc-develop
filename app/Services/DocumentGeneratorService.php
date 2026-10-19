@@ -37,8 +37,11 @@ class DocumentGeneratorService
             ], true),
             'skl',
             'sertifikat',
+            'certificate',
             'penilaian',
+            'assessment',
             'rekomendasi',
+            'recommendation',
             'membercard'            => in_array($status, [InternshipRegistration::STATUS_COMPLETED], true),
             default                 => false,
         };

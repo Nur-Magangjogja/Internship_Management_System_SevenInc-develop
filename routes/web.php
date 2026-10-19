@@ -170,13 +170,31 @@ Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin
     Route::get('/documents/loas', [DocumentController::class, 'listLoas'])->name('documents.loas');
     Route::get('/documents/skls', [DocumentController::class, 'listSkls'])->name('documents.skls');
 
+    // Berkas Terbit & Status Sinkronisasi Dokumen
+    Route::prefix('generated-documents')->name('generated-documents.')->group(function () {
+        Route::get('/{uuid}/download', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'download'])->name('download');
+        Route::get('/{uuid}/preview', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'preview'])->name('preview');
+        Route::get('/{uuid}/status', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'status'])->name('status');
+        Route::post('/{uuid}/retry-sync', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'retrySync'])->name('retry-sync');
+    });
+
     // Serve file LOA/SKL dari storage (bypass symlink issue di XAMPP)
     Route::get('/documents/serve/{type}/{filename}', function (string $type, string $filename) {
         // Validasi type
-        if (!in_array($type, ['loa', 'skl', 'tmp', 'rekomendasi'])) abort(404);
+        if (!in_array($type, ['loa', 'skl', 'tmp', 'rekomendasi', 'certificate', 'assessment', 'mou'])) abort(404);
 
         // Sanitize filename — hanya huruf, angka, dash, underscore, titik
         if (!preg_match('/^[A-Za-z0-9_\-\.]+\.pdf$/', $filename)) abort(404);
+
+        // Cari via GeneratedDocument di database jika ada
+        $genDoc = \App\Models\GeneratedDocument::where('file_name', $filename)->first();
+        if ($genDoc && \Illuminate\Support\Facades\Storage::disk('local')->exists($genDoc->file_path)) {
+            $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($genDoc->file_path);
+            return response()->file($fullPath, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            ]);
+        }
 
         // Cari file: coba di private storage dulu, lalu tmp, lalu legacy public disk
         $candidates = [

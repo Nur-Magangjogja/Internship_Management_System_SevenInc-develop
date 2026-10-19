@@ -46,11 +46,13 @@ class DocumentPublishingService
     public function publishInternDocument(
         InternshipRegistration $intern,
         string $documentType,
-        string $htmlContent,
+        ?string $htmlContent = null,
         array $variableSnapshot = [],
         array $assetReferences = [],
         ?string $customDocNumber = null,
-        ?User $actor = null
+        ?User $actor = null,
+        ?string $pdfBinary = null,
+        ?\App\Models\DocumentTemplate $template = null
     ): GeneratedDocument {
         // 1. Validasi Kelayakan Bisnis
         if (!$this->docNumberService->canGenerate($intern, $documentType)) {
@@ -82,19 +84,25 @@ class DocumentPublishingService
         $relativeLocalDir = "generated_documents/{$documentType}/{$year}";
         $relativeLocalPath = "{$relativeLocalDir}/{$fileName}";
 
-        // 3. Render PDF ke disk lokal privat
+        // 3. Render atau simpan PDF ke disk lokal privat
         if (!Storage::disk('local')->exists($relativeLocalDir)) {
             Storage::disk('local')->makeDirectory($relativeLocalDir);
         }
 
         $fullLocalPath = Storage::disk('local')->path($relativeLocalPath);
 
-        try {
-            $pdf = Pdf::loadHTML($htmlContent)->setPaper('a4', 'portrait');
-            $pdf->save($fullLocalPath);
-        } catch (\Throwable $e) {
-            Log::error("Gagal render PDF untuk {$documentType} (Reg #{$intern->id}): " . $e->getMessage());
-            throw new RuntimeException("Gagal melakukan render PDF: " . $e->getMessage(), 0, $e);
+        if ($pdfBinary !== null && strlen($pdfBinary) > 0) {
+            Storage::disk('local')->put($relativeLocalPath, $pdfBinary);
+        } else {
+            try {
+                $paperSize = 'a4';
+                $orientation = ($documentType === 'certificate' || $template?->type === 'certificate') ? 'landscape' : 'portrait';
+                $pdf = Pdf::loadHTML($htmlContent ?? '')->setPaper($paperSize, $orientation);
+                $pdf->save($fullLocalPath);
+            } catch (\Throwable $e) {
+                Log::error("Gagal render PDF untuk {$documentType} (Reg #{$intern->id}): " . $e->getMessage());
+                throw new RuntimeException("Gagal melakukan render PDF: " . $e->getMessage(), 0, $e);
+            }
         }
 
         if (!file_exists($fullLocalPath) || filesize($fullLocalPath) === 0) {
@@ -113,6 +121,9 @@ class DocumentPublishingService
                 'document_number'            => $docNumber,
                 'internship_registration_id' => $intern->id,
                 'institution_id'             => $intern->institution_id,
+                'template_type'              => $template?->type ?? $documentType,
+                'template_id'                => $template?->id,
+                'template_version'           => $template?->version_number ?? 1,
                 'variable_snapshot'          => $variableSnapshot,
                 'asset_references'           => $assetReferences,
                 'file_path'                  => $relativeLocalPath,
@@ -312,5 +323,13 @@ class DocumentPublishingService
             $doc->recordStatusChange(GeneratedDocument::STATUS_FAILED, "Gagal sinkronisasi: " . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Ulangi sinkronisasi cloud storage untuk dokumen yang gagal/pending secara aman dan idempotent.
+     */
+    public function retrySync(GeneratedDocument $doc, ?User $actor = null): array
+    {
+        return $this->syncDocumentToDrive($doc, $actor);
     }
 }
