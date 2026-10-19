@@ -26,6 +26,7 @@ class MouTemplateManagementTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         Storage::fake('public');
 
         $this->unique = uniqid('mou_', true);
@@ -72,7 +73,7 @@ class MouTemplateManagementTest extends TestCase
         $response->assertSee('mouHeaderCanvas', false);
         $response->assertSee('mouFooterCanvas', false);
         $response->assertSee('initMouWordProcessor', false);
-        $response->assertSee('Desain & Tata Letak Tabel', false);
+        $response->assertSee('btnTableContextMenuToggle', false);
         $response->assertSee('Header & Footer', false);
         $response->assertSee('NOTA KESEPAHAMAN');
         $response->assertSee('PELAKSANAAN TRI DHARMA PERGURUAN TINGGI');

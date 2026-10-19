@@ -131,6 +131,45 @@
         min-height: 700px;
         max-height: calc(100dvh - 130px);
     }
+
+    /* Collapsible Mail Merge Drawer Sidebar & Dedicated Scrollbar */
+    .mou-mail-merge-sidebar {
+        width: 340px;
+        min-width: 340px;
+        max-width: 360px;
+        height: 100%;
+        max-height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        border-left: 1px solid #cbd5e1;
+        box-shadow: -4px 0 16px rgba(15, 23, 42, 0.08);
+        position: relative;
+        z-index: 30;
+        overflow: hidden;
+    }
+    #mouSidebarTokenCategories {
+        flex: 1 1 0%;
+        min-height: 0;
+        overflow-y: auto !important;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 #f1f5f9;
+        -webkit-overflow-scrolling: touch;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar {
+        width: 6px;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-track {
+        background: #f1f5f9;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 999px;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+    }
     .mou-workspace-viewport {
         flex: 1 1 auto;
         overflow-y: auto;
@@ -233,25 +272,29 @@
         background: rgba(248, 250, 252, 0.5);
     }
     .mou-zone-active {
-        border-color: #f59e0b !important;
-        background: rgba(254, 243, 199, 0.18) !important;
-        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
+        border-color: #2b579a !important;
+        background: rgba(235, 243, 253, 0.45) !important;
+        box-shadow: 0 0 0 1px #2b579a;
     }
     .mou-zone-dimmed {
-        opacity: 0.65;
+        opacity: 0.35 !important;
+        filter: grayscale(20%);
+        pointer-events: none !important;
+        user-select: none !important;
+        transition: opacity 0.15s ease;
     }
     .mou-zone-tag {
         position: absolute;
         top: -18px;
         left: 4px;
         font-size: 9px;
-        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-family: 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding: 1px 6px;
-        border-radius: 3px;
-        background: #f59e0b;
+        letter-spacing: 0.05em;
+        padding: 2px 8px;
+        border-radius: 2px 2px 0 0;
+        background: #2b579a;
         color: #ffffff;
         display: none;
         pointer-events: none;
@@ -277,6 +320,23 @@
         user-select: none;
         flex-shrink: 0;
         min-height: 12mm;
+        border-bottom: 1.5px dashed #cbd5e1;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .mou-a4-page-header:hover {
+        border-bottom-color: #3b82f6;
+        background-color: rgba(239, 246, 255, 0.45);
+    }
+    .mou-a4-page-header::after {
+        content: "Header Dokumen (Klik untuk edit)";
+        position: absolute;
+        right: 0;
+        bottom: 1px;
+        font-size: 8.5px;
+        color: #94a3b8;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-style: italic;
+        pointer-events: none;
     }
     .mou-a4-page-footer {
         position: relative;
@@ -284,6 +344,23 @@
         user-select: none;
         flex-shrink: 0;
         min-height: 14mm;
+        border-top: 1.5px dashed #cbd5e1;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .mou-a4-page-footer:hover {
+        border-top-color: #3b82f6;
+        background-color: rgba(239, 246, 255, 0.45);
+    }
+    .mou-a4-page-footer::after {
+        content: "Footer / Kotak Paraf (Klik untuk edit)";
+        position: absolute;
+        right: 0;
+        top: 1px;
+        font-size: 8.5px;
+        color: #94a3b8;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-style: italic;
+        pointer-events: none;
     }
     .mou-page-body-content {
         flex: 1 1 0%;
@@ -444,6 +521,17 @@
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
     }
 
+    /* Word 2013 Mailings - Highlight Merge Fields */
+    .mou-merge-field-highlight {
+        background-color: #fef08a !important;
+        color: #854d0e !important;
+        border: 1px dashed #ca8a04 !important;
+        border-radius: 3px !important;
+        padding: 0 3px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 2px rgba(180, 83, 9, 0.15) !important;
+    }
+
     /* Multi-Sheet A4 Preview Cards */
     .mou-preview-a4-sheet {
         width: 210mm;
@@ -521,21 +609,16 @@
 <div class="mou-word-studio-shell">
     <!-- Pinned / Sticky Top Ribbon Header -->
     <div id="mouStudioStickyHeader" class="mou-studio-sticky-header">
-        <!-- Top Ribbon Tab Bar -->
-        <div class="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-100 px-3 pt-1.5">
-            <div class="flex items-center gap-1 overflow-x-auto">
-                <button type="button" data-ribbon-tab="home" class="mou-ribbon-tab-btn active">Beranda</button>
-                <button type="button" data-ribbon-tab="insert" class="mou-ribbon-tab-btn">Sisipkan</button>
-                <button type="button" data-ribbon-tab="layout" class="mou-ribbon-tab-btn">Tata Letak</button>
-                <button type="button" data-ribbon-tab="table" class="mou-ribbon-tab-btn inline-flex items-center gap-1.5">
-                    <span>Desain & Tata Letak Tabel</span>
-                    <span id="ribbonTableContextBadge" class="hidden rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Aktif</span>
-                </button>
-                <button type="button" data-ribbon-tab="headerfooter" class="mou-ribbon-tab-btn">Header & Footer</button>
+        <!-- Clean Title Bar -->
+        <div class="flex items-center justify-between bg-[#2b579a] text-white px-3 py-1.5 text-xs select-none shadow-xs">
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-white text-[#2b579a] font-black text-xs shadow-xs">W</span>
+                <span class="text-white font-semibold text-[12px]">{{ old('name', $template->name ?? 'Editor Template Dokumen MoU') }}</span>
+                <span class="text-blue-200 text-[10px] hidden sm:inline">(A4 Print Layout)</span>
             </div>
 
-            <div class="flex items-center gap-2 pb-1.5">
-                <span id="activeEditorZoneBadge" class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-700">
+            <div class="flex items-center gap-2">
+                <span id="activeEditorZoneBadge" class="inline-flex items-center gap-1.5 rounded-full bg-white/20 border border-white/30 px-2.5 py-0.5 text-[11px] font-semibold text-white">
                     Mode Edit: Isi Dokumen Utama
                 </span>
 
@@ -543,517 +626,308 @@
                     type="button"
                     id="btnCloseHeaderFooter"
                     onclick="window.MouWordProcessor?.setActiveZone('body')"
-                    class="hidden rounded-md bg-amber-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-amber-700"
+                    class="hidden rounded bg-amber-400 hover:bg-amber-500 px-2.5 py-0.5 text-[11px] font-bold text-slate-900 shadow-xs transition"
+                    title="Selesai Edit Header / Footer (Esc)"
                 >
-                    Tutup Header / Footer
+                    &check; Selesai Edit Header/Footer
+                </button>
+            </div>
+        </div>
+
+        <!-- SINGLE DYNAMIC TOOLBAR (Clean, Compact, Responsive) -->
+        <div class="border-b border-slate-200 bg-white px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <!-- Grup 1: Undo & Redo -->
+                <div class="flex items-center gap-0.5 pr-2 border-r border-slate-200">
+                    <button type="button" id="btnRibbonUndo" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.undo()" class="mou-ribbon-btn p-1.5 w-8 h-[32px]" title="Urungkan (Undo - Ctrl+Z)">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                    </button>
+                    <button type="button" id="btnRibbonRedo" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.redo()" class="mou-ribbon-btn p-1.5 w-8 h-[32px]" title="Ulangi (Redo - Ctrl+Y)">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+                    </button>
+                </div>
+
+                <!-- Grup 2: Dokumen & Template -->
+                <div class="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+                    <button type="button" id="btnNewBlankDoc" class="mou-ribbon-btn border-slate-300 bg-slate-50 text-slate-700 text-xs px-2" title="Kosongkan halaman untuk menulis dari awal">
+                        Halaman Kosong
+                    </button>
+                    <button type="button" id="btnLoadSampleMou" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 font-medium text-xs px-2" title="Muat contoh template MoU standar Seven Inc">
+                        Contoh MoU
+                    </button>
+                    <select id="ribbonSavedTemplateSelect" class="mou-ribbon-select max-w-[190px] text-xs" title="Pilih template MoU yang pernah disimpan">
+                        <option value="">-- Muat Template Tersimpan --</option>
+                        @foreach($savedTemplates as $tplItem)
+                            <option value="{{ $tplItem['id'] }}">
+                                {{ $tplItem['name'] }} (v{{ $tplItem['version_number'] }}){{ !empty($tplItem['is_active']) ? ' — Aktif' : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <button type="button" id="btnLoadSelectedSavedTemplate" class="mou-ribbon-btn border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold text-xs px-2" title="Muat template yang dipilih">
+                        Muat
+                    </button>
+                </div>
+
+                <!-- Grup 3: Font & Gaya Huruf -->
+                <div class="flex items-center gap-1 pr-2 border-r border-slate-200">
+                    <select id="ribbonFontFamily" class="mou-ribbon-select min-w-[130px] text-xs" title="Jenis Huruf">
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Arial">Arial</option>
+                        <option value="Calibri">Calibri</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Cambria">Cambria</option>
+                        <option value="Courier New">Courier New</option>
+                    </select>
+
+                    <select id="ribbonFontSize" class="mou-ribbon-select w-16 text-xs" title="Ukuran Font (pt)">
+                        @foreach([8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36] as $pt)
+                            <option value="{{ $pt }}pt" {{ (int)($cfg['font_size_pt'] ?? 12) === $pt ? 'selected' : '' }}>{{ $pt }} pt</option>
+                        @endforeach
+                    </select>
+
+                    <select id="ribbonHeadingStyle" class="mou-ribbon-select min-w-[125px] text-xs" title="Gaya Teks / Paragraf">
+                        <option value="p">Paragraf Normal</option>
+                        <option value="h1">Judul 1 (Heading 1)</option>
+                        <option value="h2">Judul 2 (Heading 2)</option>
+                        <option value="h3">Judul 3 (Heading 3)</option>
+                        <option value="h4">Subjudul (Heading 4)</option>
+                    </select>
+
+                    <div class="flex items-center gap-0.5">
+                        <button type="button" data-tiptap-mark="bold" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleBold()" class="mou-ribbon-btn font-bold w-6 text-xs" title="Tebal (Ctrl+B)">B</button>
+                        <button type="button" data-tiptap-mark="italic" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleItalic()" class="mou-ribbon-btn italic w-6 font-serif text-xs" title="Miring (Ctrl+I)">I</button>
+                        <button type="button" data-tiptap-mark="underline" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleUnderline()" class="mou-ribbon-btn underline w-6 text-xs" title="Garis Bawah (Ctrl+U)">U</button>
+                        <button type="button" data-tiptap-mark="strike" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleStrike()" class="mou-ribbon-btn line-through w-6 text-xs" title="Coret">S</button>
+                        <button type="button" data-tiptap-mark="subscript" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleSubscript()" class="mou-ribbon-btn w-7 text-[10px]" title="Subscript">X<sub>2</sub></button>
+                        <button type="button" data-tiptap-mark="superscript" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleSuperscript()" class="mou-ribbon-btn w-7 text-[10px]" title="Superscript">X<sup>2</sup></button>
+                        <button type="button" id="btnToggleUppercase" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleUppercaseSelection()" class="mou-ribbon-btn font-bold px-1 text-xs" title="Kapitalisasi (UPPERCASE/lowercase)">AA</button>
+
+                        <label class="inline-flex items-center gap-0.5 text-xs text-slate-700 ml-0.5 cursor-pointer" title="Warna Teks">
+                            <span class="font-bold underline text-[11px]">A</span>
+                            <input type="color" id="ribbonTextColor" value="#000000" class="h-5 w-5 cursor-pointer rounded border border-slate-300 p-0">
+                        </label>
+                        <label class="inline-flex items-center gap-0.5 text-xs text-slate-700 ml-0.5 cursor-pointer" title="Warna Sorotan (Highlight)">
+                            <span class="bg-yellow-200 px-0.5 rounded font-semibold text-[10px]">ab</span>
+                            <input type="color" id="ribbonHighlightColor" value="#fef08a" class="h-5 w-5 cursor-pointer rounded border border-slate-300 p-0">
+                        </label>
+                        <button type="button" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.setHighlightColor('transparent')" class="mou-ribbon-btn text-[10px] text-slate-500 px-1" title="Hapus Highlight">No HL</button>
+                    </div>
+                </div>
+
+                <!-- Grup 4: Paragraf & Daftar -->
+                <div class="flex items-center gap-0.5 pr-2 border-r border-slate-200">
+                    <button type="button" data-tiptap-align="left" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.setTextAlign('left')" class="mou-ribbon-btn p-1" title="Rata Kiri">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+                    </button>
+                    <button type="button" data-tiptap-align="center" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.setTextAlign('center')" class="mou-ribbon-btn p-1" title="Rata Tengah">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="10" x2="6" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="18" y1="18" x2="6" y2="18"/></svg>
+                    </button>
+                    <button type="button" data-tiptap-align="right" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.setTextAlign('right')" class="mou-ribbon-btn p-1" title="Rata Kanan">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+                    </button>
+                    <button type="button" data-tiptap-align="justify" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.setTextAlign('justify')" class="mou-ribbon-btn p-1" title="Rata Justify">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
+                    </button>
+
+                    <select id="ribbonParagraphLineHeight" class="mou-ribbon-select min-w-[90px] text-xs" title="Spasi Baris Paragraf">
+                        <option value="1">Spasi 1.0</option>
+                        <option value="1.15" selected>Spasi 1.15</option>
+                        <option value="1.5">Spasi 1.5</option>
+                        <option value="2">Spasi 2.0</option>
+                    </select>
+
+                    <button type="button" id="btnToggleBulletList" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleBulletList()" class="mou-ribbon-btn px-1.5 text-xs" title="Daftar Poin">
+                        &bull; Poin
+                    </button>
+                    <button type="button" id="btnToggleOrderedList" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.toggleOrderedList()" class="mou-ribbon-btn px-1.5 text-xs" title="Daftar Bernomor">
+                        1. Nomor
+                    </button>
+                    <select id="ribbonOrderedListStyle" class="mou-ribbon-select min-w-[70px] text-xs" title="Format Penomoran">
+                        <option value="1">1, 2, 3</option>
+                        <option value="a">a, b, c</option>
+                        <option value="A">A, B, C</option>
+                        <option value="i">i, ii, iii</option>
+                    </select>
+                    <button type="button" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.adjustIndent(-6)" class="mou-ribbon-btn px-1 text-xs" title="Kurangi Indentasi">&larr; Indent</button>
+                    <button type="button" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.adjustIndent(6)" class="mou-ribbon-btn px-1 text-xs" title="Tambah Indentasi">Indent &rarr;</button>
+                </div>
+
+                <!-- Grup 5: Sisipkan (Tautan, Simbol & Tabel) -->
+                <div class="flex items-center gap-1.5 pr-2 border-r border-slate-200 relative">
+                    <button type="button" id="btnInsertPageBreak" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.insertPageBreak()" class="mou-ribbon-btn border-slate-200 bg-slate-50 text-xs px-1.5" title="Sisipkan Halaman Baru (Ctrl+Enter)">+ Hal Baru</button>
+                    <button type="button" id="btnInsertHyperlink" class="mou-ribbon-btn border-slate-200 bg-slate-50 text-xs px-1.5" title="Sisipkan Hyperlink">+ Tautan</button>
+                    <select id="ribbonQuickSymbolSelect" class="mou-ribbon-select min-w-[85px] text-xs" title="Sisipkan Simbol">
+                        <option value="">Simbol...</option>
+                        <option value="§">§ (Pasal)</option>
+                        <option value="•">• (Bullet)</option>
+                        <option value="–">– (En Dash)</option>
+                        <option value="—">— (Em Dash)</option>
+                        <option value="©">© (Copyright)</option>
+                        <option value="®">® (Registered)</option>
+                        <option value="±">± (Kurang Lebih)</option>
+                        <option value="°">° (Derajat)</option>
+                    </select>
+
+                    <!-- Menu Dropdown Tabel Kontekstual -->
+                    <div class="relative inline-block text-left">
+                        <button type="button" id="btnTableContextMenuToggle" class="mou-ribbon-btn inline-flex items-center gap-1 border-slate-200 bg-slate-50 text-slate-700 font-semibold px-2 text-xs" title="Menu Pengelolaan Tabel">
+                            <svg class="h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                            <span>Tabel</span>
+                            <svg class="h-3 w-3 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </button>
+                        <div id="tableContextMenuDropdown" class="hidden absolute left-0 mt-1 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 divide-y divide-slate-100 p-1 text-xs">
+                            <div class="p-1">
+                                <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Sisipkan Tabel Baru</span>
+                                <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 2 &times; 2</button>
+                                <button type="button" onclick="window.MouWordProcessor?.insertTable(3, 3, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 3 &times; 3</button>
+                                <button type="button" onclick="window.MouWordProcessor?.insertTable(4, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel Tanda Tangan (4 &times; 2)</button>
+                            </div>
+                            <div class="p-1">
+                                <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Baris & Kolom</span>
+                                <button type="button" onclick="window.MouWordProcessor?.addRowBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Atas</button>
+                                <button type="button" onclick="window.MouWordProcessor?.addRowAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Bawah</button>
+                                <button type="button" onclick="window.MouWordProcessor?.addColumnBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kiri</button>
+                                <button type="button" onclick="window.MouWordProcessor?.addColumnAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kanan</button>
+                            </div>
+                            <div class="p-1">
+                                <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Manipulasi Sel & Hapus</span>
+                                <button type="button" onclick="window.MouWordProcessor?.mergeCells()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Gabung Sel (Merge)</button>
+                                <button type="button" onclick="window.MouWordProcessor?.splitCell()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Pisah Sel (Split)</button>
+                                <button type="button" onclick="window.MouWordProcessor?.deleteRow()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Baris</button>
+                                <button type="button" onclick="window.MouWordProcessor?.deleteColumn()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Kolom</button>
+                                <button type="button" onclick="window.MouWordProcessor?.deleteTable()" class="w-full text-left px-2 py-1 hover:bg-rose-100 text-rose-700 rounded font-bold">Hapus Seluruh Tabel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grup 6: Popover Ukuran Kertas & Margin -->
+                <div class="relative inline-block text-left pr-2 border-r border-slate-200">
+                    <button type="button" id="btnOpenLayoutPopover" class="mou-ribbon-btn inline-flex items-center gap-1.5 border-slate-200 bg-slate-50 text-slate-700 font-semibold px-2 text-xs" title="Pengaturan Ukuran Kertas & Margin">
+                        <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+                        <span>Ukuran &amp; Margin</span>
+                    </button>
+                    <div id="popoverLayoutDropdown" class="hidden absolute left-0 mt-1 w-80 rounded-lg shadow-xl bg-white border border-slate-200 p-3 z-50 text-xs">
+                        <div class="font-bold text-slate-800 pb-1.5 mb-2 border-b border-slate-100 flex items-center justify-between">
+                            <span>Tata Letak Kertas &amp; Margin</span>
+                            <span class="text-[10px] text-slate-400">A4 Standar</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <div>
+                                <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Ukuran Kertas</label>
+                                <select id="layoutPaperSize" class="mou-ribbon-select w-full text-xs">
+                                    <option value="A4" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'A4' ? 'selected' : '' }}>A4 (210 &times; 297 mm)</option>
+                                    <option value="LETTER" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'LETTER' ? 'selected' : '' }}>Letter</option>
+                                    <option value="LEGAL" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'LEGAL' ? 'selected' : '' }}>Legal</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Orientasi</label>
+                                <select id="layoutOrientation" class="mou-ribbon-select w-full text-xs">
+                                    <option value="portrait" {{ strtolower($cfg['orientation'] ?? 'portrait') === 'portrait' ? 'selected' : '' }}>Portrait (Tegak)</option>
+                                    <option value="landscape" {{ strtolower($cfg['orientation'] ?? 'portrait') === 'landscape' ? 'selected' : '' }}>Landscape (Mendatar)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="block text-[10px] font-semibold text-slate-500 mb-1">Preset Margin</label>
+                            <div class="flex items-center gap-1">
+                                <button type="button" data-margin-preset="25.4,25.4,25.4,25.4" class="px-2 py-0.5 text-[10px] rounded bg-slate-100 hover:bg-slate-200 border border-slate-300">Normal (25.4mm)</button>
+                                <button type="button" data-margin-preset="19.1,19.1,19.1,19.1" class="px-2 py-0.5 text-[10px] rounded bg-slate-100 hover:bg-slate-200 border border-slate-300">Sedang (19.1mm)</button>
+                                <button type="button" data-margin-preset="12.7,12.7,12.7,12.7" class="px-2 py-0.5 text-[10px] rounded bg-slate-100 hover:bg-slate-200 border border-slate-300">Sempit (12.7mm)</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1.5 mb-2">
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Atas (mm)</label>
+                                <input type="number" step="0.5" id="layoutMarginTop" value="{{ $cfg['margin_top_mm'] ?? 25.4 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Bawah (mm)</label>
+                                <input type="number" step="0.5" id="layoutMarginBottom" value="{{ $cfg['margin_bottom_mm'] ?? 25.4 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Kiri (mm)</label>
+                                <input type="number" step="0.5" id="layoutMarginLeft" value="{{ $cfg['margin_left_mm'] ?? 25.4 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Kanan (mm)</label>
+                                <input type="number" step="0.5" id="layoutMarginRight" value="{{ $cfg['margin_right_mm'] ?? 25.4 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Jarak Header (mm)</label>
+                                <input type="number" step="0.5" id="inputRibbonHeaderDist" value="{{ $cfg['header_distance_mm'] ?? 12.0 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-semibold text-slate-500">Jarak Footer (mm)</label>
+                                <input type="number" step="0.5" id="inputRibbonFooterDist" value="{{ $cfg['footer_distance_mm'] ?? 10.0 }}" class="w-full h-7 rounded border border-slate-300 text-center text-xs">
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-slate-100 space-y-1 mt-2">
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer">
+                                <input type="checkbox" id="chkDifferentFirstPage" {{ !empty($cfg['different_first_page']) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
+                                <span>Beda Halaman Pertama (First Page)</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer">
+                                <input type="checkbox" id="chkShowParafBox" {{ ($cfg['show_paraf_box'] ?? true) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
+                                <span>Tampilkan Kotak Paraf</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer">
+                                <input type="checkbox" id="chkShowPageNumber" {{ ($cfg['show_page_number'] ?? true) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
+                                <span>Tampilkan Nomor Halaman</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grup 7: Cari & Ganti -->
+                <div class="flex items-center gap-1">
+                    <input type="text" id="ribbonFindInput" placeholder="Cari teks..." class="h-[30px] w-24 rounded-md border border-slate-300 px-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none">
+                    <input type="text" id="ribbonReplaceInput" placeholder="Ganti..." class="h-[30px] w-20 rounded-md border border-slate-300 px-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none">
+                    <button type="button" id="btnExecuteReplaceAll" class="mou-ribbon-btn border-slate-200 bg-slate-50 text-xs px-2" title="Ganti Semua">
+                        Ganti Semua
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grup Kanan: Panel Variabel (Mail Merge) & Mode -->
+            <div class="flex items-center gap-2 shrink-0">
+                <button
+                    type="button"
+                    id="btnHighlightMergeFields"
+                    onmousedown="event.preventDefault()"
+                    class="mou-ribbon-btn border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs px-2"
+                    title="Sorot Kolom Gabungan (Highlight Merge Fields)"
+                >
+                    <span class="inline-block w-2 h-2 rounded-full bg-amber-400 border border-amber-600"></span>
+                    Sorot Variabel
+                </button>
+
+                <button
+                    type="button"
+                    id="btnLivePreviewToggle"
+                    class="mou-ribbon-btn border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs px-2.5"
+                    title="Pratinjau Draft Cetak A4 Langsung"
+                >
+                    <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Pratinjau Draft
                 </button>
 
                 <button
                     type="button"
                     id="btnTogglePlaceholderDrawer"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition"
+                    class="inline-flex items-center gap-2 rounded-lg border-2 border-blue-400 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-800 shadow-sm transition"
                     title="Buka / Tutup Panel Variabel Dinamis (Mail Merge)"
                 >
-                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
+                    <svg class="h-4 w-4 text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M14 9l3 3-3 3"/>
                     </svg>
-                    <span>Panel Variabel (Mail Merge)</span>
+                    <span>Panel Variabel</span>
+                    <span id="drawerToggleBadge" class="rounded bg-blue-600 px-1.5 py-0.2 text-[9px] font-bold text-white uppercase">Buka</span>
                 </button>
-
-                <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
-                    <button
-                        type="button"
-                        id="btnModeEdit"
-                        class="rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-xs"
-                    >
-                        Editor Word
-                    </button>
-                    <button
-                        type="button"
-                        id="btnModePreview"
-                        class="rounded-md px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition"
-                    >
-                        Pratinjau Lembar A4
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- RIBBON COMMAND PANELS -->
-        <div class="border-b border-slate-200 bg-white px-2.5 py-2">
-            <!-- TAB 1: BERANDA (HOME) -->
-            <div id="ribbonPanel-home" data-ribbon-panel="home" class="flex flex-nowrap items-stretch gap-x-2 overflow-x-auto pb-1">
-                <!-- Group: Riwayat & Dokumen -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.undo()" class="mou-ribbon-btn" title="Urungkan (Ctrl+Z)">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.redo()" class="mou-ribbon-btn" title="Ulangi (Ctrl+Y)">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.clearFormatting()" class="mou-ribbon-btn" title="Bersihkan Pemformatan Teks">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M13 4L8 20"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
-                        </button>
-                        <button type="button" id="btnNewBlankDoc" class="mou-ribbon-btn border-slate-300 bg-slate-50" title="Kosongkan halaman untuk menulis dari awal">
-                            Halaman Kosong
-                        </button>
-                        <button type="button" id="btnLoadSampleMou" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Muat contoh template MoU standar Seven Inc yang dapat diedit bebas">
-                            Contoh MoU
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <select id="ribbonSavedTemplateSelect" class="mou-ribbon-select min-w-[240px] max-w-[290px]" title="Pilih template MoU yang pernah disimpan sebelumnya">
-                            <option value="">-- Muat dari Template Tersimpan --</option>
-                            @foreach($savedTemplates as $tplItem)
-                                <option value="{{ $tplItem['id'] }}">
-                                    {{ $tplItem['name'] }} (v{{ $tplItem['version_number'] }}){{ !empty($tplItem['is_active']) ? ' — Aktif' : '' }}
-                                </option>
-                            @endforeach
-                        </select>
-                        <button type="button" id="btnLoadSelectedSavedTemplate" class="mou-ribbon-btn border-emerald-300 bg-emerald-50 text-emerald-800" title="Muat isi dan konfigurasi dari template tersimpan yang dipilih">
-                            Muat Template
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Dokumen &amp; Template</div>
-                </div>
-
-                <!-- Group: Font & Gaya Huruf -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <select id="ribbonFontFamily" class="mou-ribbon-select min-w-[155px]">
-                            <option value="Times New Roman">Times New Roman</option>
-                            <option value="Arial">Arial</option>
-                            <option value="Calibri">Calibri</option>
-                            <option value="Georgia">Georgia</option>
-                            <option value="Cambria">Cambria</option>
-                            <option value="Courier New">Courier New</option>
-                        </select>
-
-                        <select id="ribbonFontSize" class="mou-ribbon-select w-20">
-                            @foreach([8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36] as $pt)
-                                <option value="{{ $pt }}pt" {{ (int)($cfg['font_size_pt'] ?? 12) === $pt ? 'selected' : '' }}>{{ $pt }} pt</option>
-                            @endforeach
-                        </select>
-
-                        <select id="ribbonHeadingStyle" class="mou-ribbon-select min-w-[150px]" title="Gaya Paragraf / Judul">
-                            <option value="p">Paragraf Normal</option>
-                            <option value="h1">Judul 1 (Heading 1)</option>
-                            <option value="h2">Judul 2 (Heading 2)</option>
-                            <option value="h3">Judul 3 (Heading 3)</option>
-                            <option value="h4">Subjudul (Heading 4)</option>
-                        </select>
-                    </div>
-
-                    <div class="flex items-center gap-1 mt-1.5">
-                        <button type="button" data-tiptap-mark="bold" onclick="window.MouWordProcessor?.toggleBold()" class="mou-ribbon-btn font-bold w-8" title="Tebal (Ctrl+B)">B</button>
-                        <button type="button" data-tiptap-mark="italic" onclick="window.MouWordProcessor?.toggleItalic()" class="mou-ribbon-btn italic w-8 font-serif" title="Miring (Ctrl+I)">I</button>
-                        <button type="button" data-tiptap-mark="underline" onclick="window.MouWordProcessor?.toggleUnderline()" class="mou-ribbon-btn underline w-8" title="Garis Bawah (Ctrl+U)">U</button>
-                        <button type="button" data-tiptap-mark="strike" onclick="window.MouWordProcessor?.toggleStrike()" class="mou-ribbon-btn line-through w-8" title="Coret">S</button>
-                        <button type="button" data-tiptap-mark="subscript" onclick="window.MouWordProcessor?.toggleSubscript()" class="mou-ribbon-btn w-9" title="Subscript">X<sub>2</sub></button>
-                        <button type="button" data-tiptap-mark="superscript" onclick="window.MouWordProcessor?.toggleSuperscript()" class="mou-ribbon-btn w-9" title="Superscript">X<sup>2</sup></button>
-                        <button type="button" id="btnToggleUppercase" onclick="window.MouWordProcessor?.toggleUppercaseSelection()" class="mou-ribbon-btn font-bold px-2" title="Ubah Kapitalisasi Teks Terpilih (UPPERCASE / lowercase)">AA</button>
-
-                        <label class="inline-flex items-center gap-1 text-xs text-slate-700 ml-1.5 cursor-pointer" title="Warna Teks">
-                            <span class="font-bold underline">A</span>
-                            <input type="color" id="ribbonTextColor" value="#000000" class="h-6 w-6 cursor-pointer rounded border border-slate-300 p-0">
-                        </label>
-
-                        <label class="inline-flex items-center gap-1 text-xs text-slate-700 ml-1 cursor-pointer" title="Warna Sorotan (Highlight)">
-                            <span class="bg-yellow-200 px-1 rounded font-semibold text-[11px]">ab</span>
-                            <input type="color" id="ribbonHighlightColor" value="#fef08a" class="h-6 w-6 cursor-pointer rounded border border-slate-300 p-0">
-                        </label>
-                        <button type="button" onclick="window.MouWordProcessor?.setHighlightColor('transparent')" class="mou-ribbon-btn text-xs text-slate-500" title="Hapus Highlight">No HL</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Font &amp; Gaya Huruf</div>
-                </div>
-
-                <!-- Group: Paragraf & Perataan -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1">
-                        <button type="button" data-tiptap-align="left" onclick="window.MouWordProcessor?.setTextAlign('left')" class="mou-ribbon-btn" title="Rata Kiri">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-                        </button>
-                        <button type="button" data-tiptap-align="center" onclick="window.MouWordProcessor?.setTextAlign('center')" class="mou-ribbon-btn" title="Rata Tengah">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="10" x2="6" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="18" y1="18" x2="6" y2="18"/></svg>
-                        </button>
-                        <button type="button" data-tiptap-align="right" onclick="window.MouWordProcessor?.setTextAlign('right')" class="mou-ribbon-btn" title="Rata Kanan">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
-                        </button>
-                        <button type="button" data-tiptap-align="justify" onclick="window.MouWordProcessor?.setTextAlign('justify')" class="mou-ribbon-btn" title="Rata Kiri-Kanan (Justify)">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
-                        </button>
-
-                        <select id="ribbonParagraphLineHeight" class="mou-ribbon-select min-w-[110px]" title="Spasi Baris Paragraf">
-                            <option value="1">Spasi 1.0</option>
-                            <option value="1.15" selected>Spasi 1.15</option>
-                            <option value="1.5">Spasi 1.5</option>
-                            <option value="2">Spasi 2.0</option>
-                        </select>
-                    </div>
-
-                    <div class="flex items-center gap-1 mt-1.5">
-                        <button type="button" id="btnToggleBulletList" onclick="window.MouWordProcessor?.toggleBulletList()" class="mou-ribbon-btn" title="Daftar Poin (Bullet List)">
-                            &bull; Poin
-                        </button>
-                        <button type="button" id="btnToggleOrderedList" onclick="window.MouWordProcessor?.toggleOrderedList()" class="mou-ribbon-btn" title="Daftar Bernomor (Numbered List)">
-                            1. Nomor
-                        </button>
-                        <select id="ribbonOrderedListStyle" class="mou-ribbon-select min-w-[95px]" title="Format Penomoran Daftar">
-                            <option value="1">1, 2, 3</option>
-                            <option value="a">a, b, c</option>
-                            <option value="A">A, B, C</option>
-                            <option value="i">i, ii, iii</option>
-                            <option value="I">I, II, III</option>
-                        </select>
-                        <button type="button" onclick="window.MouWordProcessor?.adjustIndent(-6)" class="mou-ribbon-btn" title="Kurangi Indentasi Kiri">
-                            &larr; Indent
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.adjustIndent(6)" class="mou-ribbon-btn" title="Tambah Indentasi Kiri">
-                            Indent &rarr;
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Paragraf &amp; Daftar</div>
-                </div>
-
-                <!-- Group: Cari & Ganti -->
-                <div class="mou-ribbon-group border-r-0">
-                    <div class="flex items-center gap-1.5">
-                        <input type="text" id="ribbonFindInput" placeholder="Cari teks..." class="h-[34px] w-32 rounded-md border border-slate-300 px-2.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none">
-                        <input type="text" id="ribbonReplaceInput" placeholder="Ganti dengan..." class="h-[34px] w-32 rounded-md border border-slate-300 px-2.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none">
-                    </div>
-                    <div class="flex items-center justify-between gap-1 mt-1.5">
-                        <button type="button" id="btnExecuteReplaceAll" class="mou-ribbon-btn border-slate-200 bg-slate-50 w-full text-xs">
-                            Ganti Semua di Area Aktif
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Cari &amp; Ganti</div>
-                </div>
-            </div>
-
-            <!-- TAB 2: SISIPKAN (INSERT) -->
-            <div id="ribbonPanel-insert" data-ribbon-panel="insert" class="hidden flex-nowrap items-stretch gap-x-2 overflow-x-auto pb-1">
-                <!-- Group: Tabel -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <div class="flex items-center gap-1">
-                            <label class="text-xs text-slate-600 font-semibold">Baris:</label>
-                            <input type="number" id="insertTableRows" value="3" min="1" max="30" class="h-[34px] w-14 rounded-md border border-slate-300 px-1.5 text-xs text-center">
-                            <label class="text-xs text-slate-600 font-semibold ml-1">Kolom:</label>
-                            <input type="number" id="insertTableCols" value="2" min="1" max="12" class="h-[34px] w-14 rounded-md border border-slate-300 px-1.5 text-xs text-center">
-                        </div>
-                        <button type="button" id="btnInsertCustomTable" class="mou-ribbon-btn border-blue-300 bg-blue-50 text-blue-700">
-                            + Sisipkan Tabel
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tabel 2&times;2</button>
-                        <button type="button" onclick="window.MouWordProcessor?.insertTable(4, 3, false)" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tabel 4&times;3</button>
-                        <button type="button" onclick="window.MouWordProcessor?.insertTable(4, 2, false)" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tabel TTD (4&times;2)</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Tabel Bebas</div>
-                </div>
-
-                <!-- Group: Gambar & Logo -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <label class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 cursor-pointer">
-                            <span>Unggah Gambar</span>
-                            <input type="file" id="inputUploadCustomImage" accept="image/png,image/jpeg,image/webp" class="hidden">
-                        </label>
-                        <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah &amp; Sisipkan Logo Institusi">
-                            <span>Logo Institusi</span>
-                            <input type="file" id="inputUploadInstitutionLogo" accept="image/png,image/jpeg,image/webp" class="hidden">
-                        </label>
-                        <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Sisipkan Logo Seven Inc">
-                            Logo Seven Inc
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <span class="text-xs text-slate-500 font-semibold">Lebar (px):</span>
-                        <input type="number" id="ribbonImageWidthPx" value="95" min="24" max="650" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'left')" class="mou-ribbon-btn" title="Gambar Rata Kiri">Kiri</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'center')" class="mou-ribbon-btn" title="Gambar Rata Tengah">Tengah</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'right')" class="mou-ribbon-btn" title="Gambar Rata Kanan">Kanan</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Gambar &amp; Media</div>
-                </div>
-
-                <!-- Group: Elemen Dokumen, Tautan, Simbol & Variabel -->
-                <div class="mou-ribbon-group border-r-0">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.insertTextBox()" class="mou-ribbon-btn border-slate-200 bg-slate-50">
-                            + Kotak Teks
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.insertPageBreak()" class="mou-ribbon-btn border-slate-200 bg-slate-50">
-                            + Pemisah Halaman
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.insertHorizontalRule()" class="mou-ribbon-btn border-slate-200 bg-slate-50">
-                            + Garis Horizontal
-                        </button>
-                        <button type="button" id="btnInsertHyperlink" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Sisipkan Tautan / Hyperlink">
-                            + Tautan (Link)
-                        </button>
-                        <select id="ribbonQuickSymbolSelect" class="mou-ribbon-select min-w-[125px]" title="Sisipkan Simbol Hukum / Karakter Khusus">
-                            <option value="">Simbol (&sect;)...</option>
-                            <option value="§">§ (Pasal / Section)</option>
-                            <option value="•">• (Bullet)</option>
-                            <option value="–">– (En Dash)</option>
-                            <option value="—">— (Em Dash)</option>
-                            <option value="©">© (Copyright)</option>
-                            <option value="®">® (Registered)</option>
-                            <option value="±">± (Kurang Lebih)</option>
-                            <option value="°">° (Derajat)</option>
-                        </select>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <select id="ribbonQuickPlaceholderSelect" class="mou-ribbon-select min-w-[250px]">
-                            <option value="">-- Pilih Variabel Dinamis (Mail Merge) --</option>
-                            @foreach($placeholders as $phKey => $phDesc)
-                                @php
-                                    $phBracket = '[' . $phKey . ']';
-                                    $phMustache = chr(123) . chr(123) . $phKey . chr(125) . chr(125);
-                                @endphp
-                                <option value="{{ $phBracket }}">{{ $phBracket }} ({{ $phMustache }}) — {{ $phDesc }}</option>
-                            @endforeach
-                        </select>
-                        <button type="button" id="btnInsertSelectedPlaceholder" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">
-                            Sisipkan Variabel
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Elemen, Simbol &amp; Variabel</div>
-                </div>
-            </div>
-
-            <!-- TAB 3: TATA LETAK (PAGE LAYOUT) -->
-            <div id="ribbonPanel-layout" data-ribbon-panel="layout" class="hidden flex-nowrap items-stretch gap-x-2 overflow-x-auto pb-1">
-                <!-- Group: Ukuran Kertas & Orientasi -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-2">
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Ukuran Kertas</label>
-                            <select id="layoutPaperSize" class="mou-ribbon-select min-w-[160px]">
-                                <option value="A4" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'A4' ? 'selected' : '' }}>A4 (210 &times; 297 mm)</option>
-                                <option value="LETTER" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'LETTER' ? 'selected' : '' }}>Letter (215.9 &times; 279.4 mm)</option>
-                                <option value="LEGAL" {{ strtoupper($cfg['paper_size'] ?? 'A4') === 'LEGAL' ? 'selected' : '' }}>Legal (215.9 &times; 355.6 mm)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Orientasi</label>
-                            <select id="layoutOrientation" class="mou-ribbon-select min-w-[150px]">
-                                <option value="portrait" {{ strtolower($cfg['orientation'] ?? 'portrait') === 'portrait' ? 'selected' : '' }}>Portrait (Tegak)</option>
-                                <option value="landscape" {{ strtolower($cfg['orientation'] ?? 'portrait') === 'landscape' ? 'selected' : '' }}>Landscape (Mendatar)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mou-ribbon-group-label">Kertas &amp; Orientasi</div>
-                </div>
-
-                <!-- Group: Preset Margin -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" data-margin-preset="25.4,25.4,25.4,25.4" class="mou-ribbon-btn border-slate-200 bg-slate-50">Normal (25.4 mm)</button>
-                        <button type="button" data-margin-preset="19.1,19.1,19.1,19.1" class="mou-ribbon-btn border-slate-200 bg-slate-50">Sedang (19.1 mm)</button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <button type="button" data-margin-preset="12.7,12.7,12.7,12.7" class="mou-ribbon-btn border-slate-200 bg-slate-50">Sempit (12.7 mm)</button>
-                        <button type="button" data-margin-preset="30,25.4,30,30" class="mou-ribbon-btn border-slate-200 bg-slate-50">Lebar (30 mm)</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Preset Margin</div>
-                </div>
-
-                <!-- Group: Margin Kustom (mm) -->
-                <div class="mou-ribbon-group">
-                    <div class="grid grid-cols-4 gap-2">
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Atas (mm)</label>
-                            <input type="number" step="0.1" min="5" max="60" id="layoutMarginTop" value="{{ $cfg['margin_top_mm'] ?? 25.4 }}" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Bawah (mm)</label>
-                            <input type="number" step="0.1" min="5" max="60" id="layoutMarginBottom" value="{{ $cfg['margin_bottom_mm'] ?? 25.4 }}" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Kiri (mm)</label>
-                            <input type="number" step="0.1" min="5" max="60" id="layoutMarginLeft" value="{{ $cfg['margin_left_mm'] ?? 25.4 }}" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Kanan (mm)</label>
-                            <input type="number" step="0.1" min="5" max="60" id="layoutMarginRight" value="{{ $cfg['margin_right_mm'] ?? 25.4 }}" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                    </div>
-                    <div class="mou-ribbon-group-label">Ukuran Margin Kertas (mm)</div>
-                </div>
-
-                <!-- Group: Indentasi & Spasi Paragraf -->
-                <div class="mou-ribbon-group border-r-0">
-                    <div class="flex items-center gap-2">
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Indent Baris 1 (mm)</label>
-                            <input type="number" step="1" min="0" max="50" id="layoutFirstLineIndent" value="0" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Spasi Sebelum (pt)</label>
-                            <input type="number" step="1" min="0" max="48" id="layoutSpaceBefore" value="0" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Spasi Sesudah (pt)</label>
-                            <input type="number" step="1" min="0" max="48" id="layoutSpaceAfter" value="6" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <button type="button" id="btnApplyParagraphLayout" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 mt-3.5">
-                            Terapkan
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Indentasi &amp; Jarak Antarparagraf</div>
-                </div>
-            </div>
-
-            <!-- TAB 4: DESAIN & TATA LETAK TABEL (TABLE TOOLS) -->
-            <div id="ribbonPanel-table" data-ribbon-panel="table" class="hidden flex-nowrap items-stretch gap-x-2 overflow-x-auto pb-1">
-                <!-- Group: Baris & Kolom -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.addRowBefore()" class="mou-ribbon-btn border-slate-200 bg-slate-50">+ Baris Atas</button>
-                        <button type="button" onclick="window.MouWordProcessor?.addRowAfter()" class="mou-ribbon-btn border-slate-200 bg-slate-50">+ Baris Bawah</button>
-                        <button type="button" onclick="window.MouWordProcessor?.deleteRow()" class="mou-ribbon-btn text-rose-600 hover:bg-rose-50">- Hapus Baris</button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.addColumnBefore()" class="mou-ribbon-btn border-slate-200 bg-slate-50">+ Kolom Kiri</button>
-                        <button type="button" onclick="window.MouWordProcessor?.addColumnAfter()" class="mou-ribbon-btn border-slate-200 bg-slate-50">+ Kolom Kanan</button>
-                        <button type="button" onclick="window.MouWordProcessor?.deleteColumn()" class="mou-ribbon-btn text-rose-600 hover:bg-rose-50">- Hapus Kolom</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Baris &amp; Kolom</div>
-                </div>
-
-                <!-- Group: Gabung & Hapus -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.mergeCells()" class="mou-ribbon-btn border-slate-200 bg-slate-50">Gabung Sel (Merge)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.splitCell()" class="mou-ribbon-btn border-slate-200 bg-slate-50">Pisah Sel (Split)</button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.deleteTable()" class="mou-ribbon-btn border-rose-200 bg-rose-50 text-rose-700 w-full">Hapus Tabel</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Gabung &amp; Tabel</div>
-                </div>
-
-                <!-- Group: Ukuran Tabel, Kolom & Tinggi Baris (TTD / Paraf) -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <label class="text-xs font-semibold text-slate-600">Lebar:</label>
-                        <input type="text" id="ribbonTableWidthInput" value="100%" placeholder="100% / 220pt" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs">
-                        <button type="button" id="btnApplyTableWidth" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentTableWidth('100%')" class="mou-ribbon-btn border-slate-200 bg-slate-50">100%</button>
-
-                        <label class="text-xs font-semibold text-slate-600 ml-1">Kolom (px):</label>
-                        <input type="number" id="ribbonColWidthInput" placeholder="180" min="30" max="700" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        <button type="button" id="btnApplyColWidth" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
-                    </div>
-
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <label class="text-xs font-semibold text-slate-600">Tinggi:</label>
-                        <input type="text" id="ribbonRowHeightInput" placeholder="18pt / 26mm" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs">
-                        <button type="button" id="btnApplyRowHeight" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Paraf">18pt (Paraf)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf diperbesar">28pt (Paraf+)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('26mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Tanda Tangan">26mm (TTD)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('35mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Tanda Tangan besar">35mm (TTD+)</button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Ukuran Tabel, Kolom &amp; Tinggi Baris</div>
-                </div>
-
-                <!-- Group: Garis Tepi (Borders), Padding & Perataan -->
-                <div class="mou-ribbon-group border-r-0">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.applyTablePreset('grid')" class="mou-ribbon-btn border-slate-200 bg-slate-50">Bergaris Penuh</button>
-                        <button type="button" onclick="window.MouWordProcessor?.applyTablePreset('borderless')" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tanpa Garis (Komparisi/TTD)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.applyTablePreset('paraf')" class="mou-ribbon-btn border-slate-200 bg-slate-50">Gaya Kotak Paraf</button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <select id="ribbonCellPaddingSelect" class="mou-ribbon-select min-w-[130px]" title="Padding Sel">
-                            <option value="">Padding Sel...</option>
-                            <option value="2pt 4pt">Rapat (2pt 4pt)</option>
-                            <option value="4pt 6pt">Normal (4pt 6pt)</option>
-                            <option value="6pt 8pt">Lega (6pt 8pt)</option>
-                        </select>
-                        <select id="ribbonCellValignSelect" class="mou-ribbon-select min-w-[130px]" title="Perataan Vertikal Sel">
-                            <option value="top">Vertikal Atas</option>
-                            <option value="middle">Vertikal Tengah</option>
-                            <option value="bottom">Vertikal Bawah</option>
-                        </select>
-                        <label class="inline-flex items-center gap-1 text-xs text-slate-700 cursor-pointer ml-1" title="Warna Latar Sel">
-                            <span>Latar:</span>
-                            <input type="color" id="ribbonCellBgColor" value="#ffffff" class="h-6 w-6 rounded border border-slate-300 p-0">
-                        </label>
-                    </div>
-                    <div class="mou-ribbon-group-label">Batas Garis &amp; Sel</div>
-                </div>
-            </div>
-
-            <!-- TAB 5: HEADER & FOOTER -->
-            <div id="ribbonPanel-headerfooter" data-ribbon-panel="headerfooter" class="hidden flex-nowrap items-stretch gap-x-2 overflow-x-auto pb-1">
-                <!-- Group: Akses Cepat Area Header & Footer -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.setActiveZone('header')" class="mou-ribbon-btn border-amber-300 bg-amber-50 text-amber-900">
-                            Edit Header Dokumen
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.setActiveZone('footer')" class="mou-ribbon-btn border-amber-300 bg-amber-50 text-amber-900">
-                            Edit Footer &amp; Kotak Paraf
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                        <button type="button" onclick="window.MouWordProcessor?.setActiveZone('body')" class="mou-ribbon-btn border-slate-200 bg-slate-50">
-                            Kembali ke Isi Dokumen Utama
-                        </button>
-                        <button type="button" onclick="window.MouWordProcessor?.resetFooterParafTable()" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Muat ulang tabel Kotak Paraf 2 kolom di Footer">
-                            Reset Tabel Kotak Paraf
-                        </button>
-                    </div>
-                    <div class="mou-ribbon-group-label">Area Header &amp; Footer (Klik Ganda pada Kertas)</div>
-                </div>
-
-                <!-- Group: Beda Halaman Pertama & Opsi Tampilan -->
-                <div class="mou-ribbon-group">
-                    <div class="flex items-center gap-3">
-                        <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                            <input type="checkbox" id="chkDifferentFirstPage" {{ !empty($cfg['different_first_page']) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
-                            <span>Beda Halaman Pertama (Different First Page)</span>
-                        </label>
-
-                        <select id="selectHeaderFooterVariant" class="mou-ribbon-select min-w-[210px]">
-                            <option value="default">Sedang Mengedit: Halaman Umum (Semua Halaman)</option>
-                            <option value="first">Sedang Mengedit: Khusus Halaman Pertama</option>
-                        </select>
-                    </div>
-                    <div class="flex items-center gap-4 mt-1.5">
-                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                            <input type="checkbox" id="chkShowParafBox" {{ ($cfg['show_paraf_box'] ?? true) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
-                            <span>Tampilkan Area Footer / Kotak Paraf</span>
-                        </label>
-                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                            <input type="checkbox" id="chkShowPageNumber" {{ ($cfg['show_page_number'] ?? true) ? 'checked' : '' }} class="rounded border-slate-300 text-blue-600">
-                            <span>Tampilkan Nomor Halaman</span>
-                        </label>
-                    </div>
-                    <div class="mou-ribbon-group-label">Pengaturan Halaman Pertama &amp; Visibilitas</div>
-                </div>
-
-                <!-- Group: Jarak Header/Footer -->
-                <div class="mou-ribbon-group border-r-0">
-                    <div class="flex items-center gap-2">
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Jarak Header (mm)</label>
-                            <input type="number" step="0.5" min="5" max="40" id="inputRibbonHeaderDist" value="{{ $cfg['header_distance_mm'] ?? 12.0 }}" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-semibold text-slate-500">Jarak Footer (mm)</label>
-                            <input type="number" step="0.5" min="5" max="40" id="inputRibbonFooterDist" value="{{ $cfg['footer_distance_mm'] ?? 10.0 }}" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        </div>
-                    </div>
-                    <div class="mou-ribbon-group-label">Posisi dari Tepi Kertas</div>
-                </div>
+                <button type="button" id="btnModeEdit" class="hidden"></button>
             </div>
         </div>
     </div>
@@ -1069,40 +943,43 @@
             </div>
 
             <!-- True Multi-Page A4 Desk Stage: Holds individual physical A4 paper sheets -->
-            <div id="mouPagesDeskStage" class="mou-pages-desk-stage flex flex-col items-center w-full">
+            <div id="mouPagesDeskStage" class="mou-pages-desk-stage flex flex-col items-center w-full relative">
                 <div id="mouWordCanvas" class="w-full flex flex-col items-center"></div>
-            </div>
 
-            <!-- Staging container for Header and Footer Editors when active -->
-            <div id="mouHfStagingContainer" class="hidden">
-                <div id="mouHeaderZoneWrapper" class="mou-header-zone-wrapper" title="Header dokumen">
-                    <span class="mou-zone-tag">Header Dokumen (Klik Tutup atau Tekan Esc untuk Kembali ke Isi)</span>
-                    <div id="mouHeaderCanvas"></div>
-                </div>
-                <div id="mouFooterZoneWrapper" class="mou-footer-zone-wrapper" title="Footer dokumen &amp; Kotak Paraf">
-                    <span class="mou-zone-tag">Footer &amp; Kotak Paraf (Tarik Garis Tabel untuk Ubah Ukuran)</span>
-                    <div id="mouFooterCanvas" class="flex-1 min-w-0"></div>
-                    <div id="mouFooterPageNumberPreview" class="font-serif text-[9pt] text-black pb-1 shrink-0 select-none">
-                        Halaman 1 dari 1
+                <!-- Live Header/Footer In-Place Editor Overlay (Stable container: positioned over active sheet without DOM detach/append) -->
+                <div id="mouHfActiveEditorOverlay" class="hidden absolute z-30 transition-all pointer-events-auto">
+                    <!-- Header In-Place Editor -->
+                    <div id="mouHeaderZoneWrapper" class="hidden mou-header-zone-wrapper mou-zone-active bg-white/98 backdrop-blur-xs rounded-lg shadow-xl border-2 border-blue-600 p-2.5" title="Header dokumen">
+                        <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-blue-200">
+                            <span class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                                Sedang Mengedit Header Dokumen
+                            </span>
+                            <button type="button" onclick="window.MouWordProcessor?.setActiveZone('body')" class="text-xs font-bold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 transition border border-rose-200 shadow-2xs">
+                                &times; Selesai / Tutup (Esc)
+                            </button>
+                        </div>
+                        <div id="mouHeaderCanvas"></div>
+                    </div>
+
+                    <!-- Footer In-Place Editor -->
+                    <div id="mouFooterZoneWrapper" class="hidden mou-footer-zone-wrapper mou-zone-active bg-white/98 backdrop-blur-xs rounded-lg shadow-xl border-2 border-amber-600 p-2.5" title="Footer dokumen &amp; Kotak Paraf">
+                        <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200 w-full">
+                            <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-amber-600 animate-pulse"></span>
+                                Sedang Mengedit Footer &amp; Kotak Paraf
+                            </span>
+                            <button type="button" onclick="window.MouWordProcessor?.setActiveZone('body')" class="text-xs font-bold text-rose-600 hover:text-rose-800 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 transition border border-rose-200 shadow-2xs">
+                                &times; Selesai / Tutup (Esc)
+                            </button>
+                        </div>
+                        <div id="mouFooterCanvas" class="flex-1 min-w-0"></div>
+                        <div id="mouFooterPageNumberPreview" class="font-serif text-[9pt] text-black pb-1 shrink-0 select-none">
+                            Halaman 1 dari 1
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- WORKSPACE VIEW 2: MULTI-SHEET A4 PREVIEW SIMULATION -->
-        <div id="mouMultiSheetPreviewContainer" class="hidden flex-1 overflow-y-auto overflow-x-auto bg-slate-300 py-8 px-4">
-            <div class="mx-auto max-w-4xl mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 flex items-start gap-2.5">
-                <svg class="h-4 w-4 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <div>
-                    <span class="font-bold">Informasi Akurasi Pagination A4 vs DomPDF:</span>
-                    Pratinjau lembar di bawah ini adalah simulasi pembagian kertas A4 di browser berdasarkan tinggi elemen terukur (termasuk nilai Pihak Kedua yang sedang diisi, ruang Header, dan Tabel Kotak Paraf di Footer). Gunakan tombol <strong>Unduh PDF Simulasi (A4)</strong> sebagai acuan akhir pencetakan resmi.
-                </div>
-            </div>
-            <div id="mouMultiSheetPreviewStage" class="flex flex-col items-center gap-7"></div>
         </div>
 
         <!-- RIGHT SIDEBAR: Collapsible Mail Merge / Dynamic Placeholder Drawer -->
@@ -1161,10 +1038,11 @@
                                 @php
                                     $phDesc = $placeholders[$phKey] ?? $phKey;
                                     $phBracket = '[' . $phKey . ']';
+                                    $phMustache = '{{' . $phKey . '}}';
                                 @endphp
-                                <div class="mou-token-item flex items-center justify-between gap-1 p-1 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition" data-token-search="{{ strtolower($phKey . ' ' . $phDesc) }}">
+                                <div class="mou-token-item flex items-center justify-between gap-1 p-1 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition" data-token-search="{{ strtolower($phKey . ' ' . $phDesc . ' ' . $phMustache) }}">
                                     <div class="min-w-0 flex-1">
-                                        <div class="text-[11px] font-mono font-bold text-blue-700 truncate" title="{{ $phBracket }}">{{ $phBracket }}</div>
+                                        <div class="text-[11px] font-mono font-bold text-blue-700 truncate" title="{{ $phBracket }} atau {{ $phMustache }}">{{ $phBracket }} <span class="text-[9px] text-slate-400 font-normal">({{ $phMustache }})</span></div>
                                         <div class="text-[10px] text-slate-500 truncate" title="{{ $phDesc }}">{{ $phDesc }}</div>
                                     </div>
                                     <button
@@ -1206,6 +1084,49 @@
                 <option value="115">115%</option>
                 <option value="125">125%</option>
             </select>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Pratinjau Draft A4 Interaktif (Render Draft Terkini Tanpa Save DB) -->
+<div id="mouLivePreviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-5xl bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded bg-indigo-600 font-bold text-xs text-white shadow-xs">P</span>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Pratinjau Draft Naskah MoU (A4 Layout)</h3>
+                    <p class="text-[11px] text-slate-400">Variabel Mail Merge disubstitusi secara dinamis dengan data simulasi. Mencerminkan naskah aktif di editor secara real-time.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="livePreviewPageCountBadge" class="rounded bg-indigo-900/60 border border-indigo-500/40 px-2.5 py-1 text-xs font-semibold text-indigo-200">
+                    1 Halaman
+                </span>
+                <button
+                    type="button"
+                    id="btnPrintLivePreviewModal"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition"
+                    title="Cetak atau Simpan sebagai PDF melalui Browser"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Cetak / Simpan PDF
+                </button>
+                <button
+                    type="button"
+                    id="btnCloseLivePreviewModal"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
+                    title="Tutup (Esc)"
+                >
+                    &times;
+                </button>
+            </div>
+        </div>
+
+        <!-- Scrollable Stage for A4 Sheets -->
+        <div id="mouLivePreviewScrollBody" class="flex-1 overflow-y-auto p-6 bg-slate-900/60 flex flex-col items-center gap-8">
+            <div id="mouLivePreviewSheetsContainer" class="flex flex-col items-center gap-8 w-full"></div>
         </div>
     </div>
 </div>
@@ -1257,22 +1178,70 @@
 
         if (drawerBtn && sidebar && drawerBtn.dataset.boundDrawer !== '1') {
             drawerBtn.dataset.boundDrawer = '1';
-            drawerBtn.addEventListener('click', () => {
+            const badge = document.getElementById('drawerToggleBadge');
+            const updateDrawerUI = () => {
                 const isHidden = sidebar.classList.contains('hidden');
-                sidebar.classList.toggle('hidden', !isHidden);
-                drawerBtn.classList.toggle('bg-blue-100', isHidden);
-                drawerBtn.classList.toggle('border-blue-400', isHidden);
+                if (badge) badge.textContent = isHidden ? 'Buka' : 'Tutup';
+                drawerBtn.classList.toggle('bg-blue-100', !isHidden);
+                drawerBtn.classList.toggle('border-blue-400', !isHidden);
+            };
+            drawerBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('hidden');
+                updateDrawerUI();
             });
+            if (closeSidebarBtn) {
+                closeSidebarBtn.addEventListener('click', () => {
+                    sidebar.classList.add('hidden');
+                    updateDrawerUI();
+                });
+            }
+            updateDrawerUI();
         }
-        if (closeSidebarBtn && sidebar && closeSidebarBtn.dataset.boundClose !== '1') {
-            closeSidebarBtn.dataset.boundClose = '1';
-            closeSidebarBtn.addEventListener('click', () => {
-                sidebar.classList.add('hidden');
-                if (drawerBtn) {
-                    drawerBtn.classList.remove('bg-blue-100', 'border-blue-400');
+
+        // Table Context Menu Dropdown
+        const tableMenuBtn = document.getElementById('btnTableContextMenuToggle');
+        const tableMenuDropdown = document.getElementById('tableContextMenuDropdown');
+        if (tableMenuBtn && tableMenuDropdown && tableMenuBtn.dataset.boundMenu !== '1') {
+            tableMenuBtn.dataset.boundMenu = '1';
+            tableMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const willOpen = tableMenuDropdown.classList.contains('hidden');
+                document.getElementById('popoverLayoutDropdown')?.classList.add('hidden');
+                tableMenuDropdown.classList.toggle('hidden', !willOpen);
+            });
+            tableMenuDropdown.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                    tableMenuDropdown.classList.add('hidden');
                 }
             });
         }
+
+        // Popover Layout Dropdown (Ukuran & Margin)
+        const layoutPopoverBtn = document.getElementById('btnOpenLayoutPopover');
+        const layoutPopoverDropdown = document.getElementById('popoverLayoutDropdown');
+        if (layoutPopoverBtn && layoutPopoverDropdown && layoutPopoverBtn.dataset.boundPopover !== '1') {
+            layoutPopoverBtn.dataset.boundPopover = '1';
+            layoutPopoverBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const willOpen = layoutPopoverDropdown.classList.contains('hidden');
+                document.getElementById('tableContextMenuDropdown')?.classList.add('hidden');
+                layoutPopoverDropdown.classList.toggle('hidden', !willOpen);
+            });
+        }
+
+        // Close dropdowns on outside click
+        document.addEventListener('click', (e) => {
+            if (tableMenuDropdown && !tableMenuDropdown.classList.contains('hidden')) {
+                if (!tableMenuDropdown.contains(e.target) && !tableMenuBtn?.contains(e.target)) {
+                    tableMenuDropdown.classList.add('hidden');
+                }
+            }
+            if (layoutPopoverDropdown && !layoutPopoverDropdown.classList.contains('hidden')) {
+                if (!layoutPopoverDropdown.contains(e.target) && !layoutPopoverBtn?.contains(e.target)) {
+                    layoutPopoverDropdown.classList.add('hidden');
+                }
+            }
+        });
 
         if (searchInput && searchInput.dataset.boundSearch !== '1') {
             searchInput.dataset.boundSearch = '1';
@@ -1359,28 +1328,6 @@
             console.error('MouWordProcessor initialization error:', initErr);
             showDiagnosticError('Gagal menginisialisasi Tiptap Word Processor: ' + (initErr?.message || String(initErr)));
             return;
-        }
-
-        // Mode Edit vs Mode Pratinjau Lembar A4
-        const btnModeEdit = document.getElementById('btnModeEdit');
-        const btnModePreview = document.getElementById('btnModePreview');
-        const editorView = document.getElementById('mouEditorWorkspaceView');
-        const previewView = document.getElementById('mouMultiSheetPreviewContainer');
-
-        if (btnModeEdit && btnModePreview && editorView && previewView) {
-            btnModeEdit.addEventListener('click', () => {
-                editorView.classList.remove('hidden');
-                previewView.classList.add('hidden');
-                btnModeEdit.className = 'rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white';
-                btnModePreview.className = 'rounded-md px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900';
-            });
-            btnModePreview.addEventListener('click', () => {
-                processor.renderMultiSheetPreview();
-                editorView.classList.add('hidden');
-                previewView.classList.remove('hidden');
-                btnModePreview.className = 'rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white';
-                btnModeEdit.className = 'rounded-md px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900';
-            });
         }
 
         // Blank Document, Sample MoU & Saved Template Loader
@@ -1470,6 +1417,201 @@
                 sel.value = '';
             }
         });
+
+        // Insert Placeholder from Ribbon Mailings Dropdown
+        document.getElementById('btnInsertMailingsPlaceholder')?.addEventListener('click', () => {
+            const sel = document.getElementById('ribbonMailingsPlaceholderSelect');
+            if (sel && sel.value) {
+                processor.insertPlaceholder(sel.value);
+                sel.value = '';
+            }
+        });
+
+        // Highlight Merge Fields Toggle (Surat Masal)
+        const btnHighlight = document.getElementById('btnHighlightMergeFields');
+        if (btnHighlight) {
+            btnHighlight.addEventListener('click', () => {
+                const isActive = processor.toggleHighlightMergeFields();
+                btnHighlight.classList.toggle('bg-amber-400', isActive);
+                btnHighlight.classList.toggle('text-amber-950', isActive);
+                btnHighlight.classList.toggle('border-amber-600', isActive);
+                btnHighlight.classList.toggle('font-black', isActive);
+                btnHighlight.classList.toggle('bg-amber-50', !isActive);
+                btnHighlight.classList.toggle('text-amber-800', !isActive);
+            });
+        }
+
+        // Live Preview Action Button (Render Active Memory Draft on A4 Modal)
+        const btnLivePreview = document.getElementById('btnLivePreviewToggle');
+        const liveModal = document.getElementById('mouLivePreviewModal');
+        const liveContainer = document.getElementById('mouLivePreviewSheetsContainer');
+        const liveBadge = document.getElementById('livePreviewPageCountBadge');
+        const btnCloseModal = document.getElementById('btnCloseLivePreviewModal');
+        const btnPrintModal = document.getElementById('btnPrintLivePreviewModal');
+
+        function closeLivePreviewModal() {
+            if (liveModal) liveModal.classList.add('hidden');
+        }
+
+        if (btnCloseModal) {
+            btnCloseModal.addEventListener('click', closeLivePreviewModal);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && liveModal && !liveModal.classList.contains('hidden')) {
+                closeLivePreviewModal();
+            }
+        });
+
+        if (btnLivePreview) {
+            btnLivePreview.addEventListener('click', () => {
+                if (!liveModal || !liveContainer) return;
+                processor.syncAllToHiddenInputs();
+
+                liveContainer.innerHTML = '';
+                const pageDoms = document.querySelectorAll('#mouWordCanvas .mou-a4-paper-sheet');
+                const totalPages = pageDoms.length || 1;
+                if (liveBadge) liveBadge.textContent = `${totalPages} Halaman A4`;
+
+                const differentFirst = document.getElementById('inputDifferentFirstPage')?.value === '1';
+                const firstHeaderHtml = document.getElementById('inputFirstPageHeaderHtml')?.value || '';
+                const firstFooterHtml = document.getElementById('inputFirstPageFooterHtml')?.value || '';
+                const runningHeaderHtml = document.getElementById('inputHeaderHtml')?.value || '';
+                const runningFooterHtml = document.getElementById('inputFooterHtml')?.value || '';
+                const showParaf = document.getElementById('inputShowParafBox')?.value === '1';
+                const showPageNum = document.getElementById('inputShowPageNumber')?.value === '1';
+
+                const mTop = parseFloat(document.getElementById('inputMarginTopMm')?.value) || 25.4;
+                const mBtm = parseFloat(document.getElementById('inputMarginBottomMm')?.value) || 25.4;
+                const mLft = parseFloat(document.getElementById('inputMarginLeftMm')?.value) || 25.4;
+                const mRgt = parseFloat(document.getElementById('inputMarginRightMm')?.value) || 25.4;
+                const hDist = parseFloat(document.getElementById('inputHeaderDistanceMm')?.value) || 12;
+                const fDist = parseFloat(document.getElementById('inputFooterDistanceMm')?.value) || 10;
+
+                pageDoms.forEach((pageEl, pIdx) => {
+                    const pageNum = pIdx + 1;
+                    const sheet = document.createElement('div');
+                    sheet.className = 'mou-preview-a4-sheet bg-white text-black shadow-2xl relative';
+                    sheet.style.width = '210mm';
+                    sheet.style.minHeight = '297mm';
+                    sheet.style.height = '297mm';
+                    sheet.style.maxHeight = '297mm';
+                    sheet.style.boxSizing = 'border-box';
+                    sheet.style.padding = `${mTop}mm ${mRgt}mm ${mBtm}mm ${mLft}mm`;
+                    sheet.style.display = 'flex';
+                    sheet.style.flexDirection = 'column';
+                    sheet.style.justifyContent = 'space-between';
+                    sheet.style.overflow = 'hidden';
+                    sheet.style.backgroundColor = '#ffffff';
+
+                    // Header
+                    const curHeaderRaw = (differentFirst && pageNum === 1) ? firstHeaderHtml : runningHeaderHtml;
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'mou-preview-sheet-header shrink-0';
+                    if (curHeaderRaw && curHeaderRaw.trim() !== '') {
+                        headerDiv.innerHTML = processor.replaceLivePreviewPlaceholders(curHeaderRaw);
+                        headerDiv.style.marginBottom = `${Math.max(2, mTop - hDist)}mm`;
+                    }
+                    sheet.appendChild(headerDiv);
+
+                    // Body Content
+                    const bodyDiv = document.createElement('div');
+                    bodyDiv.className = 'mou-preview-sheet-body flex-1 overflow-hidden';
+                    const contentDom = pageEl.querySelector('.mou-page-body-content');
+                    if (contentDom) {
+                        const cloneContent = contentDom.cloneNode(true);
+                        cloneContent.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+                        cloneContent.querySelectorAll('.ProseMirror-trailingBreak, .ProseMirror-widget, .column-resize-handle, .mou-table-width-handle').forEach(el => el.remove());
+                        bodyDiv.innerHTML = processor.replaceLivePreviewPlaceholders(cloneContent.innerHTML);
+                    }
+                    sheet.appendChild(bodyDiv);
+
+                    // Footer
+                    const curFooterRaw = (differentFirst && pageNum === 1 && firstFooterHtml) ? firstFooterHtml : runningFooterHtml;
+                    const footerDiv = document.createElement('div');
+                    footerDiv.className = 'mou-preview-sheet-footer shrink-0 flex items-end justify-between gap-4 w-full';
+                    footerDiv.style.marginTop = `${Math.max(2, mBtm - fDist)}mm`;
+
+                    const parafDiv = document.createElement('div');
+                    parafDiv.className = 'flex-1 min-w-0';
+                    parafDiv.style.visibility = showParaf ? 'visible' : 'hidden';
+                    parafDiv.innerHTML = curFooterRaw ? processor.replaceLivePreviewPlaceholders(curFooterRaw) : '';
+
+                    const pnumDiv = document.createElement('div');
+                    pnumDiv.className = 'font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap';
+                    pnumDiv.style.visibility = showPageNum ? 'visible' : 'hidden';
+                    pnumDiv.textContent = `Halaman ${pageNum} dari ${totalPages}`;
+
+                    footerDiv.appendChild(parafDiv);
+                    footerDiv.appendChild(pnumDiv);
+                    sheet.appendChild(footerDiv);
+
+                    liveContainer.appendChild(sheet);
+                });
+
+                liveModal.classList.remove('hidden');
+            });
+        }
+
+        if (btnPrintModal) {
+            btnPrintModal.addEventListener('click', () => {
+                const printWindow = window.open('', '_blank');
+                if (!printWindow) {
+                    alert('Jendela pop-up terblokir oleh peramban. Izinkan pop-up untuk mencetak pratinjau.');
+                    return;
+                }
+                const sheetsHtml = document.getElementById('mouLivePreviewSheetsContainer')?.innerHTML || '';
+                const printTitle = document.getElementById('name')?.value || 'Naskah Draft MoU';
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>${printTitle}</title>
+                        <style>
+                            @page {
+                                size: A4 portrait;
+                                margin: 0;
+                            }
+                            * {
+                                box-sizing: border-box;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .mou-preview-a4-sheet {
+                                width: 210mm;
+                                height: 297mm;
+                                page-break-after: always;
+                                margin: 0 auto;
+                                overflow: hidden;
+                            }
+                            .mou-preview-a4-sheet:last-child {
+                                page-break-after: auto;
+                            }
+                            table {
+                                border-collapse: collapse;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        ${sheetsHtml}
+                        <script>
+                            window.onload = function() {
+                                window.focus();
+                                window.print();
+                                window.onafterprint = function() { window.close(); };
+                            };
+                        <\/script>
+                    </body>
+                    </html>
+                `);
+                printWindow.document.close();
+            });
+        }
 
         // Media Upload & Logo Insert
         document.getElementById('inputUploadCustomImage')?.addEventListener('change', async (e) => {

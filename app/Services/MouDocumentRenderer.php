@@ -1237,6 +1237,25 @@ class MouDocumentRenderer
     padding: 3pt 6pt;
     box-sizing: border-box;
 }
+.mou-doc-canvas img, .mou-document img {
+    max-width: 100%;
+    height: auto;
+}
+.mou-doc-canvas img[align="left"], .mou-document img[align="left"] {
+    float: left;
+    margin-right: 12pt;
+    margin-bottom: 6pt;
+}
+.mou-doc-canvas img[align="right"], .mou-document img[align="right"] {
+    float: right;
+    margin-left: 12pt;
+    margin-bottom: 6pt;
+}
+.mou-doc-canvas img[align="center"], .mou-document img[align="center"] {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
 .mou-header-block {
     text-align: center;
     font-weight: bold;
@@ -1407,11 +1426,16 @@ CSS;
             'pageConfig'    => $config,
         ]);
 
+        $paperSize = strtolower((string) ($config['paper_size'] ?? 'a4'));
+        if (!in_array($paperSize, ['a4', 'letter', 'legal'], true)) {
+            $paperSize = 'a4';
+        }
+
         $orientation = strtolower((string) ($config['orientation'] ?? 'portrait')) === 'landscape'
             ? 'landscape'
             : 'portrait';
 
-        $pdf->setPaper('a4', $orientation);
+        $pdf->setPaper($paperSize, $orientation);
         $pdf->setOption('isHtml5ParserEnabled', true);
         $pdf->setOption('isRemoteEnabled', false);
 
