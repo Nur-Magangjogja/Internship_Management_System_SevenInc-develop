@@ -19,9 +19,25 @@
             <p class="text-sm text-slate-500">Isi parameter perjanjian kerja sama institusi untuk menghasilkan naskah dokumen resmi.</p>
         </div>
         <div class="text-right">
-            <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+            @php
+                $currentTemplate = $selectedTemplate ?? $activeTemplate ?? null;
+                $templatesCollection = $availableTemplates ?? ($currentTemplate ? collect([$currentTemplate]) : collect());
+                $templatesDefaultsMap = $templatesCollection->mapWithKeys(function ($tpl) {
+                    return [
+                        $tpl->id => array_merge(
+                            [
+                                'name' => $tpl->name,
+                                'version_number' => $tpl->version_number,
+                                'is_active' => (bool) $tpl->is_active,
+                            ],
+                            $tpl->getCompanyDefaultValues()
+                        ),
+                    ];
+                })->all();
+            @endphp
+            <span id="activeTemplateHeaderBadge" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
                 <span class="h-2 w-2 rounded-full bg-blue-500"></span>
-                Template: {{ $activeTemplate ? $activeTemplate->name . ' (v' . $activeTemplate->version_number . ')' : 'Standar' }}
+                Template: <span id="activeTemplateHeaderName">{{ $currentTemplate ? $currentTemplate->name . ' (v' . $currentTemplate->version_number . ')' : 'Standar' }}</span>
             </span>
         </div>
     </div>
@@ -63,20 +79,41 @@
     <form method="POST" action="{{ route($routePrefix . '.store') }}" class="space-y-6">
         @csrf
 
-        @if($activeTemplate)
-            <input type="hidden" name="mou_template_id" value="{{ $activeTemplate->id }}">
-        @endif
         @if($activeMou)
             <input type="hidden" name="supersedes_mou_id" value="{{ $activeMou->id }}">
         @endif
 
-        <!-- Card 1: Pilihan Institusi & Nomor Dokumen -->
+        <!-- Card 1: Pilihan Institusi, Template Naskah & Nomor Dokumen -->
         <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 mb-4 pb-2 border-b border-slate-100">
-                1. Registrasi Dokumen & Institusi Mitra
+                1. Registrasi Dokumen, Template Naskah & Institusi Mitra
             </h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="md:col-span-2">
+                    <label for="mouTemplateSelect" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Pilih Template Naskah MoU <span class="text-rose-500">*</span>
+                    </label>
+                    <select
+                        name="mou_template_id"
+                        id="mouTemplateSelect"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                        onchange="handleTemplateSelectionChange(this.value)"
+                    >
+                        @forelse($templatesCollection as $tplOption)
+                            <option
+                                value="{{ $tplOption->id }}"
+                                {{ (int) old('mou_template_id', $currentTemplate?->id) === (int) $tplOption->id ? 'selected' : '' }}
+                            >
+                                {{ $tplOption->name }} (Versi {{ $tplOption->version_number }}){{ $tplOption->is_active ? ' — [TEMPLATE AKTIF DEFAULT]' : '' }}
+                            </option>
+                        @empty
+                            <option value="">-- Belum Ada Template MoU Tersedia --</option>
+                        @endforelse
+                    </select>
+                    <p class="text-[11px] text-slate-400 mt-1">Mengubah pilihan template akan menyesuaikan otomatis nilai default Pihak Kedua (Seven Inc.) dan format halaman A4.</p>
+                </div>
+
                 <div class="md:col-span-2">
                     <label class="block text-xs font-semibold text-slate-700 mb-1">
                         Pilih Institusi Mitra <span class="text-rose-500">*</span>
@@ -267,6 +304,18 @@
                 </div>
 
                 <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nomor Fax Institusi <span class="text-slate-400 font-normal">(Opsional)</span></label>
+                    <input
+                        type="text"
+                        name="first_party_fax"
+                        id="firstPartyFax"
+                        value="{{ old('first_party_fax', '') }}"
+                        placeholder="Contoh: (0352) 481124"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                    >
+                </div>
+
+                <div class="md:col-span-2">
                     <label class="block text-xs font-semibold text-slate-700 mb-1">Email Resmi Institusi</label>
                     <input
                         type="email"
@@ -286,7 +335,7 @@
             </h2>
 
             @php
-                $tplDefaults = $activeTemplate?->default_values ?? [];
+                $tplDefaults = $currentTemplate ? $currentTemplate->getCompanyDefaultValues() : \App\Models\MouTemplate::getDefaultCompanyValues();
             @endphp
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -297,7 +346,7 @@
                     <input
                         type="text"
                         name="second_party_company_name"
-                        value="{{ old('second_party_company_name', $tplDefaults['company_name'] ?? 'SEVEN INC (PT Tujuh Kreasi Digital)') }}"
+                        value="{{ old('second_party_company_name', $tplDefaults['company_name'] ?? 'SEVEN INC.') }}"
                         required
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
@@ -310,7 +359,7 @@
                     <input
                         type="text"
                         name="second_party_signatory_name"
-                        value="{{ old('second_party_signatory_name', $tplDefaults['company_signatory_name'] ?? 'Rekso Pamungkas') }}"
+                        value="{{ old('second_party_signatory_name', $tplDefaults['company_signatory_name'] ?? 'Rekario Danny Sanjaya, S.Kom.') }}"
                         required
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
@@ -323,8 +372,38 @@
                     <input
                         type="text"
                         name="second_party_signatory_title"
-                        value="{{ old('second_party_signatory_title', $tplDefaults['company_signatory_title'] ?? 'Direktur Utama') }}"
+                        value="{{ old('second_party_signatory_title', $tplDefaults['company_signatory_title'] ?? 'Pimpinan') }}"
                         required
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">U.p / Unit Korespondensi Seven Inc</label>
+                    <input
+                        type="text"
+                        name="second_party_correspondence_unit"
+                        value="{{ old('second_party_correspondence_unit', $tplDefaults['company_correspondence_unit'] ?? 'CEO') }}"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Telepon Perusahaan</label>
+                    <input
+                        type="text"
+                        name="second_party_phone"
+                        value="{{ old('second_party_phone', $tplDefaults['company_phone'] ?? '089529002944') }}"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Fax Perusahaan <span class="text-slate-400 font-normal">(Opsional)</span></label>
+                    <input
+                        type="text"
+                        name="second_party_fax"
+                        value="{{ old('second_party_fax', $tplDefaults['company_fax'] ?? '-') }}"
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
                 </div>
@@ -334,7 +413,18 @@
                     <input
                         type="email"
                         name="second_party_email"
-                        value="{{ old('second_party_email', $tplDefaults['company_email'] ?? 'hr@seveninc.com') }}"
+                        value="{{ old('second_party_email', $tplDefaults['company_email'] ?? 'magangjogjadotcom@gmail.com') }}"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Durasi Perjanjian (Pasal 4)</label>
+                    <input
+                        type="text"
+                        name="agreement_duration"
+                        value="{{ old('agreement_duration', $tplDefaults['agreement_duration'] ?? '5 (lima) tahun') }}"
+                        placeholder="Contoh: 5 (lima) tahun"
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
                 </div>
@@ -344,7 +434,7 @@
                     <input
                         type="text"
                         name="second_party_address"
-                        value="{{ old('second_party_address', $tplDefaults['company_address'] ?? 'Yogyakarta, Indonesia') }}"
+                        value="{{ old('second_party_address', $tplDefaults['company_address'] ?? 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198') }}"
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
                 </div>
@@ -404,7 +494,7 @@
                     <input
                         type="date"
                         name="effective_end"
-                        value="{{ old('effective_end', date('Y-m-d', strtotime('+2 years'))) }}"
+                        value="{{ old('effective_end', date('Y-m-d', strtotime('+5 years'))) }}"
                         required
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
@@ -482,11 +572,48 @@
     </form>
 </div>
 
+<script type="application/json" id="mouTemplatesDefaultsMapJson">{!! json_encode($templatesDefaultsMap) !!}</script>
 <script>
+const mouTemplatesDefaultsMap = JSON.parse(document.getElementById('mouTemplatesDefaultsMapJson')?.textContent || '{}');
+
+function handleTemplateSelectionChange(templateId) {
+    if (!templateId || !mouTemplatesDefaultsMap[templateId]) return;
+    const tpl = mouTemplatesDefaultsMap[templateId];
+
+    const headerLabel = document.getElementById('activeTemplateHeaderName');
+    if (headerLabel && tpl.name) {
+        headerLabel.textContent = `${tpl.name} (v${tpl.version_number})`;
+    }
+
+    const fieldMap = {
+        second_party_company_name: 'company_name',
+        second_party_signatory_name: 'company_signatory_name',
+        second_party_signatory_title: 'company_signatory_title',
+        second_party_correspondence_unit: 'company_correspondence_unit',
+        second_party_phone: 'company_phone',
+        second_party_fax: 'company_fax',
+        second_party_email: 'company_email',
+        agreement_duration: 'agreement_duration',
+        second_party_address: 'company_address',
+        agreement_place: 'agreement_place',
+    };
+
+    Object.entries(fieldMap).forEach(([inputName, tplKey]) => {
+        const inputEl = document.querySelector(`[name="${inputName}"]`);
+        if (inputEl && typeof tpl[tplKey] === 'string' && tpl[tplKey] !== '') {
+            inputEl.value = tpl[tplKey];
+        }
+    });
+}
+
 function handleInstitutionChange(institutionId) {
     if (!institutionId) return;
     const url = new URL(window.location.href);
     url.searchParams.set('institution_id', institutionId);
+    const tplSelect = document.getElementById('mouTemplateSelect');
+    if (tplSelect && tplSelect.value) {
+        url.searchParams.set('mou_template_id', tplSelect.value);
+    }
     window.location.href = url.toString();
 }
 </script>

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\MouDocumentRenderer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,10 @@ use Illuminate\Support\Str;
 class MouTemplate extends Model
 {
     use HasFactory, SoftDeletes;
+
+    public const TOKEN_TYPE_TEXT  = 'text';
+    public const TOKEN_TYPE_DATE  = 'computed_date';
+    public const TOKEN_TYPE_IMAGE = 'image';
 
     protected $table = 'mou_templates';
 
@@ -52,34 +57,11 @@ class MouTemplate extends Model
     }
 
     /**
-     * Sanitasi ketat template HTML untuk mencegah stored XSS dan eksekusi skrip berbahaya.
+     * Sanitasi ketat template HTML menggunakan allowlist DOM & normalisasi penomoran otomatis Pasal/Ayat.
      */
     public static function sanitizeTemplateHtml(?string $html): string
     {
-        if (empty($html)) {
-            return '';
-        }
-
-        $sanitized = $html;
-
-        // 1. Bersihkan tag script dan isinya (berulang kali untuk menangani tag bersarang)
-        do {
-            $prev = $sanitized;
-            $sanitized = preg_replace('/<script\b[^>]*>([\s\S]*?)<\/script>/i', '', $sanitized);
-            $sanitized = preg_replace('/<script\b[^>]*\/?>/i', '', $sanitized);
-        } while ($sanitized !== $prev);
-
-        // 2. Bersihkan tag berbahaya (iframe, object, embed, applet, meta, link, base, form)
-        $sanitized = preg_replace('/<\/?(iframe|object|embed|applet|meta|link|base|form)\b[^>]*>/i', '', $sanitized);
-
-        // 3. Bersihkan inline event handler (onload, onclick, onerror, dsb.)
-        $sanitized = preg_replace('/\s*on[a-zA-Z]+\s*=\s*(["\'][^"\']*["\']|[^\s>]+)/i', '', $sanitized);
-
-        // 4. Bersihkan URL berbahaya berprotokol javascript:, vbscript:, atau data:text/html
-        $sanitized = preg_replace('/(href|src)\s*=\s*["\']\s*(?:javascript|vbscript|data):[^"\']*["\']/i', '$1="#"', $sanitized);
-        $sanitized = preg_replace('/(href|src)\s*=\s*(?:javascript|vbscript|data):[^\s>]+/i', '$1="#"', $sanitized);
-
-        return $sanitized;
+        return MouDocumentRenderer::sanitizeEditableTemplate($html, true);
     }
 
     /**
@@ -107,320 +89,562 @@ class MouTemplate extends Model
     }
 
     /**
-     * Daftar seluruh placeholder yang didukung beserta penjelasannya.
+     * Metadata lengkap seluruh placeholder berdasarkan kategori dan tipe datanya.
+     */
+    public static function getPlaceholderMetadata(): array
+    {
+        return [
+            // Pihak Kesatu (Institusi Mitra)
+            'institution_name' => [
+                'label' => 'Nama Institusi / Kampus / Sekolah Mitra',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_mou_number' => [
+                'label' => 'Nomor Surat Perjanjian Pihak Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_signatory_name' => [
+                'label' => 'Nama Pejabat Penandatangan Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_signatory_title' => [
+                'label' => 'Jabatan Penandatangan Institusi (Rektor / Dekan / Kepala Sekolah)',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_address' => [
+                'label' => 'Alamat Lengkap Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_correspondence_unit' => [
+                'label' => 'U.p. / Unit Korespondensi Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_phone' => [
+                'label' => 'Nomor Telepon Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_fax' => [
+                'label' => 'Nomor Fax Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_email' => [
+                'label' => 'Email Resmi Institusi',
+                'group' => 'Pihak Kesatu (Institusi)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'institution_logo' => [
+                'label' => 'Logo Pihak Kesatu (Institusi Mitra)',
+                'group' => 'Logo & Identitas Visual',
+                'type'  => self::TOKEN_TYPE_IMAGE,
+            ],
+
+            // Pihak Kedua (Seven Inc)
+            'company_name' => [
+                'label' => 'Nama Perusahaan (Default: SEVEN INC)',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_mou_number' => [
+                'label' => 'Nomor Surat Perjanjian Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_signatory_name' => [
+                'label' => 'Nama Pimpinan Penandatangan Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_signatory_title' => [
+                'label' => 'Jabatan Pimpinan Seven Inc (Pimpinan / Direktur)',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_address' => [
+                'label' => 'Alamat Kantor Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_correspondence_unit' => [
+                'label' => 'U.p. Korespondensi Seven Inc (Default: CEO)',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_phone' => [
+                'label' => 'Nomor Telepon Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_fax' => [
+                'label' => 'Nomor Fax Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_email' => [
+                'label' => 'Email Resmi Seven Inc',
+                'group' => 'Pihak Kedua (Perusahaan)',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'company_logo' => [
+                'label' => 'Logo Resmi Pihak Kedua (Seven Inc)',
+                'group' => 'Logo & Identitas Visual',
+                'type'  => self::TOKEN_TYPE_IMAGE,
+            ],
+
+            // Waktu, Tempat & Masa Berlaku
+            'agreement_place' => [
+                'label' => 'Kota / Tempat Penandatanganan',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_TEXT,
+            ],
+            'agreement_day' => [
+                'label' => 'Nama Hari Penandatanganan (Otomatis, cth: Sabtu)',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'agreement_date_words' => [
+                'label' => 'Kalimat Tanggal Terbilang Bahasa Indonesia (Otomatis)',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'agreement_date_short' => [
+                'label' => 'Tanggal Angka Pendek DD-MM-YYYY (Otomatis, cth: 24-05-2025)',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'agreement_date' => [
+                'label' => 'Tanggal Penandatanganan Dokumen (cth: 24 Mei 2025)',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'effective_start' => [
+                'label' => 'Tanggal Mulai Berlaku Kerja Sama',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'effective_end' => [
+                'label' => 'Tanggal Berakhir Masa Berlaku Kerja Sama',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+            'agreement_duration' => [
+                'label' => 'Jangka Waktu Kerja Sama (cth: 5 (lima) tahun)',
+                'group' => 'Tempat & Waktu Perjanjian',
+                'type'  => self::TOKEN_TYPE_DATE,
+            ],
+        ];
+    }
+
+    /**
+     * Daftar seluruh placeholder yang didukung beserta penjelasannya (key => label).
      */
     public static function getDefaultPlaceholders(): array
     {
+        $result = [];
+        foreach (static::getPlaceholderMetadata() as $key => $meta) {
+            $result[$key] = $meta['label'];
+        }
+        return $result;
+    }
+
+    /**
+     * Nilai baku identitas Pihak Kedua (Seven Inc) sesuai dokumen Word standar.
+     */
+    public static function getDefaultCompanyValues(): array
+    {
         return [
-            'institution_name'                => 'Nama Institusi / Kampus / Sekolah Mitra',
-            'institution_mou_number'          => 'Nomor Surat Perjanjian Pihak Institusi',
-            'institution_address'             => 'Alamat Lengkap Institusi',
-            'institution_correspondence_unit' => 'Unit Korespondensi / Fakultas / Jurusan',
-            'institution_phone'               => 'Nomor Telepon Institusi',
-            'institution_email'               => 'Email Resmi Institusi',
-            'institution_signatory_name'      => 'Nama Pejabat Penandatangan Institusi',
-            'institution_signatory_title'     => 'Jabatan Penandatangan Institusi (Rektor / Dekan / Kepala Sekolah)',
-            'company_name'                    => 'Nama Perusahaan (Default: SEVEN INC)',
-            'company_mou_number'              => 'Nomor Surat Perjanjian Seven Inc',
-            'company_address'                 => 'Alamat Kantor Seven Inc',
-            'company_phone'                   => 'Nomor Telepon Seven Inc',
-            'company_email'                   => 'Email Resmi Seven Inc',
-            'company_signatory_name'          => 'Nama Pimpinan Penandatangan Seven Inc',
-            'company_signatory_title'         => 'Jabatan Pimpinan Seven Inc (Direktur)',
-            'agreement_place'                 => 'Kota / Tempat Penandatanganan',
-            'agreement_date'                  => 'Tanggal Penandatanganan Dokumen',
-            'effective_start'                 => 'Tanggal Mulai Berlaku Kerja Sama',
-            'effective_end'                   => 'Tanggal Berakhir Masa Berlaku Kerja Sama',
+            'company_name'                => 'SEVEN INC',
+            'company_signatory_name'      => 'Rekario Danny Sanjaya, S.Kom.',
+            'company_signatory_title'     => 'Pimpinan',
+            'company_correspondence_unit' => 'CEO',
+            'company_address'             => 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198',
+            'company_phone'               => '089529002944',
+            'company_fax'                 => '-',
+            'company_email'               => 'magangjogjadotcom@gmail.com',
+            'agreement_place'             => 'Yogyakarta',
+            'agreement_duration'          => '5 (lima) tahun',
         ];
+    }
+
+    /**
+     * HTML tabel Kotak Paraf standar di bagian Footer yang dapat diedit & diubah ukurannya secara bebas di Tiptap.
+     */
+    public static function getDefaultFooterParafHtml(
+        string $firstPartyLabel = 'Paraf PIHAK KESATU',
+        string $secondPartyLabel = 'Paraf PIHAK KEDUA'
+    ): string {
+        $safeFirst  = e($firstPartyLabel);
+        $safeSecond = e($secondPartyLabel);
+
+        return <<<HTML
+<table class="mou-paraf-table" data-table-width="220pt" style="width: 220pt; border-collapse: collapse; border: 1px solid #000000; font-size: 8.5pt;">
+    <colgroup>
+        <col width="147" style="width: 147px">
+        <col width="147" style="width: 147px">
+    </colgroup>
+    <tbody>
+        <tr>
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; border: 1px solid #000000; padding: 2pt 6pt; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>{$safeFirst}</strong></p></td>
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; border: 1px solid #000000; padding: 2pt 6pt; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>{$safeSecond}</strong></p></td>
+        </tr>
+        <tr data-row-height="18pt" style="height: 18pt;">
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 18pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 18pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+        </tr>
+    </tbody>
+</table>
+HTML;
+    }
+
+    /**
+     * Konfigurasi halaman kertas A4 standar (Margin 2.54cm / 1 inch, Times New Roman 12pt, Header/Footer V3).
+     */
+    public static function getDefaultPageConfig(): array
+    {
+        return [
+            '_schema_version'          => 3,
+            'paper_size'               => 'A4',
+            'orientation'              => 'portrait',
+            'margin_top_mm'            => 25.4,
+            'margin_bottom_mm'         => 25.4,
+            'margin_left_mm'           => 25.4,
+            'margin_right_mm'          => 25.4,
+            'header_distance_mm'       => 12.0,
+            'footer_distance_mm'       => 10.0,
+            'different_first_page'     => false,
+            'header_html'              => '',
+            'footer_html'              => static::getDefaultFooterParafHtml(),
+            'first_page_header_html'   => '',
+            'first_page_footer_html'   => '',
+            'font_family'              => 'Times New Roman',
+            'font_size_pt'             => 12,
+            'line_height'              => 1.15,
+            'show_paraf_box'           => true,
+            'show_paraf_footer'        => true,
+            'paraf_first_party_label'  => 'Paraf PIHAK KESATU',
+            'paraf_second_party_label' => 'Paraf PIHAK KEDUA',
+            'show_page_number'         => true,
+            'show_page_numbers'        => true,
+        ];
+    }
+
+    /**
+     * Aset gambar default (menggunakan placeholder netral untuk institusi mitra agar tidak memakai logo UMPO pada institusi lain).
+     */
+    public static function getDefaultMediaAssets(): array
+    {
+        return [
+            'company_logo'     => '/images/mou/seven-inc-logo.png',
+            'institution_logo' => '/images/mou/institution-logo-placeholder.png',
+        ];
+    }
+
+    /**
+     * Ambil nilai default perusahaan dari instance template (memisahkan namespace internal).
+     */
+    public function getCompanyDefaultValues(): array
+    {
+        $raw = $this->default_values ?? [];
+        $companyDefaults = static::getDefaultCompanyValues();
+
+        foreach ($companyDefaults as $key => $defaultVal) {
+            if (array_key_exists($key, $raw) && $raw[$key] !== null && $raw[$key] !== '') {
+                $companyDefaults[$key] = $raw[$key];
+            }
+        }
+
+        return $companyDefaults;
+    }
+
+    /**
+     * Ambil konfigurasi halaman A4 dari instance template (kompatibel penuh dengan V1, V2, dan V3).
+     */
+    public function getPageConfig(): array
+    {
+        $raw = $this->default_values['_page_config'] ?? [];
+        $rawArray = is_array($raw) ? $raw : [];
+        $merged = array_merge(static::getDefaultPageConfig(), $rawArray);
+
+        // Jika template lama (V1/V2) belum memiliki footer_html eksplisit tetapi menampilkan kotak paraf,
+        // bangun tabel paraf default sesuai label yang tersimpan agar langsung dapat diedit di V3.
+        if (!array_key_exists('footer_html', $rawArray) || $rawArray['footer_html'] === null) {
+            $showParaf = (bool) ($merged['show_paraf_footer'] ?? $merged['show_paraf_box'] ?? true);
+            $merged['footer_html'] = $showParaf
+                ? static::getDefaultFooterParafHtml(
+                    (string) ($merged['paraf_first_party_label'] ?? 'Paraf PIHAK KESATU'),
+                    (string) ($merged['paraf_second_party_label'] ?? 'Paraf PIHAK KEDUA')
+                )
+                : '';
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Ambil snapshot ProseMirror JSON jika tersimpan valid pada default_values['_editor_json']
+     * dan cocok dengan revisi template_html saat ini.
+     */
+    public function getEditorJson(): ?array
+    {
+        $rawDefaults = $this->default_values ?? [];
+        $json = $rawDefaults['_editor_json'] ?? null;
+
+        if (!is_array($json) || ($json['type'] ?? '') !== 'doc' || empty($json['content']) || !is_array($json['content'])) {
+            return null;
+        }
+
+        // Rekonsiliasi hash SHA-256 jika tersedia agar jika template_html diubah langsung, JSON lama tidak menimpa HTML baru
+        $savedHash = $rawDefaults['_editor_html_sha256'] ?? null;
+        if (is_string($savedHash) && $savedHash !== '') {
+            $currentHash = hash('sha256', trim((string) $this->template_html));
+            if (!hash_equals($savedHash, $currentHash)) {
+                return null;
+            }
+        }
+
+        return $json;
+    }
+
+    /**
+     * Ambil konfigurasi aset gambar dari instance template.
+     */
+    public function getMediaAssets(): array
+    {
+        $raw = $this->default_values['_media_assets'] ?? [];
+        return array_merge(static::getDefaultMediaAssets(), is_array($raw) ? $raw : []);
     }
 
     /**
      * Render template HTML dengan mengganti placeholder secara aman (safe token replacement).
      */
-    public function renderContent(array $data): string
+    public function renderContent(array $data, bool $forPublishedSnapshot = false): string
     {
-        $rendered = static::sanitizeTemplateHtml($this->template_html);
-
-        // Gabungkan data input dengan default_values template
-        $mergedData = array_merge($this->default_values ?? [], $data);
-
-        foreach ($this->allowed_placeholders ?? array_keys(static::getDefaultPlaceholders()) as $rawPlaceholder) {
-            $placeholder = trim($rawPlaceholder, '[]{} ');
-            if (empty($placeholder)) {
-                continue;
-            }
-
-            if (array_key_exists($placeholder, $mergedData)) {
-                $safeValue = e((string) $mergedData[$placeholder]);
-                $rendered = str_replace([
-                    '[' . $placeholder . ']',
-                    '{{' . $placeholder . '}}',
-                    '{{ ' . $placeholder . ' }}',
-                ], $safeValue, $rendered);
-            }
-        }
-
-        return static::sanitizeTemplateHtml($rendered);
+        return MouDocumentRenderer::renderTemplate($this, $data, $forPublishedSnapshot);
     }
 
     /**
-     * Draft isi template standar baku Seven Inc x Institusi.
+     * Naskah template default utama sesuai 100% dokumen Word Nota Kesepahaman Tri Dharma Perguruan Tinggi.
      */
     public static function getDefaultTemplateContent(): string
     {
+        return static::getWordStandardTemplateContent();
+    }
+
+    /**
+     * Naskah lengkap kata demi kata sesuai dokumen Word Nota Kesepahaman Tri Dharma Perguruan Tinggi.
+     * Menggunakan elemen pengolah kata bebas (paragraf & tabel standar yang dapat diedit, dihapus, atau diubah ukurannya).
+     */
+    public static function getWordStandardTemplateContent(): string
+    {
         return <<<'HTML'
-<div class="mou-document font-serif text-slate-900 leading-relaxed text-sm">
-    <!-- Header Dokumen -->
-    <div class="text-center pb-6 border-b-2 border-slate-900 mb-6">
-        <h1 class="text-xl font-bold tracking-wider uppercase mb-1">SURAT PERJANJIAN KERJA SAMA (MOU)</h1>
-        <p class="text-sm font-semibold uppercase tracking-wide">TENTANG PENYELENGGARAAN PROGRAM PRAKTIK KERJA LAPANGAN & MAGANG INDUSTRI</p>
-        <div class="mt-3 text-xs font-mono text-slate-700">
-            <p>Nomor Pihak Pertama: [institution_mou_number]</p>
-            <p>Nomor Pihak Kedua: [company_mou_number]</p>
-        </div>
-    </div>
+<div class="mou-document mou-doc-canvas">
+    <p style="text-align: center; margin-bottom: 6pt;"><strong>NOTA KESEPAHAMAN</strong></p>
 
-    <!-- Pembukaan -->
-    <p class="mb-4 text-justify">
-        Pada hari ini, bertempat di <strong>[agreement_place]</strong>, telah dibuat dan ditandatangani Perjanjian Kerja Sama (selanjutnya disebut "Perjanjian") oleh dan antara pihak-pihak sebagai berikut:
-    </p>
+    <table class="mou-logo-row-table mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-bottom: 8pt;">
+        <colgroup>
+            <col width="210" style="width: 210px">
+            <col width="180" style="width: 180px">
+            <col width="210" style="width: 210px">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td colwidth="210" data-cell-width="35%" style="width: 35%; text-align: left; vertical-align: middle;"><p style="text-align: left; margin: 0;">[institution_logo]</p></td>
+                <td colwidth="180" data-cell-width="30%" style="width: 30%; text-align: center; vertical-align: middle;"><p style="text-align: center; margin: 0;"><strong>ANTARA</strong></p></td>
+                <td colwidth="210" data-cell-width="35%" style="width: 35%; text-align: right; vertical-align: middle;"><p style="text-align: right; margin: 0;">[company_logo]</p></td>
+            </tr>
+        </tbody>
+    </table>
 
-    <!-- Pihak Pertama -->
-    <div class="mb-4 pl-4 border-l-2 border-slate-300">
-        <p class="font-bold text-slate-800">I. PIHAK KESATU (INSTITUSI MITRA):</p>
-        <table class="w-full text-xs mt-1">
-            <tr><td class="w-36 font-semibold py-0.5">Nama Institusi</td><td>: [institution_name]</td></tr>
-            <tr><td class="font-semibold py-0.5">Unit Korespondensi</td><td>: [institution_correspondence_unit]</td></tr>
-            <tr><td class="font-semibold py-0.5">Alamat</td><td>: [institution_address]</td></tr>
-            <tr><td class="font-semibold py-0.5">Kontak / Email</td><td>: [institution_phone] / [institution_email]</td></tr>
-            <tr><td class="font-semibold py-0.5">Diwakili Oleh</td><td>: <strong>[institution_signatory_name]</strong></td></tr>
-            <tr><td class="font-semibold py-0.5">Jabatan</td><td>: [institution_signatory_title]</td></tr>
-        </table>
-        <p class="mt-1 text-xs text-slate-600">Dalam hal ini bertindak untuk dan atas nama institusi [institution_name], selanjutnya disebut sebagai <strong>PIHAK PERTAMA</strong>.</p>
-    </div>
+    <p style="text-align: center; text-transform: uppercase; margin-bottom: 2pt;"><strong>[institution_name]</strong></p>
+    <p style="text-align: center; text-transform: uppercase; margin-bottom: 8pt;"><strong>DENGAN [company_name]</strong></p>
+    <p style="text-align: center; margin-bottom: 2pt;"><strong>TENTANG</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>PELAKSANAAN TRI DHARMA PERGURUAN TINGGI</strong></p>
+    <p style="text-align: center; margin-bottom: 2pt;"><strong>NOMOR: [institution_mou_number]</strong></p>
+    <p style="text-align: center; margin-bottom: 12pt;"><strong>NOMOR: [company_mou_number]</strong></p>
 
-    <!-- Pihak Kedua -->
-    <div class="mb-6 pl-4 border-l-2 border-slate-300">
-        <p class="font-bold text-slate-800">II. PIHAK KEDUA (INDUSTRI MITRA):</p>
-        <table class="w-full text-xs mt-1">
-            <tr><td class="w-36 font-semibold py-0.5">Nama Perusahaan</td><td>: [company_name]</td></tr>
-            <tr><td class="font-semibold py-0.5">Alamat</td><td>: [company_address]</td></tr>
-            <tr><td class="font-semibold py-0.5">Kontak / Email</td><td>: [company_phone] / [company_email]</td></tr>
-            <tr><td class="font-semibold py-0.5">Diwakili Oleh</td><td>: <strong>[company_signatory_name]</strong></td></tr>
-            <tr><td class="font-semibold py-0.5">Jabatan</td><td>: [company_signatory_title]</td></tr>
-        </table>
-        <p class="mt-1 text-xs text-slate-600">Dalam hal ini bertindak untuk dan atas nama perusahaan [company_name], selanjutnya disebut sebagai <strong>PIHAK KEDUA</strong>.</p>
-    </div>
+    <p style="text-align: justify; margin-bottom: 8pt;">Pada hari ini, [agreement_day], [agreement_date_words] ([agreement_date_short]), bertempat di [agreement_place], yang bertanda tangan di bawah ini :</p>
 
-    <p class="mb-4 text-justify">
-        PIHAK PERTAMA dan PIHAK KEDUA secara bersama-sama disebut sebagai <strong>PARA PIHAK</strong>, dan masing-masing disebut sebagai <strong>PIHAK</strong>. PARA PIHAK sepakat untuk mengadakan kerja sama dengan ketentuan dan syarat-syarat yang tercantum dalam pasal-pasal berikut:
-    </p>
+    <table class="mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-bottom: 10pt;">
+        <colgroup>
+            <col width="30" style="width: 30px">
+            <col width="192" style="width: 192px">
+            <col width="18" style="width: 18px">
+            <col width="360" style="width: 360px">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td colwidth="30" data-cell-width="5%" style="width: 5%; vertical-align: top;"><p style="margin: 0;">1.</p></td>
+                <td colwidth="192" data-cell-width="32%" style="width: 32%; vertical-align: top;"><p style="margin: 0;"><strong>[institution_signatory_name]</strong></p></td>
+                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="360" data-cell-width="60%" style="width: 60%; vertical-align: top; text-align: justify;"><p style="text-align: justify; margin: 0;">[institution_signatory_title] [institution_name], berkedudukan di [institution_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [institution_name], selanjutnya disebut <strong>PIHAK KESATU</strong>; dan</p></td>
+            </tr>
+            <tr>
+                <td colwidth="30" data-cell-width="5%" style="width: 5%; vertical-align: top;"><p style="margin: 0;">2.</p></td>
+                <td colwidth="192" data-cell-width="32%" style="width: 32%; vertical-align: top;"><p style="margin: 0;"><strong>[company_signatory_name]</strong></p></td>
+                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="360" data-cell-width="60%" style="width: 60%; vertical-align: top; text-align: justify;"><p style="text-align: justify; margin: 0;">[company_signatory_title] [company_name], Berkedudukan di [company_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [company_name], selanjutnya disebut <strong>PIHAK KEDUA</strong>.</p></td>
+            </tr>
+        </tbody>
+    </table>
 
-    <!-- Pasal 1 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 1<br>MAKSUD DAN TUJUAN</h2>
-        <p class="text-justify text-xs">
-            Perjanjian ini bertujuan untuk menyelaraskan kompetensi pendidikan vokasi dan perguruan tinggi dengan kebutuhan industri, meningkatkan keterampilan praktis peserta didik, serta memfasilitasi pelaksanaan program Praktik Kerja Lapangan (PKL) dan Magang Industri bagi mahasiswa/peserta didik dari PIHAK PERTAMA di lingkungan unit kerja PIHAK KEDUA.
-        </p>
-    </div>
+    <p style="text-align: justify; margin-bottom: 6pt;"><strong>PIHAK KESATU</strong> dan <strong>PIHAK KEDUA</strong> untuk selanjutnya secara bersama-sama disebut <strong>PARA PIHAK</strong>.</p>
+    <p style="text-align: justify; margin-bottom: 10pt;"><strong>PARA PIHAK</strong> bersepakat untuk mengadakan kerja sama dalam bidang pendidikan, penelitian, pengabdian kepada masyarakat, dan pengembangan sumber daya dengan ketentuan sebagai berikut.</p>
 
-    <!-- Pasal 2 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 2<br>RUANG LINGKUP KERJA SAMA</h2>
-        <ol class="list-decimal pl-5 text-xs space-y-1 text-justify">
-            <li>Penempatan dan pelaksanaan program magang bagi peserta didik yang memenuhi kualifikasi seleksi.</li>
-            <li>Bimbingan teknis, transfer ilmu, dan pengawasan kerja oleh mentor industri dari PIHAK KEDUA.</li>
-            <li>Penerbitan surat penerimaan (LOA), surat keterangan selesai (SKL), sertifikat kompetensi magang, dan evaluasi penilaian akademik.</li>
-            <li>Peluang kolaborasi lanjutan terkait rekrutmen kerja dan seminar/webinar pengembangan keahlian.</li>
-        </ol>
-    </div>
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 1</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>MAKSUD DAN TUJUAN</strong></p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 4pt;"><strong>(1)</strong> Maksud Nota Kesepahaman ini adalah sebagai landasan dalam rangka pelaksanaan kerja sama yang akan disusun oleh <strong>PARA PIHAK</strong> sesuai dengan ruang lingkup Nota Kesepahaman ini.</p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 8pt;"><strong>(2)</strong> Tujuan Nota Kesepahaman ini adalah untuk saling mendukung kegiatan <strong>PARA PIHAK</strong> dalam rangka kerja sama yang berkaitan dengan bidang bidang pendidikan, penelitian, pengabdian kepada masyarakat, dan pengembangan sumber daya.</p>
 
-    <!-- Pasal 3 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 3<br>HAK DAN KEWAJIBAN</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mt-2">
-            <div>
-                <p class="font-bold text-slate-800">Hak dan Kewajiban PIHAK PERTAMA:</p>
-                <ul class="list-disc pl-4 mt-1 space-y-1 text-slate-700">
-                    <li>Menyediakan data peserta magang yang sah dan teregistrasi secara akademik.</li>
-                    <li>Menunjuk guru/dosen pembimbing untuk koordinasi berkala dengan PIHAK KEDUA.</li>
-                    <li>Mendapatkan laporan evaluasi hasil belajar magang peserta secara transparan.</li>
-                </ul>
-            </div>
-            <div>
-                <p class="font-bold text-slate-800">Hak dan Kewajiban PIHAK KEDUA:</p>
-                <ul class="list-disc pl-4 mt-1 space-y-1 text-slate-700">
-                    <li>Menyediakan lingkungan kerja yang kondusif, tugas kerja yang relevan, serta mentor pendamping.</li>
-                    <li>Berhak memberlakukan tata tertib kerja industri kepada seluruh peserta magang.</li>
-                    <li>Menerbitkan sertifikat dan lembar penilaian magang resmi bagi peserta yang menuntaskan program.</li>
-                </ul>
-            </div>
-        </div>
-    </div>
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 2</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>RUANG LINGKUP</strong></p>
+    <p style="text-align: justify; margin-bottom: 8pt;">Ruang lingkup kerja sama ini meliputi bidang pendidikan, penelitian, pengabdian kepada masyarakat, dan pengembangan sumber daya <strong>PARA PIHAK</strong>.</p>
 
-    <!-- Pasal 4 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 4<br>JANGKA WAKTU PERJANJIAN</h2>
-        <p class="text-justify text-xs">
-            Perjanjian Kerja Sama ini berlaku terhitung sejak tanggal <strong>[effective_start]</strong> sampai dengan tanggal <strong>[effective_end]</strong>. Perjanjian ini dapat diperpanjang, diubah, atau diakhiri atas kesepakatan tertulis dari PARA PIHAK selambat-lambatnya 30 (tiga puluh) hari kalender sebelum masa berlaku berakhir.
-        </p>
-    </div>
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 3</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>PELAKSANAAN KEGIATAN</strong></p>
+    <p style="text-align: justify; margin-bottom: 8pt;">Pelaksanaan kegiatan yang merupakan tindak lanjut dari Nota Kesepahaman ini akan diatur dalam Perjanjian Kerja Sama melalui pejabat yang ditunjuk dan diberi kewenangan oleh <strong>PARA PIHAK</strong>.</p>
 
-    <!-- Pasal 5 -->
-    <div class="mb-6">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 5<br>PENUTUP</h2>
-        <p class="text-justify text-xs">
-            Demikian Perjanjian Kerja Sama ini dibuat dalam rangkap 2 (dua) bermeterai cukup dan memiliki kekuatan hukum yang sama bagi masing-masing pihak setelah ditandatangani oleh wakil yang sah dari PARA PIHAK pada tanggal <strong>[agreement_date]</strong>.
-        </p>
-    </div>
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 4</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>PEMBIAYAAN</strong></p>
+    <p style="text-align: justify; margin-bottom: 8pt;">Pembiayaan yang berhubungan dengan tindak lanjut Nota Kesepahaman ini ditetapkan bersama sesuai dengan kebutuhan yang disepakati oleh <strong>PARA PIHAK</strong>. dan dituangkan dalam Perjanjian Kerja Sama.</p>
 
-    <!-- Kolom Tanda Tangan -->
-    <div class="grid grid-cols-2 gap-8 pt-6 border-t border-slate-200 mt-8 text-center text-xs">
-        <div>
-            <p class="font-semibold text-slate-600">PIHAK PERTAMA</p>
-            <p class="font-bold text-slate-800">[institution_name]</p>
-            <div class="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
-                (Tanda Tangan & Cap Institusi)
-            </div>
-            <p class="font-bold text-slate-900 underline">[institution_signatory_name]</p>
-            <p class="text-[11px] text-slate-600">[institution_signatory_title]</p>
-        </div>
-        <div>
-            <p class="font-semibold text-slate-600">PIHAK KEDUA</p>
-            <p class="font-bold text-slate-800">[company_name]</p>
-            <div class="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
-                (Tanda Tangan & Cap Perusahaan)
-            </div>
-            <p class="font-bold text-slate-900 underline">[company_signatory_name]</p>
-            <p class="text-[11px] text-slate-600">[company_signatory_title]</p>
-        </div>
-    </div>
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 5</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>KORESPONDENSI</strong></p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 6pt;"><strong>(1)</strong> semua pemberitahuan, permintaan dan atau usulan yang dibuat sehubungan dengan Nota Kesepahaman ini harus dilakukan secara tertulis dan diserahkan secara langsung, melalui pos, email, atau melalui faksimili kepada masing masing <strong>PIHAK</strong> yang alamatnya disebutkan dibawah ini.</p>
+
+    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 6pt; margin-bottom: 10pt;">
+        <colgroup>
+            <col width="132" style="width: 132px">
+            <col width="24" style="width: 24px">
+            <col width="444" style="width: 444px">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td colspan="3" style="border: 1px solid #000000; padding: 3pt 6pt; font-weight: bold;"><p style="margin: 0;"><strong>PIHAK KESATU</strong></p></td>
+            </tr>
+            <tr>
+                <td colwidth="132" data-cell-width="22%" style="width: 22%; border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Instansi</p></td>
+                <td colwidth="24" data-cell-width="4%" style="width: 4%; border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="444" data-cell-width="74%" style="width: 74%; border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_name]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Alamat</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_address]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">U.p</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_correspondence_unit]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Telepon</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_phone]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Fax</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_fax]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Email</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_email]</p></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 6pt; margin-bottom: 10pt;">
+        <colgroup>
+            <col width="132" style="width: 132px">
+            <col width="24" style="width: 24px">
+            <col width="444" style="width: 444px">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td colspan="3" style="border: 1px solid #000000; padding: 3pt 6pt; font-weight: bold;"><p style="margin: 0;"><strong>PIHAK KEDUA</strong></p></td>
+            </tr>
+            <tr>
+                <td colwidth="132" data-cell-width="22%" style="width: 22%; border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Instansi</p></td>
+                <td colwidth="24" data-cell-width="4%" style="width: 4%; border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="444" data-cell-width="74%" style="width: 74%; border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_name]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Alamat</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_address]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">U.p</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_correspondence_unit]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Telepon</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_phone]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Fax</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_fax]</p></td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Email</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_email]</p></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 8pt;"><strong>(2)</strong> Apabila terdapat perubahan alamat dan/atau data sebagaimana tercantum pada ayat (1) Pasal ini, Maka <strong>PIHAK</strong> yang mengubah alamat dan/atau data tersebut wajib memberitahukan secara tertulis atas perubahan tersebut dalam jangka waktu selambat-lambatnya 30 (tiga puluh) hari kalender kepada <strong>PIHAK</strong> lainnya sebelum alamat tersebut dinyatakan efektif. Apabila perubahan tersebut tidak diberitahukan maka korespondensi atau permintaan lainnya pada alamat terakhir yang diketahui oleh <strong>PIHAK</strong> lainnya dianggap telah diberikan dengan semestinya.</p>
+
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 6</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>KETENTUAN LAIN-LAIN</strong></p>
+    <p style="text-align: justify; margin-bottom: 8pt;">Ketentuan dan/atau hal-hal lain yang belum diatur dalam Nota Kesepahaman ini diatur dalam bentuk addendum yang disepakati oleh <strong>PARA PIHAK</strong> dan merupakan bagian yang tidak terpisahkan dari Nota Kesepahaman ini.</p>
+
+    <p style="text-align: center; margin-top: 10pt; margin-bottom: 0pt;"><strong>Pasal 7</strong></p>
+    <p style="text-align: center; margin-bottom: 4pt;"><strong>PENUTUP</strong></p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 4pt;"><strong>(1)</strong> Nota Kesepahaman ini dibuat rangkap dua, bermaterai cukup dan memiliki kekuatan hukum yang sama.</p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 4pt;"><strong>(2)</strong> Nota Kesepahaman ini berlaku sejak tanggal ditandatangani untuk jangka waktu [agreement_duration] dan dapat diperpanjang atas persetujuan <strong>PARA PIHAK</strong>.</p>
+    <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 10pt;"><strong>(3)</strong> Apabila terjadi perselisihan, perbedaan penafsiran terhadap Nota Kesepahaman ini, atau hal-hal lain terkait yang belum secara tersurat dinyatakan dalam Nota Kesepahaman ini, akan diselesaikan secara musyawarah untuk mufakat.</p>
+
+    <table class="mou-signature-table mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 24pt;">
+        <colgroup>
+            <col width="300" style="width: 300px">
+            <col width="300" style="width: 300px">
+        </colgroup>
+        <tbody>
+            <tr>
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>PIHAK KESATU,</strong></p></td>
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>PIHAK KEDUA,</strong></p></td>
+            </tr>
+            <tr data-row-height="26mm" style="height: 26mm;">
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; height: 26mm; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; height: 26mm; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+            </tr>
+            <tr>
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>[institution_signatory_name]</strong></p></td>
+                <td colwidth="300" data-cell-width="50%" style="width: 50%; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>[company_signatory_name]</strong></p></td>
+            </tr>
+        </tbody>
+    </table>
 </div>
 HTML;
     }
 
     /**
-     * Naskah template Nota Kesepahaman Tri Dharma Perguruan Tinggi & Pengembangan SDM.
+     * Naskah template Nota Kesepahaman Tri Dharma Perguruan Tinggi & Pengembangan SDM (Versi 2).
      */
     public static function getTriDharmaTemplateContent(): string
     {
-        return <<<'HTML'
-<div class="mou-document font-serif text-slate-900 leading-relaxed text-sm">
-    <!-- Header Dokumen -->
-    <div class="text-center pb-6 border-b-2 border-slate-900 mb-6">
-        <h1 class="text-xl font-bold tracking-wider uppercase mb-1">NOTA KESEPAHAMAN (MEMORANDUM OF UNDERSTANDING)</h1>
-        <p class="text-sm font-semibold uppercase tracking-wide">ANTARA</p>
-        <p class="text-base font-bold uppercase tracking-wide text-slate-800">[institution_name]</p>
-        <p class="text-sm font-semibold uppercase tracking-wide">DENGAN</p>
-        <p class="text-base font-bold uppercase tracking-wide text-slate-800">[company_name]</p>
-        <p class="text-xs font-semibold uppercase tracking-wide mt-2 text-slate-700">TENTANG PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI, MAGANG KERJA INDUSTRI, DAN PENGEMBANGAN SUMBER DAYA MANUSIA</p>
-        <div class="mt-3 text-xs font-mono text-slate-700">
-            <p>Nomor Pihak Pertama: [institution_mou_number]</p>
-            <p>Nomor Pihak Kedua: [company_mou_number]</p>
-        </div>
-    </div>
-
-    <!-- Pembukaan -->
-    <p class="mb-4 text-justify">
-        Pada hari ini, bertempat di <strong>[agreement_place]</strong>, telah dibuat dan ditandatangani Nota Kesepahaman (selanjutnya disebut "Nota Kesepahaman") oleh dan antara pihak-pihak:
-    </p>
-
-    <!-- Pihak Pertama -->
-    <div class="mb-4 pl-4 border-l-2 border-slate-300">
-        <p class="font-bold text-slate-800">I. PIHAK KESATU (INSTITUSI PENDIDIKAN TINGGI):</p>
-        <table class="w-full text-xs mt-1">
-            <tr><td class="w-36 font-semibold py-0.5">Nama Institusi</td><td>: [institution_name]</td></tr>
-            <tr><td class="font-semibold py-0.5">Unit Korespondensi</td><td>: [institution_correspondence_unit]</td></tr>
-            <tr><td class="font-semibold py-0.5">Alamat</td><td>: [institution_address]</td></tr>
-            <tr><td class="font-semibold py-0.5">Kontak / Email</td><td>: [institution_phone] / [institution_email]</td></tr>
-            <tr><td class="font-semibold py-0.5">Diwakili Oleh</td><td>: <strong>[institution_signatory_name]</strong></td></tr>
-            <tr><td class="font-semibold py-0.5">Jabatan</td><td>: [institution_signatory_title]</td></tr>
-        </table>
-        <p class="mt-1 text-xs text-slate-600">Dalam hal ini bertindak untuk dan atas nama institusi [institution_name], selanjutnya disebut sebagai <strong>PIHAK KESATU</strong>.</p>
-    </div>
-
-    <!-- Pihak Kedua -->
-    <div class="mb-6 pl-4 border-l-2 border-slate-300">
-        <p class="font-bold text-slate-800">II. PIHAK KEDUA (DUNIA USAHA & DUNIA INDUSTRI):</p>
-        <table class="w-full text-xs mt-1">
-            <tr><td class="w-36 font-semibold py-0.5">Nama Perusahaan</td><td>: [company_name]</td></tr>
-            <tr><td class="font-semibold py-0.5">Alamat</td><td>: [company_address]</td></tr>
-            <tr><td class="font-semibold py-0.5">Kontak / Email</td><td>: [company_phone] / [company_email]</td></tr>
-            <tr><td class="font-semibold py-0.5">Diwakili Oleh</td><td>: <strong>[company_signatory_name]</strong></td></tr>
-            <tr><td class="font-semibold py-0.5">Jabatan</td><td>: [company_signatory_title]</td></tr>
-        </table>
-        <p class="mt-1 text-xs text-slate-600">Dalam hal ini bertindak untuk dan atas nama perusahaan [company_name], selanjutnya disebut sebagai <strong>PIHAK KEDUA</strong>.</p>
-    </div>
-
-    <p class="mb-4 text-justify">
-        PIHAK KESATU dan PIHAK KEDUA secara bersama-sama disebut sebagai <strong>PARA PIHAK</strong>, dan masing-masing disebut sebagai <strong>PIHAK</strong>. PARA PIHAK sepakat untuk mengadakan kerja sama kemitraan strategis dengan ketentuan sebagaimana tercantum dalam pasal-pasal berikut:
-    </p>
-
-    <!-- Pasal 1 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 1<br>MAKSUD DAN TUJUAN</h2>
-        <p class="text-justify text-xs">
-            Nota Kesepahaman ini dimaksudkan sebagai landasan kerja sama kemitraan strategis antara PARA PIHAK dalam rangka menyinergikan potensi masing-masing pihak guna meningkatkan kualitas penyelenggaraan Tri Dharma Perguruan Tinggi (pendidikan, penelitian, dan pengabdian kepada masyarakat), serta penyelarasan kompetensi sumber daya manusia dengan kebutuhan dunia kerja dan industri digital.
-        </p>
-    </div>
-
-    <!-- Pasal 2 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 2<br>RUANG LINGKUP KERJA SAMA</h2>
-        <ol class="list-decimal pl-5 text-xs space-y-1 text-justify">
-            <li>Penyelenggaraan program Praktik Kerja Lapangan (PKL), Magang Industri Bersertifikat, dan riset terapan bagi mahasiswa PIHAK KESATU di unit kerja PIHAK KEDUA.</li>
-            <li>Penyelenggaraan kegiatan dosen/praktisi industri tamu, seminar keilmuan, lokakarya, dan pengembangan kurikulum berbasis kebutuhan industri teknologi terkini.</li>
-            <li>Kolaborasi riset, pengembangan inovasi produk digital, serta program pengabdian kepada masyarakat bersama.</li>
-            <li>Penyaluran dan rekrutmen talenta lulusan berprestasi dari PIHAK KESATU pada posisi kerja yang relevan di lingkungan PIHAK KEDUA.</li>
-        </ol>
-    </div>
-
-    <!-- Pasal 3 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 3<br>PELAKSANAAN DAN PERJANJIAN TURUNAN</h2>
-        <p class="text-justify text-xs">
-            Hal-hal teknis mengenai operasional, hak dan kewajiban terperinci, jadwal kegiatan, serta pembiayaan dari masing-masing program kerja sama akan diatur lebih lanjut dalam Perjanjian Kerja Sama (PKS) atau dokumen operasional turunan yang ditandatangani oleh unit pelaksana teknis yang berwenang dari PARA PIHAK.
-        </p>
-    </div>
-
-    <!-- Pasal 4 -->
-    <div class="mb-4">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 4<br>JANGKA WAKTU</h2>
-        <p class="text-justify text-xs">
-            Nota Kesepahaman ini berlaku untuk jangka waktu terhitung sejak tanggal <strong>[effective_start]</strong> sampai dengan tanggal <strong>[effective_end]</strong>, dan dapat diperpanjang atau diubah sewaktu-waktu berdasarkan kesepakatan tertulis dari PARA PIHAK selambat-lambatnya 30 (tiga puluh) hari kalender sebelum masa berlaku berakhir.
-        </p>
-    </div>
-
-    <!-- Pasal 5 -->
-    <div class="mb-6">
-        <h2 class="font-bold text-center text-xs uppercase mb-1">PASAL 5<br>PENUTUP</h2>
-        <p class="text-justify text-xs">
-            Demikian Nota Kesepahaman ini dibuat dalam rangkap 2 (dua) asli bermeterai cukup dan memiliki kekuatan hukum yang sama bagi masing-masing pihak setelah ditandatangani oleh pimpinan yang sah dari PARA PIHAK pada tanggal <strong>[agreement_date]</strong>.
-        </p>
-    </div>
-
-    <!-- Kolom Tanda Tangan -->
-    <div class="grid grid-cols-2 gap-8 pt-6 border-t border-slate-200 mt-8 text-center text-xs">
-        <div>
-            <p class="font-semibold text-slate-600">PIHAK KESATU</p>
-            <p class="font-bold text-slate-800">[institution_name]</p>
-            <div class="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
-                (Tanda Tangan & Cap Institusi)
-            </div>
-            <p class="font-bold text-slate-900 underline">[institution_signatory_name]</p>
-            <p class="text-[11px] text-slate-600">[institution_signatory_title]</p>
-        </div>
-        <div>
-            <p class="font-semibold text-slate-600">PIHAK KEDUA</p>
-            <p class="font-bold text-slate-800">[company_name]</p>
-            <div class="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
-                (Tanda Tangan & Cap Perusahaan)
-            </div>
-            <p class="font-bold text-slate-900 underline">[company_signatory_name]</p>
-            <p class="text-[11px] text-slate-600">[company_signatory_title]</p>
-        </div>
-    </div>
-</div>
-HTML;
+        return static::getWordStandardTemplateContent();
     }
 }

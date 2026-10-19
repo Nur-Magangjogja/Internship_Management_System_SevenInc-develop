@@ -7,6 +7,7 @@ use App\Models\FollowUpCycle;
 use App\Models\Institution;
 use App\Models\Mou;
 use App\Models\MouTemplate;
+use App\Services\MouDocumentRenderer;
 use App\Services\MouService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -17,6 +18,21 @@ class MouController extends Controller
     public function __construct(
         protected MouService $mouService
     ) {}
+
+    /**
+     * Pastikan pengguna saat ini berwenang mengakses dokumen MOU terkait.
+     */
+    protected function authorizeMouAccess(Mou $mou): void
+    {
+        $user = auth()->user();
+        if (!$user || !in_array($user->role, ['admin', 'hr_staff'], true)) {
+            abort(403, 'Anda tidak memiliki hak akses terhadap dokumen MOU ini.');
+        }
+
+        if ($mou->trashed()) {
+            abort(404, 'Dokumen MOU tidak ditemukan.');
+        }
+    }
 
     /**
      * Tampilkan daftar seluruh dokumen MOU beserta filter pencarian dan status.
@@ -97,13 +113,25 @@ class MouController extends Controller
             $selectedCycle = $eligibleCycles->first();
         }
 
-        $activeTemplate = MouTemplate::active()->latest('version_number')->first();
+        $availableTemplates = MouTemplate::orderByDesc('is_active')
+            ->orderByDesc('version_number')
+            ->orderByDesc('id')
+            ->get();
+
+        $activeTemplate = $availableTemplates->firstWhere('is_active', true) ?? $availableTemplates->first();
+        $selectedTemplateId = $request->input('mou_template_id');
+        $selectedTemplate = $selectedTemplateId
+            ? ($availableTemplates->firstWhere('id', (int) $selectedTemplateId) ?? $activeTemplate)
+            : $activeTemplate;
+
         $institutions   = Institution::active()->orderBy('name')->get();
 
-        // Rekomendasi nomor surat Seven Inc
+        // Rekomendasi nomor surat Seven Inc sesuai format standar
         $year = date('Y');
+        $romanMonths = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
+        $romanMonth = $romanMonths[(int) date('n')] ?? 'I';
         $nextNumber = str_pad((Mou::whereYear('created_at', $year)->count() + 1), 3, '0', STR_PAD_LEFT);
-        $suggestedNumber = "MOU/7INC/IND/{$year}/{$nextNumber}";
+        $suggestedNumber = "{$nextNumber}/SPK.MAGANG/CEO/SEVEN/{$romanMonth}/{$year}";
 
         // Cek apakah institusi terpilih telah memiliki MOU yang sedang aktif
         $activeMou = $selectedInstitution ? $selectedInstitution->activeMou : null;
@@ -113,6 +141,8 @@ class MouController extends Controller
             'selectedInstitution',
             'selectedCycle',
             'eligibleCycles',
+            'availableTemplates',
+            'selectedTemplate',
             'activeTemplate',
             'suggestedNumber',
             'activeMou'
@@ -132,11 +162,13 @@ class MouController extends Controller
             'agreement_date'                  => 'required|date',
             'effective_start'                 => 'required|date',
             'effective_end'                   => 'required|date|after:effective_start',
+            'agreement_duration'              => 'nullable|string|max:100',
             'first_party_institution_name'    => 'required|string|max:255',
             'first_party_signatory_name'      => 'required|string|max:255',
             'first_party_signatory_title'     => 'required|string|max:255',
             'first_party_address'             => 'nullable|string|max:500',
             'first_party_phone'               => 'nullable|string|max:100',
+            'first_party_fax'                 => 'nullable|string|max:100',
             'first_party_email'               => 'nullable|email|max:150',
             'first_party_correspondence_unit' => 'nullable|string|max:255',
             'second_party_company_name'       => 'required|string|max:255',
@@ -144,7 +176,9 @@ class MouController extends Controller
             'second_party_signatory_title'    => 'required|string|max:255',
             'second_party_address'            => 'nullable|string|max:500',
             'second_party_phone'              => 'nullable|string|max:100',
+            'second_party_fax'                => 'nullable|string|max:100',
             'second_party_email'              => 'nullable|email|max:150',
+            'second_party_correspondence_unit'=> 'nullable|string|max:255',
             'notes'                           => 'nullable|string|max:1000',
             'cooperation_confirmed'           => 'nullable|boolean',
             'mou_template_id'                 => 'nullable|exists:mou_templates,id',
@@ -156,7 +190,9 @@ class MouController extends Controller
         try {
             $mou = $this->mouService->generateMou($request->all(), auth()->user());
 
-            return redirect()->route('hr.mous.show', $mou)
+            $routePrefix = request()->routeIs('hr.*') ? 'hr.mous' : 'admin.mous';
+
+            return redirect()->route($routePrefix . '.show', $mou)
                 ->with('success', "Dokumen MOU {$mou->company_mou_number} berhasil dibuat dan disimpan.");
         } catch (\InvalidArgumentException|\RuntimeException|\DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
@@ -168,9 +204,14 @@ class MouController extends Controller
      */
     public function show(Mou $mou)
     {
+        $this->authorizeMouAccess($mou);
+
         $mou->load(['institution', 'followupCycle', 'template', 'generatedBy', 'deliveredBy', 'signedUploadedBy', 'supersededBy', 'supersedes']);
 
-        return view('hr.mou.show', compact('mou'));
+        $pageConfig   = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+        $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
+
+        return view('hr.mou.show', compact('mou', 'pageConfig', 'canonicalCss'));
     }
 
     /**
@@ -178,7 +219,40 @@ class MouController extends Controller
      */
     public function print(Mou $mou)
     {
-        return view('hr.mou.print', compact('mou'));
+        $this->authorizeMouAccess($mou);
+
+        $pageConfig   = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+        $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
+
+        return view('hr.mou.print', compact('mou', 'pageConfig', 'canonicalCss'));
+    }
+
+    /**
+     * Ekspor / Unduh PDF A4 langsung dari snapshot dokumen MOU yang telah diterbitkan.
+     * Menggunakan snapshot mandiri (rendered_document_html & render_data_snapshot) agar data historis tidak berubah.
+     */
+    public function downloadPdf(Mou $mou)
+    {
+        $this->authorizeMouAccess($mou);
+
+        if (empty($mou->rendered_document_html)) {
+            abort(404, 'Konten naskah dokumen MOU tidak ditemukan.');
+        }
+
+        $pageConfig = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+
+        $pdfBinary = MouDocumentRenderer::renderPdfBinary(
+            $mou->rendered_document_html,
+            $pageConfig,
+            $mou->company_mou_number . ' - ' . $mou->first_party_institution_name
+        );
+
+        $safeFileName = 'MOU-' . Str::slug(str_replace('/', '-', $mou->company_mou_number), '-') . '.pdf';
+
+        return response($pdfBinary, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $safeFileName . '"',
+        ]);
     }
 
     /**
@@ -186,6 +260,8 @@ class MouController extends Controller
      */
     public function markDelivered(Request $request, Mou $mou)
     {
+        $this->authorizeMouAccess($mou);
+
         $request->validate([
             'delivery_method'    => 'required|string|max:50',
             'delivery_recipient' => 'nullable|string|max:255',
@@ -203,6 +279,8 @@ class MouController extends Controller
      */
     public function uploadSigned(Request $request, Mou $mou)
     {
+        $this->authorizeMouAccess($mou);
+
         if ($mou->status !== Mou::STATUS_DELIVERED) {
             return back()->withErrors(['signed_file' => "Naskah bertandatangan hanya dapat diunggah jika status dokumen adalah 'Delivered' (telah diserahkan ke mitra)."]);
         }
@@ -234,6 +312,8 @@ class MouController extends Controller
      */
     public function downloadSigned(Mou $mou)
     {
+        $this->authorizeMouAccess($mou);
+
         if (empty($mou->signed_file_path) || !Storage::disk('public')->exists($mou->signed_file_path)) {
             abort(404, 'Berkas bertandatangan tidak ditemukan atau belum diunggah.');
         }
@@ -248,6 +328,8 @@ class MouController extends Controller
      */
     public function cancel(Request $request, Mou $mou)
     {
+        $this->authorizeMouAccess($mou);
+
         $request->validate([
             'cancel_reason' => 'required|string|max:500',
         ]);
@@ -262,6 +344,8 @@ class MouController extends Controller
      */
     public function syncDrive(Mou $mou, \App\Services\CloudStorage\CloudSyncManager $syncManager)
     {
+        $this->authorizeMouAccess($mou);
+
         try {
             $result = $syncManager->syncMou($mou, auth()->user());
 
@@ -271,4 +355,3 @@ class MouController extends Controller
         }
     }
 }
-

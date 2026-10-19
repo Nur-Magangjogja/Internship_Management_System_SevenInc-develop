@@ -17,7 +17,7 @@
             Kembali ke Daftar Dokumen MOU
         </a>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             <a
                 href="{{ route($routePrefix . '.print', $mou) }}"
                 target="_blank"
@@ -29,6 +29,18 @@
                     <rect x="6" y="14" width="12" height="8"/>
                 </svg>
                 Cetak Naskah A4
+            </a>
+
+            <a
+                href="{{ route($routePrefix . '.download-pdf', $mou) }}"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Unduh Draf PDF (A4)
             </a>
 
             @if($mou->has_signed_file)
@@ -346,18 +358,48 @@
     </div>
 
     <!-- Live Document Naskah A4 Container Preview -->
+    @php
+        $cfg = $pageConfig ?? ($mou->render_data_snapshot['_page_config'] ?? \App\Models\MouTemplate::getDefaultPageConfig());
+        $mTop    = (float) ($cfg['margin_top_mm'] ?? 25.4);
+        $mRight  = (float) ($cfg['margin_right_mm'] ?? 25.4);
+        $mBottom = (float) ($cfg['margin_bottom_mm'] ?? 25.4);
+        $mLeft   = (float) ($cfg['margin_left_mm'] ?? 25.4);
+        $showParaf = (bool) ($cfg['show_paraf_box'] ?? $cfg['show_paraf_footer'] ?? true);
+        $headerHtml = (string) ($cfg['header_html'] ?? '');
+        $footerHtml = array_key_exists('footer_html', $cfg) && $cfg['footer_html'] !== null
+            ? (string) $cfg['footer_html']
+            : ($showParaf ? \App\Models\MouTemplate::getDefaultFooterParafHtml() : '');
+    @endphp
     <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
         <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
             <h3 class="text-sm font-bold text-slate-800">
-                Pratinjau Naskah Naskah Perjanjian (A4 Layout)
+                Pratinjau Naskah Perjanjian (A4 Layout — 210 &times; 297 mm)
             </h3>
             <span class="text-xs text-slate-400">
-                Render Snapshot Token Aman
+                Render Snapshot Token Aman (Margin {{ $mTop }} / {{ $mRight }} / {{ $mBottom }} / {{ $mLeft }} mm)
             </span>
         </div>
 
-        <div class="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-8 md:p-12 shadow-sm font-serif text-slate-900 leading-relaxed text-sm overflow-x-auto">
-            {!! $mou->rendered_document_html !!}
+        <style>
+            {!! $canonicalCss ?? \App\Services\MouDocumentRenderer::getCanonicalDocumentCss($cfg) !!}
+        </style>
+
+        <div class="bg-slate-300/80 py-6 px-3 rounded-xl border border-slate-300 overflow-x-auto">
+            <div class="mx-auto bg-white shadow-lg border border-slate-300 font-serif text-black flex flex-col justify-between" style="width: 210mm; max-width: 100%; min-height: 297mm; padding: {{ $mTop }}mm {{ $mRight }}mm {{ $mBottom }}mm {{ $mLeft }}mm; box-sizing: border-box;">
+                @if(trim($headerHtml) !== '')
+                    <div class="mou-doc-canvas mb-4">
+                        {!! $headerHtml !!}
+                    </div>
+                @endif
+                <div class="mou-doc-canvas flex-1">
+                    {!! $mou->rendered_document_html !!}
+                </div>
+                @if($showParaf && trim($footerHtml) !== '')
+                    <div class="mou-doc-canvas mt-6 pt-2">
+                        {!! $footerHtml !!}
+                    </div>
+                @endif
+            </div>
         </div>
     </div>
 </div>

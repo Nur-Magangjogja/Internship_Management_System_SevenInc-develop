@@ -14,6 +14,17 @@
         "vite": "^8.3.0"
     },
     "dependencies": {
+        "@tiptap/core": "^3.32.0",
+        "@tiptap/extension-highlight": "^3.32.0",
+        "@tiptap/extension-image": "^3.32.0",
+        "@tiptap/extension-placeholder": "^3.32.0",
+        "@tiptap/extension-subscript": "^3.32.0",
+        "@tiptap/extension-superscript": "^3.32.0",
+        "@tiptap/extension-table": "^3.32.0",
+        "@tiptap/extension-text-align": "^3.32.0",
+        "@tiptap/extension-text-style": "^3.32.0",
+        "@tiptap/pm": "^3.32.0",
+        "@tiptap/starter-kit": "^3.32.0",
         "apexcharts": "^3.54.0",
         "flowbite-typography": "^1.0.4",
         "puppeteer": "^25.11.0",

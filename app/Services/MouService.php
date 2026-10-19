@@ -17,7 +17,7 @@ use RuntimeException;
 class MouService
 {
     /**
-     * Generate dokumen MOU baru dan simpan snapshot datanya secara atomik.
+     * Generate dokumen MOU baru dan simpan snapshot datanya secara atomik & mandiri (self-contained).
      */
     public function generateMou(array $data, ?User $actor = null): Mou
     {
@@ -30,8 +30,6 @@ class MouService
             }
 
             // Prerequisite: Active MOU Guard
-            // Jika institusi memiliki MOU aktif yang masih berlaku (effective_end >= today atau tanpa batas akhir),
-            // pembuatan MOU baru ditolak kecuali melalui proses pergantian resmi (supersede).
             $activeMou = Mou::where('institution_id', $institution->id)
                 ->where('status', Mou::STATUS_ACTIVE)
                 ->where(function ($query) {
@@ -88,54 +86,93 @@ class MouService
                 throw new InvalidArgumentException("Nomor MOU Perusahaan '{$companyMouNumber}' sudah pernah digunakan.");
             }
 
-            // Siapkan default snapshot values jika tidak diisi form
-            $templateDefaults = $template->default_values ?? [];
+            // Siapkan default snapshot values dari template
+            $templateDefaults = $template->getCompanyDefaultValues();
+            $pageConfig       = $template->getPageConfig();
+            $mediaAssets      = $template->getMediaAssets();
 
             $firstPartyName        = $data['first_party_institution_name'] ?? $institution->name;
             $firstPartySignatory   = $data['first_party_signatory_name'] ?? ($institution->contacts->first()?->name ?? '-');
             $firstPartyTitle       = $data['first_party_signatory_title'] ?? ($institution->contacts->first()?->position_title ?? 'Pimpinan Institusi');
             $firstPartyAddress     = $data['first_party_address'] ?? $institution->address;
             $firstPartyPhone       = $data['first_party_phone'] ?? $institution->phone;
+            $firstPartyFax         = $data['first_party_fax'] ?? ($data['institution_fax'] ?? '-');
             $firstPartyEmail       = $data['first_party_email'] ?? $institution->email;
-            $firstPartyUnit        = $data['first_party_correspondence_unit'] ?? $institution->correspondence_unit;
+            $firstPartyUnit        = $data['first_party_correspondence_unit'] ?? ($institution->correspondence_unit ?: 'Kepala Bidang Kerjasama Dalam Negeri');
 
             $secondPartyName       = $data['second_party_company_name'] ?? ($templateDefaults['company_name'] ?? 'SEVEN INC');
-            $secondPartySignatory  = $data['second_party_signatory_name'] ?? ($templateDefaults['company_signatory_name'] ?? 'Rekso Pamungkas');
-            $secondPartyTitle      = $data['second_party_signatory_title'] ?? ($templateDefaults['company_signatory_title'] ?? 'Direktur Utama');
-            $secondPartyAddress    = $data['second_party_address'] ?? ($templateDefaults['company_address'] ?? 'Yogyakarta');
-            $secondPartyPhone      = $data['second_party_phone'] ?? ($templateDefaults['company_phone'] ?? '-');
-            $secondPartyEmail      = $data['second_party_email'] ?? ($templateDefaults['company_email'] ?? 'hr@seveninc.com');
+            $secondPartySignatory  = $data['second_party_signatory_name'] ?? ($templateDefaults['company_signatory_name'] ?? 'Rekario Danny Sanjaya, S.Kom.');
+            $secondPartyTitle      = $data['second_party_signatory_title'] ?? ($templateDefaults['company_signatory_title'] ?? 'Pimpinan');
+            $secondPartyAddress    = $data['second_party_address'] ?? ($templateDefaults['company_address'] ?? 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
+            $secondPartyPhone      = $data['second_party_phone'] ?? ($templateDefaults['company_phone'] ?? '089529002944');
+            $secondPartyFax        = $data['second_party_fax'] ?? ($templateDefaults['company_fax'] ?? '-');
+            $secondPartyEmail      = $data['second_party_email'] ?? ($templateDefaults['company_email'] ?? 'magangjogjadotcom@gmail.com');
+            $secondPartyUnit       = $data['second_party_correspondence_unit'] ?? ($templateDefaults['company_correspondence_unit'] ?? 'CEO');
 
             $agreementPlace        = $data['agreement_place'] ?? ($templateDefaults['agreement_place'] ?? 'Yogyakarta');
             $agreementDate         = $data['agreement_date'] ?? now()->toDateString();
             $effectiveStart        = $data['effective_start'] ?? now()->toDateString();
-            $effectiveEnd          = $data['effective_end'] ?? now()->addYears(2)->toDateString();
+            $effectiveEnd          = $data['effective_end'] ?? now()->addYears(5)->toDateString();
 
-            // Kumpulkan snapshot payload yang akan disimpan ke database
+            // Hitung token tanggal Bahasa Indonesia & durasi dari tanggal perjanjian
+            $computedDates = MouDocumentRenderer::computeDateAndDurationTokens(
+                $agreementDate,
+                $effectiveStart,
+                $effectiveEnd,
+                $data['agreement_duration'] ?? ($templateDefaults['agreement_duration'] ?? '5 (lima) tahun')
+            );
+
+            $agreementDuration = !empty($data['agreement_duration'])
+                ? $data['agreement_duration']
+                : $computedDates['agreement_duration'];
+
+            // Kumpulkan snapshot payload lengkap (termasuk _page_config & _media_assets) agar historis 100% mandiri
             $snapshotData = [
                 'institution_name'                => $firstPartyName,
                 'institution_mou_number'          => $data['institution_mou_number'] ?? '-',
                 'institution_address'             => $firstPartyAddress,
                 'institution_correspondence_unit' => $firstPartyUnit,
                 'institution_phone'               => $firstPartyPhone,
+                'institution_fax'                 => $firstPartyFax,
                 'institution_email'               => $firstPartyEmail,
                 'institution_signatory_name'      => $firstPartySignatory,
                 'institution_signatory_title'     => $firstPartyTitle,
                 'company_name'                    => $secondPartyName,
                 'company_mou_number'              => $companyMouNumber,
                 'company_address'                 => $secondPartyAddress,
+                'company_correspondence_unit'     => $secondPartyUnit,
                 'company_phone'                   => $secondPartyPhone,
+                'company_fax'                     => $secondPartyFax,
                 'company_email'                   => $secondPartyEmail,
                 'company_signatory_name'          => $secondPartySignatory,
                 'company_signatory_title'         => $secondPartyTitle,
                 'agreement_place'                 => $agreementPlace,
+                'agreement_day'                   => $computedDates['agreement_day'],
+                'agreement_day_name'              => $computedDates['agreement_day_name'],
+                'agreement_day_number'            => $computedDates['agreement_day_number'],
+                'agreement_day_words'             => $computedDates['agreement_day_words'],
+                'agreement_month_name'            => $computedDates['agreement_month_name'],
+                'agreement_month_number'          => $computedDates['agreement_month_number'],
+                'agreement_year_number'           => $computedDates['agreement_year_number'],
+                'agreement_year_words'            => $computedDates['agreement_year_words'],
                 'agreement_date'                  => \Carbon\Carbon::parse($agreementDate)->isoFormat('D MMMM Y'),
+                'agreement_date_short'            => $computedDates['agreement_date_short'],
+                'agreement_date_words'            => $computedDates['agreement_date_words'],
                 'effective_start'                 => $effectiveStart ? \Carbon\Carbon::parse($effectiveStart)->isoFormat('D MMMM Y') : '-',
                 'effective_end'                   => $effectiveEnd ? \Carbon\Carbon::parse($effectiveEnd)->isoFormat('D MMMM Y') : '-',
+                'agreement_duration'              => $agreementDuration,
+                'raw_agreement_date'              => $agreementDate,
+                'raw_effective_start'             => $effectiveStart,
+                'raw_effective_end'               => $effectiveEnd,
+                '_page_config'                    => $pageConfig,
+                '_media_assets'                   => $mediaAssets,
             ];
 
-            // Render naskah HTML dokumen menggunakan safe token replacement
-            $renderedHtml = $template->renderContent($snapshotData);
+            // Pastikan seluruh token & aset gambar di dalam Header/Footer (_page_config) juga dirender ke dalam snapshot mandiri
+            $snapshotData['_page_config'] = MouDocumentRenderer::renderPageConfig($template, $snapshotData, true);
+
+            // Render naskah HTML dokumen sebagai snapshot terbit mandiri (Base64 images + inline canonical CSS)
+            $renderedHtml = $template->renderContent($snapshotData, true);
 
             // Simpan berkas fisik dokumen draf ke media penyimpanan (storage disk public)
             $safeNumber = Str::slug(str_replace('/', '-', $companyMouNumber), '-');
