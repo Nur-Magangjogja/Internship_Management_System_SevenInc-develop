@@ -367,7 +367,7 @@ HTML;
         $assetId = null;
         if (is_numeric($src)) {
             $assetId = (int) $src;
-        } elseif (preg_match('#^/admin/system-assets/(\d+)/preview#i', $src, $m)) {
+        } elseif (preg_match('#(?:^|/)admin/system-assets/(\d+)/preview#i', $src, $m)) {
             $assetId = (int) $m[1];
         }
 
@@ -383,24 +383,24 @@ HTML;
             }
         }
 
-        // Resolusi Storage disk public
-        if (str_starts_with($src, '/storage/')) {
-            $rel = str_replace('/storage/', '', $src);
+        // Resolusi Storage disk public (/storage/... atau http://.../storage/...)
+        if (preg_match('#(?:^|/)storage/(.+)$#i', $src, $sm)) {
+            $rel = ltrim($sm[1], '/');
             if (\Illuminate\Support\Facades\Storage::disk('public')->exists($rel)) {
                 $content = \Illuminate\Support\Facades\Storage::disk('public')->get($rel);
                 $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($rel) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode($content);
             }
-            $localPath = storage_path('app/public/' . ltrim($rel, '/'));
+            $localPath = storage_path('app/public/' . $rel);
             if (file_exists($localPath)) {
                 $mime = mime_content_type($localPath) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
             }
         }
 
-        // Resolusi Public path (/images/...)
-        if (str_starts_with($src, '/images/')) {
-            $localPath = public_path(ltrim($src, '/'));
+        // Resolusi Public path (/images/... atau http://.../images/...)
+        if (preg_match('#(?:^|/)images/(.+)$#i', $src, $im)) {
+            $localPath = public_path('images/' . ltrim($im[1], '/'));
             if (file_exists($localPath)) {
                 $mime = mime_content_type($localPath) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));

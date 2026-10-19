@@ -210,22 +210,67 @@ class StorageDocTemplateIntegrationTest extends TestCase
             'created_by'     => $this->admin->id,
             'is_active'      => true,
         ]);
+        $version = $template->createVersionSnapshot('Snapshot RBAC', $this->admin->id);
 
-        // Admin diizinkan
+        $file = UploadedFile::fake()->image('rbac_asset.png', 50, 50);
+        $asset = app(SystemAssetService::class)->storeAsset($file, [
+            'name'     => 'Asset RBAC',
+            'category' => SystemAsset::CATEGORY_LOGO,
+            'scope'    => SystemAsset::SCOPE_GLOBAL,
+        ], $this->admin);
+
+        // 1. Admin diizinkan pada seluruh endpoint
         $this->actingAs($this->admin)->get(route('admin.document-templates.index'))->assertStatus(200);
+        $this->actingAs($this->admin)->get(route('admin.document-templates.create'))->assertStatus(200);
         $this->actingAs($this->admin)->get(route('admin.document-templates.edit', $template))->assertStatus(200);
+        $this->actingAs($this->admin)->get(route('admin.document-templates.preview', $template))->assertStatus(200);
+        $this->actingAs($this->admin)->get(route('admin.document-templates.preview-pdf', $template))->assertStatus(200);
+        $this->actingAs($this->admin)->get(route('admin.document-templates.versions', $template))->assertStatus(200);
+        $this->actingAs($this->admin)->getJson(route('admin.document-templates.api-assets'))->assertStatus(200);
+        $this->actingAs($this->admin)->get(route('admin.system-assets.preview', $asset))->assertStatus(200);
+        $this->actingAs($this->admin)->getJson(route('admin.system-assets.api.index'))->assertStatus(200);
 
-        // HR Staff diizinkan
+        // 2. HR Staff diizinkan pada seluruh template routes & asset preview/api
         $this->actingAs($this->hrStaff)->get(route('admin.document-templates.index'))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->get(route('admin.document-templates.create'))->assertStatus(200);
         $this->actingAs($this->hrStaff)->get(route('admin.document-templates.edit', $template))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->get(route('admin.document-templates.preview', $template))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->get(route('admin.document-templates.preview-pdf', $template))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->get(route('admin.document-templates.versions', $template))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->getJson(route('admin.document-templates.api-assets'))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->get(route('admin.system-assets.preview', $asset))->assertStatus(200);
+        $this->actingAs($this->hrStaff)->getJson(route('admin.system-assets.api.index'))->assertStatus(200);
 
-        // Pemagang diblokir (redirect ke user.dashboard untuk web, atau 403 untuk json)
+        // 3. Pemagang diblokir dari seluruh endpoint template & asset (redirect web, 403 json)
         $this->actingAs($this->pemagang)->get(route('admin.document-templates.index'))->assertRedirect();
+        $this->actingAs($this->pemagang)->get(route('admin.document-templates.create'))->assertRedirect();
         $this->actingAs($this->pemagang)->get(route('admin.document-templates.edit', $template))->assertRedirect();
-        $this->actingAs($this->pemagang)->getJson(route('admin.document-templates.index'))->assertStatus(403);
+        $this->actingAs($this->pemagang)->get(route('admin.document-templates.preview', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->get(route('admin.document-templates.versions', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->get(route('admin.system-assets.preview', $asset))->assertRedirect();
 
-        // Guest tidak terautentikasi dialihkan ke login
+        $this->actingAs($this->pemagang)->post(route('admin.document-templates.store'), [
+            'type' => 'loa', 'name' => 'Hacked LOA', 'editor_type' => 'visual_doc'
+        ])->assertRedirect();
+        $this->actingAs($this->pemagang)->put(route('admin.document-templates.update', $template), [
+            'name' => 'Hacked Name'
+        ])->assertRedirect();
+        $this->actingAs($this->pemagang)->delete(route('admin.document-templates.destroy', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->post(route('admin.document-templates.duplicate', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->post(route('admin.document-templates.set-default', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->post(route('admin.document-templates.toggle-active', $template))->assertRedirect();
+        $this->actingAs($this->pemagang)->post(route('admin.document-templates.versions.restore', [$template, $version]))->assertRedirect();
+
+        $this->actingAs($this->pemagang)->getJson(route('admin.document-templates.index'))->assertStatus(403);
+        $this->actingAs($this->pemagang)->getJson(route('admin.document-templates.api-assets'))->assertStatus(403);
+        $this->actingAs($this->pemagang)->getJson(route('admin.system-assets.api.index'))->assertStatus(403);
+
+        // 4. Guest tidak terautentikasi dialihkan ke login
         auth()->logout();
         $this->get(route('admin.document-templates.index'))->assertRedirect();
+        $this->get(route('admin.document-templates.create'))->assertRedirect();
+        $this->get(route('admin.document-templates.edit', $template))->assertRedirect();
+        $this->get(route('admin.system-assets.preview', $asset))->assertRedirect();
+        $this->getJson(route('admin.system-assets.api.index'))->assertStatus(401);
     }
 }

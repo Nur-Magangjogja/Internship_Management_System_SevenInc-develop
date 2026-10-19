@@ -385,23 +385,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/test', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'test'])->name('test');
     });
 
-    // Perpustakaan Aset Sistem -> admin.system-assets.*
+    // Perpustakaan Aset Sistem (Manajemen Admin) -> admin.system-assets.*
     Route::prefix('system-assets')->name('system-assets.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\SystemAssetController::class, 'index'])->name('index');
         Route::post('/', [\App\Http\Controllers\Admin\SystemAssetController::class, 'store'])->name('store');
-        Route::get('/{systemAsset}/preview', [\App\Http\Controllers\Admin\SystemAssetController::class, 'preview'])->name('preview');
         Route::post('/{systemAsset}/replace-version', [\App\Http\Controllers\Admin\SystemAssetController::class, 'replaceVersion'])->name('replace-version');
         Route::post('/{systemAsset}/toggle-active', [\App\Http\Controllers\Admin\SystemAssetController::class, 'toggleActive'])->name('toggle-active');
         Route::post('/{systemAsset}/set-default', [\App\Http\Controllers\Admin\SystemAssetController::class, 'setDefault'])->name('set-default');
         Route::post('/{systemAsset}/sync-drive', [\App\Http\Controllers\Admin\SystemAssetController::class, 'syncDrive'])->name('sync-drive');
         Route::delete('/{systemAsset}', [\App\Http\Controllers\Admin\SystemAssetController::class, 'destroy'])->name('destroy');
-
-        // API Kontrak Aset untuk Editor Dokumen & MoU
-        Route::prefix('api')->name('api.')->group(function () {
-            Route::get('/', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'index'])->name('index');
-            Route::get('/resolve', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'resolve'])->name('resolve');
-            Route::get('/{idOrUuid}', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'show'])->name('show');
-        });
     });
 
     // Integrasi Google Spreadsheet -> admin.spreadsheet-connections.*
@@ -470,6 +462,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
 /* =================== OPERATIONAL ROUTES (Admin & HR Staff) =================== */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff', 'prevent-back'])->group(function () {
+
+    // Preview & API Kontrak Aset Sistem (Admin & HR Staff untuk Editor Dokumen & MoU)
+    Route::prefix('system-assets')->name('system-assets.')->group(function () {
+        Route::get('/{systemAsset}/preview', [\App\Http\Controllers\Admin\SystemAssetController::class, 'preview'])->name('preview');
+        Route::prefix('api')->name('api.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'index'])->name('index');
+            Route::get('/resolve', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'resolve'])->name('resolve');
+            Route::get('/{idOrUuid}', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'show'])->name('show');
+        });
+    });
 
     // API: ambil pemagang selesai berdasarkan brand (HARUS sebelum resource agar tidak bentrok dengan {certificate})
     Route::get('/certificate/interns-by-brand', [CertificateController::class, 'getInternsByBrand'])->name('certificate.interns-by-brand');
