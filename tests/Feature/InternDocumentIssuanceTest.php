@@ -547,4 +547,164 @@ class InternDocumentIssuanceTest extends TestCase
 
         $this->assertTrue($intern->generatedDocuments()->exists());
     }
+
+    /**
+     * 14. Folder Drive Pemagang: Dokumen pertama menggunakan folder ID pendaftar yang sudah ada
+     * dari proses registrasi tanpa membuat folder pemagang paralel.
+     */
+    public function test_first_issuance_reuses_registration_drive_folder_without_creating_parallel_folder()
+    {
+        $intern = $this->createIntern(IR::STATUS_ACCEPTED);
+
+        // Simulasi folder Drive pendaftar yang sudah dibentuk saat proses registrasi/sinkronisasi spreadsheet
+        $regFolderId = '1folder_registration_abc123';
+        \App\Models\RegistrationAttachment::create([
+            'internship_registration_id' => $intern->id,
+            'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+            'category'                   => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+            'file_path'                  => 'drive_root:default',
+            'original_name'              => 'Folder_Budi_Pratama_REG' . $intern->id,
+            'file_size'                  => 0,
+            'mime_type'                  => 'application/vnd.google-apps.folder',
+            'drive_file_id'              => $regFolderId,
+            'drive_web_view_link'        => "https://drive.google.com/drive/folders/{$regFolderId}",
+            'drive_sync_status'          => \App\Models\RegistrationAttachment::STATUS_SYNCED,
+        ]);
+
+        $this->assertEquals($regFolderId, $intern->resolveDriveFolderId());
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        // Terbitkan dokumen pertama (LOA)
+        $doc = $service->issueDocument($intern, 'loa', [], $this->admin);
+
+        $this->assertNotNull($doc);
+        $this->assertEquals(GeneratedDocument::TYPE_LOA, $doc->document_type);
+        // Memastikan tidak ada attachment folder kedua (paralel) yang dibuat
+        $folderCount = $intern->attachments()
+            ->where(function ($q) {
+                $q->where('mime_type', 'application/vnd.google-apps.folder')
+                  ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE);
+            })->count();
+        $this->assertEquals(1, $folderCount);
+    }
+
+    /**
+     * 15. Idempotensi vs Revisi Resmi: double-click dan retry tidak membuat duplikat,
+     * tetapi penerbitan revisi resmi menghasilkan snapshot, file PDF, dan versi baru tanpa merusak histori.
+     */
+    public function test_idempotency_vs_official_revision_preserves_history_and_creates_new_version()
+    {
+        $intern = $this->createIntern(IR::STATUS_COMPLETED);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        // Penerbitan awal (Versi 1)
+        $v1 = $service->issueDocument($intern, 'skl', [], $this->admin);
+        $this->assertEquals(1, $v1->template_version);
+        $this->assertTrue(Storage::disk('local')->exists($v1->file_path));
+        $v1Path = $v1->file_path;
+        $v1Checksum = $v1->checksum_sha256;
+
+        // Double-click / retry penerbitan biasa: IDEMPOTEN, mengembalikan record yang sama
+        $v1Duplicate = $service->issueDocument($intern, 'skl', [], $this->admin);
+        $this->assertEquals($v1->id, $v1Duplicate->id);
+        $this->assertEquals(1, GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'skl')->count());
+
+        // Routine retry sync: TIDAK membuat ulang dokumen atau meregenerasi file
+        $retryResult = $service->retryDocumentSync($v1, $this->admin);
+        $this->assertNotEmpty($retryResult);
+        $this->assertEquals(1, GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'skl')->count());
+        $this->assertEquals($v1Path, $v1->fresh()->file_path);
+
+        // Penerbitan Revisi Resmi (Versi 2)
+        $v2 = $service->issueDocument($intern, 'skl', ['is_revision' => true], $this->admin);
+        $this->assertNotEquals($v1->id, $v2->id);
+        $this->assertEquals(2, $v2->template_version);
+        $this->assertNotEquals($v1->file_path, $v2->file_path);
+        $this->assertStringContainsString('_v2_', $v2->file_name);
+        $this->assertTrue(Storage::disk('local')->exists($v2->file_path));
+
+        // Verifikasi dokumen historis (v1) tetap utuh di disk dan database
+        $this->assertTrue(Storage::disk('local')->exists($v1Path));
+        $this->assertEquals($v1Checksum, $v1->fresh()->checksum_sha256);
+        $this->assertEquals(2, GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'skl')->count());
+
+        // Double-click pada revisi juga idempoten
+        $v2Duplicate = $service->issueDocument($intern, 'skl', ['is_revision' => true], $this->admin);
+        $this->assertEquals($v2->id, $v2Duplicate->id);
+        $this->assertEquals(2, GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'skl')->count());
+    }
+
+    /**
+     * 16. Otorisasi RBAC dan Status: Super Admin memiliki akses penuh, pemagang dibatasi status dan kepemilikan.
+     */
+    public function test_authorization_rbac_and_status_eligibility_enforcement()
+    {
+        $intern = $this->createIntern(IR::STATUS_ACCEPTED);
+
+        // Buat Admin / HR Staff berwenang
+        $superAdmin = User::create([
+            'name'     => 'Super Admin ' . substr($this->unique, 0, 6),
+            'email'    => 'superadmin_' . $this->unique . '@test.com',
+            'password' => bcrypt('password123'),
+            'role'     => 'admin',
+        ]);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        // Super Admin dapat menerbitkan dokumen via generate controller
+        $res = $this->actingAs($superAdmin)->postJson(route('admin.interns.generate.doc'), [
+            'intern_id'   => $intern->id,
+            'jenis_surat' => 'loa',
+            'action'      => 'issue',
+        ]);
+        $res->assertStatus(200);
+        $res->assertJson(['ok' => true]);
+
+        $loa = GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'loa')->first();
+        $this->assertNotNull($loa);
+
+        // Pemagang pemilik DAPAT mengakses dokumen LOA miliknya karena statusnya ACCEPTED
+        $resDownload = $this->actingAs($this->pemagangUser)->get(route('admin.generated-documents.download', $loa->public_uuid));
+        $resDownload->assertStatus(200);
+
+        // Pemagang TIDAK DAPAT melakukan retry-sync
+        $resRetry = $this->actingAs($this->pemagangUser)->postJson(route('admin.generated-documents.retry-sync', $loa->public_uuid));
+        $resRetry->assertStatus(403);
+
+        // Pengguna pemagang lain TIDAK DAPAT mengakses dokumen pemagang ini
+        $otherPemagang = User::create([
+            'name'     => 'Other Pemagang ' . substr($this->unique, 0, 6),
+            'email'    => 'other_' . $this->unique . '@test.com',
+            'password' => bcrypt('password123'),
+            'role'     => 'pemagang',
+        ]);
+        $resOther = $this->actingAs($otherPemagang)->get(route('admin.generated-documents.download', $loa->public_uuid));
+        $resOther->assertStatus(403);
+
+        // Pemagang tidak dapat mengakses dokumen jika status pemagang tidak memenuhi syarat penerbitan
+        // Contoh: SKL dibuatkan oleh admin secara manual atau paksa, namun status pemagang masih ACCEPTED
+        $unqualifiedSkl = GeneratedDocument::create([
+            'public_uuid'                => (string) \Illuminate\Support\Str::uuid(),
+            'document_type'              => GeneratedDocument::TYPE_SKL,
+            'document_number'            => 'SKL/TEMP/TEST',
+            'internship_registration_id' => $intern->id,
+            'template_type'              => 'skl',
+            'template_version'           => 1,
+            'file_path'                  => $loa->file_path,
+            'file_name'                  => $loa->file_name,
+            'file_size_bytes'            => 100,
+            'checksum_sha256'            => 'dummy',
+            'status'                     => GeneratedDocument::STATUS_GENERATED,
+            'idempotency_key'            => 'TEST-SKL-' . $intern->id,
+        ]);
+
+        // Pemagang mencoba download SKL padahal statusnya masih ACCEPTED (belum COMPLETED)
+        $resUnqualified = $this->actingAs($this->pemagangUser)->get(route('admin.generated-documents.download', $unqualifiedSkl->public_uuid));
+        $resUnqualified->assertStatus(403);
+    }
 }

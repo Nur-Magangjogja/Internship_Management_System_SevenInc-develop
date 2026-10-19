@@ -70,7 +70,7 @@ class GeneratedDocumentController extends Controller
     public function retrySync(Request $request, string $uuid)
     {
         $user = $request->user();
-        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'super_admin', 'hr_staff'], true)) {
             abort(403, 'Hanya Admin atau HR Staff yang berwenang mengulangi sinkronisasi cloud.');
         }
 
@@ -132,19 +132,30 @@ class GeneratedDocumentController extends Controller
     }
 
     /**
-     * Validasi hak akses dokumen privat: staf berwenang melihat semua, pemagang hanya dokumen milik sendiri.
+     * Validasi hak akses dokumen privat: staf berwenang melihat semua, pemagang hanya dokumen milik sendiri
+     * yang statusnya memenuhi syarat penerbitan.
      */
     protected function authorizeDocumentAccess(\App\Models\User $user, GeneratedDocument $doc): void
     {
-        if (in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+        if (method_exists($user, 'isBanned') && $user->isBanned()) {
+            abort(403, 'Akun Anda dinonaktifkan.');
+        }
+
+        if (in_array($user->role, ['admin', 'superadmin', 'super_admin', 'hr_staff'], true)) {
             return;
         }
 
         $doc->loadMissing('internshipRegistration');
-        $isOwner = $doc->internshipRegistration && (int) $doc->internshipRegistration->user_id === (int) $user->id;
+        $intern = $doc->internshipRegistration;
+        $isOwner = $intern && (int) $intern->user_id === (int) $user->id;
 
         if (!$isOwner) {
             abort(403, 'Anda tidak berhak mengakses dokumen ini.');
+        }
+
+        // Pemagang hanya dapat mengakses dokumen yang status pemagangannya memenuhi syarat penerbitan
+        if (!$this->issuanceService->canIssue($intern, $doc->document_type)) {
+            abort(403, 'Status pemagang belum memenuhi syarat untuk mengakses dokumen ini.');
         }
     }
 }

@@ -25,12 +25,13 @@ class GenerateDocController extends Controller
         $validated = $request->validate([
             'intern_id'   => 'required|integer|exists:internship_registrations,id',
             'jenis_surat' => 'required|string',
-            'action'      => 'nullable|string|in:issue,preview',
+            'action'      => 'nullable|string|in:issue,preview,revision',
+            'is_revision' => 'nullable|boolean',
             'options'     => 'nullable|array',
         ]);
 
         $user = $request->user();
-        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'super_admin', 'hr_staff'], true)) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'error' => 'Hanya Admin atau HR Staff yang berwenang menerbitkan dokumen.'], 403);
             }
@@ -41,6 +42,10 @@ class GenerateDocController extends Controller
         $jenis  = InternDocumentIssuanceService::normalizeType($validated['jenis_surat']);
         $action = $validated['action'] ?? 'issue';
         $options = $validated['options'] ?? [];
+
+        if ($action === 'revision' || !empty($validated['is_revision'])) {
+            $options['is_revision'] = true;
+        }
 
         // Validasi kelayakan status pemagang
         if (!$this->issuanceService->canIssue($intern, $jenis)) {
@@ -89,11 +94,17 @@ class GenerateDocController extends Controller
 
             $downloadUrl = route('admin.generated-documents.download', $generatedDoc->public_uuid);
 
+            $isRevision = !empty($options['is_revision']);
+            $successMsg = $isRevision
+                ? "Revisi dokumen {$jenis} untuk {$intern->fullname} berhasil diterbitkan (v{$generatedDoc->template_version}, Nomor: {$generatedDoc->document_number})."
+                : "Dokumen {$jenis} untuk {$intern->fullname} berhasil diterbitkan (Nomor: {$generatedDoc->document_number}).";
+
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json([
                     'ok'           => true,
                     'status'       => $generatedDoc->status,
-                    'message'      => "Dokumen {$jenis} untuk {$intern->fullname} berhasil diterbitkan.",
+                    'message'      => $successMsg,
+                    'is_revision'  => $isRevision,
                     'document'     => [
                         'id'                  => $generatedDoc->id,
                         'uuid'                => $generatedDoc->public_uuid,
@@ -109,7 +120,7 @@ class GenerateDocController extends Controller
                 ]);
             }
 
-            return back()->with('success', "Dokumen {$jenis} berhasil diterbitkan (Nomor: {$generatedDoc->document_number}).");
+            return back()->with('success', $successMsg);
         } catch (\Throwable $e) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json([

@@ -551,6 +551,48 @@ class InternshipRegistration extends Model
         return $this->hasMany(\App\Models\GeneratedDocument::class, 'internship_registration_id');
     }
 
+    /**
+     * Resolusi Google Drive Folder ID pendaftar yang telah dibentuk selama proses registrasi/sinkronisasi.
+     * Mengembalikan ID folder pendaftar dari registration_attachments tanpa mencampuradukkan leaf folder dokumen.
+     */
+    public function resolveDriveFolderId(): ?string
+    {
+        // 1. Cek dari lampiran bertipe folder Google Drive atau legacy bundle dari proses registrasi
+        $folderAtt = $this->attachments()
+            ->where(function ($q) {
+                $q->where('mime_type', 'application/vnd.google-apps.folder')
+                  ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE);
+            })
+            ->whereNotNull('drive_file_id')
+            ->first();
+
+        if ($folderAtt && !empty($folderAtt->drive_file_id)) {
+            $id = trim((string) $folderAtt->drive_file_id);
+            if (!empty($folderAtt->drive_web_view_link) && str_contains($folderAtt->drive_web_view_link, '/drive/folders/')) {
+                $extracted = \App\Models\CloudStorageSetting::extractDriveFolderId($folderAtt->drive_web_view_link);
+                if (!empty($extracted)) {
+                    return $extracted;
+                }
+            }
+            return $id;
+        }
+
+        // 2. Cek apakah ada lampiran registrasi dengan tautan folder di drive_web_view_link
+        $linkAtt = $this->attachments()
+            ->whereNotNull('drive_web_view_link')
+            ->where('drive_web_view_link', 'LIKE', '%/drive/folders/%')
+            ->first();
+
+        if ($linkAtt) {
+            $extracted = \App\Models\CloudStorageSetting::extractDriveFolderId($linkAtt->drive_web_view_link);
+            if (!empty($extracted)) {
+                return $extracted;
+            }
+        }
+
+        return null;
+    }
+
     public function hasDocuments(): bool
     {
         return $this->membercards()->exists()

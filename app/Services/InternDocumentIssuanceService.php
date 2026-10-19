@@ -321,9 +321,46 @@ class InternDocumentIssuanceService
             );
         }
 
-        return DB::transaction(function () use ($intern, $canonical, $options, $actor) {
+        $isRevision = !empty($options['is_revision']) || (($options['action'] ?? '') === 'revision');
+
+        return DB::transaction(function () use ($intern, $canonical, $options, $actor, $isRevision) {
             // Row lock untuk mencegah race condition concurrent issuance
             InternshipRegistration::where('id', $intern->id)->lockForUpdate()->first();
+
+            // Hitung nomor versi revisi jika ini penerbitan revisi resmi
+            $revisionVersion = 1;
+            if ($isRevision) {
+                if (!empty($options['revision_version'])) {
+                    $revisionVersion = (int) $options['revision_version'];
+                } else {
+                    // Cek apakah ada revisi yang baru saja diterbitkan (debounce < 60 detik) untuk menangkal double-click / concurrent requests
+                    $recentRevision = GeneratedDocument::where('internship_registration_id', $intern->id)
+                        ->where('document_type', $canonical)
+                        ->where('template_version', '>', 1)
+                        ->latest('id')
+                        ->first();
+
+                    if ($recentRevision && $recentRevision->created_at && $recentRevision->created_at->diffInSeconds(now()) <= 60) {
+                        $revisionVersion = (int) $recentRevision->template_version;
+                    } else {
+                        $maxVersion = GeneratedDocument::where('internship_registration_id', $intern->id)
+                            ->where('document_type', $canonical)
+                            ->max('template_version') ?? 1;
+                        $revisionVersion = (int) $maxVersion + 1;
+                    }
+                }
+
+                if (empty($options['document_number'])) {
+                    $baseDocNumber = $this->resolveExistingDocumentNumber($intern, $canonical);
+                    if (!empty($baseDocNumber)) {
+                        if (preg_match('/\/REV\.\d+$/', $baseDocNumber)) {
+                            $options['document_number'] = preg_replace('/\/REV\.\d+$/', '/REV.' . $revisionVersion, $baseDocNumber);
+                        } elseif (!str_contains($baseDocNumber, '/REV')) {
+                            $options['document_number'] = $baseDocNumber . '/REV.' . $revisionVersion;
+                        }
+                    }
+                }
+            }
 
             // 2. Resolve template aktif
             $template = !empty($options['template_id'])
@@ -349,7 +386,9 @@ class InternDocumentIssuanceService
                 customDocNumber: $docNumber,
                 actor: $actor,
                 pdfBinary: $pdfBinary,
-                template: $template
+                template: $template,
+                isRevision: $isRevision,
+                revisionVersion: $revisionVersion
             );
 
             // 6. Sinkronisasi tabel historis/legacy untuk kompatibilitas mundur 100% tanpa mengubah riwayat
@@ -357,7 +396,8 @@ class InternDocumentIssuanceService
 
             // 7. Audit log penerbitan
             if ($actor && in_array($actor->role, DocumentGeneratorService::PRIVILEGED_ROLES, true)) {
-                $this->docGeneratorService->logDocumentAccess($canonical, $intern, $actor, 'generated');
+                $actionType = $isRevision ? 'revised' : 'generated';
+                $this->docGeneratorService->logDocumentAccess($canonical, $intern, $actor, $actionType);
             }
 
             return $generatedDoc;
