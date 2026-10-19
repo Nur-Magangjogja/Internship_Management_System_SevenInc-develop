@@ -20,13 +20,18 @@ class DashboardController extends Controller
     /**
      * Tampilkan halaman utama Dashboard HR Staff.
      */
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $currentYear = (int) date('Y');
         $nowStr = now()->toDateTimeString();
 
-        // 1. Metrik Operasional Follow-Up dalam 1 query agregasi
+        $workflowService = app(\App\Services\InstitutionFollowUpWorkflowService::class);
+
+        // 1. Metrik Alur Kerja Terpadu (5 Status Utama)
+        $workflowStats = $workflowService->getAggregateWorkflowStats($currentYear);
+
+        // 2. Metrik Operasional Follow-Up
         $fuStats = FollowUpCycle::selectRaw("
             SUM(CASE WHEN status NOT IN ('completed', 'closed_no_response', 'cancelled') THEN 1 ELSE 0 END) as `open`,
             SUM(CASE WHEN status NOT IN ('completed', 'closed_no_response', 'cancelled') AND locked_by = ? AND lock_expires_at > ? THEN 1 ELSE 0 END) as my_claimed,
@@ -35,13 +40,18 @@ class DashboardController extends Controller
         ", [$user->id, $nowStr, $currentYear])->first();
 
         $followUpMetrics = [
-            'open'       => (int) ($fuStats->open ?? 0),
-            'my_claimed' => (int) ($fuStats->my_claimed ?? 0),
-            'waiting'    => (int) ($fuStats->waiting ?? 0),
-            'completed'  => (int) ($fuStats->completed ?? 0),
+            'open'             => (int) ($fuStats->open ?? 0),
+            'my_claimed'       => (int) ($fuStats->my_claimed ?? 0),
+            'waiting'          => (int) ($fuStats->waiting ?? 0),
+            'completed'        => (int) ($fuStats->completed ?? 0),
+            'not_contacted'    => $workflowStats['not_contacted'],
+            'waiting_response' => $workflowStats['waiting_response'],
+            'needs_follow_up'  => $workflowStats['needs_follow_up'],
+            'overdue'          => $workflowStats['overdue'],
+            'willing'          => $workflowStats['willing'],
         ];
 
-        // 2. Metrik Siklus Hidup MOU dalam 1 query agregasi
+        // 3. Metrik Siklus Hidup MOU
         $mouStats = Mou::selectRaw("
             SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as `generated`,
             SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as `delivered`,
@@ -60,14 +70,21 @@ class DashboardController extends Controller
             'active'            => (int) ($mouStats->active ?? 0),
         ];
 
-        // 3. Metrik Master Data
+        // 4. Metrik Master Data
         $masterCounts = [
             'institutions' => Institution::count(),
             'contacts'     => InstitutionContact::count(),
             'interns'      => InternshipRegistration::count(),
         ];
 
-        // 4. Daftar Antrean Tugas Aktif & Cepat
+        // 5. Antrean Tugas Mendesak & Jatuh Tempo (Overdue & Due Today)
+        $urgentFollowUps = FollowUpCycle::needsFollowUp()
+            ->with(['institution', 'contact', 'attempts.performer', 'latestAttempt', 'lockedByUser'])
+            ->latest('last_activity_at')
+            ->limit(6)
+            ->get();
+
+        // 6. Tugas Sedang Saya Kunci
         $myActiveTasks = FollowUpCycle::with(['institution', 'contact'])
             ->where('locked_by', $user->id)
             ->where('lock_expires_at', '>', now())
@@ -75,12 +92,7 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
-        $pendingFollowUps = FollowUpCycle::open()
-            ->with(['institution', 'contact', 'lockedByUser'])
-            ->latest('updated_at')
-            ->limit(5)
-            ->get();
-
+        // 7. Mitra Bersedia Kerja Sama (Siap Naskah MOU)
         $readyMouPartners = FollowUpCycle::with(['institution', 'contact'])
             ->where('final_result', FollowUpCycle::RESULT_WILLING)
             ->whereDoesntHave('mous', fn($q) => $q->whereIn('status', [
@@ -89,6 +101,13 @@ class DashboardController extends Controller
                 Mou::STATUS_ACTIVE
             ]))
             ->latest('completed_at')
+            ->limit(6)
+            ->get();
+
+        // 8. Dokumen MOU yang Butuh Tindak Lanjut (Generated/Delivered)
+        $pendingMous = Mou::with('institution')
+            ->whereIn('status', [Mou::STATUS_GENERATED, Mou::STATUS_DELIVERED])
+            ->latest('id')
             ->limit(5)
             ->get();
 
@@ -97,15 +116,33 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        // 9. Quick Search Institusi jika diminta
+        $searchQuery = $request->input('search');
+        $searchedInstitutions = null;
+        if (!empty($searchQuery)) {
+            $searchedInstitutions = Institution::with(['contacts.currentYearCycle', 'activeMou', 'currentYearCycle'])
+                ->where(function ($q) use ($searchQuery) {
+                    $q->where('name', 'like', "%{$searchQuery}%")
+                      ->orWhere('email', 'like', "%{$searchQuery}%")
+                      ->orWhere('phone', 'like', "%{$searchQuery}%")
+                      ->orWhereHas('contacts', fn($sub) => $sub->where('name', 'like', "%{$searchQuery}%"));
+                })
+                ->limit(10)
+                ->get();
+        }
+
         return view('hr.dashboard', compact(
             'user',
             'followUpMetrics',
             'mouMetrics',
             'masterCounts',
+            'urgentFollowUps',
             'myActiveTasks',
-            'pendingFollowUps',
             'readyMouPartners',
-            'recentMous'
+            'pendingMous',
+            'recentMous',
+            'searchQuery',
+            'searchedInstitutions'
         ));
     }
 }

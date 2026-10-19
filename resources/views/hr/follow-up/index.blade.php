@@ -6,9 +6,9 @@
 @endphp
 
 @section('content')
-<div class="px-6 py-8">
+<div class="px-6 py-8 space-y-6">
     <!-- Header -->
-    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h1 class="text-2xl font-bold text-slate-800">Siklus Follow-Up Institusi</h1>
             <p class="text-sm text-slate-500">Kelola antrean dan rekam jejak tindak lanjut (follow-up) tahunan kepada Guru/Dosen pembimbing institusi mitra.</p>
@@ -26,19 +26,24 @@
         </div>
     </div>
 
-    <!-- Alert Success / Error -->
+    <!-- Alert Success / Info / Error -->
     @if (session('success'))
-        <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
             {{ session('success') }}
         </div>
     @endif
+    @if (session('info'))
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-800">
+            {{ session('info') }}
+        </div>
+    @endif
     @if (session('error'))
-        <div class="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
+        <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
             {{ session('error') }}
         </div>
     @endif
     @if ($errors->any())
-        <div class="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
+        <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
             <ul class="list-disc pl-5">
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
@@ -47,76 +52,55 @@
         </div>
     @endif
 
-    <!-- Stat Cards -->
-    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-500">Total Siklus (Tahun {{ $year ?? date('Y') }})</span>
-                <span class="rounded-lg bg-slate-100 p-2 text-slate-600">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                        <line x1="16" y1="2" x2="16" y2="6"/>
-                        <line x1="8" y1="2" x2="8" y2="6"/>
-                        <line x1="3" y1="10" x2="21" y2="10"/>
-                    </svg>
-                </span>
-            </div>
-            <div class="mt-3">
-                <div class="text-2xl font-bold text-slate-800">{{ $stats['total'] }}</div>
-            </div>
-        </div>
+    <!-- Stat Cards (5 Status Alur Kerja Terpadu) -->
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <!-- 1. Belum Dihubungi -->
+        <a href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'not_contacted'])) }}" class="rounded-xl border border-blue-200 bg-white p-4 shadow-sm hover:border-blue-400 transition">
+            <span class="text-xs font-semibold text-slate-500 block">Belum Dihubungi</span>
+            <div class="mt-2 text-2xl font-bold text-slate-800">{{ $stats['not_contacted'] ?? 0 }}</div>
+            <p class="text-[10px] text-slate-400 mt-0.5">Attempt 0/3</p>
+        </a>
 
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-500">Sedang Berjalan</span>
-                <span class="rounded-lg bg-blue-50 p-2 text-blue-600">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                </span>
-            </div>
-            <div class="mt-3">
-                <div class="text-2xl font-bold text-blue-600">{{ $stats['open'] }}</div>
-            </div>
-        </div>
+        <!-- 2. Menunggu Respons -->
+        <a href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'waiting_response'])) }}" class="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm hover:border-indigo-400 transition">
+            <span class="text-xs font-semibold text-slate-500 block">Menunggu Respons</span>
+            <div class="mt-2 text-2xl font-bold text-indigo-600">{{ $stats['waiting_response'] ?? 0 }}</div>
+            <p class="text-[10px] text-slate-400 mt-0.5">Menunggu konfirmasi PIC</p>
+        </a>
 
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-500">Selesai / Terkonfirmasi</span>
-                <span class="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                </span>
+        <!-- 3. Perlu Tindak Lanjut (Overdue) -->
+        <a href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'needs_follow_up'])) }}" class="rounded-xl border border-rose-200 bg-rose-50/20 p-4 shadow-sm hover:border-rose-400 transition">
+            <span class="text-xs font-bold text-rose-700 block">Perlu Tindak Lanjut</span>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-bold text-rose-700">{{ $stats['needs_follow_up'] ?? 0 }}</span>
+                @if(($stats['overdue'] ?? 0) > 0)
+                    <span class="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">
+                        {{ $stats['overdue'] }} Overdue
+                    </span>
+                @endif
             </div>
-            <div class="mt-3">
-                <div class="text-2xl font-bold text-emerald-600">{{ $stats['completed'] }}</div>
-            </div>
-        </div>
+            <p class="text-[10px] text-rose-600/80 mt-0.5">Jatuh tempo / butuh aksi</p>
+        </a>
 
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-500">Tanpa Respons / Ditutup</span>
-                <span class="rounded-lg bg-slate-100 p-2 text-slate-600">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="15" y1="9" x2="9" y2="15"/>
-                        <line x1="9" y1="9" x2="15" y2="15"/>
-                    </svg>
-                </span>
-            </div>
-            <div class="mt-3">
-                <div class="text-2xl font-bold text-slate-600">{{ $stats['no_response'] }}</div>
-            </div>
-        </div>
+        <!-- 4. Bersedia Bekerja Sama (Siap MOU) -->
+        <a href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'willing'])) }}" class="rounded-xl border border-purple-200 bg-purple-50/20 p-4 shadow-sm hover:border-purple-400 transition">
+            <span class="text-xs font-bold text-purple-800 block">Bersedia Bekerja Sama</span>
+            <div class="mt-2 text-2xl font-bold text-purple-700">{{ $stats['willing'] ?? 0 }}</div>
+            <p class="text-[10px] text-purple-600 mt-0.5">Siap dibuatkan MOU</p>
+        </a>
+
+        <!-- 5. Selesai / Arsip -->
+        <a href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'completed'])) }}" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-400 transition">
+            <span class="text-xs font-semibold text-slate-500 block">Selesai</span>
+            <div class="mt-2 text-2xl font-bold text-emerald-600">{{ $stats['completed'] ?? 0 }}</div>
+            <p class="text-[10px] text-slate-400 mt-0.5">Hasil final tercatat</p>
+        </a>
     </div>
 
     <!-- Filters & Search -->
-    <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <!-- Status Filter Tabs -->
-        <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+        <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
             <a
                 href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'all'])) }}"
                 class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ empty($status) || $status === 'all' ? 'bg-slate-200 text-slate-800' : 'text-slate-600 hover:bg-slate-100' }}"
@@ -124,22 +108,41 @@
                 Semua Status
             </a>
             <a
-                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'open'])) }}"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'open' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-100' }}"
+                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'overdue'])) }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition {{ $status === 'overdue' ? 'bg-rose-600 text-white' : 'text-rose-700 bg-rose-50 hover:bg-rose-100' }}"
             >
-                Sedang Berjalan
+                <span class="h-1.5 w-1.5 rounded-full {{ $status === 'overdue' ? 'bg-white' : 'bg-rose-500' }}"></span>
+                Jatuh Tempo (Overdue)
+            </a>
+            <a
+                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'not_contacted'])) }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'not_contacted' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+            >
+                Belum Dihubungi
+            </a>
+            <a
+                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'waiting_response'])) }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'waiting_response' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+            >
+                Menunggu Respons
+            </a>
+            <a
+                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'needs_follow_up'])) }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'needs_follow_up' ? 'bg-amber-600 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+            >
+                Perlu Tindak Lanjut
+            </a>
+            <a
+                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'willing'])) }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'willing' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+            >
+                Bersedia Bekerja Sama
             </a>
             <a
                 href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'completed'])) }}"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'completed' ? 'bg-emerald-50 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-100' }}"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'completed' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
             >
                 Selesai
-            </a>
-            <a
-                href="{{ route($routePrefix . '.index', array_merge(request()->except('status', 'page'), ['status' => 'closed'])) }}"
-                class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition {{ $status === 'closed' ? 'bg-slate-100 text-slate-700 font-bold' : 'text-slate-600 hover:bg-slate-100' }}"
-            >
-                Ditutup
             </a>
         </div>
 
@@ -185,7 +188,7 @@
                 Cari
             </button>
 
-            @if (!empty($search) || !empty($status) || $year != date('Y'))
+            @if (!empty($search) || (!empty($status) && $status !== 'all') || $year != date('Y') || !empty($institutionId))
                 <a
                     href="{{ route($routePrefix . '.index') }}"
                     class="rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
@@ -202,59 +205,57 @@
             <thead class="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
                 <tr>
                     <th class="px-5 py-3.5 w-12 text-center">No</th>
-                    <th class="px-5 py-3.5">Institusi Mitra</th>
+                    <th class="px-5 py-3.5">Institusi Mitra & MoU</th>
                     <th class="px-5 py-3.5">Kontak Pembimbing / PIC</th>
-                    <th class="px-5 py-3.5 text-center">Tahun</th>
-                    <th class="px-5 py-3.5 text-center">Percobaan (Attempt)</th>
-                    <th class="px-5 py-3.5">Status Siklus</th>
-                    <th class="px-5 py-3.5">Aktivitas Terakhir</th>
-                    <th class="px-5 py-3.5 text-right">Aksi</th>
+                    <th class="px-5 py-3.5">Status Alur Kerja</th>
+                    <th class="px-5 py-3.5">Jadwal & Riwayat</th>
+                    <th class="px-5 py-3.5 text-center">Percobaan</th>
+                    <th class="px-5 py-3.5 text-right">Tindakan Berikutnya</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-slate-700">
                 @forelse ($cycles as $cycle)
-                    <tr class="transition hover:bg-slate-50/50">
+                    @php
+                        $workflow = $cycle->workflow_info;
+                    @endphp
+                    <tr class="transition hover:bg-slate-50/50 {{ $workflow['is_overdue'] ? 'bg-rose-50/20' : '' }}">
                         <td class="px-5 py-3.5 text-center font-medium text-slate-400">
                             {{ ($cycles->currentPage() - 1) * $cycles->perPage() + $loop->iteration }}
                         </td>
                         <td class="px-5 py-3.5">
                             <span class="font-bold text-slate-800">{{ $cycle->institution->name ?? '-' }}</span>
-                            @if ($cycle->institution?->correspondence_unit)
-                                <p class="text-[11px] text-slate-500">{{ $cycle->institution->correspondence_unit }}</p>
-                            @endif
+                            <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                                @if ($cycle->institution?->activeMou)
+                                    <span class="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                                        MOU Aktif
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                                        Tanpa MOU Aktif
+                                    </span>
+                                @endif
+                                <span class="text-[10px] text-slate-400">Tahun {{ $cycle->cycle_year }}</span>
+                            </div>
                         </td>
                         <td class="px-5 py-3.5">
                             <span class="font-semibold text-slate-800">{{ $cycle->contact->name ?? '-' }}</span>
-                            <div class="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                                @if ($cycle->contact?->position)
-                                    <span>{{ $cycle->contact->position }}</span>
-                                    <span>&bull;</span>
+                            <div class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                                <span>{{ $cycle->contact?->position_title ?? 'Pembimbing' }}</span>
+                                <span>&bull;</span>
+                                @if($cycle->contact?->phone)
+                                    <a href="https://wa.me/{{ preg_replace('/[^\d]/', '', $cycle->contact->phone) }}" target="_blank" class="text-emerald-600 hover:underline">
+                                        {{ $cycle->contact->phone }}
+                                    </a>
+                                @else
+                                    <span>-</span>
                                 @endif
-                                <span>{{ $cycle->contact->phone ?? '-' }}</span>
-                            </div>
-                        </td>
-                        <td class="px-5 py-3.5 text-center font-semibold text-slate-800">
-                            {{ $cycle->cycle_year }}
-                        </td>
-                        <td class="px-5 py-3.5 text-center">
-                            <div class="inline-flex items-center gap-1">
-                                @for ($i = 1; $i <= 3; $i++)
-                                    @if ($i <= $cycle->current_attempt_count)
-                                        <span class="inline-block h-2 w-5 rounded-full bg-blue-600" title="Attempt {{ $i }} Selesai"></span>
-                                    @else
-                                        <span class="inline-block h-2 w-5 rounded-full bg-slate-200" title="Attempt {{ $i }} Belum"></span>
-                                    @endif
-                                @endfor
-                            </div>
-                            <div class="mt-1 text-[11px] font-semibold text-slate-600">
-                                {{ $cycle->current_attempt_count }}/3 Selesai
                             </div>
                         </td>
                         <td class="px-5 py-3.5">
-                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border {{ $cycle->statusBadgeClass() }}">
-                                {{ $cycle->statusLabel() }}
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border {{ $workflow['badge_class'] }}">
+                                {{ $workflow['label'] }}
                             </span>
-                            @if ($cycle->final_result)
+                            @if ($cycle->final_result && $cycle->isClosed())
                                 <p class="mt-0.5 text-[10px] font-medium text-slate-500">
                                     Hasil: <span class="font-semibold text-slate-700">{{ $cycle->finalResultLabel() }}</span>
                                 </p>
@@ -269,30 +270,65 @@
                                 </div>
                             @endif
                         </td>
-                        <td class="px-5 py-3.5 text-slate-500 text-[11px]">
-                            @if ($cycle->last_activity_at)
-                                <span>{{ $cycle->last_activity_at->diffForHumans() }}</span>
-                                <p class="text-[10px] text-slate-400">{{ $cycle->last_activity_at->format('d M Y H:i') }}</p>
+                        <td class="px-5 py-3.5 text-slate-600 text-[11px]">
+                            @if ($workflow['is_overdue'])
+                                <span class="inline-flex items-center rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                                    {{ $workflow['due_label'] }}
+                                </span>
+                            @elseif ($workflow['is_due_today'])
+                                <span class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                    Hari Ini
+                                </span>
+                            @elseif ($workflow['due_label'])
+                                <span class="text-slate-600 font-medium">{{ $workflow['due_label'] }}</span>
                             @else
-                                <span class="italic text-slate-400">Belum ada aktivitas</span>
+                                <span class="text-slate-400 italic">-</span>
                             @endif
+                            <div class="mt-1 text-[10px] text-slate-400">
+                                {{ $cycle->last_activity_at ? 'Aktivitas: ' . $cycle->last_activity_at->diffForHumans() : 'Belum ada aktivitas' }}
+                            </div>
+                        </td>
+                        <td class="px-5 py-3.5 text-center">
+                            <div class="inline-flex items-center gap-1">
+                                @for ($i = 1; $i <= 3; $i++)
+                                    @if ($i <= $cycle->current_attempt_count)
+                                        <span class="inline-block h-2 w-4 rounded-full bg-blue-600" title="Attempt {{ $i }} Selesai"></span>
+                                    @else
+                                        <span class="inline-block h-2 w-4 rounded-full bg-slate-200" title="Attempt {{ $i }} Belum"></span>
+                                    @endif
+                                @endfor
+                            </div>
+                            <div class="mt-1 text-[10px] font-medium text-slate-500">
+                                {{ $cycle->current_attempt_count }}/3 Selesai
+                            </div>
                         </td>
                         <td class="px-5 py-3.5 text-right">
-                            <a
-                                href="{{ route($routePrefix . '.show', $cycle) }}"
-                                class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                            >
-                                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                    <circle cx="12" cy="12" r="3"/>
-                                </svg>
-                                Detail & Catat
-                            </a>
+                            <div class="flex items-center justify-end gap-1.5">
+                                @if ($workflow['next_action_type'] === 'create_mou')
+                                    <a
+                                        href="{{ $workflow['next_action_url'] }}"
+                                        class="inline-flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-purple-700"
+                                        title="Buat Naskah Perjanjian MOU"
+                                    >
+                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                            <polyline points="14 2 14 8 20 8"/>
+                                        </svg>
+                                        Draft MOU
+                                    </a>
+                                @endif
+                                <a
+                                    href="{{ route($routePrefix . '.show', $cycle) }}"
+                                    class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                                >
+                                    Detail & Catat
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-5 py-12 text-center">
+                        <td colspan="7" class="px-5 py-12 text-center">
                             <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                                 <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>

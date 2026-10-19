@@ -25,27 +25,52 @@ class FollowUpController extends Controller
      */
     public function index(Request $request)
     {
-        $year   = $request->input('year', (int) date('Y'));
-        $status = $request->input('status'); // 'all', 'open', 'completed', 'closed'
-        $search = $request->input('search');
+        $year          = $request->input('year', (int) date('Y'));
+        $status        = $request->input('status');
+        if (empty($status) || $status === 'all') {
+            if ($request->filled('stage') && $request->input('stage') !== 'all') {
+                $status = $request->input('stage');
+            } else {
+                $status = $status ?: 'all';
+            }
+        }
+        $search        = $request->input('search');
+        $institutionId = $request->input('institution_id');
 
-        $query = FollowUpCycle::with(['institution', 'contact', 'attempts.performer', 'confirmer', 'lockedByUser']);
+        $query = FollowUpCycle::with([
+            'institution.activeMou',
+            'contact',
+            'attempts.performer',
+            'latestAttempt',
+            'confirmer',
+            'lockedByUser',
+            'mous'
+        ]);
 
         if (!empty($year) && $year !== 'all') {
             $query->where('cycle_year', (int) $year);
         }
 
-        if ($status === 'open') {
-            $query->open();
-        } elseif ($status === 'completed') {
-            $query->where('status', FollowUpCycle::STATUS_COMPLETED);
-        } elseif ($status === 'closed') {
-            $query->whereIn('status', [
+        if (!empty($institutionId)) {
+            $query->where('institution_id', $institutionId);
+        }
+
+        // Filter berdasarkan status alur kerja
+        match ($status) {
+            'overdue'          => $query->overdue(),
+            'needs_follow_up'  => $query->needsFollowUp(),
+            'waiting_response' => $query->where('status', FollowUpCycle::STATUS_WAITING_RESPONSE),
+            'not_contacted'    => $query->notContacted(),
+            'willing'          => $query->willing(),
+            'open'             => $query->open(),
+            'completed'        => $query->where('status', FollowUpCycle::STATUS_COMPLETED),
+            'closed'           => $query->whereIn('status', [
                 FollowUpCycle::STATUS_COMPLETED,
                 FollowUpCycle::STATUS_CLOSED_NO_RESPONSE,
                 FollowUpCycle::STATUS_CANCELLED,
-            ]);
-        }
+            ]),
+            default            => null,
+        };
 
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
@@ -57,36 +82,28 @@ class FollowUpController extends Controller
         $cycles = $query->latest('last_activity_at')->latest('id')->paginate(15)->withQueryString();
 
         $statsYear = (!empty($year) && $year !== 'all') ? (int) $year : (int) date('Y');
-        $statsRow = FollowUpCycle::where('cycle_year', $statsYear)
-            ->selectRaw("
-                COUNT(*) as total,
-                SUM(CASE WHEN status IN ('open', 'waiting_response') THEN 1 ELSE 0 END) as `open`,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as `completed`,
-                SUM(CASE WHEN status = 'closed_no_response' THEN 1 ELSE 0 END) as `no_response`
-            ")
-            ->first();
+        $workflowService = app(\App\Services\InstitutionFollowUpWorkflowService::class);
+        $stats = $workflowService->getAggregateWorkflowStats($statsYear);
 
-        $stats = [
-            'total'       => (int) ($statsRow->total ?? 0),
-            'open'        => (int) ($statsRow->open ?? 0),
-            'completed'   => (int) ($statsRow->completed ?? 0),
-            'no_response' => (int) ($statsRow->no_response ?? 0),
-        ];
+        $institutions = Institution::active()->orderBy('name')->get(['id', 'name']);
 
-        return view('hr.follow-up.index', compact('cycles', 'stats', 'year', 'status', 'search'));
+        return view('hr.follow-up.index', compact('cycles', 'stats', 'year', 'status', 'search', 'institutionId', 'institutions'));
     }
 
     /**
      * Form buka siklus follow-up baru.
      */
-    public function create()
+    public function create(Request $request)
     {
+        $preselectedInstitutionId = $request->input('institution_id');
+        $preselectedContactId     = $request->input('contact_id');
+
         $institutions = Institution::active()
             ->with(['contacts' => fn($q) => $q->active()->verified()])
             ->orderBy('name')
             ->get();
 
-        return view('hr.follow-up.create', compact('institutions'));
+        return view('hr.follow-up.create', compact('institutions', 'preselectedInstitutionId', 'preselectedContactId'));
     }
 
     /**
@@ -124,7 +141,16 @@ class FollowUpController extends Controller
      */
     public function show(FollowUpCycle $cycle)
     {
-        $cycle->load(['institution', 'contact', 'attempts.performer', 'confirmer', 'lockedByUser']);
+        $cycle->load([
+            'institution.mous',
+            'institution.activeMou',
+            'institution.contacts',
+            'contact',
+            'attempts.performer',
+            'confirmer',
+            'lockedByUser',
+            'mous'
+        ]);
 
         // Prioritaskan pemagang pada tahun siklus berjalan, tanpa merusak riwayat tahun lain
         $interns = $cycle->contact->internshipRegistrations()
@@ -142,7 +168,11 @@ class FollowUpController extends Controller
                 ->get();
         }
 
-        return view('hr.follow-up.show', compact('cycle', 'interns'));
+        $workflowService = app(\App\Services\InstitutionFollowUpWorkflowService::class);
+        $workflowInfo = $workflowService->resolveCycleWorkflow($cycle);
+        $cooperationSummary = $workflowService->getInstitutionCooperationSummary($cycle->institution);
+
+        return view('hr.follow-up.show', compact('cycle', 'interns', 'workflowInfo', 'cooperationSummary'));
     }
 
     /**
@@ -158,6 +188,15 @@ class FollowUpController extends Controller
             'notes'            => 'nullable|string',
             'next_followup_at' => 'nullable|date',
         ]);
+
+        // Pencegahan duplikasi submit instan (Anti double-submit)
+        $workflowService = app(\App\Services\InstitutionFollowUpWorkflowService::class);
+        if ($workflowService->isDuplicateAttempt($cycle, $request->all(), auth()->user())) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Percobaan follow-up serupa baru saja dicatat.'], 200);
+            }
+            return back()->with('info', 'Percobaan follow-up serupa baru saja dicatat.');
+        }
 
         try {
             $this->followUpService->recordAttempt(
