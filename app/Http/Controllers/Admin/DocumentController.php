@@ -14,25 +14,35 @@ use Illuminate\Support\Str;
 class DocumentController extends Controller
 {
     /**
-     * Tampilkan daftar LOA yang diunduh beserta status pipeline sinkronisasi cloud.
+     * Tampilkan daftar LOA untuk pemagang yang sudah diterima beserta status pipeline sinkronisasi cloud.
      */
     public function listLoas(Request $request)
     {
-        $loas = InternLoa::with(['intern.user', 'intern.brandRel'])
-            ->latest('id')
+        // Ambil data pemagang yang sudah berstatus diterima/aktif/selesai (accepted, active, completed)
+        $loas = InternshipRegistration::whereIn('internship_status', ['accepted', 'active', 'completed'])
+            ->with(['user', 'brandRel', 'loas'])
+            ->latest('updated_at')
             ->paginate(15);
 
-        $loas->getCollection()->transform(function ($loa) {
-            $loa->user = $loa->intern?->user ?? null;
-            $loa->downloaded_at = $loa->created_at;
+        // Transform data agar kompatibel dengan view yang ada
+        $loas->getCollection()->transform(function ($reg) {
+            $loa = new \stdClass();
+            $loa->user = $reg->user;
+            $loa->fullname = $reg->fullname;
+            $loa->intern_id = $reg->id;
+            $loa->file_url = null;
 
-            // Cari GeneratedDocument terkait
-            $genDoc = GeneratedDocument::where('internship_registration_id', $loa->intern_id)
+            // 1. Cek GeneratedDocument (pipeline sinkronisasi cloud)
+            $genDoc = GeneratedDocument::where('internship_registration_id', $reg->id)
                 ->where('document_type', GeneratedDocument::TYPE_LOA)
                 ->latest('id')
                 ->first();
 
             $loa->generated_doc = $genDoc;
+
+            // 2. Cek rekam LOA yang pernah dibuat untuk pemagang ini
+            $loaRecord = $reg->loas?->sortByDesc('id')->first()
+                ?? InternLoa::where('intern_id', $reg->id)->latest('id')->first();
 
             if ($genDoc) {
                 $loa->file_path           = $genDoc->file_path;
@@ -41,16 +51,27 @@ class DocumentController extends Controller
                 $loa->drive_web_view_link = $genDoc->drive_web_view_link;
                 $loa->public_uuid         = $genDoc->public_uuid;
                 $loa->status              = in_array($genDoc->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) ? 'success' : 'failed';
-            } else {
-                $safeLoaNumber = str_replace('/', '-', $loa->loa_number);
-                $safeName = Str::slug($loa->intern->fullname ?? 'intern', '-');
+                $loa->downloaded_at       = $genDoc->created_at ?? $reg->updated_at;
+            } elseif ($loaRecord) {
+                $safeLoaNumber = str_replace(['/', '\\'], '-', $loaRecord->loa_number);
+                $safeName = Str::slug($reg->fullname ?? 'intern', '-');
                 $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
                 $path = 'documents/loa/' . $fileName;
 
-                $fileExists = Storage::disk('local')->exists($path) || Storage::disk('public')->exists($path);
-                $loa->file_path       = $fileExists ? $path : null;
-                $loa->pipeline_status = $fileExists ? GeneratedDocument::STATUS_GENERATED : GeneratedDocument::STATUS_FAILED;
-                $loa->status          = $fileExists ? 'success' : 'failed';
+                if (Storage::disk('local')->exists($path) || Storage::disk('public')->exists($path)) {
+                    $loa->file_path = $path;
+                } else {
+                    $loa->file_path = 'loa_generated';
+                }
+                $loa->pipeline_status = GeneratedDocument::STATUS_GENERATED;
+                $loa->status          = 'success';
+                $loa->downloaded_at   = $loaRecord->created_at ?? $reg->updated_at;
+            } else {
+                // Untuk status accepted / active / completed, dokumen LOA siap dibuat on the fly
+                $loa->file_path       = 'loa_generated';
+                $loa->pipeline_status = GeneratedDocument::STATUS_GENERATED;
+                $loa->status          = 'success';
+                $loa->downloaded_at   = $reg->updated_at;
             }
 
             return $loa;
@@ -60,25 +81,29 @@ class DocumentController extends Controller
     }
 
     /**
-     * Tampilkan daftar SKL yang diunduh beserta status pipeline sinkronisasi cloud.
+     * Tampilkan daftar SKL untuk pemagang yang sudah selesai (completed) beserta status pipeline sinkronisasi cloud.
      */
     public function listSkls(Request $request)
     {
+        // Ambil data pemagang yang sudah selesai (completed) untuk mencari SKL
         $skls = InternshipRegistration::where('internship_status', InternshipRegistration::STATUS_COMPLETED)
-            ->with(['user', 'brandRel'])
+            ->with(['user', 'brandRel', 'skls'])
             ->latest('updated_at')
             ->paginate(15);
 
         $skls->getCollection()->transform(function ($reg) {
-            $sklRecord = SklDocument::where('intern_id', $reg->id)->first();
-            $genDoc    = GeneratedDocument::where('internship_registration_id', $reg->id)
+            $genDoc = GeneratedDocument::where('internship_registration_id', $reg->id)
                 ->where('document_type', GeneratedDocument::TYPE_SKL)
                 ->latest('id')
                 ->first();
 
+            $sklRecord = $reg->skls?->sortByDesc('id')->first()
+                ?? SklDocument::where('intern_id', $reg->id)->latest('id')->first();
+
             $skl = new \stdClass();
             $skl->user          = $reg->user;
             $skl->intern_name   = $reg->fullname;
+            $skl->fullname      = $reg->fullname;
             $skl->downloaded_at = $reg->updated_at;
             $skl->file_url      = null;
             $skl->intern_id     = $reg->id;
@@ -91,14 +116,17 @@ class DocumentController extends Controller
                 $skl->drive_web_view_link = $genDoc->drive_web_view_link;
                 $skl->public_uuid         = $genDoc->public_uuid;
                 $skl->status              = in_array($genDoc->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) ? 'success' : 'failed';
+                $skl->downloaded_at       = $genDoc->created_at ?? $reg->updated_at;
             } elseif ($sklRecord) {
                 $skl->file_path       = 'skl_generated';
                 $skl->pipeline_status = GeneratedDocument::STATUS_GENERATED;
                 $skl->status          = 'success';
+                $skl->downloaded_at   = $sklRecord->created_at ?? $reg->updated_at;
             } else {
                 $skl->file_path       = null;
                 $skl->pipeline_status = GeneratedDocument::STATUS_FAILED;
-                $skl->status          = 'failed';
+                $skl->status          = null;
+                $skl->downloaded_at   = null;
             }
 
             return $skl;

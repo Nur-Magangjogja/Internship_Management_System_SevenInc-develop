@@ -205,6 +205,15 @@ class RegistrationLifecycleService
         } catch (\Throwable) {
             // Guardrail 2: Outbound spreadsheet sync queue failure must never abort business operations
         }
+
+        // Enqueue outbound spreadsheet sync for follow-up if accepted
+        if (in_array($newStatus, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_COMPLETED], true)) {
+            try {
+                \App\Services\ContactMatchingService::ensureContactAndFollowUpCycle($registration);
+            } catch (\Throwable $followUpErr) {
+                \Illuminate\Support\Facades\Log::warning("Follow-up queue sync error on lifecycle transition #{$registration->id}: " . $followUpErr->getMessage());
+            }
+        }
     }
 
     /**

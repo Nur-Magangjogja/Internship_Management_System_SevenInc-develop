@@ -949,8 +949,28 @@ function synchronizeSerializedHtml(rawHtml) {
         }
     });
 
-    // Strip temporary pagination artifacts and unwrap page containers so output is pure canonical HTML
+    // Strip temporary pagination artifacts
     root.querySelectorAll('[data-pagination-artifact="true"], .mou-a4-page-header, .mou-a4-page-footer, .mou-table-width-handle, .no-print').forEach(el => el.remove());
+
+    // Preserve physical page breaks between multiple editor pages as composed in the studio
+    const pageNodes = Array.from(root.querySelectorAll('.mou-a4-page-node, [data-mou-page="true"], .mou-a4-paper-sheet'));
+    if (pageNodes.length > 1) {
+        pageNodes.forEach((pageEl, idx) => {
+            if (idx > 0) {
+                const prev = pageEl.previousElementSibling;
+                const hasBreak = prev && (prev.classList.contains('mou-page-break') || prev.getAttribute('data-page-break') === 'true');
+                if (!hasBreak) {
+                    const pb = doc.createElement('div');
+                    pb.className = 'mou-page-break';
+                    pb.setAttribute('data-page-break', 'true');
+                    pb.style.cssText = 'page-break-before: always; break-before: page;';
+                    pageEl.parentNode.insertBefore(pb, pageEl);
+                }
+            }
+        });
+    }
+
+    // Unwrap page containers so output is pure canonical HTML with page breaks
     root.querySelectorAll('.mou-a4-paper-sheet, .mou-a4-page-node, [data-mou-page], .mou-page-body-content').forEach(wrap => {
         const parent = wrap.parentNode;
         if (!parent) return;
@@ -1191,25 +1211,31 @@ class MouPageView {
     }
 
     attachEventListeners() {
+        const activateFooter = (e) => {
+            e.stopPropagation();
+            const { setActiveZone } = this.mouContext;
+            const pageNum = this.getPageIndex() + 1;
+            if (setActiveZone) setActiveZone('footer', pageNum);
+        };
+        this.footerEl.addEventListener('click', activateFooter);
+        this.footerEl.addEventListener('dblclick', activateFooter);
+
         this.headerEl.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             const { setActiveZone } = this.mouContext;
             const pageNum = this.getPageIndex() + 1;
             if (setActiveZone) setActiveZone('header', pageNum);
         });
-        this.footerEl.addEventListener('dblclick', (e) => {
-            e.stopPropagation();
-            const { setActiveZone } = this.mouContext;
-            const pageNum = this.getPageIndex() + 1;
-            if (setActiveZone) setActiveZone('footer', pageNum);
-        });
-        this.contentDOM.addEventListener('dblclick', (e) => {
+
+        const returnToBody = (e) => {
             const { state, setActiveZone } = this.mouContext;
             if (state && state.activeZone !== 'body' && setActiveZone) {
                 e.stopPropagation();
                 setActiveZone('body');
             }
-        });
+        };
+        this.contentDOM.addEventListener('click', returnToBody);
+        this.contentDOM.addEventListener('dblclick', returnToBody);
     }
 
     update(updatedNode) {
@@ -2520,6 +2546,9 @@ export function initMouWordProcessor(config) {
 
     function checkAndReflowPages(editor) {
         if (!editor || !editor.view || editor.isDestroyed) return;
+        // Never reflow body pages while user is editing Header or Footer
+        if (state.activeZone !== 'body') return;
+
         const { state: edState, view } = editor;
         if (view.composing) {
             return;
@@ -2538,6 +2567,17 @@ export function initMouWordProcessor(config) {
             tr.setMeta(reflowPluginKey, true);
             view.dispatch(tr);
             return;
+        }
+
+        // STEP 0: Clean up any trailing blank pages immediately
+        for (let pIdx = pageCount - 1; pIdx > 0; pIdx--) {
+            const pNode = doc.child(pIdx);
+            const isEmptyPage = pNode.childCount === 0 ||
+                (pNode.childCount === 1 && pNode.child(0).type.name === 'paragraph' && pNode.child(0).textContent.trim() === '');
+            if (isEmptyPage) {
+                executeReflowTransaction(editor, { type: 'remove_empty_page', pageIndex: pIdx });
+                return;
+            }
         }
 
         const dims = getPaperDimensionsMm();
@@ -2589,7 +2629,8 @@ export function initMouWordProcessor(config) {
                 const childRect = childEl.getBoundingClientRect();
                 const childBottom = childRect.bottom - contentDomRect.top;
 
-                if (childBottom > usableHeight) {
+                // 12px tolerance buffer so minor padding/cursor adjustments never cause spurious page breaks
+                if (childBottom > usableHeight + 12) {
                     const childNode = pageNode.child(cIdx);
                     const childTop = childRect.top - contentDomRect.top;
                     const spaceForThisChild = usableHeight - childTop;
@@ -2667,6 +2708,19 @@ export function initMouWordProcessor(config) {
                     }
                 }
 
+                // If remaining nodes on the last page are merely empty paragraphs, do not spawn a new blank page!
+                let hasRealContent = false;
+                for (let c = finalSplitIndex; c < pageNode.childCount; c++) {
+                    const node = pageNode.child(c);
+                    if (node.type.name !== 'paragraph' || node.textContent.trim() !== '' || node.attrs?.isPageBreak) {
+                        hasRealContent = true;
+                        break;
+                    }
+                }
+                if (!hasRealContent && pIdx === pageCount - 1) {
+                    continue;
+                }
+
                 // Check oscillation cycle
                 const justPulledUp = recentReflowActions.some(a => a.type === 'underflow' && a.from === pIdx + 1 && a.to === pIdx);
                 if (!justPulledUp) {
@@ -2682,7 +2736,7 @@ export function initMouWordProcessor(config) {
 
             // UNDERFLOW DETECTION with Dynamic Measurement Hysteresis & Anti-Oscillation
             const availableSpace = usableHeight - contentDom.scrollHeight;
-            if (availableSpace > 16 && pIdx < pageCount - 1) {
+            if (availableSpace > 20 && pIdx < pageCount - 1) {
                 const curPageHasBreak = hasManualPageBreak(pageDom);
                 if (curPageHasBreak) {
                     // Page pIdx ends with a manual page break; page pIdx + 1 was intentionally created.
@@ -2695,14 +2749,7 @@ export function initMouWordProcessor(config) {
                 const nextHasBreak = hasManualPageBreak(nextPageDom);
                 const nextContentDom = nextPageDom ? nextPageDom.querySelector('.mou-page-body-content') : null;
 
-                if (nextPageNode.childCount === 0 && !nextHasBreak) {
-                    splitAction = {
-                        type: 'remove_empty_page',
-                        pageIndex: pIdx + 1,
-                    };
-                    needsReflow = true;
-                    break;
-                } else if (nextPageNode.childCount === 1 && nextPageNode.child(0).textContent.trim() === '' && nextPageNode.child(0).type.name === 'paragraph' && !nextHasBreak) {
+                if (!nextHasBreak && (nextPageNode.childCount === 0 || (nextPageNode.childCount === 1 && nextPageNode.child(0).textContent.trim() === '' && nextPageNode.child(0).type.name === 'paragraph'))) {
                     splitAction = {
                         type: 'remove_empty_page',
                         pageIndex: pIdx + 1,
@@ -2847,6 +2894,12 @@ export function initMouWordProcessor(config) {
                 nodesToMove.push(pageNode.child(c));
             }
             if (nodesToMove.length === 0) return;
+
+            // Never spawn a new blank page if nodes to move are only empty paragraphs
+            if (pageIndex + 1 >= doc.childCount) {
+                const hasSubstance = nodesToMove.some(n => n.type.name !== 'paragraph' || n.textContent.trim() !== '');
+                if (!hasSubstance) return;
+            }
 
             const isAnchorInMovedRange = (oldAnchor >= fromPos && oldAnchor <= toPos);
             const isHeadInMovedRange = (oldHead >= fromPos && oldHead <= toPos);
@@ -3113,6 +3166,20 @@ export function initMouWordProcessor(config) {
             tableTabBadge.classList.toggle('hidden', !isInTable);
         }
 
+        const activeTabBtn = document.querySelector('[data-ribbon-tab].active');
+        const activeTab = activeTabBtn ? activeTabBtn.getAttribute('data-ribbon-tab') : 'home';
+
+        if (isInTable && !state.wasInTable) {
+            if (activeTab === 'home' || activeTab === 'table') {
+                switchRibbonTab('table');
+            }
+        } else if (!isInTable && state.wasInTable) {
+            if (activeTab === 'table') {
+                switchRibbonTab('home');
+            }
+        }
+        state.wasInTable = isInTable;
+
         if (isInTable) {
             const tableAttrs = editor.getAttributes('table');
             const rowAttrs = editor.getAttributes('tableRow');
@@ -3219,10 +3286,137 @@ export function initMouWordProcessor(config) {
     }
 
     /**
-     * Multi-Sheet A4 Preview Renderer (Deprecated: Editor is already true A4 multi-page; real preview uses DomPDF)
+    /**
+     * Multi-Sheet A4 Preview Renderer (Mode Pratinjau Lembar A4 inside the editor studio or modal)
+     * Maps 1-to-1 to the pages composed in the editor (saat menyusun).
      */
-    function renderMultiSheetPreview() {
-        // No-op kept for backwards compatibility with any external callers
+    function renderMultiSheetPreview(targetStageId = null, badgeId = null) {
+        saveActiveHeaderFooterToStore();
+
+        const targets = [];
+        if (targetStageId) {
+            const el = typeof targetStageId === 'string' ? document.getElementById(targetStageId) : targetStageId;
+            if (el) targets.push({ stage: el, badge: badgeId });
+        } else {
+            const modalStage = document.getElementById('modalPreviewPagesStage');
+            if (modalStage) targets.push({ stage: modalStage, badge: 'mouModalPageCountBadge' });
+            const inlineStage = document.getElementById('mouMultiSheetPreviewStage');
+            if (inlineStage) targets.push({ stage: inlineStage, badge: 'inlinePreviewPageCountBadge' });
+        }
+
+        if (targets.length === 0) return 0;
+
+        const dims = getPaperDimensionsMm();
+
+        // 1. Ambil halaman langsung dari struktur dokumen editor saat menyusun (1-to-1)
+        let pagesHtmlList = [];
+
+        // Prioritas 1: Ambil dari elemen live DOM editor (view.dom)
+        if (bodyEditor?.view?.dom) {
+            const editorPageEls = Array.from(bodyEditor.view.dom.querySelectorAll('.mou-a4-page-node'));
+            if (editorPageEls.length > 0) {
+                pagesHtmlList = editorPageEls.map(pageEl => {
+                    const contentEl = pageEl.querySelector('.mou-page-body-content');
+                    return contentEl ? contentEl.innerHTML : pageEl.innerHTML;
+                });
+            }
+        }
+
+        // Prioritas 2: Fallback dari HTML serialisasi Tiptap
+        if (pagesHtmlList.length === 0 && bodyEditor) {
+            const rawEditorHtml = bodyEditor.getHTML();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(`<div id="preview-src">${rawEditorHtml}</div>`, 'text/html');
+            const root = doc.getElementById('preview-src');
+            const serializedPageNodes = root ? Array.from(root.querySelectorAll('[data-mou-page="true"], .mou-a4-page-node')) : [];
+            if (serializedPageNodes.length > 0) {
+                pagesHtmlList = serializedPageNodes.map(p => p.innerHTML);
+            } else if (root && root.innerHTML.trim()) {
+                pagesHtmlList = [root.innerHTML];
+            }
+        }
+
+        if (pagesHtmlList.length === 0) {
+            pagesHtmlList = ['<p></p>'];
+        }
+
+        const totalPages = pagesHtmlList.length;
+
+        // 2. Render setiap halaman ke dalam lembar kertas A4 pratinjau
+        targets.forEach(({ stage, badge }) => {
+            stage.innerHTML = '';
+
+            pagesHtmlList.forEach((rawPageBodyHtml, idx) => {
+                const pageIndex = idx + 1;
+
+                const sheet = document.createElement('div');
+                sheet.className = 'mou-preview-a4-sheet';
+                sheet.style.width = `${dims.width}mm`;
+                sheet.style.minWidth = `${dims.width}mm`;
+                sheet.style.maxWidth = `${dims.width}mm`;
+                sheet.style.height = `${dims.height}mm`;
+                sheet.style.minHeight = `${dims.height}mm`;
+                sheet.style.maxHeight = `${dims.height}mm`;
+                sheet.style.boxSizing = 'border-box';
+                sheet.style.paddingLeft = `${state.marginLeftMm}mm`;
+                sheet.style.paddingRight = `${state.marginRightMm}mm`;
+                sheet.style.paddingTop = `${Math.min(state.headerDistanceMm, state.marginTopMm)}mm`;
+                sheet.style.paddingBottom = `${Math.min(state.footerDistanceMm, state.marginBottomMm)}mm`;
+                sheet.style.fontFamily = `'${state.fontFamily}', Times, serif`;
+                sheet.style.fontSize = `${state.fontSizePt}pt`;
+                sheet.style.lineHeight = String(state.lineHeight);
+
+                // Header
+                const useFirstPage = state.differentFirstPage && pageIndex === 1;
+                const hStore = useFirstPage ? state.firstPageHeaderHtmlStore : state.headerHtmlStore;
+                const hHtml = replaceLivePreviewPlaceholders(hStore);
+
+                if (hHtml && hHtml.trim() !== '' && hHtml.trim() !== '<p></p>') {
+                    const headerEl = document.createElement('div');
+                    headerEl.className = 'mou-preview-sheet-header mou-doc-canvas';
+                    headerEl.innerHTML = hHtml;
+                    const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
+                    headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
+                    sheet.appendChild(headerEl);
+                }
+
+                // Body dokumen persis seperti saat menyusun di editor
+                const bodyEl = document.createElement('div');
+                bodyEl.className = 'mou-preview-sheet-body mou-doc-canvas';
+                const cleanBodyHtml = synchronizeSerializedHtml(rawPageBodyHtml);
+                bodyEl.innerHTML = replaceLivePreviewPlaceholders(cleanBodyHtml);
+                sheet.appendChild(bodyEl);
+
+                // Footer (Kotak Paraf di kiri, Penomoran Halaman di kanan)
+                const fStore = useFirstPage ? state.firstPageFooterHtmlStore : state.footerHtmlStore;
+                const fHtml = replaceLivePreviewPlaceholders(fStore);
+
+                const footerEl = document.createElement('div');
+                footerEl.className = 'mou-preview-sheet-footer';
+                const bodyBtmGapMm = Math.max(2, state.marginBottomMm - state.footerDistanceMm);
+                footerEl.style.marginTop = `${bodyBtmGapMm}mm`;
+                footerEl.innerHTML = `
+                    <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
+                        <div class="mou-preview-sheet-footer-left flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'};">
+                            ${state.showParafBox ? fHtml : ''}
+                        </div>
+                        <div class="mou-preview-sheet-pagenum font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap" style="visibility: ${state.showPageNumber ? 'visible' : 'hidden'};">
+                            Halaman ${pageIndex} dari ${totalPages}
+                        </div>
+                    </div>
+                `;
+                sheet.appendChild(footerEl);
+
+                stage.appendChild(sheet);
+            });
+
+            if (badge) {
+                const bEl = typeof badge === 'string' ? document.getElementById(badge) : badge;
+                if (bEl) bEl.textContent = `${totalPages} Halaman A4`;
+            }
+        });
+
+        return totalPages;
     }
 
     // Observe Header and Footer height changes (e.g. when resizing Kotak Paraf table)

@@ -244,8 +244,9 @@
     /* Header, Body, Footer Zones on A4 Sheet */
     .mou-header-zone-wrapper {
         position: relative;
-        min-height: 12mm;
-        margin-bottom: 3mm;
+        margin: 0;
+        padding: 0;
+        width: 100%;
         border: 1px dashed transparent;
         border-radius: 4px;
         transition: all 0.15s ease;
@@ -256,15 +257,16 @@
     }
     .mou-footer-zone-wrapper {
         position: relative;
-        min-height: 16mm;
-        margin-top: 4mm;
-        padding-top: 2mm;
+        margin: 0;
+        padding: 0;
+        width: 100%;
         border: 1px dashed transparent;
         border-radius: 4px;
         display: flex;
         align-items: flex-end;
         justify-content: space-between;
-        gap: 8mm;
+        gap: 4mm;
+        box-sizing: border-box;
         transition: all 0.15s ease;
     }
     .mou-footer-zone-wrapper:hover {
@@ -272,36 +274,15 @@
         background: rgba(248, 250, 252, 0.5);
     }
     .mou-zone-active {
-        border-color: #2b579a !important;
-        background: rgba(235, 243, 253, 0.45) !important;
-        box-shadow: 0 0 0 1px #2b579a;
+        border-color: #3b82f6 !important;
+        background: rgba(239, 246, 255, 0.25) !important;
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
     }
     .mou-zone-dimmed {
-        opacity: 0.35 !important;
-        filter: grayscale(20%);
-        pointer-events: none !important;
-        user-select: none !important;
-        transition: opacity 0.15s ease;
+        opacity: 0.85;
     }
     .mou-zone-tag {
-        position: absolute;
-        top: -18px;
-        left: 4px;
-        font-size: 9px;
-        font-family: 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        padding: 2px 8px;
-        border-radius: 2px 2px 0 0;
-        background: #2b579a;
-        color: #ffffff;
-        display: none;
-        pointer-events: none;
-        z-index: 20;
-    }
-    .mou-zone-active .mou-zone-tag {
-        display: inline-block;
+        display: none !important;
     }
 
     /* True Multi-Page A4 Paper Sheets & Desk Stage */
@@ -372,18 +353,32 @@
         overflow: visible;
     }
     .mou-page-body-content.mou-zone-dimmed {
-        opacity: 0.45;
-        pointer-events: none;
+        opacity: 0.85;
+        pointer-events: auto;
     }
 
     /* ProseMirror Content Area */
     .mou-a4-paper-sheet .ProseMirror {
         outline: none;
-        min-height: 18px;
         word-wrap: break-word;
     }
-    #mouWordCanvas .ProseMirror {
-        min-height: 225mm;
+    .mou-page-body-content > .ProseMirror {
+        min-height: 180mm;
+    }
+    #mouHeaderCanvas,
+    #mouFooterCanvas {
+        min-height: auto !important;
+        height: auto !important;
+    }
+    #mouHeaderCanvas .ProseMirror,
+    #mouFooterCanvas .ProseMirror {
+        min-height: auto !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    #mouFooterCanvas .tableWrapper {
+        margin: 0 !important;
     }
     .ProseMirror p.is-editor-empty:first-child::before {
         content: attr(data-placeholder);
@@ -533,6 +528,13 @@
     }
 
     /* Multi-Sheet A4 Preview Cards */
+    .mou-preview-pages-stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        width: 100%;
+    }
     .mou-preview-a4-sheet {
         width: 210mm;
         min-width: 210mm;
@@ -542,8 +544,9 @@
         max-height: 297mm;
         background: #ffffff;
         border: 1px solid #94a3b8;
-        box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.22);
+        box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.22), 0 4px 12px -2px rgba(15, 23, 42, 0.12);
         box-sizing: border-box;
+        position: relative;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -555,8 +558,13 @@
         margin-bottom: 3mm;
     }
     .mou-preview-sheet-body {
-        flex: 1 1 auto;
+        flex: 1 1 0%;
+        width: 100%;
+        min-height: 0;
         overflow: hidden;
+    }
+    .mou-preview-sheet-body .mou-page-break {
+        display: none !important;
     }
     .mou-preview-sheet-footer {
         flex-shrink: 0;
@@ -570,6 +578,65 @@
     .mou-preview-sheet-footer-left {
         flex: 1 1 auto;
         min-width: 0;
+    }
+
+    @media print {
+        @page {
+            size: A4 portrait;
+            margin: 0;
+        }
+        body.mou-preview-modal-open > *:not(#mouA4PreviewModal),
+        body.mou-preview-modal-open #mouA4PreviewModal .no-print {
+            display: none !important;
+        }
+        body.mou-preview-modal-open,
+        body.mou-preview-modal-open main {
+            background: white !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        body.mou-preview-modal-open #mouA4PreviewModal {
+            position: static !important;
+            display: block !important;
+            background: white !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+            z-index: auto !important;
+        }
+        body.mou-preview-modal-open .mou-modal-card {
+            border: none !important;
+            box-shadow: none !important;
+            max-width: none !important;
+            width: 100% !important;
+            height: auto !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+        }
+        body.mou-preview-modal-open #mouModalPaperDeskScroll {
+            background: white !important;
+            padding: 0 !important;
+            overflow: visible !important;
+        }
+        body.mou-preview-modal-open #mouModalScaleContainer {
+            transform: none !important;
+            margin-bottom: 0 !important;
+        }
+        body.mou-preview-modal-open .mou-preview-pages-stage {
+            gap: 0 !important;
+        }
+        body.mou-preview-modal-open .mou-preview-a4-sheet {
+            box-shadow: none !important;
+            border: none !important;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        body.mou-preview-modal-open .mou-preview-a4-sheet:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
     }
 </style>
 
@@ -986,6 +1053,63 @@
             </div>
         </div>
 
+        <!-- WORKSPACE VIEW 2: MULTI-SHEET A4 PREVIEW SIMULATION -->
+        <div id="mouMultiSheetPreviewContainer" class="hidden flex-1 overflow-y-auto overflow-x-auto bg-slate-300/80 py-6 px-4">
+            <!-- Inline Preview Toolbar -->
+            <div class="mx-auto max-w-4xl mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xs font-bold text-slate-800">Pratinjau Lembar A4</span>
+                    <span id="inlinePreviewPageCountBadge" class="rounded bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                        1 Halaman A4
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label for="inlinePreviewZoomSelect" class="text-xs font-semibold text-slate-600">Zoom:</label>
+                    <select
+                        id="inlinePreviewZoomSelect"
+                        class="rounded-md border border-slate-300 bg-white py-1 pl-2 pr-6 text-xs font-medium text-slate-700 focus:border-blue-500 focus:outline-none"
+                    >
+                        <option value="fit-width" selected>Lebar Pas (Fit Width)</option>
+                        <option value="fit-page">Satu Halaman Penuh</option>
+                        <option value="0.75">75%</option>
+                        <option value="0.90">90%</option>
+                        <option value="1.00">100% (Ukuran Nyata)</option>
+                    </select>
+
+                    <button
+                        type="button"
+                        id="btnOpenA4ModalFromInline"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition"
+                        title="Buka pratinjau lembar A4 ke jendela modal layar penuh"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 3 21 3 21 9"/>
+                            <polyline points="9 21 3 21 3 15"/>
+                            <line x1="21" y1="3" x2="14" y2="10"/>
+                            <line x1="3" y1="21" x2="10" y2="14"/>
+                        </svg>
+                        <span>Layar Penuh</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mx-auto max-w-4xl mb-5 rounded-xl border border-blue-200 bg-blue-50/90 px-4 py-2.5 text-xs text-blue-800 flex items-start gap-2.5">
+                <svg class="h-4 w-4 text-blue-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div>
+                    <span class="font-bold">Simulasi Pemenggalan Halaman A4:</span>
+                    Pratinjau membagi halaman kertas A4 secara otomatis berdasarkan batas margin, ruang Kop Surat, dan Tabel Kotak Paraf. Gunakan tombol <strong>Layar Penuh</strong> di atas untuk membaca atau memeriksa naskah dengan nyaman.
+                </div>
+            </div>
+
+            <div id="mouInlineScaleContainer" style="transform-origin: top center; transition: transform 0.15s ease-out; display: flex; flex-direction: column; align-items: center; width: 100%;">
+                <div id="mouMultiSheetPreviewStage" class="mou-preview-pages-stage flex flex-col items-center gap-7"></div>
+            </div>
+        </div>
         <!-- RIGHT SIDEBAR: Collapsible Mail Merge / Dynamic Placeholder Drawer -->
         <aside id="mouMailMergeSidebar" class="mou-mail-merge-sidebar shadow-sm">
             <!-- Sidebar Header -->
@@ -1179,45 +1303,157 @@
     </div>
 </div>
 
-<!-- Modal Pratinjau Draft A4 Interaktif (Render Draft Terkini Tanpa Save DB) -->
-<div id="mouLivePreviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
-    <div class="relative w-full max-w-5xl bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
-        <!-- Top Bar -->
-        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+<!-- ========================================================================= -->
+<!-- MODAL FULLSCREEN / EXPANSIVE PRATINJAU LEMBAR A4 (IDENTIK DENGAN ADMIN UI) -->
+<!-- ========================================================================= -->
+<div
+    id="mouA4PreviewModal"
+    class="fixed inset-0 z-50 hidden flex-col bg-slate-900/75 backdrop-blur-xs p-0 sm:p-1.5 md:p-2 no-print"
+    tabindex="-1"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="mouModalTitle"
+>
+    <div class="mou-modal-card flex flex-col w-full max-w-[1560px] mx-auto h-full rounded-none sm:rounded-xl bg-white shadow-2xl border border-slate-300 overflow-hidden">
+        <!-- Top Action Bar Header (Compact & Full to Top) -->
+        <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-4 py-2 shrink-0">
+            <!-- Left: Title, Icon & Page Badge -->
             <div class="flex items-center gap-2.5">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded bg-indigo-600 font-bold text-xs text-white shadow-xs">P</span>
+                <div class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-600 shadow-xs">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </div>
                 <div>
-                    <h3 class="font-bold text-sm text-white">Pratinjau Draft Naskah MoU (A4 Layout)</h3>
-                    <p class="text-[11px] text-slate-400">Variabel Mail Merge disubstitusi secara dinamis dengan data simulasi. Mencerminkan naskah aktif di editor secara real-time.</p>
+                    <div class="flex items-center gap-2">
+                        <h2 id="mouModalTitle" class="text-sm font-bold text-slate-800">
+                            Pratinjau Lembar Kertas A4
+                        </h2>
+                        <span id="mouModalPageCountBadge" class="rounded bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                            1 Halaman A4
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 hidden sm:block">
+                        Simulasi tata letak fisik naskah pada lembar A4 (210 &times; 297 mm) sesuai template saat menyusun.
+                    </p>
                 </div>
             </div>
+
+            <!-- Right: Controls (Zoom In/Out, Presets, Cetak Browser, Tutup) -->
             <div class="flex items-center gap-2">
-                <span id="livePreviewPageCountBadge" class="rounded bg-indigo-900/60 border border-indigo-500/40 px-2.5 py-1 text-xs font-semibold text-indigo-200">
-                    1 Halaman
-                </span>
+                <!-- Zoom Controls Group: Zoom Out (-), Dropdown, Zoom In (+) -->
+                <div class="inline-flex items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-xs">
+                    <button
+                        type="button"
+                        id="btnModalZoomOut"
+                        class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                        title="Perkecil Tampilan (Zoom Out)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+
+                    <select
+                        id="mouModalZoomSelect"
+                        class="h-7 rounded-md border-0 bg-transparent py-0 pl-2 pr-6 text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
+                        title="Pilihan Skala Zoom"
+                    >
+                        <option value="fit-page" selected>Satu Halaman Penuh</option>
+                        <option value="fit-width">Lebar Pas (Fit Width)</option>
+                        <option value="0.50">50%</option>
+                        <option value="0.65">65%</option>
+                        <option value="0.75">75%</option>
+                        <option value="0.85">85%</option>
+                        <option value="1.00">100% (Ukuran Nyata)</option>
+                        <option value="1.15">115%</option>
+                        <option value="1.25">125%</option>
+                        <option value="1.50">150%</option>
+                    </select>
+
+                    <button
+                        type="button"
+                        id="btnModalZoomIn"
+                        class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                        title="Perbesar Tampilan (Zoom In)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Quick Presets -->
                 <button
                     type="button"
-                    id="btnPrintLivePreviewModal"
-                    class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition"
-                    title="Cetak atau Simpan sebagai PDF melalui Browser"
+                    id="btnModalZoomFitPage"
+                    class="hidden md:inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+                    title="Paskan tinggi 1 halaman penuh di layar"
                 >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                    Cetak / Simpan PDF
+                    Penuh 1 Layar
                 </button>
                 <button
                     type="button"
-                    id="btnCloseLivePreviewModal"
-                    class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
-                    title="Tutup (Esc)"
+                    id="btnModalZoomFitWidth"
+                    class="hidden md:inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+                    title="Paskan lebar kertas dengan lebar jendela"
                 >
-                    &times;
+                    Lebar Pas
+                </button>
+
+                <!-- Cetak Browser Button -->
+                <button
+                    type="button"
+                    id="btnModalPrintBrowser"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700"
+                    title="Cetak langsung ke printer atau simpan PDF melalui browser"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 6 2 18 2 18 9"/>
+                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                        <rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                    <span>Cetak</span>
+                </button>
+
+                <!-- Tutup / Esc Button -->
+                <button
+                    type="button"
+                    id="btnModalClosePreview"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+                    title="Tutup pratinjau dan kembali ke editor (Esc)"
+                >
+                    <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    <span>Tutup</span>
                 </button>
             </div>
         </div>
 
-        <!-- Scrollable Stage for A4 Sheets -->
-        <div id="mouLivePreviewScrollBody" class="flex-1 overflow-y-auto p-6 bg-slate-900/60 flex flex-col items-center gap-8">
-            <div id="mouLivePreviewSheetsContainer" class="flex flex-col items-center gap-8 w-full"></div>
+        <!-- Info / Notice Bar (Compact) -->
+        <div class="flex items-center justify-between border-b border-blue-100 bg-blue-50/90 px-4 py-1.5 text-xs text-blue-800 shrink-0">
+            <span>
+                <strong>Pratinjau Lembar A4:</strong> Menampilkan pembagian halaman dan tata letak persis seperti yang Anda susun pada editor dokumen.
+            </span>
+            <span class="text-[11px] text-blue-600 font-mono hidden md:inline">
+                A4 (210 &times; 297 mm)
+            </span>
+        </div>
+
+        <!-- Paper Desk Stage Canvas (Full to top with minimal padding pt-3) -->
+        <div id="mouModalPaperDeskScroll" class="flex-1 overflow-y-auto overflow-x-auto bg-slate-300/80 pt-3 pb-8 px-4 flex flex-col items-center">
+            <div id="mouModalScaleContainer" style="transform-origin: top center; transition: transform 0.15s ease-out; display: flex; flex-direction: column; align-items: center; width: 100%;">
+                <div id="modalPreviewPagesStage" class="mou-preview-pages-stage flex flex-col items-center gap-6">
+                    <!-- Dynamic A4 Sheet cards populated by renderMultiSheetPreview -->
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -1420,6 +1656,203 @@
             showDiagnosticError('Gagal menginisialisasi Tiptap Word Processor: ' + (initErr?.message || String(initErr)));
             return;
         }
+
+        // Zoom computation helpers
+        let currentModalScale = 1.0;
+        const MODAL_ZOOM_LEVELS = [0.4, 0.5, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5, 1.75, 2.0];
+
+        function applyModalZoom(zoomVal) {
+            const scrollContainer = document.getElementById('mouModalPaperDeskScroll');
+            const scaleContainer = document.getElementById('mouModalScaleContainer');
+            const stage = document.getElementById('modalPreviewPagesStage');
+            const zoomSel = document.getElementById('mouModalZoomSelect');
+            if (!scrollContainer || !scaleContainer || !stage) return;
+
+            const a4W = 210 * (96 / 25.4); // ~793.7px
+            const a4H = 297 * (96 / 25.4); // ~1122.5px
+            let scale = 1.0;
+
+            if (zoomVal === 'fit-page') {
+                const availH = Math.max(250, scrollContainer.clientHeight - 24);
+                scale = Math.min(1.2, Math.max(0.35, availH / a4H));
+            } else if (zoomVal === 'fit-width') {
+                const availW = Math.max(250, scrollContainer.clientWidth - 40);
+                scale = Math.min(1.5, Math.max(0.35, availW / a4W));
+            } else {
+                scale = parseFloat(zoomVal) || 1.0;
+            }
+
+            currentModalScale = scale;
+            scaleContainer.style.transform = `scale(${scale})`;
+            scaleContainer.style.transformOrigin = 'top center';
+
+            const totalSheets = stage.querySelectorAll('.mou-preview-a4-sheet').length || 1;
+            const gap = 24;
+            const naturalH = totalSheets * a4H + (totalSheets - 1) * gap;
+            const scaledH = naturalH * scale;
+            scaleContainer.style.marginBottom = `${scaledH - naturalH}px`;
+
+            if (zoomSel && typeof zoomVal === 'string' && (zoomVal === 'fit-page' || zoomVal === 'fit-width')) {
+                zoomSel.value = zoomVal;
+            }
+        }
+
+        function stepModalZoom(direction) {
+            let cur = currentModalScale || 1.0;
+            let target = cur;
+
+            if (direction > 0) {
+                target = MODAL_ZOOM_LEVELS.find(lvl => lvl > cur + 0.03) || MODAL_ZOOM_LEVELS[MODAL_ZOOM_LEVELS.length - 1];
+            } else {
+                const reversed = [...MODAL_ZOOM_LEVELS].reverse();
+                target = reversed.find(lvl => lvl < cur - 0.03) || MODAL_ZOOM_LEVELS[0];
+            }
+
+            const zoomSel = document.getElementById('mouModalZoomSelect');
+            if (zoomSel) {
+                for (let opt of zoomSel.options) {
+                    if (parseFloat(opt.value) && Math.abs(parseFloat(opt.value) - target) < 0.03) {
+                        zoomSel.value = opt.value;
+                        break;
+                    }
+                }
+            }
+
+            applyModalZoom(target);
+        }
+
+        function applyInlineZoom(zoomVal) {
+            const scrollContainer = document.getElementById('mouMultiSheetPreviewContainer');
+            const scaleContainer = document.getElementById('mouInlineScaleContainer');
+            const stage = document.getElementById('mouMultiSheetPreviewStage');
+            if (!scrollContainer || !scaleContainer || !stage) return;
+
+            const a4W = 210 * (96 / 25.4);
+            const a4H = 297 * (96 / 25.4);
+            let scale = 1.0;
+
+            if (zoomVal === 'fit-page') {
+                const availH = Math.max(300, scrollContainer.clientHeight - 130);
+                scale = Math.min(1.0, Math.max(0.35, availH / a4H));
+            } else if (zoomVal === 'fit-width') {
+                const availW = Math.max(300, scrollContainer.clientWidth - 56);
+                scale = Math.min(1.15, Math.max(0.4, availW / a4W));
+            } else {
+                scale = parseFloat(zoomVal) || 1.0;
+            }
+
+            scaleContainer.style.transform = `scale(${scale})`;
+            scaleContainer.style.transformOrigin = 'top center';
+
+            const totalSheets = stage.querySelectorAll('.mou-preview-a4-sheet').length || 1;
+            const gap = 28;
+            const naturalH = totalSheets * a4H + (totalSheets - 1) * gap;
+            const scaledH = naturalH * scale;
+            scaleContainer.style.marginBottom = `${scaledH - naturalH}px`;
+        }
+
+        function openA4PreviewModal() {
+            const modal = document.getElementById('mouA4PreviewModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.classList.add('overflow-hidden', 'mou-preview-modal-open');
+
+            requestAnimationFrame(() => {
+                processor.renderMultiSheetPreview('modalPreviewPagesStage', 'mouModalPageCountBadge');
+                const zoomSel = document.getElementById('mouModalZoomSelect');
+                applyModalZoom(zoomSel?.value || 'fit-page');
+            });
+        }
+
+        function closeA4PreviewModal() {
+            const modal = document.getElementById('mouA4PreviewModal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.classList.remove('overflow-hidden', 'mou-preview-modal-open');
+        }
+
+        // Mode Edit vs Mode Pratinjau Lembar A4
+        const btnModeEdit = document.getElementById('btnModeEdit');
+        const btnModePreview = document.getElementById('btnModePreview');
+        const editorView = document.getElementById('mouEditorWorkspaceView');
+        const previewView = document.getElementById('mouMultiSheetPreviewContainer');
+
+        if (btnModeEdit && btnModePreview && editorView && previewView) {
+            btnModeEdit.addEventListener('click', () => {
+                editorView.classList.remove('hidden');
+                previewView.classList.add('hidden');
+                btnModeEdit.className = 'rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-xs';
+                btnModePreview.className = 'rounded-md px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition';
+            });
+
+            btnModePreview.addEventListener('click', () => {
+                openA4PreviewModal();
+            });
+        }
+
+        // Inline Preview Toolbar handlers
+        document.getElementById('btnOpenA4ModalFromInline')?.addEventListener('click', () => {
+            openA4PreviewModal();
+        });
+        document.getElementById('inlinePreviewZoomSelect')?.addEventListener('change', (e) => {
+            applyInlineZoom(e.target.value);
+        });
+
+        // Modal Controls: Zoom In, Zoom Out, Select, Fit Buttons, Print, Close
+        document.getElementById('btnModalZoomIn')?.addEventListener('click', () => {
+            stepModalZoom(1);
+        });
+        document.getElementById('btnModalZoomOut')?.addEventListener('click', () => {
+            stepModalZoom(-1);
+        });
+        document.getElementById('btnModalZoomFitPage')?.addEventListener('click', () => {
+            const zoomSel = document.getElementById('mouModalZoomSelect');
+            if (zoomSel) zoomSel.value = 'fit-page';
+            applyModalZoom('fit-page');
+        });
+        document.getElementById('btnModalZoomFitWidth')?.addEventListener('click', () => {
+            const zoomSel = document.getElementById('mouModalZoomSelect');
+            if (zoomSel) zoomSel.value = 'fit-width';
+            applyModalZoom('fit-width');
+        });
+        document.getElementById('mouModalZoomSelect')?.addEventListener('change', (e) => {
+            applyModalZoom(e.target.value);
+        });
+        document.getElementById('btnModalPrintBrowser')?.addEventListener('click', () => {
+            window.print();
+        });
+        document.getElementById('btnModalClosePreview')?.addEventListener('click', closeA4PreviewModal);
+        document.getElementById('mouA4PreviewModal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'mouA4PreviewModal') {
+                closeA4PreviewModal();
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('mouA4PreviewModal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    closeA4PreviewModal();
+                }
+            }
+        });
+        window.addEventListener('resize', () => {
+            const modal = document.getElementById('mouA4PreviewModal');
+            if (modal && !modal.classList.contains('hidden')) {
+                const sel = document.getElementById('mouModalZoomSelect');
+                if (sel && (sel.value === 'fit-page' || sel.value === 'fit-width')) {
+                    applyModalZoom(sel.value);
+                }
+            }
+            const inlineContainer = document.getElementById('mouMultiSheetPreviewContainer');
+            if (inlineContainer && !inlineContainer.classList.contains('hidden')) {
+                const inlineSel = document.getElementById('inlinePreviewZoomSelect');
+                if (inlineSel && (inlineSel.value === 'fit-page' || inlineSel.value === 'fit-width')) {
+                    applyInlineZoom(inlineSel.value);
+                }
+            }
+        });
 
         // Blank Document, Sample MoU & Saved Template Loader
         document.getElementById('btnNewBlankDoc')?.addEventListener('click', () => {

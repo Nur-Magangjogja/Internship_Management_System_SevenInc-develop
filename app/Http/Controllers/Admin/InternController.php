@@ -39,6 +39,48 @@ class InternController extends Controller
         return view('user.skl', compact('intern', 'user'));
     }
 
+    public function showLOA($internId)
+    {
+        $intern = \App\Models\InternshipRegistration::findOrFail($internId);
+        $user = $intern->user ?? null;
+
+        if (!view()->exists('user.loa')) {
+            abort(404, 'File LOA tidak ditemukan di resources/views/user/loa.blade.php');
+        }
+
+        /** @var \App\Services\DocumentGeneratorService $docService */
+        $docService = app(\App\Services\DocumentGeneratorService::class);
+        $internLoa = $docService->ensureLoaGenerated($intern, auth()->user());
+
+        $brandData = $intern->brandRel;
+        $companyName = $brandData->name ?? $intern->brand ?? 'Seven Inc';
+        $signatoryName = $brandData->signatory_name ?? 'Ari Setia Husbana';
+        $signatoryPosition = $brandData->signatory_position ?? 'HRD';
+
+        $logoData = $docService->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
+        $stampData = $docService->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $rows = $docService->buildRows([$intern]);
+
+        return view('user.loa', [
+            'intern'          => $intern,
+            'loaNumber'       => $internLoa->loa_number,
+            'user'            => $user,
+            'loaSettings'     => (object)[
+                'header_text'        => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+                'footer_text'        => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+                'company_name'       => $companyName,
+                'company_address'    => $brandData?->company_address,
+                'signatory_name'     => $signatoryName,
+                'signatory_position' => $signatoryPosition,
+            ],
+            'rows'            => $rows,
+            'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+            'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+            'logoData'        => $logoData,
+            'stampData'       => $stampData,
+        ]);
+    }
+
 
     private function sendAcceptedEmail(IR $intern): void
     {
@@ -289,18 +331,50 @@ class InternController extends Controller
             $interns = $query->paginate(25)->withQueryString();
         }
 
-        return view('interns.index', [
-            'interns'   => $interns,
-            'title'     => $title,
-            'scope'     => $scope,
-            'brands'    => \App\Models\Brand::orderBy('name')->get(),
-            'divisions' => \App\Models\Division::orderBy('name')->get(),
-            'cities'    => \App\Models\City::orderBy('name')->get(),
-            'institutions' => \App\Models\Institution::orderBy('name')->get(),
-            'faculties' => \App\Models\Faculty::orderBy('name')->get(),
-            'studyPrograms' => \App\Models\StudyProgram::orderBy('name')->get(),
-        ]);
-    }
+            // Ambil form_fields aktif tahun berjalan untuk FE
+            $formFields = [];
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
+                    $targetYear = (int) now()->year;
+                    $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                        ?: \App\Models\FormSchema::activePublished()->first()
+                        ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
+
+                    if ($activeSchema) {
+                        $formFields = $activeSchema->fields()
+                            ->active()
+                            ->orderBy('sort_order')
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                            ->unique('field_key')
+                            ->values()
+                            ->toArray();
+                    } else {
+                        $formFields = \App\Models\FormField::active()
+                            ->whereNull('form_schema_id')
+                            ->orderBy('sort_order')
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                            ->unique('field_key')
+                            ->values()
+                            ->toArray();
+                    }
+                }
+            } catch (\Throwable $e) {
+                // abaikan jika tabel belum siap
+            }
+
+            return view('interns.index', [
+                'interns'       => $interns,
+                'title'         => $title,
+                'scope'         => $scope,
+                'brands'        => \App\Models\Brand::orderBy('name')->get(),
+                'divisions'     => \App\Models\Division::orderBy('name')->get(),
+                'cities'        => \App\Models\City::orderBy('name')->get(),
+                'institutions'  => \App\Models\Institution::orderBy('name')->get(),
+                'faculties'     => \App\Models\Faculty::orderBy('name')->get(),
+                'studyPrograms' => \App\Models\StudyProgram::orderBy('name')->get(),
+                'formFields'    => $formFields,
+            ]);
+        }
 
     public function index(Request $request)
     {
@@ -353,12 +427,9 @@ class InternController extends Controller
         );
     }
 
-    /**
-     * PATCH /admin/interns/{intern}/status
-     */
     public function update(Request $request, $id)
     {
-        $intern = IR::findOrFail($id);
+        $intern = $id instanceof IR ? $id : IR::findOrFail($id);
 
         // Validasi semua field yang bisa diedit via modal Edit
         $validatedData = $request->validate([
@@ -390,7 +461,7 @@ class InternController extends Controller
             'end_date'               => 'nullable|string|max:255',
             'planned_duration'       => 'nullable|string|max:100',
             'wfo_readiness'          => 'nullable|string|max:100',
-            'schedule_shift_readiness' => 'nullable|string|max:100',
+            'schedule_shift_readiness' => 'nullable|string|max:255',
             'has_laptop'             => 'nullable',
             // Keahlian & Alat
             'design_software'        => 'nullable|string|max:255',
@@ -400,33 +471,121 @@ class InternController extends Controller
             'owned_tools'            => 'nullable|string|max:255',
             // Informasi Tambahan
             'current_activities'     => 'nullable|string',
-            'boarding_info'          => 'nullable|string|max:100',
+            'boarding_info'          => 'nullable|string|max:255',
 
             'social_media_instagram' => 'nullable|string|max:255',
             'internship_info_sources'=> 'nullable',
+            // File berkas pendaftaran (opsional saat edit)
+            'cv'                     => 'nullable|file|max:10240',
+            'identity'               => 'nullable|file|max:10240',
+            'portfolio'              => 'nullable|file|max:20480',
+            'cover_letter'           => 'nullable|file|max:10240',
+            'proposal'               => 'nullable|file|max:10240',
+            'supporting_document'    => 'nullable|file|max:10240',
+            'profile_photo'          => 'nullable|file|max:10240',
             // Status & Brand (dikelola admin)
             'internship_status'      => 'nullable|in:waiting,active,completed,exited,pending,accepted,rejected',
             'brand'                  => 'nullable|string|max:100',
             'brand_id'               => 'nullable',
+            'reason'                 => 'nullable|string|max:500',
+            'correction_reason'      => 'nullable|string|max:500',
         ]);
 
-        // Normalisasi tanggal ke Y-m-d jika berhasil di-parse
+        // Simpan file berkas baru jika ada yang diunggah via form edit
+        $fileFields = ['cv', 'identity', 'portfolio', 'cover_letter', 'proposal', 'supporting_document', 'profile_photo'];
+        foreach ($fileFields as $fKey) {
+            if ($request->hasFile($fKey)) {
+                $file = $request->file($fKey);
+                $path = $file->store("attachments/{$intern->id}", 'public');
+                $attType = match($fKey) {
+                    'identity'            => 'ktm_ktp',
+                    'portfolio'           => 'portofolio',
+                    'cover_letter'        => 'surat_pengantar',
+                    'supporting_document' => 'dokumen_pendukung',
+                    'profile_photo'       => 'pasfoto',
+                    default               => $fKey,
+                };
+                if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
+                    \App\Models\RegistrationAttachment::updateOrCreate(
+                        ['internship_registration_id' => $intern->id, 'attachment_type' => $attType],
+                        [
+                            'category'          => \App\Models\RegistrationAttachment::getCategoryLabel($attType),
+                            'file_path'         => $path,
+                            'original_name'     => $file->getClientOriginalName(),
+                            'file_size'         => $file->getSize(),
+                            'mime_type'         => $file->getMimeType(),
+                            'drive_sync_status' => \App\Models\RegistrationAttachment::STATUS_PENDING,
+                        ]
+                    );
+                }
+                if ($fKey === 'profile_photo' && \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'profile_photo')) {
+                    $intern->profile_photo = $path;
+                    $intern->saveQuietly();
+                }
+            }
+            unset($validatedData[$fKey]);
+        }
+
+        // Normalisasi tanggal ke Y-m-d jika berhasil di-parse atau null jika string kosong
         foreach (['born_date', 'start_date', 'end_date'] as $dateField) {
-            if (!empty($validatedData[$dateField])) {
-                try {
-                    $validatedData[$dateField] = Carbon::parse($validatedData[$dateField])->format('Y-m-d');
-                } catch (\Throwable) {
-                    // biarkan string asli
+            if (array_key_exists($dateField, $validatedData)) {
+                $rawDate = trim((string)$validatedData[$dateField]);
+                if ($rawDate === '' || $rawDate === '-') {
+                    $validatedData[$dateField] = null;
+                } else {
+                    try {
+                        $validatedData[$dateField] = Carbon::parse($rawDate)->format('Y-m-d');
+                    } catch (\Throwable) {
+                        // biarkan string asli
+                    }
                 }
             }
         }
 
-        // Normalisasi string kosong birth_place & religion ke NULL
-        if (array_key_exists('birth_place', $validatedData) && trim((string)$validatedData['birth_place']) === '') {
-            $validatedData['birth_place'] = null;
+        // Normalisasi string kosong ke NULL untuk field teks/opsional
+        foreach ([
+            'birth_place', 'religion', 'student_id', 'gender', 'phone_number',
+            'internship_type', 'internship_arrangement', 'internship_reason',
+            'current_status', 'english_book_ability', 'supervisor_name', 'supervisor_contact',
+            'planned_duration', 'wfo_readiness', 'current_activities', 'social_media_instagram'
+        ] as $fKey) {
+            if (array_key_exists($fKey, $validatedData) && trim((string)$validatedData[$fKey]) === '') {
+                $validatedData[$fKey] = null;
+            }
         }
-        if (array_key_exists('religion', $validatedData) && trim((string)$validatedData['religion']) === '') {
-            $validatedData['religion'] = null;
+
+        // Normalisasi boarding_info
+        if (array_key_exists('boarding_info', $validatedData)) {
+            $bi = trim((string)$validatedData['boarding_info']);
+            if ($bi === '' || $bi === '-') {
+                $validatedData['boarding_info'] = null;
+            } else {
+                $biLower = strtolower($bi);
+                if (str_starts_with($biLower, 'ya') || str_contains($biLower, 'butuh rekomendasi') || str_contains($biLower, 'butuh info')) {
+                    $validatedData['boarding_info'] = 'Ya';
+                } elseif (str_starts_with($biLower, 'tidak')) {
+                    $validatedData['boarding_info'] = 'Tidak';
+                } else {
+                    $validatedData['boarding_info'] = $bi;
+                }
+            }
+        }
+
+        // Normalisasi schedule_shift_readiness
+        if (array_key_exists('schedule_shift_readiness', $validatedData)) {
+            $ssr = trim((string)$validatedData['schedule_shift_readiness']);
+            if ($ssr === '' || $ssr === '-') {
+                $validatedData['schedule_shift_readiness'] = null;
+            } else {
+                $ssrLower = strtolower($ssr);
+                if (str_contains($ssrLower, 'sanggup') && !str_contains($ssrLower, 'tidak')) {
+                    $validatedData['schedule_shift_readiness'] = 'Sanggup';
+                } elseif (str_contains($ssrLower, 'tidak')) {
+                    $validatedData['schedule_shift_readiness'] = 'Tidak Sanggup';
+                } else {
+                    $validatedData['schedule_shift_readiness'] = $ssr;
+                }
+            }
         }
 
         // Cegah silent data loss: tolak nilai baru jika database belum siap
@@ -467,18 +626,25 @@ class InternController extends Controller
             $validatedData['internship_info_sources'] = implode(', ', array_filter($validatedData['internship_info_sources']));
         }
 
-        // Normalisasi has_laptop ke boolean
+        // Normalisasi has_laptop ke boolean atau null
         if (array_key_exists('has_laptop', $validatedData)) {
             $hl = $validatedData['has_laptop'];
-            $validatedData['has_laptop'] = ($hl === '1' || $hl === 1 || $hl === true || strtolower((string)$hl) === 'ya');
+            if ($hl === null || $hl === '') {
+                $validatedData['has_laptop'] = null;
+            } else {
+                $validatedData['has_laptop'] = in_array(strtolower(trim((string)$hl)), ['1', 'true', 'ya', 'yes', 'y'], true);
+            }
         }
 
         if (array_key_exists('current_city', $validatedData)) {
             if (!empty($validatedData['current_city'])) {
                 $validatedData['city_id'] = $getRelationId(\App\Models\City::class, $validatedData['current_city']);
+            } else {
+                $validatedData['city_id'] = null;
             }
             unset($validatedData['current_city']);
         }
+
         if (array_key_exists('institution_name', $validatedData)) {
             if (!empty($validatedData['institution_name'])) {
                 $instName = trim($validatedData['institution_name']);
@@ -495,22 +661,61 @@ class InternController extends Controller
                         'is_active'       => true,
                     ])->id;
                 }
+            } else {
+                $validatedData['institution_id'] = null;
             }
             unset($validatedData['institution_name']);
         }
+
         if (array_key_exists('faculty', $validatedData)) {
             if (!empty($validatedData['faculty'])) {
                 $instId = $validatedData['institution_id'] ?? $intern->institution_id;
                 $extra = $instId ? ['institution_id' => $instId] : [];
                 $validatedData['faculty_id'] = $getRelationId(\App\Models\Faculty::class, $validatedData['faculty'], $extra);
+            } else {
+                $validatedData['faculty_id'] = null;
             }
             unset($validatedData['faculty']);
         }
+
         if (array_key_exists('study_program', $validatedData)) {
             if (!empty($validatedData['study_program'])) {
-                $facId = $validatedData['faculty_id'] ?? $intern->faculty_id;
-                $extra = $facId ? ['faculty_id' => $facId] : [];
-                $validatedData['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $validatedData['study_program'], $extra);
+                $progName = trim($validatedData['study_program']);
+                $instId   = $validatedData['institution_id'] ?? $intern->institution_id;
+                $facId    = array_key_exists('faculty_id', $validatedData) ? $validatedData['faculty_id'] : $intern->faculty_id;
+
+                $scopedProg = \App\Models\StudyProgram::whereRaw('LOWER(name) = ?', [strtolower($progName)])
+                    ->when($instId, function ($q) use ($instId) {
+                        $q->whereHas('faculty', fn($fq) => $fq->where('institution_id', $instId));
+                    })
+                    ->when($facId, function ($q) use ($facId) {
+                        $q->where('faculty_id', $facId);
+                    })
+                    ->first();
+
+                if ($scopedProg) {
+                    $validatedData['study_program_id'] = $scopedProg->id;
+                    if (!$facId) {
+                        $validatedData['faculty_id'] = $scopedProg->faculty_id;
+                    }
+                } else {
+                    // Jika belum ada fakultas tapi ada institusi, buat Fakultas Umum agar foreign key valid
+                    if (!$facId && $instId) {
+                        $defaultFac = \App\Models\Faculty::where('institution_id', $instId)->first();
+                        if (!$defaultFac) {
+                            $defaultFac = \App\Models\Faculty::create([
+                                'institution_id' => $instId,
+                                'name'           => 'Fakultas Umum',
+                            ]);
+                        }
+                        $facId = $defaultFac->id;
+                        $validatedData['faculty_id'] = $facId;
+                    }
+                    $extra = $facId ? ['faculty_id' => $facId] : [];
+                    $validatedData['study_program_id'] = $getRelationId(\App\Models\StudyProgram::class, $progName, $extra);
+                }
+            } else {
+                $validatedData['study_program_id'] = null;
             }
             unset($validatedData['study_program']);
         }
@@ -521,6 +726,8 @@ class InternController extends Controller
                 if ($divId) {
                     $validatedData['division_id'] = $divId;
                 }
+            } else {
+                $validatedData['division_id'] = null;
             }
             unset($validatedData['internship_interest']);
         }
@@ -530,6 +737,8 @@ class InternController extends Controller
                 if ($divId) {
                     $validatedData['division_id'] = $divId;
                 }
+            } else {
+                $validatedData['division_id'] = null;
             }
         }
 
@@ -549,7 +758,7 @@ class InternController extends Controller
             }
             unset($validatedData['brand']);
         }
-        if (array_key_exists('brand_id', $validatedData)) {
+        if (array_key_exists('brand_id', $validatedData) && !array_key_exists('brand', $request->all())) {
             if (!empty($validatedData['brand_id'])) {
                 $b = \App\Models\Brand::find($validatedData['brand_id']);
                 if ($b) {
@@ -645,8 +854,10 @@ class InternController extends Controller
         $trackedFields = [
             'name', 'fullname', 'birth_place', 'religion', 'phone', 'phone_number', 'institution_id', 'faculty_id',
             'study_program_id', 'major', 'division_id', 'brand_id', 'start_date', 'end_date',
+            'internship_type', 'internship_arrangement', 'internship_reason', 'current_status', 'english_book_ability',
             'planned_duration', 'wfo_readiness', 'schedule_shift_readiness', 'has_laptop',
-            'status_pembimbing', 'pembimbing_nama', 'pembimbing_phone'
+            'status_pembimbing', 'pembimbing_nama', 'pembimbing_phone', 'supervisor_name', 'supervisor_contact',
+            'boarding_info', 'current_activities', 'social_media_instagram'
         ];
         $beforeChanges = [];
         $afterChanges = [];
@@ -675,7 +886,7 @@ class InternController extends Controller
         if (isset($validatedData['internship_status']) && $validatedData['internship_status'] !== $intern->internship_status) {
             $oldStatus = $intern->internship_status;
             $newStatus = $validatedData['internship_status'];
-            $reason    = $request->input('reason') ?? $request->input('correction_reason');
+            $reason    = $request->input('reason') ?: ($request->input('correction_reason') ?: 'Koreksi data pemagang oleh administrator.');
             $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
 
             try {
@@ -733,6 +944,40 @@ class InternController extends Controller
             app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForRegistration($intern);
         } catch (\Throwable $sheetErr) {
             \Illuminate\Support\Facades\Log::warning("Spreadsheet queue sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
+        }
+
+        try {
+            \App\Services\ContactMatchingService::ensureContactAndFollowUpCycle($intern);
+        } catch (\Throwable $contactErr) {
+            \Illuminate\Support\Facades\Log::warning("Auto contact/followup sync error on admin intern update #{$intern->id}: " . $contactErr->getMessage());
+        }
+
+        // Simpan jawaban kustom (custom fields) jika ada
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('registration_custom_answers') && \Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
+                $knownCols = \Illuminate\Support\Facades\Schema::getColumnListing('internship_registrations');
+                $customKeys = \App\Models\FormField::active()
+                    ->whereNotNull('field_key')
+                    ->pluck('field_key')
+                    ->filter(fn($k) => !in_array($k, $knownCols, true))
+                    ->unique()
+                    ->all();
+
+                foreach ($customKeys as $ck) {
+                    if ($request->has($ck)) {
+                        $cVal = $request->input($ck);
+                        if (is_array($cVal)) {
+                            $cVal = implode(', ', array_filter($cVal));
+                        }
+                        \App\Models\RegistrationCustomAnswer::updateOrCreate(
+                            ['registration_id' => $intern->id, 'field_key' => $ck],
+                            ['answer_value' => $cVal !== null ? (string)$cVal : null]
+                        );
+                    }
+                }
+            }
+        } catch (\Throwable $caErr) {
+            \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
         }
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);
@@ -919,53 +1164,13 @@ class InternController extends Controller
 
     private function checkAndGenerateLoa(IR $intern, $oldStatus)
     {
-        if ($oldStatus !== IR::STATUS_ACCEPTED && $intern->internship_status === IR::STATUS_ACCEPTED) {
-            $brandData = null;
-            if ($intern->brand_id) {
-                $brandData = \App\Models\Brand::find($intern->brand_id);
-            } elseif ($intern->brand) {
-                $brandData = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim($intern->brand))])->first();
+        $eligibleStatuses = [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE];
+        if (!in_array($oldStatus, $eligibleStatuses, true) && in_array($intern->internship_status, $eligibleStatuses, true)) {
+            try {
+                app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($intern);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal generate LOA pemagang #{$intern->id}: " . $e->getMessage());
             }
-
-            $companyName = $brandData->name ?? $intern->brand ?? 'Seven Inc';
-            $signatoryName = $brandData->signatory_name ?? 'Ari Setia Husbana';
-            $signatoryPosition = $brandData->signatory_position ?? 'HRD';
-
-            $roman = [1=>'I',2=>'II',3=>'III',4=>'IV',5=>'V',6=>'VI',7=>'VII',8=>'VIII',9=>'IX',10=>'X',11=>'XI',12=>'XII'];
-            $romanMonth = $roman[(int)date('n')];
-            $year = date('Y');
-
-            $last = \App\Models\InternLoa::where('loa_number', 'LIKE', "%/LOA/%/{$romanMonth}/{$year}")
-                ->orderByDesc('id')->first();
-            $seq = 1;
-            if ($last && preg_match('/^(\d{3})\/LOA\//', $last->loa_number, $m)) {
-                $seq = (int)$m[1] + 1;
-            }
-
-            $interest = $intern->internship_interest ?? '';
-            $dbDivision = \App\Models\Division::where('name', $interest)
-                ->orWhere('slug', \Illuminate\Support\Str::slug($interest, '-'))
-                ->first();
-                
-            $division = $dbDivision?->code ?? 'UMUM';
-            $brandStr = strtoupper($brandData?->code ?? 'SI');
-
-            $seqStr = str_pad((string)$seq, 3, '0', STR_PAD_LEFT);
-            $loaNumber = "{$seqStr}/LOA/{$division}/SEVEN.{$brandStr}/{$romanMonth}/{$year}";
-
-            \App\Models\InternLoa::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
-                    'loa_number' => $loaNumber,
-                    'accepted_start_date' => $intern->start_date ?? now(),
-                    'accepted_end_date' => $intern->end_date ?? now(),
-                    'company_name' => $companyName,
-                    'company_logo_path' => $brandData?->logo,
-                    'signatory_name' => $signatoryName,
-                    'signatory_position' => $signatoryPosition,
-                    'signature_image_path' => $brandData?->signature,
-                ]
-            );
         }
     }
 

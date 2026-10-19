@@ -28,12 +28,21 @@
     .sidebar-link:hover {
       background-color: rgba(255,255,255,0.10);
     }
+
+    /* Sidebar custom subtle scrollbar */
+    aside nav::-webkit-scrollbar {
+      width: 4px;
+    }
+    aside nav::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
   </style>
 </head>
 
 <body class="bg-gray-50 overflow-x-hidden">
 
-  <div class="flex min-h-screen overflow-x-hidden" x-data="{ mobileSidebarOpen: false }">
+  <div class="flex min-h-screen" x-data="{ mobileSidebarOpen: false }">
 
     {{-- Backdrop Overlay Mobile --}}
     <div x-show="mobileSidebarOpen"
@@ -45,11 +54,11 @@
 
     {{-- ===== SIDEBAR ===== --}}
     <aside :class="mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-           class="fixed inset-y-0 left-0 z-50 w-64 lg:static lg:w-56 flex-shrink-0 flex flex-col transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none"
+           class="fixed inset-y-0 left-0 z-50 lg:z-30 w-64 lg:w-56 flex-shrink-0 flex flex-col transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none"
            style="background-color: #1a5c38;">
 
       {{-- Brand & Mobile Close Button --}}
-      <div class="flex items-center gap-3 px-4 py-5 border-b border-white/10">
+      <div class="flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0">
         <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white font-bold text-sm">
           IH
         </div>
@@ -137,7 +146,7 @@
       </nav>
 
       {{-- Logout --}}
-      <div class="px-3 py-4 border-t border-white/10">
+      <div class="px-3 py-4 border-t border-white/10 flex-shrink-0">
         <form method="POST" action="{{ route('user.logout') }}">
           @csrf
           <button type="submit"
@@ -150,10 +159,10 @@
     </aside>
 
     {{-- ===== MAIN AREA ===== --}}
-    <div class="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+    <div class="flex-1 flex flex-col min-w-0 min-h-screen lg:ml-56">
 
       {{-- ===== TOPBAR ===== --}}
-      <header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
+      <header class="sticky top-0 z-20 h-14 bg-white/95 backdrop-blur-sm border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 flex-shrink-0">
         {{-- Mobile Hamburger & Breadcrumb --}}
         <div class="flex items-center text-sm text-gray-500 min-w-0">
           <button @click="mobileSidebarOpen = !mobileSidebarOpen"
@@ -250,7 +259,7 @@
       </header>
 
       {{-- ===== CONTENT ===== --}}
-      <main class="flex-1 p-6 overflow-y-auto">
+      <main class="flex-1 p-6">
 
         {{-- Flash messages --}}
         @if(session('success'))

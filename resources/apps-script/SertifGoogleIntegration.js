@@ -528,6 +528,9 @@ function doPost(e) {
       case "inspect_sidecar_alignment":
         return handleInspectSidecarAlignmentAction(payload);
 
+      case "clear_tab_data":
+        return handleClearTabDataAction(payload);
+
       default:
         return createJsonResponse({
           success: false,
@@ -633,6 +636,50 @@ function handlePingAction(payload) {
     },
     timestamp: new Date().toISOString()
   }, isSuccess ? 200 : 400);
+}
+
+/**
+ * Handle Clear Tab Data Action (Resets sheet data rows while preserving headers)
+ */
+function handleClearTabDataAction(payload) {
+  var connectionKey = payload.connection_key;
+  var targetTabName = payload.tab_name;
+  var requestedSpreadsheetId = (payload.spreadsheet_id || "").toString().trim();
+  var props = PropertiesService.getScriptProperties();
+  var expectedSpreadsheetId = (connectionKey === "followup")
+    ? props.getProperty("FOLLOWUP_SPREADSHEET_ID")
+    : props.getProperty("REGISTRATION_SPREADSHEET_ID");
+  var spreadsheetId = requestedSpreadsheetId || expectedSpreadsheetId;
+  var headerRowIndex = (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) ? 12 : 1;
+
+  var lock = (typeof LockService !== "undefined" && LockService && LockService.getScriptLock)
+    ? LockService.getScriptLock() : null;
+  if (lock) {
+    try { lock.tryLock(30000); } catch (e) {}
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(targetTabName);
+    if (!sheet) {
+      return createJsonResponse({ success: false, error_code: "TAB_NOT_FOUND", message: "Tab tidak ditemukan." }, 404);
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow > headerRowIndex) {
+      sheet.deleteRows(headerRowIndex + 1, lastRow - headerRowIndex);
+    }
+    SpreadsheetApp.flush();
+    return createJsonResponse({
+      success: true,
+      action: "clear_tab_data",
+      tab_name: targetTabName,
+      cleared_rows: lastRow - headerRowIndex
+    });
+  } catch (err) {
+    return createJsonResponse({ success: false, error_code: "CLEAR_ERROR", message: err.toString() }, 500);
+  } finally {
+    if (lock) { lock.releaseLock(); }
+  }
 }
 
 /**
@@ -898,17 +945,19 @@ function handleUpsertRowAction(payload) {
       }, 409);
     }
 
-    var targetRowIndex = (matchingRows.length === 1) ? matchingRows[0] : -1;
-    var operation = "inserted";
-    if (targetRowIndex > 0) {
-      // UPDATE existing row
-      sheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
-      operation = "updated";
-    } else {
-      // INSERT new row at end (guaranteed after headerRowIndex)
-      targetRowIndex = Math.max(lastRow + 1, headerRowIndex + 1);
-      sheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+    var targetRowIndex = (matchingRows.length === 1) ? matchingRows[0] : Math.max(lastRow + 1, headerRowIndex + 1);
+    var operation = (matchingRows.length === 1) ? "updated" : "inserted";
+
+    // Auto-calculate sequential "No." column if present (e.g. Follow-Up Sheet)
+    for (var c = 0; c < actualHeaders.length; c++) {
+      var hName = actualHeaders[c].toString().trim();
+      if (/^no\.?$|^nomor$/i.test(hName)) {
+        rowValues[c] = targetRowIndex - headerRowIndex;
+        break;
+      }
     }
+
+    sheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
 
     // Explicitly flush pending changes before releasing script lock
     SpreadsheetApp.flush();

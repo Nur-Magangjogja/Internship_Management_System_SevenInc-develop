@@ -299,10 +299,63 @@ class SKLController extends Controller
      * GET /admin/skl/generate/{intern}
      * Form review sebelum generate SKL
      */
+    public function review(Request $request, $id)
+    {
+        $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        return view('admin.documents.skl_review', compact('intern'));
+    }
+
     /**
-     * POST /admin/skl/generate/{intern}
-     * Proses generate & download SKL dari form
+     * Konten raw HTML SKL untuk iframe pratinjau.
+     * GET /admin/skl/raw/{intern}
      */
+    public function rawPreview(Request $request, $id)
+    {
+        $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        $brandCode = $intern->brandRel?->code ?? $intern->brand;
+        $brandData = $intern->brandRel ?? \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim((string)$brandCode))])
+            ->orWhere('code', $brandCode)
+            ->first();
+
+        $companyName    = $brandData->name ?? $brandCode ?? 'Seven Inc';
+        $companyAddress = $brandData?->company_address ?? 'Jl. Raya Janti Gg. Harjuna No.59, Jaranan, Karangjambe, Kec. Banguntapan, Kabupaten Bantul, Daerah Istimewa Yogyakarta 55198';
+        $companyCity    = 'Yogyakarta';
+        $leaderName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
+        $leaderTitle    = $brandData->signatory_position ?? 'Manajer HRD';
+
+        $participantName      = $intern->fullname;
+        $participantId        = $intern->student_id ?? '-';
+        $participantMajor     = $intern->study_program ?? '-';
+        $participantInstitute = $intern->institution_name ?? '-';
+        $divisionName         = $intern->division?->name ?? $intern->internship_interest ?? '-';
+
+        $startAt  = $intern->start_date ? Carbon::parse($intern->start_date)->format('Y-m-d') : Carbon::now()->subMonths(1)->format('Y-m-d');
+        $endAt    = $intern->end_date ? Carbon::parse($intern->end_date)->format('Y-m-d') : Carbon::now()->format('Y-m-d');
+        $startStr = Carbon::parse($startAt)->isoFormat('D MMMM Y');
+        $endStr   = Carbon::parse($endAt)->isoFormat('D MMMM Y');
+
+        $letterDateStr = Carbon::parse($endAt)->isoFormat('D MMMM Y');
+        $letterNumber  = 'SKL/' . Carbon::parse($endAt)->format('Y') . '/' . str_pad($intern->id, 3, '0', STR_PAD_LEFT);
+
+        $logoPath  = public_path('storage/images/logos/logo_seveninc.png');
+        $stampPath = public_path('storage/images/signature/ttd_arisetiahusbana.png');
+        if (!file_exists($stampPath)) {
+            $candidates = glob(public_path('storage/images/signature/*.{png,jpg,jpeg}'), GLOB_BRACE);
+            $stampPath  = !empty($candidates) ? $candidates[0] : null;
+        }
+
+        $activityDescription = 'Telah menyelesaikan seluruh rangkaian kegiatan program magang sesuai dengan ketentuan yang berlaku.';
+        $participantAchievement = 'Sangat Baik';
+
+        return view('user.skl', compact(
+            'companyName','companyAddress','companyCity','leaderName','leaderTitle',
+            'letterNumber','logoPath','stampPath',
+            'participantName','participantId','participantMajor','participantInstitute','divisionName',
+            'startStr','endStr','letterDateStr','activityDescription', 'participantAchievement'
+        ));
+    }
 
     /**
      * GET /admin/skl/download/{user} — download SKL dari Data SKL (tetap ada)
