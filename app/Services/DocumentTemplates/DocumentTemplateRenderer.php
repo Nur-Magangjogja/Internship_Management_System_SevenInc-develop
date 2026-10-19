@@ -33,7 +33,8 @@ class DocumentTemplateRenderer
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig('certificate'), $template->page_config ?? []);
         
         $renderedElementsHtml = static::renderCanvasElementsHtml($layout, $data);
-        $bgImage = $layout['canvas']['background_image'] ?? ($pageConfig['background_image'] ?? '/images/certificate/certificate-bg.png');
+        $rawBg = $layout['canvas']['background_image'] ?? ($pageConfig['background_image'] ?? '/images/certificate/certificate-bg.png');
+        $bgImage = static::resolveImageToBase64($rawBg) ?? $rawBg;
         $bgColor = $layout['canvas']['background_color'] ?? '#ffffff';
         $orientation = strtolower((string) ($pageConfig['orientation'] ?? 'landscape'));
 
@@ -350,6 +351,66 @@ HTML;
     }
 
     /**
+     * Konversi string referensi gambar (SystemAsset ID/preview, storage, public image) menjadi data URI Base64.
+     */
+    public static function resolveImageToBase64(?string $src): ?string
+    {
+        if (empty($src)) {
+            return null;
+        }
+
+        if (str_starts_with($src, 'data:image/')) {
+            return $src;
+        }
+
+        // Resolusi SystemAsset preview atau ID
+        $assetId = null;
+        if (is_numeric($src)) {
+            $assetId = (int) $src;
+        } elseif (preg_match('#^/admin/system-assets/(\d+)/preview#i', $src, $m)) {
+            $assetId = (int) $m[1];
+        }
+
+        if ($assetId && class_exists(\App\Services\SystemAssetService::class)) {
+            try {
+                $service = app(\App\Services\SystemAssetService::class);
+                $b64 = $service->getAssetAsBase64DataUri($assetId);
+                if ($b64) {
+                    return $b64;
+                }
+            } catch (\Throwable) {
+                // Fallback
+            }
+        }
+
+        // Resolusi Storage disk public
+        if (str_starts_with($src, '/storage/')) {
+            $rel = str_replace('/storage/', '', $src);
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($rel)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($rel);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($rel) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+            $localPath = storage_path('app/public/' . ltrim($rel, '/'));
+            if (file_exists($localPath)) {
+                $mime = mime_content_type($localPath) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
+            }
+        }
+
+        // Resolusi Public path (/images/...)
+        if (str_starts_with($src, '/images/')) {
+            $localPath = public_path(ltrim($src, '/'));
+            if (file_exists($localPath)) {
+                $mime = mime_content_type($localPath) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Konversi URL gambar lokal menjadi base64 URI agar DomPDF dapat merender secara offline tanpa dependensi remote network.
      */
     public static function embedLocalImagesAsBase64(string $html): string
@@ -363,19 +424,18 @@ HTML;
                 return $matches[0];
             }
 
-            $localPath = null;
-            if (str_starts_with($src, '/storage/')) {
-                $rel = str_replace('/storage/', '', $src);
-                $localPath = storage_path('app/public/' . ltrim($rel, '/'));
-            } elseif (str_starts_with($src, '/images/')) {
-                $localPath = public_path(ltrim($src, '/'));
+            // Cek jika elemen memiliki data-asset-id
+            $combined = $prefix . ' ' . $suffix;
+            if (preg_match('/\bdata-asset-id\s*=\s*["\'](\d+)["\']/i', $combined, $am)) {
+                $b64 = static::resolveImageToBase64($am[1]);
+                if ($b64) {
+                    return "<img{$prefix}src=\"{$b64}\"{$suffix}>";
+                }
             }
 
-            if ($localPath && file_exists($localPath)) {
-                $mime = mime_content_type($localPath) ?: 'image/png';
-                $base64 = base64_encode(file_get_contents($localPath));
-                $dataUri = "data:{$mime};base64,{$base64}";
-                return "<img{$prefix}src=\"{$dataUri}\"{$suffix}>";
+            $b64 = static::resolveImageToBase64($src);
+            if ($b64) {
+                return "<img{$prefix}src=\"{$b64}\"{$suffix}>";
             }
 
             return $matches[0];

@@ -40,6 +40,13 @@ class MailMergePlaceholderContract
                             $flatValues[$alias] = $flatValues[$mainKey];
                         }
                     }
+                } else {
+                    foreach ($def['aliases'] ?? [] as $alias) {
+                        if (isset($flatValues[$alias])) {
+                            $flatValues[$mainKey] = $flatValues[$alias];
+                            break;
+                        }
+                    }
                 }
             }
         }

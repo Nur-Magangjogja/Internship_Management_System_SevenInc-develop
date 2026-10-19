@@ -72,17 +72,20 @@ class AssetLibraryContract
                         'signature'  => 'signatures',
                         'stamp'      => 'stamps',
                         'background' => 'backgrounds',
+                        'letterhead' => 'letterheads',
                         default      => null,
                     };
                     if ($cat) {
-                        $url = $asset->file_url ?? $asset->public_url ?? ('/media/private-serve?path=' . base64_encode($asset->file_path));
+                        $previewUrl = url('/admin/system-assets/' . $asset->id . '/preview');
                         $catalog[$cat][] = [
-                            'id'    => 'asset_' . $asset->id,
-                            'name'  => $asset->name,
-                            'slot'  => $asset->slot ?? $asset->category,
-                            'url'   => $url,
-                            'thumb' => $url,
-                            'tag'   => '{{asset.' . ($asset->slot ?? $asset->category) . '}}',
+                            'id'         => 'asset_' . $asset->id,
+                            'asset_id'   => $asset->id,
+                            'name'       => $asset->name,
+                            'slot'       => $asset->category,
+                            'url'        => $previewUrl,
+                            'thumb'      => $previewUrl,
+                            'tag'        => '{{' . ($asset->asset_code ?: 'asset.' . $asset->category) . '}}',
+                            'asset_code' => $asset->asset_code,
                         ];
                     }
                 }

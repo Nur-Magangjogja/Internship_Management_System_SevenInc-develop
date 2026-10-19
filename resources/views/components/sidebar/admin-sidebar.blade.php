@@ -51,6 +51,7 @@
             'label' => 'Dokumen & Sertifikat',
             'items' => [
                 ['label' => 'Perpustakaan Aset',    'route' => 'admin.system-assets.index',   'icon' => 'archive'],
+                ['label' => 'Template Dokumen',     'route' => 'admin.document-templates.index', 'icon' => 'file'],
                 ['label' => 'Data LOA',             'route' => 'admin.documents.loas',        'icon' => 'file'],
                 ['label' => 'Surat Penilaian',      'route' => 'interns.assessment.index',    'icon' => 'file'],
                 ['label' => 'Data SKL',             'route' => 'admin.documents.skls',        'icon' => 'file'],
@@ -89,6 +90,7 @@
             [
                 'label' => 'Dokumen & Sertifikat',
                 'items' => [
+                    ['label' => 'Template Dokumen',     'route' => 'admin.document-templates.index', 'icon' => 'file'],
                     ['label' => 'Data LOA',             'route' => 'admin.documents.loas',        'icon' => 'file'],
                     ['label' => 'Surat Penilaian',      'route' => 'interns.assessment.index',    'icon' => 'file'],
                     ['label' => 'Data SKL',             'route' => 'admin.documents.skls',        'icon' => 'file'],
@@ -177,6 +179,7 @@
                                 'hr.mous.index'             => request()->routeIs('hr.mous.*'),
                                 'hr.institutions.index'     => request()->routeIs('hr.institutions.*'),
                                 'hr.follow-up.index'        => request()->routeIs('hr.follow-up.*'),
+                                'admin.document-templates.index' => request()->routeIs('admin.document-templates.*'),
                                 'admin.documents.loas'      => request()->routeIs('admin.documents.loas*') || request()->routeIs('admin.loa.*'),
                                 'interns.assessment.index'  => request()->routeIs('interns.assessment.*') || request()->routeIs('admin.generateForm'),
                                 'admin.documents.skls'      => request()->routeIs('admin.documents.skls*') || request()->routeIs('admin.skl.*'),
