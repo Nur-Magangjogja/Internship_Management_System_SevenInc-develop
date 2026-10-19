@@ -7,10 +7,11 @@ class AssetLibraryContract
     /**
      * Ambil katalog aset yang tersedia untuk disisipkan ke editor.
      * Menggunakan mock aman jika endpoint remote Asset Registry belum aktif di worktree ini.
+     * Beradaptasi otomatis jika model SystemAsset milik Antigravity 1 sudah aktif di database runtime.
      */
     public static function getAssetCatalog(): array
     {
-        return [
+        $catalog = [
             'logos' => [
                 [
                     'id'    => 'asset_logo_seven',
@@ -60,5 +61,36 @@ class AssetLibraryContract
                 ],
             ],
         ];
+
+        // Jika SystemAsset aktif di database runtime, integrasikan item dinamis
+        if (class_exists(\App\Models\SystemAsset::class) && \Illuminate\Support\Facades\Schema::hasTable('system_assets')) {
+            try {
+                $assets = \App\Models\SystemAsset::where('is_active', true)->get();
+                foreach ($assets as $asset) {
+                    $cat = match ($asset->category) {
+                        'logo'       => 'logos',
+                        'signature'  => 'signatures',
+                        'stamp'      => 'stamps',
+                        'background' => 'backgrounds',
+                        default      => null,
+                    };
+                    if ($cat) {
+                        $url = $asset->file_url ?? $asset->public_url ?? ('/media/private-serve?path=' . base64_encode($asset->file_path));
+                        $catalog[$cat][] = [
+                            'id'    => 'asset_' . $asset->id,
+                            'name'  => $asset->name,
+                            'slot'  => $asset->slot ?? $asset->category,
+                            'url'   => $url,
+                            'thumb' => $url,
+                            'tag'   => '{{asset.' . ($asset->slot ?? $asset->category) . '}}',
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback gracefully ke catalog default
+            }
+        }
+
+        return $catalog;
     }
 }

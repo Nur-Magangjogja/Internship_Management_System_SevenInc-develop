@@ -13,10 +13,11 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware(['web', 'auth', 'role:admin,hr_staff', 'prevent-back'])
-    ->prefix('admin/document-templates')
-    ->name('admin.document-templates.')
-    ->group(function () {
+if (!Route::has('admin.document-templates.index')) {
+    Route::middleware(['web', 'auth', 'role:admin,hr_staff', 'prevent-back'])
+        ->prefix('admin/document-templates')
+        ->name('admin.document-templates.')
+        ->group(function () {
         // Katalog dan API pendukung editor
         Route::get('/api/assets', [DocumentTemplateController::class, 'apiAssets'])->name('api-assets');
 
@@ -38,3 +39,4 @@ Route::middleware(['web', 'auth', 'role:admin,hr_staff', 'prevent-back'])
         Route::get('/{documentTemplate}/versions', [DocumentTemplateController::class, 'versions'])->name('versions');
         Route::post('/{documentTemplate}/versions/{version}/restore', [DocumentTemplateController::class, 'restoreVersion'])->name('versions.restore');
     });
+}

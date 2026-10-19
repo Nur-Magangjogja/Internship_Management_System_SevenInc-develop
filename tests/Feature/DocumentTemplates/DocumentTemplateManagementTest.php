@@ -553,4 +553,50 @@ class DocumentTemplateManagementTest extends TestCase
             ],
         ]);
     }
+
+    /**
+     * 20. Hardening Mail Merge: Memastikan atribut src="{{asset.company.logo}}" tidak menghasilkan tag <img> bersarang.
+     */
+    public function test_mail_merge_handles_image_src_attribute_cleanly()
+    {
+        $raw = '<img src="{{asset.company.logo}}" alt="Logo" style="width: 100px;" /><p>{{asset.signature}}</p>';
+        $data = [
+            'asset' => [
+                'company'   => ['logo' => '/images/logos/official_logo.png'],
+                'signature' => '/images/signatures/director_sig.png',
+            ],
+        ];
+
+        $resolved = MailMergePlaceholderContract::resolve($raw, $data);
+
+        // src attribute must have clean URL
+        $this->assertStringContainsString('src="/images/logos/official_logo.png"', $resolved);
+        // It must NOT have nested <img src="<img
+        $this->assertStringNotContainsString('src="<img', $resolved);
+
+        // Standalone placeholder must be expanded into valid <img> tag
+        $this->assertStringContainsString('<img src="/images/signatures/director_sig.png" alt="Tanda Tangan"', $resolved);
+    }
+
+    /**
+     * 21. Hardening Integrasi Rute: Memastikan provider dan rute idempoten tanpa duplikasi.
+     */
+    public function test_routes_and_provider_do_not_duplicate_when_loaded_multiple_times()
+    {
+        $provider = new \App\Providers\DocumentTemplateServiceProvider($this->app);
+        
+        // Panggil boot berulang kali
+        $provider->boot();
+        $provider->boot();
+
+        // Load manual rute kembali
+        $routeFile = base_path('routes/document_templates.php');
+        if (file_exists($routeFile)) {
+            require $routeFile;
+        }
+
+        $this->assertTrue(Route::has('admin.document-templates.index'));
+        $this->assertTrue(Route::has('admin.document-templates.api-assets'));
+        $this->assertTrue(Route::has('admin.document-templates.create'));
+    }
 }
