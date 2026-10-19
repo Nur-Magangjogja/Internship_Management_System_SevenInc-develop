@@ -251,6 +251,28 @@
                     >
                 </div>
 
+                @if($selectedInstitution && $selectedInstitution->contacts->isNotEmpty())
+                    <div class="md:col-span-2 mb-1 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <label class="block text-[11px] font-bold text-slate-600 mb-1.5">
+                            Pilih Cepat Pejabat / PIC Penandatangan dari Daftar Kontak:
+                        </label>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach($selectedInstitution->contacts as $c)
+                                <button
+                                    type="button"
+                                    onclick="fillSignatory('{{ addslashes($c->name) }}', '{{ addslashes($c->position_title ?? 'Pimpinan Institusi') }}', '{{ addslashes($c->phone ?? '') }}', '{{ addslashes($c->email ?? '') }}')"
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 transition"
+                                >
+                                    <span class="font-semibold">{{ $c->name }}</span>
+                                    @if($c->position_title)
+                                        <span class="text-slate-400">({{ $c->position_title }})</span>
+                                    @endif
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">
                         Nama Pejabat Penandatangan Institusi <span class="text-rose-500">*</span>
@@ -259,7 +281,7 @@
                         type="text"
                         name="first_party_signatory_name"
                         id="firstPartySignatory"
-                        value="{{ old('first_party_signatory_name', $selectedInstitution?->contacts->first()?->name ?? '') }}"
+                        value="{{ old('first_party_signatory_name', $selectedContact?->name ?? $selectedInstitution?->contacts->first()?->name ?? '') }}"
                         required
                         placeholder="Contoh: Prof. Dr. Ir. Sutrisno, M.T."
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
@@ -274,7 +296,7 @@
                         type="text"
                         name="first_party_signatory_title"
                         id="firstPartyTitle"
-                        value="{{ old('first_party_signatory_title', $selectedInstitution?->contacts->first()?->position_title ?? 'Dekan / Kepala Sekolah') }}"
+                        value="{{ old('first_party_signatory_title', $selectedContact?->position_title ?? $selectedInstitution?->contacts->first()?->position_title ?? 'Dekan / Kepala Sekolah') }}"
                         required
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none"
                     >
@@ -615,6 +637,18 @@ function handleInstitutionChange(institutionId) {
         url.searchParams.set('mou_template_id', tplSelect.value);
     }
     window.location.href = url.toString();
+}
+
+function fillSignatory(name, title, phone, email) {
+    const nameEl = document.getElementById('firstPartySignatory');
+    const titleEl = document.getElementById('firstPartyTitle');
+    const phoneEl = document.getElementById('firstPartyPhone');
+    const emailEl = document.getElementById('firstPartyEmail');
+
+    if (nameEl && name) nameEl.value = name;
+    if (titleEl && title) titleEl.value = title;
+    if (phoneEl && phone && !phoneEl.value) phoneEl.value = phone;
+    if (emailEl && email && !emailEl.value) emailEl.value = email;
 }
 </script>
 @endsection

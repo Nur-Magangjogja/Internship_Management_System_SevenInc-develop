@@ -177,5 +177,59 @@ class InstitutionContact extends Model
     {
         return $this->hasMany(FollowUpCycle::class, 'institution_contact_id');
     }
+
+    /**
+     * Siklus follow-up kontak ini pada tahun berjalan.
+     */
+    public function currentYearCycle()
+    {
+        return $this->hasOne(FollowUpCycle::class, 'institution_contact_id')
+            ->where('cycle_year', (int) date('Y'))
+            ->latestOfMany('id');
+    }
+
+    /**
+     * Siklus follow-up kontak ini yang paling terbaru.
+     */
+    public function latestCycle()
+    {
+        return $this->hasOne(FollowUpCycle::class, 'institution_contact_id')->latestOfMany('id');
+    }
+
+    /**
+     * Ringkasan status follow-up tahun berjalan untuk kontak ini.
+     */
+    public function getFollowUpStatusInfoAttribute(): array
+    {
+        $cycle = $this->relationLoaded('currentYearCycle')
+            ? $this->currentYearCycle
+            : $this->currentYearCycle()->first();
+
+        if (!$cycle) {
+            $ctaUrl = route(request()->routeIs('hr.*') ? 'hr.follow-up.create' : 'admin.follow-up.create', [
+                'institution_id' => $this->institution_id,
+                'contact_id'     => $this->id,
+            ]);
+            return [
+                'stage'             => \App\Services\InstitutionFollowUpWorkflowService::STAGE_NOT_CONTACTED,
+                'label'             => 'Belum Dihubungi',
+                'badge_class'       => 'bg-blue-50 text-blue-700 border-blue-200',
+                'has_cycle'         => false,
+                'cycle'             => null,
+                'next_action_label' => 'Mulai Follow-Up',
+                'next_action_url'   => $ctaUrl,
+                'cta_label'         => 'Mulai Follow-Up',
+                'cta_url'           => $ctaUrl,
+            ];
+        }
+
+        $info = $cycle->workflow_info;
+        $info['has_cycle'] = true;
+        $info['cycle'] = $cycle;
+        $info['cta_label'] = $info['next_action_label'] ?? 'Lihat Follow-Up';
+        $info['cta_url']   = $info['next_action_url'] ?? route(request()->routeIs('hr.*') ? 'hr.follow-up.show' : 'admin.follow-up.show', $cycle);
+
+        return $info;
+    }
 }
 

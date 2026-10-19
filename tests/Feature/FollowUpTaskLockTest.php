@@ -24,6 +24,8 @@ class FollowUpTaskLockTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+
         $this->unique = uniqid('lck_', true);
 
         $this->admin = User::create([

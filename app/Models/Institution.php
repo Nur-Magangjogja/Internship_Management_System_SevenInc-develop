@@ -92,6 +92,40 @@ class Institution extends Model
         return $this->hasMany(\App\Models\FollowUpCycle::class, 'institution_id');
     }
 
+    /**
+     * Relasi ke dokumen MOU terbaru institusi (apapun statusnya).
+     */
+    public function latestMou()
+    {
+        return $this->hasOne(\App\Models\Mou::class, 'institution_id')->latestOfMany('id');
+    }
+
+    /**
+     * Relasi ke siklus follow-up terbaru institusi.
+     */
+    public function latestCycle()
+    {
+        return $this->hasOne(\App\Models\FollowUpCycle::class, 'institution_id')->latestOfMany('id');
+    }
+
+    /**
+     * Relasi ke siklus follow-up tahun berjalan institusi.
+     */
+    public function currentYearCycle()
+    {
+        return $this->hasOne(\App\Models\FollowUpCycle::class, 'institution_id')
+            ->where('cycle_year', (int) date('Y'))
+            ->latestOfMany('id');
+    }
+
+    /**
+     * Ringkasan status kerja sama kemitraan.
+     */
+    public function getCooperationSummaryAttribute(): array
+    {
+        return app(\App\Services\InstitutionFollowUpWorkflowService::class)->getInstitutionCooperationSummary($this);
+    }
+
 
     /**
      * Helper untuk normalisasi nama institusi (mencegah variasi singkatan / ejaan dan duplikasi).

@@ -88,6 +88,26 @@ class Mou extends Model
         return !empty($this->drive_file_id);
     }
 
+    public function getStartDateAttribute()
+    {
+        return $this->effective_start;
+    }
+
+    public function getEndDateAttribute()
+    {
+        return $this->effective_end;
+    }
+
+    public function getInstitutionSignatoryNameAttribute()
+    {
+        return $this->first_party_signatory_name;
+    }
+
+    public function getInstitutionSignatoryPositionAttribute()
+    {
+        return $this->first_party_signatory_title;
+    }
+
 
     protected static function booted(): void
     {

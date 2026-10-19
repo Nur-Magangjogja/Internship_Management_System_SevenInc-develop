@@ -1,9 +1,9 @@
 @extends('layouts.dashboard', ['title' => 'Dashboard HR Staff'])
 
 @section('content')
-<div class="px-6 py-8 max-w-7xl mx-auto">
+<div class="px-6 py-8 max-w-7xl mx-auto space-y-8">
     <!-- Header & Quick Actions -->
-    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <div class="flex items-center gap-2.5">
                 <h1 class="text-2xl font-bold text-slate-800">Dashboard Operasional HR</h1>
@@ -11,7 +11,7 @@
                     Role: HR Staff
                 </span>
             </div>
-            <p class="text-sm text-slate-500 mt-1">Selamat datang, {{ $user->name ?? $user->email }}. Kelola antrean tindak lanjut kemitraan dan siklus dokumen MOU.</p>
+            <p class="text-sm text-slate-500 mt-1">Selamat datang, {{ $user->name ?? $user->email }}. Pantau hubungan kemitraan sekolah/kampus, tindak lanjut guru/dosen, dan penerbitan dokumen MOU.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <a
@@ -25,9 +25,9 @@
             </a>
             <a
                 href="{{ route('hr.mous.create') }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100"
             >
-                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-3.5 w-3.5 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                 </svg>
@@ -45,47 +45,123 @@
         </div>
     </div>
 
-    <!-- Section 1: Metrik Tindak Lanjut (Follow-Up) -->
-    <div class="mb-6">
-        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-            Antrean Tugas Follow-Up Institusi Mitra
-        </h2>
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <!-- Quick Search Institusi & Kontak Cepat -->
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form method="GET" action="{{ route('hr.dashboard') }}" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div class="relative flex-1">
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ $searchQuery ?? '' }}"
+                    placeholder="Pencarian Cepat: Ketik nama sekolah, kampus, atau nama guru/dosen PIC..."
+                    class="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                >
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button
+                    type="submit"
+                    class="rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-900"
+                >
+                    Cari Institusi
+                </button>
+                @if(!empty($searchQuery))
+                    <a
+                        href="{{ route('hr.dashboard') }}"
+                        class="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-200"
+                    >
+                        Reset
+                    </a>
+                @endif
+            </div>
+        </form>
+
+        @if(isset($searchedInstitutions) && $searchedInstitutions->isNotEmpty())
+            <div class="mt-4 border-t border-slate-100 pt-3">
+                <h3 class="text-xs font-bold text-slate-700 mb-2">Hasil Pencarian Cepat ({{ $searchedInstitutions->count() }} Ditemukan):</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    @foreach($searchedInstitutions as $inst)
+                        <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 flex flex-col justify-between">
+                            <div>
+                                <a href="{{ route('hr.institutions.show', $inst) }}" class="font-bold text-xs text-slate-800 hover:text-blue-600 block">
+                                    {{ $inst->name }}
+                                </a>
+                                <p class="text-[11px] text-slate-500 mt-0.5">{{ $inst->correspondence_unit ?? $inst->phone ?? 'Kontak institusi' }}</p>
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    @if($inst->activeMou)
+                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                                            MOU Aktif
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                            Belum Ada MOU Aktif
+                                        </span>
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="mt-3 flex items-center justify-between border-t border-slate-200/60 pt-2 text-xs">
+                                <a href="{{ route('hr.institutions.show', $inst) }}" class="text-slate-600 hover:underline text-[11px]">
+                                    Lihat Kontak &rarr;
+                                </a>
+                                <a href="{{ route('hr.follow-up.create', ['institution_id' => $inst->id]) }}" class="font-semibold text-blue-600 hover:underline text-[11px]">
+                                    + Buka Follow-Up
+                                </a>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @elseif(isset($searchQuery) && !empty($searchQuery))
+            <p class="mt-3 text-xs text-slate-500 italic">Tidak ditemukan institusi atau kontak yang cocok dengan kata kunci "{{ $searchQuery }}".</p>
+        @endif
+    </div>
+
+    <!-- Section 1: 5 Status Alur Kerja Follow-Up Terpadu -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                Alur Follow-Up Institusi &amp; Kemitraan (Tahun {{ date('Y') }})
+            </h2>
+            <a href="{{ route('hr.follow-up.index') }}" class="text-xs font-semibold text-blue-600 hover:underline">
+                Buka Seluruh Siklus &rarr;
+            </a>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <!-- 1. Belum Dihubungi -->
+            <a
+                href="{{ route('hr.follow-up.index', ['status' => 'not_contacted']) }}"
+                class="rounded-xl border border-blue-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow"
+            >
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">Tugas Terbuka (Open)</span>
-                    <span class="rounded-lg bg-blue-50 p-2 text-blue-600">
+                    <span class="text-xs font-semibold text-slate-500">1. Belum Dihubungi</span>
+                    <span class="rounded-lg bg-blue-50 p-1.5 text-blue-600">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                     </span>
                 </div>
                 <div class="mt-3">
-                    <div class="text-2xl font-bold text-slate-800">{{ number_format($followUpMetrics['open']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Siklus aktif butuh tindakan</p>
+                    <div class="text-2xl font-bold text-slate-800">{{ number_format($followUpMetrics['not_contacted']) }}</div>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Siklus siap dimulai</p>
                 </div>
-            </div>
+            </a>
 
-            <div class="rounded-xl border border-blue-200 bg-blue-50/40 p-5 shadow-sm">
+            <!-- 2. Menunggu Respons -->
+            <a
+                href="{{ route('hr.follow-up.index', ['status' => 'waiting_response']) }}"
+                class="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow"
+            >
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-blue-800">Sedang Saya Kerjakan</span>
-                    <span class="rounded-lg bg-blue-100 p-2 text-blue-700">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                    </span>
-                </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-bold text-blue-700">{{ number_format($followUpMetrics['my_claimed']) }}</div>
-                    <p class="text-[11px] text-blue-600 mt-0.5">Terkunci atas nama Anda</p>
-                </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">Menunggu Respons</span>
-                    <span class="rounded-lg bg-amber-50 p-2 text-amber-600">
+                    <span class="text-xs font-semibold text-slate-500">2. Menunggu Respons</span>
+                    <span class="rounded-lg bg-indigo-50 p-1.5 text-indigo-600">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"/>
                             <polyline points="12 6 12 12 16 14"/>
@@ -93,38 +169,47 @@
                     </span>
                 </div>
                 <div class="mt-3">
-                    <div class="text-2xl font-bold text-amber-600">{{ number_format($followUpMetrics['waiting']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Menunggu konfirmasi PIC</p>
+                    <div class="text-2xl font-bold text-indigo-600">{{ number_format($followUpMetrics['waiting_response']) }}</div>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Menunggu respon PIC</p>
                 </div>
-            </div>
+            </a>
 
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <!-- 3. Perlu Tindak Lanjut (Overdue Highlighted) -->
+            <a
+                href="{{ route('hr.follow-up.index', ['status' => 'needs_follow_up']) }}"
+                class="rounded-xl border border-rose-200 bg-rose-50/30 p-4 shadow-sm transition hover:border-rose-300 hover:shadow"
+            >
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">Selesai Periode {{ date('Y') }}</span>
-                    <span class="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                    <span class="text-xs font-semibold text-rose-700 font-bold">3. Perlu Tindak Lanjut</span>
+                    <span class="rounded-lg bg-rose-100 p-1.5 text-rose-600">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="20 6 9 17 4 12"/>
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
                         </svg>
                     </span>
                 </div>
                 <div class="mt-3">
-                    <div class="text-2xl font-bold text-emerald-600">{{ number_format($followUpMetrics['completed']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Hasil final tercatat</p>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-rose-700">{{ number_format($followUpMetrics['needs_follow_up']) }}</span>
+                        @if($followUpMetrics['overdue'] > 0)
+                            <span class="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                                {{ $followUpMetrics['overdue'] }} Overdue
+                            </span>
+                        @endif
+                    </div>
+                    <p class="text-[11px] text-rose-600/80 mt-0.5">Jatuh tempo / butuh aksi</p>
                 </div>
-            </div>
-        </div>
-    </div>
+            </a>
 
-    <!-- Section 2: Metrik Siklus Hidup Dokumen MOU -->
-    <div class="mb-8">
-        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-            Siklus Dokumen Kerja Sama (MOU & PKS)
-        </h2>
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-xl border border-purple-200 bg-purple-50/40 p-5 shadow-sm">
+            <!-- 4. Bersedia Bekerja Sama (Siap MOU) -->
+            <a
+                href="{{ route('hr.follow-up.index', ['status' => 'willing']) }}"
+                class="rounded-xl border border-purple-200 bg-purple-50/30 p-4 shadow-sm transition hover:border-purple-300 hover:shadow"
+            >
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-purple-800">Siap Dibuatkan MOU</span>
-                    <span class="rounded-lg bg-purple-100 p-2 text-purple-700">
+                    <span class="text-xs font-semibold text-purple-800 font-bold">4. Bersedia Bekerja Sama</span>
+                    <span class="rounded-lg bg-purple-100 p-1.5 text-purple-700">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14 2 14 8 20 8"/>
@@ -132,229 +217,221 @@
                     </span>
                 </div>
                 <div class="mt-3">
-                    <div class="text-2xl font-bold text-purple-700">{{ number_format($mouMetrics['ready_to_generate']) }}</div>
-                    <p class="text-[11px] text-purple-600 mt-0.5">Mitra bersedia kerja sama</p>
+                    <div class="text-2xl font-bold text-purple-700">{{ number_format($followUpMetrics['willing']) }}</div>
+                    <p class="text-[11px] text-purple-600 mt-0.5">Siap dibuatkan MOU</p>
                 </div>
-            </div>
+            </a>
 
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <!-- 5. Selesai / Arsip -->
+            <a
+                href="{{ route('hr.follow-up.index', ['status' => 'completed']) }}"
+                class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow"
+            >
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">Naskah Dibuat (Generated)</span>
-                    <span class="rounded-lg bg-blue-50 p-2 text-blue-600">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="22" y1="2" x2="11" y2="13"/>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                        </svg>
-                    </span>
-                </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-bold text-blue-600">{{ number_format($mouMetrics['generated']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Menunggu serah terima mitra</p>
-                </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">Menunggu Naskah TTD</span>
-                    <span class="rounded-lg bg-amber-50 p-2 text-amber-600">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <line x1="12" y1="18" x2="12" y2="12"/>
-                            <line x1="9" y1="15" x2="15" y2="15"/>
-                        </svg>
-                    </span>
-                </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-bold text-amber-600">{{ number_format($mouMetrics['delivered']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Terkirim, belum diunggah sah</p>
-                </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-500">MOU Aktif Berlaku</span>
-                    <span class="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                    <span class="text-xs font-semibold text-slate-500">5. Selesai</span>
+                    <span class="rounded-lg bg-emerald-50 p-1.5 text-emerald-600">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
                     </span>
                 </div>
                 <div class="mt-3">
-                    <div class="text-2xl font-bold text-emerald-600">{{ number_format($mouMetrics['active']) }}</div>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Kerja sama sah & aktif</p>
+                    <div class="text-2xl font-bold text-emerald-600">{{ number_format($followUpMetrics['completed']) }}</div>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Siklus rampung</p>
                 </div>
-            </div>
+            </a>
         </div>
     </div>
 
-    <!-- Main Operational Grid: 2 Columns -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <!-- Left Column: Tugas Saya & Siap MOU -->
+    <!-- Section 2: Antrean Tugas Mendesak & Tindakan Nyata -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Kolom Kiri: Follow-Up Mendesak & Jatuh Tempo (Overdue) -->
         <div class="space-y-6">
-            <!-- Tugas Yang Sedang Saya Kunci -->
-            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="rounded-xl border border-rose-200 bg-white shadow-sm overflow-hidden">
+                <div class="p-5 border-b border-rose-100 bg-rose-50/40 flex items-center justify-between">
                     <div class="flex items-center gap-2">
-                        <span class="h-2 w-2 rounded-full bg-blue-600"></span>
-                        <h3 class="text-sm font-bold text-slate-800">Tugas Yang Sedang Saya Kunci</h3>
+                        <span class="flex h-2.5 w-2.5 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600"></span>
+                        </span>
+                        <h3 class="text-sm font-bold text-rose-900">Perlu Ditindaklanjuti &amp; Lewat Jadwal</h3>
                     </div>
-                    <a href="{{ route('hr.follow-up.index') }}" class="text-xs font-semibold text-blue-600 hover:underline">
-                        Lihat Antrean &rarr;
+                    <a href="{{ route('hr.follow-up.index', ['status' => 'overdue']) }}" class="text-xs font-bold text-rose-600 hover:underline">
+                        Lihat Semua Overdue &rarr;
                     </a>
                 </div>
 
                 <div class="divide-y divide-slate-100">
-                    @forelse($myActiveTasks as $task)
-                        <div class="p-4 hover:bg-slate-50/50 transition flex items-center justify-between gap-3">
+                    @forelse($urgentFollowUps as $urgent)
+                        @php
+                            $workflow = $urgent->workflow_info;
+                        @endphp
+                        <div class="p-4 hover:bg-slate-50 transition flex items-center justify-between gap-3">
                             <div class="min-w-0">
-                                <a href="{{ route('hr.follow-up.show', $task) }}" class="font-bold text-xs text-slate-900 hover:text-blue-600 block truncate">
-                                    {{ $task->institution?->name ?? 'Institusi' }}
-                                </a>
-                                <p class="text-[11px] text-slate-500 mt-0.5">
-                                    PIC: {{ $task->contact?->name ?? '-' }} ({{ $task->contact?->position_title ?? 'Kontak' }})
-                                </p>
-                                <span class="inline-flex items-center gap-1 text-[10px] text-amber-600 mt-1">
-                                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <circle cx="12" cy="12" r="10"/>
-                                        <polyline points="12 6 12 12 16 14"/>
-                                    </svg>
-                                    Kunci berakhir dalam {{ $task->lockExpiresInMinutes() }} menit
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <a href="{{ route('hr.follow-up.show', $urgent) }}" class="font-bold text-xs text-slate-900 hover:text-blue-600 truncate">
+                                        {{ $urgent->institution?->name ?? 'Institusi' }}
+                                    </a>
+                                    @if($workflow['is_overdue'])
+                                        <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.2 text-[10px] font-bold text-rose-700">
+                                            {{ $workflow['due_label'] }}
+                                        </span>
+                                    @elseif($workflow['is_due_today'])
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.2 text-[10px] font-bold text-amber-800">
+                                            Hari Ini
+                                        </span>
+                                    @endif
+                                </div>
+                                <div class="mt-1 flex items-center gap-2 text-[11px] text-slate-600">
+                                    <span class="font-medium text-slate-800">{{ $urgent->contact?->name ?? 'PIC Pembimbing' }}</span>
+                                    @if($urgent->contact?->phone)
+                                        <span>&bull;</span>
+                                        <a href="https://wa.me/{{ preg_replace('/[^\d]/', '', $urgent->contact->phone) }}" target="_blank" class="text-emerald-600 hover:underline inline-flex items-center gap-0.5 font-medium">
+                                            WA: {{ $urgent->contact->phone }}
+                                        </a>
+                                    @endif
+                                </div>
+                                <div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
+                                    <span>Percobaan: {{ $urgent->current_attempt_count }}/3</span>
+                                    <span>&bull;</span>
+                                    <span>{{ $urgent->last_activity_at ? 'Terakhir: ' . $urgent->last_activity_at->diffForHumans() : 'Belum pernah dihubungi' }}</span>
+                                </div>
                             </div>
-                            <a
-                                href="{{ route('hr.follow-up.show', $task) }}"
-                                class="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
-                            >
-                                Lanjutkan
-                            </a>
+                            <div class="shrink-0 flex items-center gap-2">
+                                <a
+                                    href="{{ route('hr.follow-up.show', $urgent) }}"
+                                    class="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition"
+                                >
+                                    Follow-Up
+                                </a>
+                            </div>
                         </div>
                     @empty
                         <div class="p-8 text-center text-slate-400 text-xs">
-                            Tidak ada tugas yang sedang Anda kunci saat ini.
-                            <div class="mt-2">
-                                <a href="{{ route('hr.follow-up.index') }}" class="text-blue-600 hover:underline font-semibold">
-                                    Ambil tugas dari antrean &rarr;
-                                </a>
-                            </div>
+                            <svg class="h-8 w-8 mx-auto text-emerald-400 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                <polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                            Hebat! Tidak ada tugas follow-up yang terlambat atau melewati jadwal saat ini.
                         </div>
                     @endforelse
                 </div>
             </div>
 
-            <!-- Institusi Bersedia Kerja Sama (Siap Buat MOU) -->
-            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="h-2 w-2 rounded-full bg-purple-600"></span>
-                        <h3 class="text-sm font-bold text-slate-800">Institusi Bersedia Bekerja Sama (Siap MOU)</h3>
+            <!-- Tugas yang Sedang Saya Kunci -->
+            @if($myActiveTasks->isNotEmpty())
+                <div class="rounded-xl border border-blue-200 bg-blue-50/30 shadow-sm overflow-hidden">
+                    <div class="p-4 border-b border-blue-100 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-blue-600"></span>
+                            <h3 class="text-xs font-bold text-blue-900">Tugas Yang Sedang Anda Kunci (Task Lock)</h3>
+                        </div>
+                        <span class="text-[11px] font-semibold text-blue-700">{{ $myActiveTasks->count() }} Tugas</span>
                     </div>
-                    <a href="{{ route('hr.mous.create') }}" class="text-xs font-semibold text-blue-600 hover:underline">
-                        Buat Baru &rarr;
-                    </a>
+                    <div class="divide-y divide-blue-100/60">
+                        @foreach($myActiveTasks as $task)
+                            <div class="p-3.5 flex items-center justify-between gap-3">
+                                <div class="min-w-0">
+                                    <a href="{{ route('hr.follow-up.show', $task) }}" class="font-bold text-xs text-slate-800 hover:text-blue-600 block truncate">
+                                        {{ $task->institution?->name ?? 'Institusi' }}
+                                    </a>
+                                    <p class="text-[11px] text-slate-500">PIC: {{ $task->contact?->name ?? '-' }} (Sisa kunci: {{ $task->lockExpiresInMinutes() }} menit)</p>
+                                </div>
+                                <a
+                                    href="{{ route('hr.follow-up.show', $task) }}"
+                                    class="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700 transition"
+                                >
+                                    Lanjutkan
+                                </a>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        <!-- Kolom Kanan: Mitra Bersedia Kerjasama (Siap MOU) & Dokumen MOU Butuh Aksi -->
+        <div class="space-y-6">
+            <!-- Mitra Bersedia Kerjasama (Siap Dibuatkan MOU) -->
+            <div class="rounded-xl border border-purple-200 bg-white shadow-sm overflow-hidden">
+                <div class="p-5 border-b border-purple-100 bg-purple-50/40 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="h-2.5 w-2.5 rounded-full bg-purple-600"></span>
+                        <h3 class="text-sm font-bold text-purple-900">Mitra Bersedia Bekerja Sama (Siap MOU)</h3>
+                    </div>
+                    <span class="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold text-purple-700">
+                        {{ $readyMouPartners->count() }} Institusi
+                    </span>
                 </div>
 
                 <div class="divide-y divide-slate-100">
                     @forelse($readyMouPartners as $partner)
-                        <div class="p-4 hover:bg-slate-50/50 transition flex items-center justify-between gap-3">
+                        <div class="p-4 hover:bg-slate-50 transition flex items-center justify-between gap-3">
                             <div class="min-w-0">
                                 <span class="font-bold text-xs text-slate-900 block truncate">
                                     {{ $partner->institution?->name ?? 'Institusi' }}
                                 </span>
-                                <p class="text-[11px] text-slate-500 mt-0.5">
-                                    Kontak: {{ $partner->contact?->name ?? '-' }} ({{ $partner->contact?->phone ?? '-' }})
-                                </p>
+                                <div class="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                                    <span>PIC: {{ $partner->contact?->name ?? 'Pejabat Mitra' }}</span>
+                                    <span>&bull;</span>
+                                    <span>{{ $partner->contact?->phone ?? '-' }}</span>
+                                </div>
                                 <span class="inline-flex items-center gap-1 text-[10px] text-emerald-600 mt-1">
                                     <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                    Follow-up Selesai: Bersedia Kerja Sama
+                                    Follow-up Selesai: Kesediaan Terkonfirmasi
                                 </span>
                             </div>
                             <a
                                 href="{{ route('hr.mous.create', ['institution_id' => $partner->institution_id, 'cycle_id' => $partner->id]) }}"
-                                class="inline-flex shrink-0 items-center gap-1 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition"
+                                class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 shadow-sm transition"
                             >
-                                Generate MOU
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                                Buat Draft MOU
                             </a>
                         </div>
                     @empty
                         <div class="p-8 text-center text-slate-400 text-xs">
-                            Belum ada institusi baru dengan hasil follow-up bersedia yang belum dibuatkan MOU.
-                        </div>
-                    @endforelse
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Column: Antrean Follow-Up & Dokumen MOU Terbaru -->
-        <div class="space-y-6">
-            <!-- Antrean Follow-Up Terbaru -->
-            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <h3 class="text-sm font-bold text-slate-800">Antrean Follow-Up Institusi</h3>
-                    <a href="{{ route('hr.follow-up.index') }}" class="text-xs font-semibold text-blue-600 hover:underline">
-                        Semua Tugas &rarr;
-                    </a>
-                </div>
-
-                <div class="divide-y divide-slate-100">
-                    @forelse($pendingFollowUps as $cycle)
-                        <div class="p-4 hover:bg-slate-50/50 transition flex items-center justify-between gap-3">
-                            <div class="min-w-0">
-                                <a href="{{ route('hr.follow-up.show', $cycle) }}" class="font-bold text-xs text-slate-900 hover:text-blue-600 block truncate">
-                                    {{ $cycle->institution?->name ?? 'Institusi' }}
-                                </a>
-                                <p class="text-[11px] text-slate-500 mt-0.5">
-                                    {{ $cycle->contact?->name ?? 'Pembimbing' }} | Percobaan: {{ $cycle->current_attempt_count }}/3
-                                </p>
-                            </div>
-                            <div class="text-right shrink-0">
-                                @if($cycle->isLocked())
-                                    <span class="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
-                                        {{ $cycle->locked_by === $user->id ? 'Saya' : $cycle->lockedByUser?->name }}
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                        Tersedia
-                                    </span>
-                                @endif
-                            </div>
-                        </div>
-                    @empty
-                        <div class="p-8 text-center text-slate-400 text-xs">
-                            Tidak ada siklus follow-up aktif saat ini.
+                            Belum ada mitra baru bersedia kerja sama yang belum diterbitkan dokumen MOU-nya.
                         </div>
                     @endforelse
                 </div>
             </div>
 
-            <!-- Dokumen MOU Terbaru -->
+            <!-- Dokumen MOU yang Butuh Tindak Lanjut (Generated / Delivered) -->
             <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div class="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <h3 class="text-sm font-bold text-slate-800">Dokumen Kerja Sama (MOU) Terbaru</h3>
+                    <div class="flex items-center gap-2">
+                        <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                        <h3 class="text-sm font-bold text-slate-800">Dokumen MOU Menunggu Tindak Lanjut</h3>
+                    </div>
                     <a href="{{ route('hr.mous.index') }}" class="text-xs font-semibold text-blue-600 hover:underline">
-                        Semua Dokumen &rarr;
+                        Daftar MOU &rarr;
                     </a>
                 </div>
 
                 <div class="divide-y divide-slate-100">
-                    @forelse($recentMous as $mou)
-                        <div class="p-4 hover:bg-slate-50/50 transition flex items-center justify-between gap-3">
+                    @forelse($pendingMous as $pMou)
+                        <div class="p-4 hover:bg-slate-50 transition flex items-center justify-between gap-3">
                             <div class="min-w-0">
-                                <a href="{{ route('hr.mous.show', $mou) }}" class="font-bold text-xs text-blue-600 hover:underline block truncate">
-                                    {{ $mou->company_mou_number }}
+                                <a href="{{ route('hr.mous.show', $pMou) }}" class="font-bold text-xs text-blue-600 hover:underline block truncate">
+                                    {{ $pMou->company_mou_number }}
                                 </a>
                                 <p class="text-[11px] text-slate-700 font-medium truncate mt-0.5">
-                                    {{ $mou->first_party_institution_name }}
+                                    {{ $pMou->first_party_institution_name }}
                                 </p>
                             </div>
                             <div class="text-right shrink-0">
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border {{ $mou->status_badge_classes }}">
-                                    {{ $mou->status_label }}
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border {{ $pMou->status_badge_classes }}">
+                                    {{ $pMou->status_label }}
                                 </span>
                             </div>
                         </div>
                     @empty
                         <div class="p-8 text-center text-slate-400 text-xs">
-                            Belum ada dokumen MOU yang dibuat.
+                            Tidak ada dokumen MOU yang sedang pending.
                         </div>
                     @endforelse
                 </div>

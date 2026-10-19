@@ -19,6 +19,15 @@ if (class_exists(\Dotenv\Dotenv::class) && is_file(dirname(__DIR__) . '/.env')) 
     )->safeLoad();
 }
 
+spl_autoload_register(function ($class) {
+    if (str_starts_with($class, 'App\\')) {
+        $path = dirname(__DIR__) . '/app/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+        if (file_exists($path)) {
+            require_once $path;
+        }
+    }
+}, true, true);
+
 $app = new Illuminate\Foundation\Application(
     $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
 );
