@@ -248,7 +248,7 @@ test('10. Content Integrity: Serialized document structure preserves content and
 test('11. Mail Merge Protection: Splitting offset never cuts across merge tokens', () => {
     function protectPlaceholderOffset(text, rawOffset) {
         let chosenOffset = rawOffset;
-        const placeholderRegex = /(?:\[[a-zA-Z0-9_\-]+\]|\{\{\s*[a-zA-Z0-9_\-]+\s*\}\})/g;
+        const placeholderRegex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
         let match;
         while ((match = placeholderRegex.exec(text)) !== null) {
             const tokenStart = match.index;
@@ -338,6 +338,57 @@ test('13. Boundary Delete: Merges following page content when delete is pressed 
     assert.strictEqual(res.action, 'merged_forward');
     assert.strictEqual(doc.pages[0].blocks[0], 'Paragraf akhir hal 1 Paragraf awal hal 2');
     assert.strictEqual(doc.pages[1].blocks.length, 0);
+});
+
+// 14. Dotted Placeholder Regression Test
+test('14. Dotted Placeholder Regression: Protects dotted variables (pemagang.nama, asset.company.logo, dokumen.nomor)', () => {
+    function protectPlaceholderOffset(text, rawOffset) {
+        let chosenOffset = rawOffset;
+        const placeholderRegex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
+        let match;
+        while ((match = placeholderRegex.exec(text)) !== null) {
+            const tokenStart = match.index;
+            const tokenEnd = match.index + match[0].length;
+            if (chosenOffset > tokenStart && chosenOffset < tokenEnd) {
+                chosenOffset = tokenStart;
+                break;
+            }
+        }
+        return chosenOffset;
+    }
+
+    // 14.1 Dotted user variable: {{pemagang.nama}}
+    const text1 = 'Peserta magang yang disetujui bernama {{pemagang.nama}} untuk periode semester genap.';
+    // "{{pemagang.nama}}" starts at 38, ends at 55
+    const cutInPemagang = 45; // lands inside "nama"
+    assert.strictEqual(protectPlaceholderOffset(text1, cutInPemagang), 38, 'Must shift cut inside {{pemagang.nama}} back to token start 38');
+
+    // 14.2 Dotted asset variable: {{asset.company.logo}}
+    const text2 = 'Kop surat dokumen memuat logo resmi {{asset.company.logo}} di sisi kiri atas.';
+    // "{{asset.company.logo}}" starts at 36, ends at 60
+    const cutInLogo = 50; // lands inside "logo"
+    assert.strictEqual(protectPlaceholderOffset(text2, cutInLogo), 36, 'Must shift cut inside {{asset.company.logo}} back to token start 36');
+
+    // 14.3 Dotted document variable: {{dokumen.nomor}}
+    const text3 = 'Berdasarkan registrasi dengan nomor {{dokumen.nomor}} yang telah diverifikasi.';
+    // "{{dokumen.nomor}}" starts at 36, ends at 53
+    const cutInDoc = 44; // lands inside "nomor"
+    assert.strictEqual(protectPlaceholderOffset(text3, cutInDoc), 36, 'Must shift cut inside {{dokumen.nomor}} back to token start 36');
+
+    // 14.4 Dotted variable with spaces: {{ asset.company.logo }}
+    const text4 = 'Header resmi mencantumkan {{ asset.company.logo }} pada halaman pertama.';
+    // "{{ asset.company.logo }}" starts at 26, ends at 52
+    const cutInSpacedLogo = 34; // inside "company"
+    assert.strictEqual(protectPlaceholderOffset(text4, cutInSpacedLogo), 26, 'Must shift cut inside {{ asset.company.logo }} back to token start 26');
+
+    // 14.5 Mixed standard legacy tokens: [institution_name] and {{company_name}} in same text
+    const text5 = 'Kerjasama antara [institution_name] dan {{company_name}} berlaku efektif.';
+    // [institution_name] is at index 17..35
+    // {{company_name}} is at index 40..56
+    const cutInInst = 25;
+    assert.strictEqual(protectPlaceholderOffset(text5, cutInInst), 17, 'Must shift cut inside legacy [institution_name] back to 17');
+    const cutInComp = 48;
+    assert.strictEqual(protectPlaceholderOffset(text5, cutInComp), 40, 'Must shift cut inside legacy {{company_name}} back to 40');
 });
 
 console.log(`\nALL ${passedTests} / ${totalTests} TERMINAL-ONLY JS TESTS PASSED SUCCESSFULLY!`);

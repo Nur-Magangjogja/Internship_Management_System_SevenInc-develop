@@ -966,7 +966,7 @@ const MergeHighlightExtension = Extension.create({
                         const active = mergeHighlightPluginKey.getState(state);
                         if (!active) return DecorationSet.empty;
                         const decos = [];
-                        const regex = /(?:\[[a-zA-Z0-9_]+\]|\{\{\s*[a-zA-Z0-9_]+\s*\}\})/g;
+                        const regex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
                         state.doc.descendants((node, pos) => {
                             if (node.isText && node.text) {
                                 let match;
@@ -2476,9 +2476,9 @@ export function initMouWordProcessor(config) {
                 if (relBottom > maxHeightPx) {
                     let chosenOffset = lastSafeOffset > 0 ? lastSafeOffset : (charOffset + i);
                     // Mail Merge Placeholder Protection:
-                    // Never split inside placeholders like [institution_name] or {{ institution_name }}.
+                    // Never split inside placeholders like [institution_name], {{ company_name }}, or dotted variables {{ pemagang.nama }}, {{ asset.company.logo }}.
                     const fullText = paraEl.textContent || '';
-                    const placeholderRegex = /(?:\[[a-zA-Z0-9_\-]+\]|\{\{\s*[a-zA-Z0-9_\-]+\s*\}\})/g;
+                    const placeholderRegex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
                     let match;
                     while ((match = placeholderRegex.exec(fullText)) !== null) {
                         const tokenStart = match.index;
@@ -3134,19 +3134,27 @@ export function initMouWordProcessor(config) {
 
         const map = {
             company_name: getField('company_name', 'SEVEN INC'),
+            'company.name': getField('company_name', 'SEVEN INC'),
             company_signatory_name: getField('company_signatory_name', 'Rekario Danny Sanjaya, S.Kom.'),
+            'company.signatory.name': getField('company_signatory_name', 'Rekario Danny Sanjaya, S.Kom.'),
             company_signatory_title: getField('company_signatory_title', 'Pimpinan'),
+            'company.signatory.title': getField('company_signatory_title', 'Pimpinan'),
             company_correspondence_unit: getField('company_correspondence_unit', 'CEO'),
             company_address: getField('company_address', 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198'),
+            'company.address': getField('company_address', 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198'),
             company_phone: getField('company_phone', '089529002944'),
             company_fax: getField('company_fax', '-'),
             company_email: getField('company_email', 'magangjogjadotcom@gmail.com'),
+            'company.email': getField('company_email', 'magangjogjadotcom@gmail.com'),
             agreement_place: getField('agreement_place', 'Yogyakarta'),
             agreement_duration: getField('agreement_duration', '5 (lima) tahun'),
             company_mou_number: '004/SPK.MAGANG/CEO/SEVEN/V/' + new Date().getFullYear(),
+            'dokumen.nomor': '004/SPK.MAGANG/CEO/SEVEN/V/' + new Date().getFullYear(),
             institution_name: 'UNIVERSITAS CONTOH INDONESIA',
+            'institution.name': 'UNIVERSITAS CONTOH INDONESIA',
             institution_mou_number: '045/UNIV-CI/MOU/XI/' + new Date().getFullYear(),
             institution_signatory_name: 'Dr. Rido Kurnianto, M.Ag.',
+            'institution.signatory.name': 'Dr. Rido Kurnianto, M.Ag.',
             institution_signatory_title: 'Rektor',
             institution_address: 'Jl. Budi Utomo No.10, Ronowijayan, Kec. Ponorogo, Kabupaten Ponorogo, Jawa Timur 63471',
             institution_correspondence_unit: 'Kepala Bidang Kerjasama Dalam Negeri',
@@ -3159,24 +3167,29 @@ export function initMouWordProcessor(config) {
             agreement_date_words: 'tanggal dua puluh empat bulan Mei tahun ' + new Date().getFullYear(),
             effective_start: '24 Mei ' + new Date().getFullYear(),
             effective_end: '24 Mei ' + (new Date().getFullYear() + 5),
+            'pemagang.nama': 'Budi Santoso',
+            'pemagang.nim': '2023010042',
+            'pemagang.jurusan': 'Teknik Informatika',
+            'pemagang.institusi': 'UNIVERSITAS CONTOH INDONESIA',
         };
 
         let out = rawHtml;
-        // Replace logo placeholders first
+        // Replace logo placeholders first (supporting both standard and dotted asset keys)
         const compLogoImg = `<img src="${compLogo}" alt="Logo Seven Inc" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`;
         const instLogoImg = instLogo && instLogo !== 'none'
             ? `<img src="${instLogo}" alt="Logo Institusi" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`
             : '';
 
-        out = out.replace(/\[company_logo\]|\{\{\s*company_logo\s*\}\}/g, compLogoImg);
-        out = out.replace(/\[institution_logo\]|\{\{\s*institution_logo\s*\}\}/g, instLogoImg);
+        out = out.replace(/\[company_logo\]|\{\{\s*company_logo\s*\}\}|\[asset\.company\.logo\]|\{\{\s*asset\.company\.logo\s*\}\}/g, compLogoImg);
+        out = out.replace(/\[institution_logo\]|\{\{\s*institution_logo\s*\}\}|\[asset\.institution\.logo\]|\{\{\s*asset\.institution\.logo\s*\}\}/g, instLogoImg);
 
         Object.entries(map).forEach(([key, val]) => {
             const safeVal = String(val)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-            const reg = new RegExp(`\\[${key}\\]|\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+            const escapedKey = key.replace(/\./g, '\\.');
+            const reg = new RegExp(`\\[${escapedKey}\\]|\\{\\{\\s*${escapedKey}\\s*\\}\\}`, 'g');
             out = out.replace(reg, safeVal);
         });
 
