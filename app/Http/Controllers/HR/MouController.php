@@ -93,24 +93,32 @@ class MouController extends Controller
             : null;
 
         $selectedCycle = $selectedCycleId
-            ? FollowUpCycle::with('institution.contacts')->find($selectedCycleId)
+            ? FollowUpCycle::with(['institution.contacts', 'contact'])->find($selectedCycleId)
             : null;
 
         if (!$selectedInstitution && $selectedCycle) {
             $selectedInstitution = $selectedCycle->institution;
         }
 
+        $selectedContact = $selectedCycle?->contact
+            ?? ($request->filled('contact_id') ? InstitutionContact::find($request->contact_id) : null)
+            ?? $selectedInstitution?->contacts->first();
+
         // Ambil siklus follow-up yang completed & willing untuk institusi terpilih
         $eligibleCycles = $selectedInstitution
             ? FollowUpCycle::where('institution_id', $selectedInstitution->id)
                 ->where('status', FollowUpCycle::STATUS_COMPLETED)
                 ->where('final_result', FollowUpCycle::RESULT_WILLING)
+                ->with('contact')
                 ->latest('id')
                 ->get()
             : collect();
 
         if (!$selectedCycle && $eligibleCycles->count() === 1) {
             $selectedCycle = $eligibleCycles->first();
+            if (!$selectedContact) {
+                $selectedContact = $selectedCycle->contact;
+            }
         }
 
         $availableTemplates = MouTemplate::orderByDesc('is_active')
@@ -140,6 +148,7 @@ class MouController extends Controller
             'institutions',
             'selectedInstitution',
             'selectedCycle',
+            'selectedContact',
             'eligibleCycles',
             'availableTemplates',
             'selectedTemplate',

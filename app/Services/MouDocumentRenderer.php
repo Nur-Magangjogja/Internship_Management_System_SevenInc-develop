@@ -38,6 +38,7 @@ class MouDocumentRenderer
         'data-border-style', 'data-border-width', 'data-border-color', 'data-bg-color',
         'data-textbox', 'data-color',
         'data-logo-slot', 'data-snapshot-version', 'data-pagination-artifact',
+        'data-asset-id', 'data-asset-code',
     ];
 
     /**
@@ -437,14 +438,19 @@ class MouDocumentRenderer
             return false;
         }
 
-        // Hanya izinkan direktori aset MOU resmi
+        // Hanya izinkan direktori aset MOU resmi dan perpustakaan aset sistem
         $normalizedPath = '/' . ltrim($path, '/');
         if (
             str_starts_with($normalizedPath, '/images/mou/') ||
+            str_starts_with($normalizedPath, '/images/logos/') ||
+            str_starts_with($normalizedPath, '/images/signatures/') ||
+            str_starts_with($normalizedPath, '/images/stamps/') ||
+            str_starts_with($normalizedPath, '/images/brands/') ||
             str_starts_with($normalizedPath, '/storage/mou-assets/') ||
-            str_starts_with($normalizedPath, '/storage/mou-templates/media/')
+            str_starts_with($normalizedPath, '/storage/mou-templates/media/') ||
+            str_starts_with($normalizedPath, '/admin/system-assets/')
         ) {
-            return preg_match('/^\/[a-zA-Z0-9_\-\/\.]+\.(png|jpg|jpeg|webp)$/i', $normalizedPath) === 1;
+            return preg_match('/^\/[a-zA-Z0-9_\-\/\.]+(\.(png|jpg|jpeg|webp))?$/i', $normalizedPath) === 1;
         }
 
         return false;
@@ -858,17 +864,46 @@ class MouDocumentRenderer
         }
 
         return (string) preg_replace_callback(
-            '/(<img\b[^>]*?\bsrc\s*=\s*["\'])([^"\']+)(["\'][^>]*>)/i',
+            '/<img\b([^>]*?)>/i',
             function (array $matches) {
-                $src = trim($matches[2]);
+                $attrsStr = $matches[1];
+                if (!preg_match('/\bsrc\s*=\s*["\']([^"\']+)["\']/i', $attrsStr, $srcMatch)) {
+                    return $matches[0];
+                }
+                $src = trim($srcMatch[1]);
                 if (str_starts_with($src, 'data:image/')) {
                     return $matches[0];
                 }
+
+                // Resolusi data-asset-id atau URL preview /admin/system-assets/{id}/preview
+                $assetId = null;
+                if (preg_match('/\bdata-asset-id\s*=\s*["\'](\d+)["\']/i', $attrsStr, $assetMatch)) {
+                    $assetId = (int) $assetMatch[1];
+                } elseif (preg_match('#^/admin/system-assets/(\d+)/preview#i', $src, $urlMatch)) {
+                    $assetId = (int) $urlMatch[1];
+                }
+
+                if ($assetId) {
+                    try {
+                        /** @var \App\Services\SystemAssetService $assetService */
+                        $assetService = app(\App\Services\SystemAssetService::class);
+                        $base64 = $assetService->getAssetAsBase64DataUri($assetId);
+                        if ($base64) {
+                            return preg_replace('/\bsrc\s*=\s*["\'][^"\']+["\']/i', 'src="' . $base64 . '"', $matches[0]);
+                        }
+                    } catch (\Throwable) {
+                        // Fallback ke pengecekan path lokal
+                    }
+                }
+
                 if (!static::isValidImageSource($src)) {
                     return '';
                 }
                 $base64 = static::convertLocalPathToBase64($src);
-                return $matches[1] . ($base64 ?: $src) . $matches[3];
+                if ($base64) {
+                    return preg_replace('/\bsrc\s*=\s*["\'][^"\']+["\']/i', 'src="' . $base64 . '"', $matches[0]);
+                }
+                return $matches[0];
             },
             $html
         );
@@ -981,8 +1016,10 @@ class MouDocumentRenderer
 
         // 1. Ganti token gambar terlebih dahulu
         $imageTokens = [
-            'company_logo'     => $companyLogoHtml,
-            'institution_logo' => $institutionLogoHtml,
+            'company_logo'           => $companyLogoHtml,
+            'institution_logo'       => $institutionLogoHtml,
+            'asset.company.logo'     => $companyLogoHtml,
+            'asset.institution.logo' => $institutionLogoHtml,
         ];
 
         foreach ($imageTokens as $token => $imgTag) {
@@ -993,7 +1030,43 @@ class MouDocumentRenderer
             ], $imgTag, $rendered);
         }
 
-        // 2. Ganti seluruh token teks & tanggal dengan HTML escaping ketat
+        // 2. Selesaikan seluruh variabel terdaftar dari VariableRegistry (termasuk alias & dotted tokens)
+        $registryDefinitions = class_exists(\App\Services\MailMerge\VariableRegistry::class)
+            ? \App\Services\MailMerge\VariableRegistry::getDefinitions()
+            : [];
+
+        foreach ($registryDefinitions as $mainToken => $def) {
+            $val = null;
+            if (array_key_exists($mainToken, $merged)) {
+                $val = $merged[$mainToken];
+            } else {
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    if (array_key_exists($alias, $merged)) {
+                        $val = $merged[$alias];
+                        break;
+                    }
+                }
+            }
+
+            if ($val !== null && !isset($imageTokens[$mainToken])) {
+                $safeVal = e((string) $val);
+                $rendered = str_replace([
+                    '{{' . $mainToken . '}}',
+                    '{{ ' . $mainToken . ' }}',
+                    '[' . $mainToken . ']',
+                ], $safeVal, $rendered);
+
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    $rendered = str_replace([
+                        '[' . $alias . ']',
+                        '{{' . $alias . '}}',
+                        '{{ ' . $alias . ' }}',
+                    ], $safeVal, $rendered);
+                }
+            }
+        }
+
+        // 3. Ganti seluruh token teks & tanggal template dengan HTML escaping ketat
         $allPlaceholders = array_unique(array_merge(
             array_keys(MouTemplate::getDefaultPlaceholders()),
             $template->allowed_placeholders ?? []
@@ -1066,13 +1139,50 @@ class MouDocumentRenderer
             ?? ($mediaAssets['institution_logo'] ?? '/images/mou/institution-logo-placeholder.png');
 
         $imageTokens = [
-            'company_logo'     => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
-            'institution_logo' => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
+            'company_logo'           => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
+            'institution_logo'       => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
+            'asset.company.logo'     => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
+            'asset.institution.logo' => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
         ];
 
         $rendered = $sanitized;
         foreach ($imageTokens as $token => $imgTag) {
             $rendered = str_replace(['[' . $token . ']', '{{' . $token . '}}', '{{ ' . $token . ' }}'], $imgTag, $rendered);
+        }
+
+        $registryDefinitions = class_exists(\App\Services\MailMerge\VariableRegistry::class)
+            ? \App\Services\MailMerge\VariableRegistry::getDefinitions()
+            : [];
+
+        foreach ($registryDefinitions as $mainToken => $def) {
+            $val = null;
+            if (array_key_exists($mainToken, $merged)) {
+                $val = $merged[$mainToken];
+            } else {
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    if (array_key_exists($alias, $merged)) {
+                        $val = $merged[$alias];
+                        break;
+                    }
+                }
+            }
+
+            if ($val !== null && !isset($imageTokens[$mainToken])) {
+                $safeVal = e((string) $val);
+                $rendered = str_replace([
+                    '{{' . $mainToken . '}}',
+                    '{{ ' . $mainToken . ' }}',
+                    '[' . $mainToken . ']',
+                ], $safeVal, $rendered);
+
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    $rendered = str_replace([
+                        '[' . $alias . ']',
+                        '{{' . $alias . '}}',
+                        '{{ ' . $alias . ' }}',
+                    ], $safeVal, $rendered);
+                }
+            }
         }
 
         $allPlaceholders = array_unique(array_merge(
@@ -1236,6 +1346,25 @@ class MouDocumentRenderer
     vertical-align: top;
     padding: 3pt 6pt;
     box-sizing: border-box;
+}
+.mou-doc-canvas img, .mou-document img {
+    max-width: 100%;
+    height: auto;
+}
+.mou-doc-canvas img[align="left"], .mou-document img[align="left"] {
+    float: left;
+    margin-right: 12pt;
+    margin-bottom: 6pt;
+}
+.mou-doc-canvas img[align="right"], .mou-document img[align="right"] {
+    float: right;
+    margin-left: 12pt;
+    margin-bottom: 6pt;
+}
+.mou-doc-canvas img[align="center"], .mou-document img[align="center"] {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 .mou-header-block {
     text-align: center;
@@ -1407,11 +1536,16 @@ CSS;
             'pageConfig'    => $config,
         ]);
 
+        $paperSize = strtolower((string) ($config['paper_size'] ?? 'a4'));
+        if (!in_array($paperSize, ['a4', 'letter', 'legal'], true)) {
+            $paperSize = 'a4';
+        }
+
         $orientation = strtolower((string) ($config['orientation'] ?? 'portrait')) === 'landscape'
             ? 'landscape'
             : 'portrait';
 
-        $pdf->setPaper('a4', $orientation);
+        $pdf->setPaper($paperSize, $orientation);
         $pdf->setOption('isHtml5ParserEnabled', true);
         $pdf->setOption('isRemoteEnabled', false);
 

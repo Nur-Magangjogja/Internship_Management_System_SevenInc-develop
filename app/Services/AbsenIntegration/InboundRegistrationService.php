@@ -241,6 +241,13 @@ class InboundRegistrationService
 
                 $createdRegMapping->save();
 
+                // Auto-generate LOA untuk registrasi inbound
+                try {
+                    app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($createdRegistration);
+                } catch (\Throwable $loaErr) {
+                    Log::warning("Gagal auto-generate LOA inbound #{$createdRegistration->id}: " . $loaErr->getMessage());
+                }
+
                 // H. Dispatch notifikasi aktivasi akun setelah transaksi berhasil commit
                 DB::afterCommit(function () use ($createdUser) {
                     try {

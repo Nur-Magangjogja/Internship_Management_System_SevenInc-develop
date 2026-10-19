@@ -106,9 +106,26 @@ class InstitutionController extends Controller
             ->latest('id')
             ->paginate(15);
 
-        $contacts = $institution->contacts()->orderBy('name')->get();
+        $contacts = $institution->contacts()
+            ->with(['currentYearCycle.latestAttempt', 'latestCycle.latestAttempt'])
+            ->orderBy('name')
+            ->get();
 
-        return view('admin.institutions.show', compact('institution', 'interns', 'contacts'));
+        $mous = $institution->mous()
+            ->with(['generatedBy', 'signedUploadedBy'])
+            ->latest('id')
+            ->get();
+
+        $followUpCycles = $institution->followUpCycles()
+            ->with(['contact', 'latestAttempt', 'confirmer', 'lockedByUser', 'mous'])
+            ->latest('cycle_year')
+            ->latest('id')
+            ->get();
+
+        $cooperationSummary = app(\App\Services\InstitutionFollowUpWorkflowService::class)
+            ->getInstitutionCooperationSummary($institution);
+
+        return view('admin.institutions.show', compact('institution', 'interns', 'contacts', 'mous', 'followUpCycles', 'cooperationSummary'));
     }
 
     /**

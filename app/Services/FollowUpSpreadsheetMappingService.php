@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FollowUpCycle;
+use App\Models\InternshipRegistration;
 use App\Models\RegistrationContactLink;
 use App\Models\SpreadsheetColumnMapping;
 use App\Models\SpreadsheetConnection;
@@ -12,6 +13,34 @@ use Illuminate\Database\Eloquent\Collection;
 
 class FollowUpSpreadsheetMappingService
 {
+    /**
+     * Memeriksa apakah siklus follow-up memenuhi syarat sinkronisasi ke Google Spreadsheet.
+     * Guardrail: Wajib memiliki kontak resmi yang aktif dan terverifikasi,
+     * serta terhubung ke minimal satu pemagang yang resmi di-ACC (accepted, active, completed).
+     */
+    public function isEligibleForSync(FollowUpCycle $cycle): bool
+    {
+        if (!$cycle->institution_contact_id) {
+            return false;
+        }
+
+        $contact = $cycle->contact;
+        if (!$contact || !$contact->is_active || !$contact->is_verified) {
+            return false;
+        }
+
+        $acceptedStatuses = [
+            InternshipRegistration::STATUS_ACCEPTED,
+            InternshipRegistration::STATUS_ACTIVE,
+            InternshipRegistration::STATUS_COMPLETED,
+        ];
+
+        return RegistrationContactLink::where('institution_contact_id', $cycle->institution_contact_id)
+            ->whereHas('internshipRegistration', function ($q) use ($acceptedStatuses) {
+                $q->whereIn('internship_status', $acceptedStatuses);
+            })
+            ->exists();
+    }
     /**
      * Resolve the active schema version for the Follow-up spreadsheet.
      * Uses the single operational tab schema version (sentinel year = 0).

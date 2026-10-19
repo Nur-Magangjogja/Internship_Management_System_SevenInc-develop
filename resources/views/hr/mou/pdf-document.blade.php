@@ -39,23 +39,37 @@
             ? \App\Services\MouDocumentRenderer::estimateBlockHeightMm($footerHtml, 14.5)
             : 0.0;
 
-        $reservedTopMm = $estHeaderMm > 0
-            ? max($topMm, round($headerDistanceMm + $estHeaderMm + 4.0, 2))
+        $estFirstHeaderMm = ($differentFirstPage && $firstPageHeaderHtml !== '')
+            ? \App\Services\MouDocumentRenderer::estimateBlockHeightMm($firstPageHeaderHtml, 12.0)
+            : 0.0;
+
+        $estFirstFooterMm = ($differentFirstPage && $firstPageFooterHtml !== '')
+            ? \App\Services\MouDocumentRenderer::estimateBlockHeightMm($firstPageFooterHtml, 14.5)
+            : 0.0;
+
+        $effectiveHeaderMm = max($estHeaderMm, $estFirstHeaderMm);
+        $effectiveFooterMm = max($estFooterMm, $estFirstFooterMm);
+
+        $reservedTopMm = $effectiveHeaderMm > 0
+            ? max($topMm, round($headerDistanceMm + $effectiveHeaderMm + 4.0, 2))
             : $topMm;
 
         // Ruang khusus footer (Kotak Paraf / Footer Kustom & Nomor Halaman) yang otomatis membesar jika tabel Paraf diperbesar
-        $reservedBottomMm = ($showParaf || $showPageNumber || $footerHtml !== '')
-            ? max(44.0, $bottomMm + 18.0, round($bottomMm + $estFooterMm + 4.0, 2))
+        $reservedBottomMm = ($showParaf || $showPageNumber || $footerHtml !== '' || $firstPageFooterHtml !== '')
+            ? max(44.0, $bottomMm + 18.0, round($bottomMm + $effectiveFooterMm + 4.0, 2))
             : $bottomMm;
 
-        $footerBoxHeightMm = max(14.5, $estFooterMm);
+        $footerBoxHeightMm = max(14.5, $effectiveFooterMm);
         $footerBottomOffsetMm = round($footerBoxHeightMm + 1.0, 2);
-        $headerBoxHeightMm = max(12.0, $estHeaderMm);
+        $headerBoxHeightMm = max(12.0, $effectiveHeaderMm);
         $headerTopOffsetMm = round($headerBoxHeightMm + 2.0, 2);
+        $paperSize = strtolower((string) ($pageConfig['paper_size'] ?? 'a4'));
+        $orientation = strtolower((string) ($pageConfig['orientation'] ?? 'portrait'));
     @endphp
     <style>
         @page {
             margin: {{ $reservedTopMm }}mm {{ $rightMm }}mm {{ $reservedBottomMm }}mm {{ $leftMm }}mm;
+            size: {{ $paperSize }} {{ $orientation }};
         }
         body {
             margin: 0;
@@ -85,8 +99,23 @@
             bottom: -{{ $footerBottomOffsetMm }}mm;
             min-height: {{ $footerBoxHeightMm }}mm;
         }
-        .mou-pdf-first-page-header {
-            margin-bottom: 8pt;
+        .mou-pdf-first-page-header-overlay {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -{{ $headerTopOffsetMm }}mm;
+            min-height: {{ $headerBoxHeightMm }}mm;
+            background-color: #ffffff;
+            z-index: 500;
+        }
+        .mou-pdf-first-page-footer-overlay {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -{{ $footerBottomOffsetMm }}mm;
+            min-height: {{ $footerBoxHeightMm }}mm;
+            background-color: #ffffff;
+            z-index: 500;
         }
         .mou-pdf-paraf-box {
             width: 220pt;
@@ -140,20 +169,17 @@
         </div>
     @endif
 
-    @if($differentFirstPage && $firstPageHeaderHtml !== '')
-        <div class="mou-pdf-first-page-header" data-header-zone="first-page">
+    @if($differentFirstPage)
+        <div class="mou-pdf-first-page-header-overlay" data-header-zone="first-page">
             {!! $firstPageHeaderHtml !!}
+        </div>
+        <div class="mou-pdf-first-page-footer-overlay" data-footer-zone="first-page">
+            {!! $firstPageFooterHtml !!}
         </div>
     @endif
 
     <main class="mou-doc-canvas">
         {!! $renderedHtml !!}
     </main>
-
-    @if($differentFirstPage && $firstPageFooterHtml !== '')
-        <div class="mou-pdf-first-page-footer" data-footer-zone="first-page" style="margin-top: 12pt;">
-            {!! $firstPageFooterHtml !!}
-        </div>
-    @endif
 </body>
 </html>

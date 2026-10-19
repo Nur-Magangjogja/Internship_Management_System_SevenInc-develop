@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -87,6 +88,26 @@ class Mou extends Model
         return !empty($this->drive_file_id);
     }
 
+    public function getStartDateAttribute()
+    {
+        return $this->effective_start;
+    }
+
+    public function getEndDateAttribute()
+    {
+        return $this->effective_end;
+    }
+
+    public function getInstitutionSignatoryNameAttribute()
+    {
+        return $this->first_party_signatory_name;
+    }
+
+    public function getInstitutionSignatoryPositionAttribute()
+    {
+        return $this->first_party_signatory_title;
+    }
+
 
     protected static function booted(): void
     {
@@ -167,6 +188,15 @@ class Mou extends Model
     public function supersedes(): BelongsTo
     {
         return $this->belongsTo(Mou::class, 'supersedes_mou_id');
+    }
+
+    /**
+     * Relasi ke berkas GeneratedDocument terpusat.
+     */
+    public function generatedDocument(): HasOne
+    {
+        return $this->hasOne(GeneratedDocument::class, 'document_number', 'company_mou_number')
+            ->where('document_type', GeneratedDocument::TYPE_MOU);
     }
 
     /**

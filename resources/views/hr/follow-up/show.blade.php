@@ -444,7 +444,7 @@
                         </p>
                     </div>
 
-                    <form method="POST" action="{{ route($routePrefix . '.attempts.store', $cycle) }}" class="space-y-4">
+                    <form method="POST" action="{{ route($routePrefix . '.attempts.store', $cycle) }}" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true;">
                         @csrf
 
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -733,12 +733,95 @@
                             </div>
                         </div>
                     </div>
+
+                    @if ($cycle->final_result === \App\Models\FollowUpCycle::RESULT_WILLING)
+                        <div class="mt-4 rounded-xl border border-purple-200 bg-purple-50 p-4">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="h-2 w-2 rounded-full bg-purple-600"></span>
+                                        <h4 class="text-xs font-bold text-purple-900">Mitra Menyatakan Kesediaan Kerja Sama</h4>
+                                    </div>
+                                    <p class="text-xs text-purple-700 mt-1">Siklus ini telah memenuhi syarat untuk penerbitan naskah dokumen MOU kemitraan resmi.</p>
+                                </div>
+                                <a
+                                    href="{{ route('hr.mous.create', ['institution_id' => $cycle->institution_id, 'cycle_id' => $cycle->id]) }}"
+                                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 transition"
+                                >
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                    Buat Draft Dokumen MOU
+                                </a>
+                            </div>
+                        </div>
+
+                        @if ($cycle->mous->isNotEmpty())
+                            <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                                <h4 class="text-xs font-bold text-slate-800 mb-2">Dokumen MOU yang Dihasilkan dari Siklus Ini:</h4>
+                                <div class="divide-y divide-slate-100">
+                                    @foreach ($cycle->mous as $mou)
+                                        <div class="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2">
+                                            <div>
+                                                <a href="{{ route('hr.mous.show', $mou) }}" class="font-bold text-xs text-blue-600 hover:underline">
+                                                    {{ $mou->company_mou_number }}
+                                                </a>
+                                                <p class="text-[11px] text-slate-500">Dibuat: {{ $mou->created_at?->format('d M Y') }}</p>
+                                            </div>
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border {{ $mou->status_badge_classes }}">
+                                                {{ $mou->status_label }}
+                                            </span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+                    @endif
                 </div>
             @endif
         </div>
 
-        <!-- Col Right (1 Col): Linked Interns -->
-        <div>
+        <!-- Col Right (1 Col): Linked Interns & MoU Status -->
+        <div class="space-y-6">
+            <!-- Dokumen Kerja Sama (MOU) Institusi Mitra -->
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 class="text-sm font-bold text-slate-800">Status Dokumen Kerja Sama (MOU)</h3>
+                    <a href="{{ route('hr.mous.index', ['institution_id' => $cycle->institution_id]) }}" class="text-xs font-semibold text-blue-600 hover:underline">
+                        Lihat MOU &rarr;
+                    </a>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <span class="text-[11px] font-semibold text-slate-500 block">Status Perjanjian:</span>
+                        <div class="mt-1 flex items-center gap-2">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border {{ $cooperationSummary['status_badge'] }}">
+                                {{ $cooperationSummary['status_label'] }}
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1">{{ $cooperationSummary['status_detail'] }}</p>
+                    </div>
+
+                    @if ($cooperationSummary['can_create_mou'])
+                        <div class="pt-2">
+                            <a
+                                href="{{ route('hr.mous.create', ['institution_id' => $cycle->institution_id, 'cycle_id' => $cycle->id]) }}"
+                                class="inline-flex items-center justify-center w-full gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition"
+                            >
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                                Terbitkan Naskah MOU Baru
+                            </a>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Pemagang Terkait -->
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
                     <h3 class="text-sm font-bold text-slate-800">Pemagang Terkait</h3>

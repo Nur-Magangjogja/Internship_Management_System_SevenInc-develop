@@ -581,12 +581,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (MODE === 'pendaftar' && status === 'accepted') {
             // Tombol LOA
             extraButtons += `
-            <button type="button" title="Generate LOA"
-                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc"
-                data-id="${it.id}" data-jenis="loa">
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
+                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
                 LOA
-            </button>`;
+            </a>`;
             // Tombol Aktifkan → pindah ke Data Pemagang
             extraButtons += `
             <button type="button" title="Aktifkan sebagai Pemagang"
@@ -598,8 +597,22 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>`;
         }
 
+        if (MODE === 'pemagang' && (status === 'active' || status === 'accepted')) {
+            extraButtons += `
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
+                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                LOA
+            </a>`;
+        }
+
         if (MODE === 'pemagang' && status === 'completed') {
             extraButtons = `
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
+                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                LOA
+            </a>
             <button type="button" title="Generate Dokumen Selesai"
                 class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc"
                 data-id="${it.id}" data-jenis="skl">
@@ -877,9 +890,12 @@ document.addEventListener('DOMContentLoaded', () => {
             pending.delete(item.id);
             updatePendingBar();
 
-            // Update rowData brand
+            // Update rowData brand & status
             const rowObj = window.rowData.get(item.id);
-            if (rowObj) rowObj.brand = item.brand;
+            if (rowObj) {
+                rowObj.brand = item.brand;
+                rowObj.internship_status = item.to;
+            }
 
             // Refresh tombol di baris ini
             const row = item.select.closest('tr[data-row-id]');
@@ -949,25 +965,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const actionsCell = row.querySelector('td:last-child');
         if (!actionsCell) return;
 
-        // Hapus tombol generate lama
-        actionsCell.querySelectorAll('.js-gen-doc').forEach(b => b.remove());
+        // Hapus tombol dinamis lama (LOA, Dokumen, Aktifkan)
+        actionsCell.querySelectorAll('.js-gen-doc, .js-activate').forEach(b => b.remove());
 
         // Tambah tombol baru sesuai status baru
         const wrapper = actionsCell.querySelector('div');
         if (!wrapper) return;
 
         if (MODE === 'pendaftar' && newStatus === 'accepted') {
-            // Tombol LOA
-            const btnLoa = document.createElement('button');
-            btnLoa.type = 'button';
-            btnLoa.title = 'Generate LOA';
-            btnLoa.className = 'flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc';
-            btnLoa.dataset.id    = id;
-            btnLoa.dataset.jenis = 'loa';
-            btnLoa.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg> LOA`;
-            btnLoa.addEventListener('click', () => openGenerateModal(id, 'loa'));
-            wrapper.prepend(btnLoa);
-
             // Tombol Aktifkan
             const internData = window.rowData.get(id);
             const statusUrl  = internData?.status_update_url || `${ADMIN_INTERNS_BASE}/${id}/status`;
@@ -999,9 +1004,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnAktif.textContent = 'Aktifkan';
                 }
             });
-            wrapper.prepend(btnAktif);
 
-            pushToast(`Status ${name || 'pemagang'} diubah ke Diterima — klik "Aktifkan" untuk pindah ke Data Pemagang.`, 'success');
+            // Tombol LOA
+            const btnLoa = document.createElement('button');
+            btnLoa.type = 'button';
+            btnLoa.title = 'Generate LOA';
+            btnLoa.className = 'flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc';
+            btnLoa.dataset.id    = id;
+            btnLoa.dataset.jenis = 'loa';
+            btnLoa.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg> LOA`;
+            btnLoa.addEventListener('click', () => openGenerateModal(id, 'loa'));
+
+            // Urutan: LOA di depan, lalu Aktifkan, lalu tombol bawaan (Detail, Edit, Hapus)
+            wrapper.prepend(btnAktif);
+            wrapper.prepend(btnLoa);
         }
 
         if (MODE === 'pemagang' && newStatus === 'completed') {
@@ -1014,8 +1030,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg> Dokumen`;
             wrapper.prepend(btn);
             btn.addEventListener('click', () => openGenerateModal(id, 'skl'));
-
-            pushToast(`Status ${name || 'pemagang'} diubah ke Selesai — generate SKL, Sertifikat, dan Surat Penilaian.`, 'success');
         }
     }
 
@@ -1212,30 +1226,32 @@ document.addEventListener('DOMContentLoaded', () => {
         loa: {
             title:    'Generate LOA',
             subtitle: 'Letter of Acceptance — surat penerimaan magang',
-            info:     'Anda akan diarahkan ke form LOA. Data pemagang sudah terisi otomatis, Anda bisa review sebelum generate.',
-            url:      (id) => `{{ url('admin/loa/generate') }}/${id}`,
-            method:   'REDIRECT',
+            info:     'Sistem akan menerbitkan LOA resmi secara otomatis menggunakan template aktif dan menyinkronkan ke Drive pemagang.',
+            method:   'POST',
         },
         skl: {
             title:    'Generate SKL',
             subtitle: 'Surat Keterangan Selesai Magang',
-            info:     'Anda akan diarahkan ke form SKL. Data pemagang sudah terisi otomatis, Anda bisa review dan ubah sebelum generate PDF.',
-            url:      (id) => `{{ url('admin/skl/generate') }}/${id}`,
-            method:   'REDIRECT',
+            info:     'Sistem akan menerbitkan SKL resmi secara otomatis menggunakan template aktif dan menyinkronkan ke Drive pemagang.',
+            method:   'POST',
         },
         sertifikat: {
             title:    'Generate Sertifikat',
-            subtitle: 'Sertifikat Magang',
-            info:     'Anda akan diarahkan ke halaman buat sertifikat dengan data pemagang sudah terisi otomatis.',
-            url:      (id) => `{{ route('admin.certificate.create') }}?intern_id=${id}`,
-            method:   'REDIRECT',
+            subtitle: 'Sertifikat Magang Resmi',
+            info:     'Sistem akan menerbitkan Sertifikat resmi secara otomatis menggunakan visual canvas aktif dan menyinkronkan ke Drive pemagang.',
+            method:   'POST',
         },
         penilaian: {
-            title:    'Buat Surat Penilaian',
+            title:    'Surat Penilaian',
             subtitle: 'Surat Penilaian Magang',
-            info:     'Anda akan diarahkan ke halaman buat penilaian dengan data pemagang sudah terisi otomatis.',
-            url:      (id) => `{{ route('interns.assessment.create') }}?intern_id=${id}`,
-            method:   'REDIRECT',
+            info:     'Sistem akan menerbitkan Surat Penilaian magang secara otomatis dan menyinkronkan ke Drive pemagang.',
+            method:   'POST',
+        },
+        rekomendasi: {
+            title:    'Surat Rekomendasi',
+            subtitle: 'Surat Rekomendasi Magang',
+            info:     'Sistem akan menerbitkan Surat Rekomendasi resmi dan menyinkronkan ke Drive pemagang.',
+            method:   'POST',
         },
         alumni: {
             title:    'Informasi Alumni',
@@ -1249,8 +1265,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Opsi yang tersedia per mode
     const GEN_OPTIONS_BY_MODE = {
         pendaftar: ['loa'],
-        pemagang:  ['skl', 'sertifikat', 'penilaian', 'alumni'],
-        all:       ['loa', 'skl', 'sertifikat', 'penilaian', 'alumni'],
+        pemagang:  ['loa', 'skl', 'sertifikat', 'penilaian', 'rekomendasi', 'alumni'],
+        all:       ['loa', 'skl', 'sertifikat', 'penilaian', 'rekomendasi', 'alumni'],
     };
 
     let _genInternId  = null;
@@ -1396,25 +1412,31 @@ document.addEventListener('DOMContentLoaded', () => {
         // POST
         const btn = document.getElementById('genModalBtn');
         btn.disabled = true;
-        btn.textContent = 'Memproses...';
+        btn.textContent = 'Menerbitkan...';
 
         try {
-            const body = cfg.body ? cfg.body(_genInternId) : { intern_id: _genInternId };
-            const fd   = new FormData();
+            const fd = new FormData();
             fd.append('_token', csrf);
-            Object.entries(body).forEach(([k, v]) => fd.append(k, v));
+            fd.append('intern_id', _genInternId);
+            fd.append('jenis_surat', _genJenis);
 
-            const res = await fetch(cfg.url(_genInternId), {
+            const res = await fetch(GENERATE_URL, {
                 method: 'POST',
                 body: fd,
-                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                 credentials: 'same-origin',
             });
 
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            if (!res.ok || json.ok === false) {
+                throw new Error(json.error || `HTTP ${res.status}`);
+            }
 
             closeGenerateModal();
-            pushToast(`${cfg.title} untuk ${name} berhasil di-generate.`);
+            pushToast(`✅ ${cfg.title} untuk ${name} berhasil diterbitkan.`);
+            if (json.download_url) {
+                window.open(json.download_url, '_blank');
+            }
             loadPage(window.__CURRENT_PAGE || 1);
         } catch (e) {
             pushToast(`Gagal generate: ${e.message}`, 'error');
@@ -1438,12 +1460,164 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Modal: Detail ────────────────────────────────────────────────────────────
 
+    // ── Helper: Escape HTML & Format Nilai Detail ────────────────────────────────
+    const escapeHtml = (str) => {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    };
+
+    const SECTION_ORDER = [
+        'Data Pribadi',
+        'Data Akademik',
+        'Informasi Magang',
+        'Keahlian & Alat',
+        'Berkas & Dokumen',
+        'Informasi Tambahan',
+    ];
+
+    const SYSTEM_SECTION_MAP = {
+        fullname:            'Data Pribadi',
+        birth_place:         'Data Pribadi',
+        born_date:           'Data Pribadi',
+        religion:            'Data Pribadi',
+        student_id:          'Data Pribadi',
+        gender:              'Data Pribadi',
+        email:               'Data Pribadi',
+        phone_number:        'Data Pribadi',
+        current_city:        'Data Pribadi',
+
+        institution_name:    'Data Akademik',
+        study_program:       'Data Akademik',
+        faculty:             'Data Akademik',
+
+        internship_type:          'Informasi Magang',
+        internship_arrangement:   'Informasi Magang',
+        internship_interest:      'Informasi Magang',
+        internship_reason:        'Informasi Magang',
+        current_status:           'Informasi Magang',
+        english_book_ability:     'Informasi Magang',
+        start_date:               'Informasi Magang',
+        end_date:                 'Informasi Magang',
+        planned_duration:         'Informasi Magang',
+        wfo_readiness:            'Informasi Magang',
+        schedule_shift_readiness: 'Informasi Magang',
+
+        has_laptop:            'Keahlian & Alat',
+        owned_tools:           'Keahlian & Alat',
+        design_software:       'Keahlian & Alat',
+        video_software:        'Keahlian & Alat',
+        programming_languages: 'Keahlian & Alat',
+        digital_marketing_type:'Keahlian & Alat',
+
+        cv:                  'Berkas & Dokumen',
+        identity:            'Berkas & Dokumen',
+        portfolio:           'Berkas & Dokumen',
+        cover_letter:        'Berkas & Dokumen',
+        proposal:            'Berkas & Dokumen',
+        supporting_document: 'Berkas & Dokumen',
+        profile_photo:       'Berkas & Dokumen',
+
+        supervisor_name:         'Informasi Tambahan',
+        supervisor_contact:      'Informasi Tambahan',
+        boarding_info:           'Informasi Tambahan',
+        social_media_instagram:  'Informasi Tambahan',
+        internship_info_sources: 'Informasi Tambahan',
+        current_activities:      'Informasi Tambahan',
+    };
+
+    function getFieldSection(f) {
+        if (f.group_name && f.group_name.trim() !== '' && f.group_name !== 'main') {
+            if (f.group_name === 'informasi_tambahan') return 'Informasi Tambahan';
+            if (f.group_name === 'berkas' || f.group_name === 'dokumen' || f.group_name === 'berkas_dokumen') return 'Berkas & Dokumen';
+            if (f.group_name === 'data_pribadi') return 'Data Pribadi';
+            if (f.group_name === 'data_akademik') return 'Data Akademik';
+            if (f.group_name === 'informasi_magang') return 'Informasi Magang';
+            if (f.group_name === 'keahlian_alat') return 'Keahlian & Alat';
+            return f.group_name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        if (SYSTEM_SECTION_MAP[f.field_key]) {
+            return SYSTEM_SECTION_MAP[f.field_key];
+        }
+        if (f.field_type === 'file') {
+            return 'Berkas & Dokumen';
+        }
+        return 'Informasi Tambahan';
+    }
+
     /**
      * Mapping field_key → nilai dari objek data intern.
-     * Beberapa field_key sistem tidak 1:1 dengan key di JSON API karena sudah di-humanize.
      */
     function getFieldValue(it, fieldKey) {
-        return it[fieldKey] !== undefined ? it[fieldKey] : null;
+        if (!it) return '-';
+
+        // Cek lampiran berkas pendaftaran jika ada
+        if (it.attachments && it.attachments[fieldKey]) {
+            return it.attachments[fieldKey];
+        }
+
+        let v = it[fieldKey];
+
+        if (fieldKey === 'internship_interest') {
+            v = it.division_name || it.internship_interest || v;
+        } else if (fieldKey === 'brand') {
+            v = it.brand_name || it.brand || v;
+        } else if (fieldKey === 'has_laptop') {
+            if (v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'ya' || String(v).toLowerCase() === 'true' || String(v).toLowerCase() === 'punya') {
+                return 'Ya, Punya Sendiri';
+            }
+            if (v === false || v === 0 || v === '0' || String(v).toLowerCase() === 'tidak' || String(v).toLowerCase() === 'false') {
+                return 'Tidak';
+            }
+            return '-';
+        }
+
+        if (v === undefined || v === null || v === '') {
+            return '-';
+        }
+
+        if (typeof v === 'object' && v !== null && (v.url || v.name)) {
+            return v;
+        }
+
+        if (Array.isArray(v)) {
+            return v.join(', ');
+        }
+
+        return v;
+    }
+
+    function renderDetailValue(val) {
+        if (val === null || val === undefined || val === '' || val === '-') {
+            return '<span class="text-gray-400 font-normal">-</span>';
+        }
+        if (typeof val === 'object' && val !== null && val.url) {
+            return `<a href="${val.url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2D8659] hover:text-[#1F5F3F] bg-[#E8F5E9] hover:bg-[#d4edd9] px-2.5 py-1 rounded-[6px] transition max-w-full">
+                <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span class="truncate">${escapeHtml(val.name || 'Lihat Berkas')}</span>
+                <svg class="h-3 w-3 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>`;
+        }
+        if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+            return `<a href="${val}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2D8659] hover:underline bg-[#E8F5E9] px-2.5 py-1 rounded-[6px] transition">
+                <span>Buka Tautan</span>
+                <svg class="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>`;
+        }
+        return escapeHtml(String(val));
+    }
+
+    function detailRow(label, val) {
+        return `
+            <div class="py-1.5">
+                <p class="text-[11px] font-semibold text-[#4B5F5A]">${escapeHtml(label)}</p>
+                <div class="text-[13px] font-medium text-[#1B3A34] mt-0.5">${renderDetailValue(val)}</div>
+            </div>`;
     }
 
     function openDetailModal(it) {
@@ -1455,7 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sectionHtml = (title) =>
             `<p class="col-span-2 mt-2 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#2D8659] border-b border-[#DCE7E1] pb-1">${title}</p>`;
 
-        // Render field menggunakan form_fields jika tersedia
+        // Render field dinamis mengikuti form template (__formFields)
         let fieldsHtml = '';
         if (__formFields.length > 0) {
             // Deduplikasi defensif berdasarkan field_key
@@ -1466,82 +1640,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return true;
             });
 
-            // Kelompokkan per group_name
-            const groups = {};
+            const sectionGroups = {};
+            SECTION_ORDER.forEach(s => sectionGroups[s] = []);
+
             uniqueFields.forEach(f => {
-                const g = f.group_name || '__main__';
-                if (!groups[g]) groups[g] = [];
-                groups[g].push(f);
+                const sName = getFieldSection(f);
+                if (!sectionGroups[sName]) sectionGroups[sName] = [];
+                sectionGroups[sName].push(f);
             });
 
-            const groupLabels = {
-                '__main__': null, // akan dipecah berdasarkan section system
-                'informasi_tambahan': 'Informasi Tambahan',
-            };
-
-            // Definisi section berdasarkan field_key sistem
-            const SECTION_MAP = {
-                fullname:            'Data Pribadi',
-                birth_place:         'Data Pribadi',
-                born_date:           'Data Pribadi',
-                religion:            'Data Pribadi',
-                student_id:          'Data Pribadi',
-                gender:              'Data Pribadi',
-                email:               'Data Pribadi',
-                phone_number:        'Data Pribadi',
-                current_city:        'Data Pribadi',
-                institution_name:    'Data Akademik',
-                study_program:       'Data Akademik',
-                faculty:             'Data Akademik',
-                internship_type:     'Informasi Magang',
-                internship_arrangement: 'Informasi Magang',
-                internship_interest: 'Informasi Magang',
-                internship_reason:   'Informasi Magang',
-                current_status:      'Informasi Magang',
-                english_book_ability:'Informasi Magang',
-                supervisor_contact:  'Informasi Magang',
-                start_date:          'Informasi Magang',
-                end_date:            'Informasi Magang',
-                design_software:     'Keahlian & Alat',
-                video_software:      'Keahlian & Alat',
-                programming_languages:'Keahlian & Alat',
-                digital_marketing_type:'Keahlian & Alat',
-                owned_tools:         'Keahlian & Alat',
-            };
-
-            // Render grup utama (null group_name)
-            const mainFields = groups['__main__'] || [];
-            let lastSection = null;
-            mainFields.forEach(f => {
-                const sectionName = SECTION_MAP[f.field_key] || 'Informasi Lainnya';
-                if (sectionName !== lastSection) {
-                    fieldsHtml += sectionHtml(sectionName);
-                    lastSection = sectionName;
+            SECTION_ORDER.forEach(sName => {
+                const fields = sectionGroups[sName] || [];
+                if (fields.length > 0) {
+                    fieldsHtml += sectionHtml(sName);
+                    fields.forEach(f => {
+                        const val = getFieldValue(it, f.field_key);
+                        const spanClass = (f.column_span === 1 || f.field_type === 'textarea' || f.field_type === 'file') ? 'col-span-2' : '';
+                        fieldsHtml += `<div class="${spanClass}">` + detailRow(f.label, val) + '</div>';
+                    });
+                    if (sName === 'Informasi Magang' && (it.brand || it.brand_name)) {
+                        fieldsHtml += detailRow('Brand', it.brand_name || it.brand);
+                    }
                 }
-                const val = getFieldValue(it, f.field_key);
-                const spanClass = (f.column_span === 1) ? 'col-span-2' : '';
-                fieldsHtml += `<div class="${spanClass}">` + detailRow(f.label, val) + '</div>';
             });
 
-            // Brand (selalu ditampilkan setelah field sistem Informasi Magang)
-            if (it.brand) {
-                fieldsHtml += detailRow('Brand', it.brand);
-            }
-
-            // Grup tambahan
-            Object.keys(groups).forEach(gKey => {
-                if (gKey === '__main__') return;
-                const label = groupLabels[gKey] || gKey;
-                fieldsHtml += sectionHtml(label);
-                groups[gKey].forEach(f => {
-                    const val = getFieldValue(it, f.field_key);
-                    const spanClass = (f.column_span === 1) ? 'col-span-2' : '';
-                    fieldsHtml += `<div class="${spanClass}">` + detailRow(f.label, val) + '</div>';
-                });
+            // Seksi kustom lainnya yang tidak ada di SECTION_ORDER
+            Object.keys(sectionGroups).forEach(sName => {
+                if (SECTION_ORDER.includes(sName)) return;
+                const fields = sectionGroups[sName] || [];
+                if (fields.length > 0) {
+                    fieldsHtml += sectionHtml(sName);
+                    fields.forEach(f => {
+                        const val = getFieldValue(it, f.field_key);
+                        const spanClass = (f.column_span === 1 || f.field_type === 'textarea' || f.field_type === 'file') ? 'col-span-2' : '';
+                        fieldsHtml += `<div class="${spanClass}">` + detailRow(f.label, val) + '</div>';
+                    });
+                }
             });
 
             // Tgl daftar selalu di akhir
-            fieldsHtml += detailRow('Tgl Daftar', fmtDate(it.created_at));
+            fieldsHtml += `<div class="col-span-2">` + detailRow('Tgl Daftar', fmtDate(it.created_at)) + `</div>`;
 
         } else {
             // Fallback: hardcoded field list (bila form_fields belum ter-load)
@@ -1582,6 +1720,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${detailRow('Software Video', it.video_software)}
                 ${detailRow('Bahasa Pemrograman', it.programming_languages)}
                 ${detailRow('Materi Digital Marketing', it.digital_marketing_type)}
+                ${detailRow('Memiliki Laptop', (it.has_laptop === true || it.has_laptop === 1 || it.has_laptop === '1' || String(it.has_laptop).toLowerCase() === 'ya') ? 'Ya, Punya Sendiri' : ((it.has_laptop === false || it.has_laptop === 0 || it.has_laptop === '0' || String(it.has_laptop).toLowerCase() === 'tidak') ? 'Tidak' : '-'))}
                 ${detailRow('Alat yang Dimiliki', it.owned_tools)}
 
                 ${sectionHtml('Informasi Tambahan')}
@@ -1695,31 +1834,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
             switch (f.field_type) {
                 case 'select': {
+                    let hasMatch = false;
+                    const isSelectMatch = (rVal, oVal, oLbl) => {
+                        if (rVal === undefined || rVal === null || rVal === '') return false;
+                        const sR = String(rVal).toLowerCase().trim();
+                        const sO = String(oVal).toLowerCase().trim();
+                        const sL = String(oLbl || '').toLowerCase().trim();
+                        if (sR === sO || sR === sL) return true;
+
+                        // Fuzzy match known legacy values
+                        if (sR.includes('sanggup') && !sR.includes('tidak') && (sO === 'sanggup' || sL === 'sanggup')) return true;
+                        if (sR.includes('tidak sanggup') && (sO.includes('tidak') || sL.includes('tidak'))) return true;
+
+                        if ((sR.startsWith('ya') || sR.includes('kost') || sR.includes('rekomendasi')) && (sO === 'ya' || sL === 'ya')) return true;
+                        if (sR.startsWith('tidak') && (sO === 'tidak' || sL === 'tidak')) return true;
+
+                        if (sR.includes('mandiri') && (sO.includes('inisiatif') || sO.includes('mandiri'))) return true;
+                        if ((sR.includes('kampus') || sR.includes('reguler')) && (sO.includes('reguler') || sO.includes('mitra'))) return true;
+
+                        return false;
+                    };
+
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
-                        const sel = String(rawVal).toLowerCase().trim() === String(optVal).toLowerCase().trim() ? 'selected' : '';
+                        const sel = (!hasMatch && isSelectMatch(rawVal, optVal, optLbl)) ? 'selected' : '';
+                        if (sel) hasMatch = true;
                         return `<option value="${optVal}" ${sel}>${optLbl}</option>`;
                     }).join('');
+
+                    // Safety preservation: Jika nilai lama ada tapi tidak cocok dengan opsi mana pun, buat opsi pilihan otomatis agar data tidak terhapus
+                    let extraOpt = '';
+                    if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '' && fmtStr(rawVal) !== '-' && !hasMatch) {
+                        extraOpt = `<option value="${rawVal}" selected>${rawVal} (Data Tersimpan)</option>`;
+                    }
+
                     return `<div class="${spanClass}">
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
                         <select name="${f.field_key}" class="${inputClass}">
-                            <option value="">-- Pilih --</option>${opts}
+                            <option value="">-- Pilih --</option>
+                            ${extraOpt}
+                            ${opts}
                         </select>
                     </div>`;
                 }
                 case 'radio': {
+                    const isChecked = (rVal, oVal, oLbl) => {
+                        if (rVal === undefined || rVal === null || rVal === '') return false;
+                        const sR = String(rVal).toLowerCase().trim();
+                        const sO = String(oVal).toLowerCase().trim();
+                        const sL = String(oLbl || '').toLowerCase().trim();
+                        if (sR === sO || sR === sL) return true;
+
+                        const truthy = ['1', 'true', 'ya', 'yes', 'y', 'punya'];
+                        const falsy  = ['0', 'false', 'tidak', 'no', 'n'];
+
+                        const rTruthy = truthy.includes(sR) || sR.startsWith('ya') || sR.includes('punya');
+                        const rFalsy  = falsy.includes(sR) || sR.startsWith('tidak');
+
+                        const oTruthy = truthy.includes(sO) || sL.startsWith('ya') || sL.includes('punya');
+                        const oFalsy  = falsy.includes(sO) || sL.startsWith('tidak');
+
+                        if (rTruthy && oTruthy) return true;
+                        if (rFalsy && oFalsy) return true;
+
+                        return false;
+                    };
+
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
-                        const chk = String(rawVal).toLowerCase().trim() === String(optVal).toLowerCase().trim() ? 'checked' : '';
-                        return `<label class="inline-flex items-center gap-1.5 text-[12.5px]">
+                        const chk = isChecked(rawVal, optVal, optLbl) ? 'checked' : '';
+                        return `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
                             <input type="radio" name="${f.field_key}" value="${optVal}" ${chk} class="accent-[#2D8659]"> ${optLbl}
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
-                        <div class="flex flex-wrap gap-3">${opts}</div>
+                        <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
                     </div>`;
                 }
                 case 'checkbox': {
@@ -1729,14 +1921,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
-                        const chk = curVals.includes(String(optVal).toLowerCase().trim()) ? 'checked' : '';
-                        return `<label class="inline-flex items-center gap-1.5 text-[12.5px] text-[#1B3A34]">
+                        const sOpt = String(optVal).toLowerCase().trim();
+                        const sLbl = String(optLbl).toLowerCase().trim();
+                        const chk = (curVals.includes(sOpt) || curVals.includes(sLbl)) ? 'checked' : '';
+                        return `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
                             <input type="checkbox" name="${f.field_key}[]" value="${optVal}" ${chk} class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${optLbl}
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
-                        <div class="flex flex-wrap gap-3">${opts}</div>
+                        <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
                     </div>`;
                 }
                 case 'textarea':
@@ -1750,6 +1944,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `<div class="${spanClass}">
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
                         <input type="date" name="${f.field_key}" value="${dateV}" class="${inputClass}">
+                    </div>`;
+                }
+                case 'file': {
+                    let fileInfo = '';
+                    const attObj = (it.attachments && it.attachments[f.field_key]) ? it.attachments[f.field_key] : null;
+                    const fileUrl = attObj?.url || (typeof rawVal === 'string' && (rawVal.startsWith('http') || rawVal.includes('.')) ? rawVal : null);
+                    const fileName = attObj?.name || 'Berkas Terlampir';
+
+                    if (fileUrl) {
+                        fileInfo = `<div class="mb-1.5 flex items-center gap-2">
+                            <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2D8659] hover:underline bg-[#E8F5E9] px-2.5 py-1 rounded-[6px]">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <span>File Saat Ini: ${escapeHtml(fileName)}</span>
+                            </a>
+                            <span class="text-[11px] text-[#4B5F5A]">(Unggah baru untuk mengganti)</span>
+                        </div>`;
+                    }
+
+                    return `<div class="${spanClass}">
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${fileInfo}
+                        <input type="file" name="${f.field_key}" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-[6px] file:border-0 file:text-xs file:font-semibold file:bg-[#E8F5E9] file:text-[#1F5F3F] hover:file:bg-[#d4edd9] border border-[#DCE7E1] rounded-[8px] p-1 bg-[#F4F8F6]">
+                        ${f.helper_text ? `<p class="mt-1 text-[11px] text-[#4B5F5A]">${escapeHtml(f.helper_text)}</p>` : ''}
                     </div>`;
                 }
                 default: {
@@ -1769,7 +1986,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         datalistHtml = `<datalist id="faculties-list">${(@json($faculties ?? [])).map(c => `<option value="${c.name}">`).join('')}</datalist>`;
                     }
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         <input type="${f.field_type || 'text'}" ${listAttr} name="${f.field_key}" value="${v}" class="${inputClass}">
                         ${datalistHtml}
                     </div>`;
@@ -1781,35 +1998,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let dynamicFieldsHtml = '';
 
         if (__formFields.length > 0) {
-            const SECTION_MAP = {
-                fullname:            'Data Pribadi',
-                birth_place:         'Data Pribadi',
-                born_date:           'Data Pribadi',
-                religion:            'Data Pribadi',
-                student_id:          'Data Pribadi',
-                gender:              'Data Pribadi',
-                email:               'Data Pribadi',
-                phone_number:        'Data Pribadi',
-                current_city:        'Data Pribadi',
-                institution_name:    'Data Akademik',
-                study_program:       'Data Akademik',
-                faculty:             'Data Akademik',
-                internship_type:     'Informasi Magang',
-                internship_arrangement: 'Informasi Magang',
-                internship_interest: 'Informasi Magang',
-                internship_reason:   'Informasi Magang',
-                current_status:      'Informasi Magang',
-                english_book_ability:'Informasi Magang',
-                supervisor_contact:  'Informasi Magang',
-                start_date:          'Informasi Magang',
-                end_date:            'Informasi Magang',
-                design_software:     'Keahlian & Alat',
-                video_software:      'Keahlian & Alat',
-                programming_languages:'Keahlian & Alat',
-                digital_marketing_type:'Keahlian & Alat',
-                owned_tools:         'Keahlian & Alat',
-            };
-
             // Deduplikasi defensif berdasarkan field_key
             const seenEditKeys = new Set();
             const uniqueFields = __formFields.filter(f => {
@@ -1818,25 +2006,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 return true;
             });
 
-            const mainFields = uniqueFields.filter(f => !f.group_name);
-            const extraFields = uniqueFields.filter(f => f.group_name === 'informasi_tambahan');
+            const sectionGroups = {};
+            SECTION_ORDER.forEach(s => sectionGroups[s] = []);
 
-            let lastSection = null;
-            mainFields.forEach(f => {
-                const sName = SECTION_MAP[f.field_key] || 'Informasi Lainnya';
-                if (sName !== lastSection) {
-                    dynamicFieldsHtml += section(sName);
-                    lastSection = sName;
-                }
-                dynamicFieldsHtml += renderEditField(f, it);
+            uniqueFields.forEach(f => {
+                const sName = getFieldSection(f);
+                if (!sectionGroups[sName]) sectionGroups[sName] = [];
+                sectionGroups[sName].push(f);
             });
 
-            if (extraFields.length > 0) {
-                dynamicFieldsHtml += section('Informasi Tambahan');
-                extraFields.forEach(f => {
-                    dynamicFieldsHtml += renderEditField(f, it);
-                });
-            }
+            SECTION_ORDER.forEach(sName => {
+                const fields = sectionGroups[sName] || [];
+                if (fields.length > 0) {
+                    dynamicFieldsHtml += section(sName);
+                    fields.forEach(f => {
+                        dynamicFieldsHtml += renderEditField(f, it);
+                    });
+                }
+            });
+
+            // Seksi kustom lainnya yang tidak ada di SECTION_ORDER
+            Object.keys(sectionGroups).forEach(sName => {
+                if (SECTION_ORDER.includes(sName)) return;
+                const fields = sectionGroups[sName] || [];
+                if (fields.length > 0) {
+                    dynamicFieldsHtml += section(sName);
+                    fields.forEach(f => {
+                        dynamicFieldsHtml += renderEditField(f, it);
+                    });
+                }
+            });
 
         } else {
             // Fallback hardcoded
@@ -1947,6 +2146,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${editField('Software Video', 'video_software', it.video_software)}
                 ${editField('Bahasa Pemrograman', 'programming_languages', it.programming_languages)}
                 ${editField('Digital Marketing', 'digital_marketing_type', it.digital_marketing_type)}
+                <div class="sm:col-span-2">
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Apakah Memiliki Alat Kerja (Laptop) Sendiri?<span class="text-red-500 ml-0.5">*</span></label>
+                    <div class="flex flex-wrap gap-4 mt-1.5">
+                        <label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
+                            <input type="radio" name="has_laptop" value="1" ${(it.has_laptop === true || it.has_laptop === 1 || it.has_laptop === '1' || String(it.has_laptop).toLowerCase() === 'ya') ? 'checked' : ''} class="accent-[#2D8659]"> Ya, Punya Sendiri
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
+                            <input type="radio" name="has_laptop" value="0" ${(it.has_laptop === false || it.has_laptop === 0 || it.has_laptop === '0' || String(it.has_laptop).toLowerCase() === 'tidak') ? 'checked' : ''} class="accent-[#2D8659]"> Tidak
+                        </label>
+                    </div>
+                </div>
                 ${editField('Peralatan (Laptop, Kamera, dll)', 'owned_tools', it.owned_tools)}
 
                 ${section('Informasi Tambahan')}
@@ -1996,6 +2206,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             return `<option value="${b.name}" ${isSel ? 'selected' : ''}>${b.name}</option>`;
                         }).join('')}
                     </select>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Catatan / Alasan Perubahan (Opsional)</label>
+                    <input type="text" name="reason" placeholder="Contoh: Koreksi data berkas atau penyesuaian status"
+                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
                 </div>
             </div>
 
@@ -2267,6 +2482,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyBadge(res.badge, res.to);
                 pending.delete(res.id);
 
+                const rowObj = window.rowData.get(res.id);
+                if (rowObj) {
+                    rowObj.internship_status = res.to;
+                    if (res.brand) rowObj.brand = res.brand;
+                }
+
                 const row = res.select.closest('tr[data-row-id]');
                 if (row) refreshGenerateButtons(row, res.id, res.to);
 
@@ -2292,7 +2513,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Load page (fetch API) ────────────────────────────────────────────────────
-    let __formFields = []; // cache form_fields dari API
+    let __formFields = @json($formFields ?? []); // cache form_fields dari server / API
 
     async function loadPage(page = 1) {
         const searchQuery = (searchInput?.value || '').trim();

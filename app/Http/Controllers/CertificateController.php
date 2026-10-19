@@ -60,42 +60,38 @@ class CertificateController extends Controller
         $seqCache = [];
         $roman = [1=>'I',2=>'II',3=>'III',4=>'IV',5=>'V',6=>'VI',7=>'VII',8=>'VIII',9=>'IX',10=>'X',11=>'XI',12=>'XII'];
 
-        DB::transaction(function () use ($interns, $roman, &$seqCache) {
-            foreach ($interns as $ir) {
-                $end = Carbon::parse($ir->end_date);
-                $brandData = Brand::where('code', $ir->brand)->first();
-                $divisionCode = $this->divisionFromInterest((string)$ir->internship_interest) ?? 'ADM';
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
 
-                $ym = $end->format('Y-m');
-                if (!isset($seqCache[$ym])) {
-                    $last = InternCertificate::whereYear('created_at', $end->year)
-                        ->whereMonth('created_at', $end->month)
-                        ->orderByDesc('id')->first();
-                    $seq = 1;
-                    if ($last && preg_match('/^(\d{3})\/SERT\//', $last->certificate_number, $m)) {
-                        $seq = (int)$m[1] + 1;
-                    }
-                    $seqCache[$ym] = $seq;
+        foreach ($interns as $ir) {
+            $end = Carbon::parse($ir->end_date);
+            $brandData = Brand::where('code', $ir->brand)->first();
+            $divisionCode = $this->divisionFromInterest((string)$ir->internship_interest) ?? 'ADM';
+
+            $ym = $end->format('Y-m');
+            if (!isset($seqCache[$ym])) {
+                $last = InternCertificate::whereYear('created_at', $end->year)
+                    ->whereMonth('created_at', $end->month)
+                    ->orderByDesc('id')->first();
+                $seq = 1;
+                if ($last && preg_match('/^(\d{3})\/SERT\//', $last->certificate_number, $m)) {
+                    $seq = (int)$m[1] + 1;
                 }
-                $seq = $seqCache[$ym]++;
-                $seqStr = str_pad((string)$seq, 3, '0', STR_PAD_LEFT);
-                
-                $companyCode = $this->companyCode($brandData?->name ?? 'Seven Inc');
-                $brandCode = strtoupper($ir->brand ?? 'SI');
-                $serial = "{$seqStr}/SERT/{$divisionCode}/{$companyCode}.{$brandCode}/".$roman[$end->month]."/".$end->year;
-
-                InternCertificate::create([
-                    'intern_id'             => $ir->id,
-                    'certificate_number'    => $serial,
-                    'company_name'          => $brandData?->name ?? 'Seven Inc',
-                    'background_image_path' => $brandData?->internship_certificate_bg,
-                    'company_logo_path'     => $brandData?->logo,
-                    'signatory_name'        => $brandData?->signatory_name ?? 'Ari Setia Husbana',
-                    'signatory_position'    => $brandData?->signatory_position ?? 'HRD',
-                    'signature_image_path'  => $brandData?->signature,
-                ]);
+                $seqCache[$ym] = $seq;
             }
-        });
+            $seq = $seqCache[$ym]++;
+            $seqStr = str_pad((string)$seq, 3, '0', STR_PAD_LEFT);
+            
+            $companyCode = $this->companyCode($brandData?->name ?? 'Seven Inc');
+            $brandCode = strtoupper($ir->brand ?? 'SI');
+            $serial = "{$seqStr}/SERT/{$divisionCode}/{$companyCode}.{$brandCode}/".$roman[$end->month]."/".$end->year;
+
+            $issuanceService->issueDocument(
+                intern: $ir,
+                documentType: 'certificate',
+                options: ['document_number' => $serial],
+                actor: auth()->user()
+            );
+        }
 
         return redirect()->route('admin.certificate.index')->with('success', 'Sertifikat pemagang berhasil dibuat.');
     }

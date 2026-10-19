@@ -204,8 +204,8 @@ return [
         // App\Providers\BroadcastServiceProvider::class,
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
+        App\Providers\DocumentTemplateServiceProvider::class,
         Barryvdh\DomPDF\ServiceProvider::class,
-
 
     ],
 

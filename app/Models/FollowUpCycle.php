@@ -147,6 +147,128 @@ class FollowUpCycle extends Model
     }
 
     /**
+     * Alias relasi attempts untuk kompatibilitas.
+     */
+    public function followUpAttempts()
+    {
+        return $this->attempts();
+    }
+
+    /**
+     * Relasi ke percobaan follow-up terakhir.
+     */
+    public function latestAttempt()
+    {
+        return $this->hasOne(FollowUpAttempt::class, 'followup_cycle_id')->latestOfMany('id');
+    }
+
+    /**
+     * Data workflow lengkap untuk siklus ini.
+     */
+    public function getWorkflowInfoAttribute(): array
+    {
+        return app(\App\Services\InstitutionFollowUpWorkflowService::class)->resolveCycleWorkflow($this);
+    }
+
+    public function getWorkflowStageAttribute(): string
+    {
+        return $this->workflow_info['stage'];
+    }
+
+    public function getWorkflowLabelAttribute(): string
+    {
+        return $this->workflow_info['label'];
+    }
+
+    public function getWorkflowBadgeClassAttribute(): string
+    {
+        return $this->workflow_info['badge_class'];
+    }
+
+    public function getIsOverdueAttribute(): bool
+    {
+        return $this->workflow_info['is_overdue'];
+    }
+
+    public function getIsDueTodayAttribute(): bool
+    {
+        return $this->workflow_info['is_due_today'];
+    }
+
+    public function getDueLabelAttribute(): ?string
+    {
+        return $this->workflow_info['due_label'];
+    }
+
+    public function getNextActionAttribute(): array
+    {
+        return [
+            'label' => $this->workflow_info['next_action_label'],
+            'type'  => $this->workflow_info['next_action_type'],
+            'url'   => $this->workflow_info['next_action_url'],
+        ];
+    }
+
+    /**
+     * Scope untuk siklus yang jatuh tempo (overdue).
+     */
+    public function scopeOverdue($query)
+    {
+        $today = \Carbon\Carbon::today()->toDateString();
+        return $query->open()
+            ->whereHas('attempts', function ($sub) use ($today) {
+                $sub->whereNotNull('next_followup_at')
+                    ->where('next_followup_at', '<', $today);
+            });
+    }
+
+    /**
+     * Scope untuk siklus yang terjadwal hari ini.
+     */
+    public function scopeDueToday($query)
+    {
+        $today = \Carbon\Carbon::today()->toDateString();
+        return $query->open()
+            ->whereHas('attempts', function ($sub) use ($today) {
+                $sub->where('next_followup_at', '=', $today);
+            });
+    }
+
+    /**
+     * Scope untuk siklus yang perlu ditindaklanjuti.
+     */
+    public function scopeNeedsFollowUp($query)
+    {
+        $today = \Carbon\Carbon::today()->toDateString();
+        return $query->open()->where(function ($q) use ($today) {
+            $q->whereHas('attempts', function ($sub) use ($today) {
+                $sub->whereNotNull('next_followup_at')
+                    ->where('next_followup_at', '<=', $today);
+            })->orWhere(function ($sub) {
+                $sub->where('status', self::STATUS_IN_PROGRESS);
+            });
+        });
+    }
+
+    /**
+     * Scope untuk siklus yang mitra bersedia kerjasama (willing).
+     */
+    public function scopeWilling($query)
+    {
+        return $query->where('status', self::STATUS_COMPLETED)
+            ->where('final_result', self::RESULT_WILLING);
+    }
+
+    /**
+     * Scope untuk siklus yang belum pernah dihubungi sama sekali.
+     */
+    public function scopeNotContacted($query)
+    {
+        return $query->where('status', self::STATUS_OPEN)
+            ->where('current_attempt_count', 0);
+    }
+
+    /**
      * User yang mengonfirmasi penyelesaian siklus.
      */
     public function confirmer()

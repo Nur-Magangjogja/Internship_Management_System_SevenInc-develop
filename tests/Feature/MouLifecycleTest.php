@@ -28,6 +28,7 @@ class MouLifecycleTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         Storage::fake('public');
 
         $this->unique = uniqid('mou_life_', true);

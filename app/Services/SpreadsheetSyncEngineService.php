@@ -173,6 +173,10 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
+        if (!$this->followUpMappingService->isEligibleForSync($cycle)) {
+            return null;
+        }
+
         $targetTab = 'Follow Up Guru Dosen';
         $externalSyncId = $this->generateExternalSyncId($cycle);
 
@@ -381,6 +385,22 @@ class SpreadsheetSyncEngineService
 
             if (!app()->runningUnitTests()) {
                 $this->ensureRegistrationAttachmentsUploadedToDrive($entity, $connection, $transport);
+            }
+        }
+
+        if ($entity instanceof FollowUpCycle) {
+            if (!$this->followUpMappingService->isEligibleForSync($entity)) {
+                $errMsg = 'NOT_ELIGIBLE_UNACCEPTED: Follow-up cycle tidak memenuhi syarat sinkronisasi karena belum memiliki pemagang yang resmi di-ACC.';
+                $this->updateGuardedByFence($rowSync, $fenceToken, [
+                    'sync_status'     => SpreadsheetRowSync::STATUS_FAILED,
+                    'last_attempt_at' => now(),
+                    'error_message'   => $errMsg,
+                    'locked_at'       => null,
+                    'locked_by'       => null,
+                    'next_retry_at'   => null,
+                ]);
+                $this->logTerminalSyncFailure($rowSync, $errMsg);
+                return false;
             }
         }
 
@@ -602,7 +622,16 @@ class SpreadsheetSyncEngineService
         }
 
         if ($entity instanceof FollowUpCycle) {
-            $payload = $this->followUpMappingService->buildOutboundRowPayload($entity, $rowSync->row_index ?? 1);
+            $eligibleCycleIds = FollowUpCycle::query()
+                ->where('cycle_year', $entity->cycle_year)
+                ->orderBy('id', 'asc')
+                ->pluck('id')
+                ->toArray();
+
+            $index = array_search($entity->id, $eligibleCycleIds, true);
+            $determinedRowNumber = ($index !== false) ? ($index + 1) : 1;
+
+            $payload = $this->followUpMappingService->buildOutboundRowPayload($entity, $determinedRowNumber);
             $payload['SERTIF_SYNC_ID'] = $rowSync->external_sync_id;
             $payload['SERTIF_SYNC_STATUS'] = 'synced';
             return $payload;

@@ -80,6 +80,24 @@ class CloudSyncManager
             'drive_synced_at'     => now(),
         ]);
 
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
+
+        $genDoc = \App\Models\GeneratedDocument::where('document_type', \App\Models\GeneratedDocument::TYPE_MOU)
+            ->where('document_number', $mou->company_mou_number)
+            ->first();
+
+        if ($genDoc) {
+            $genDoc->update([
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'status'              => $isRealDrive ? \App\Models\GeneratedDocument::STATUS_SYNCED : \App\Models\GeneratedDocument::STATUS_SYNC_PENDING,
+                'synced_at'           => $isRealDrive ? now() : null,
+                'sync_error_message'  => $isRealDrive ? null : 'Simulasi lokal: Google Drive belum terkonfigurasi aktif.',
+            ]);
+        }
+
         ActivityLogger::log(
             action: 'mou_drive_synced',
             description: "Berkas MOU {$mou->company_mou_number} berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
@@ -343,6 +361,135 @@ class CloudSyncManager
                 'drive_file_id'       => $uploadResult['file_id'],
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'folder'              => $remoteFolder,
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan berkas aset sistem ke cloud storage (Google Drive).
+     */
+    public function syncSystemAsset(\App\Models\SystemAsset $asset, ?User $actor = null): array
+    {
+        if (!Storage::disk('local')->exists($asset->local_path)) {
+            throw new RuntimeException("Berkas fisik lokal aset tidak ditemukan: {$asset->local_path}");
+        }
+
+        $fullPath = Storage::disk('local')->path($asset->local_path);
+        $settings = \App\Models\CloudStorageSetting::getEffectiveSettings();
+
+        // Tentukan remote folder hierarkis
+        $categoryDir = Str::plural(Str::studly($asset->category));
+        $remoteFolder = match ($asset->scope) {
+            \App\Models\SystemAsset::SCOPE_BRAND       => "System_Assets/Brands/" . Str::slug($asset->brand?->name ?? 'brand', '_'),
+            \App\Models\SystemAsset::SCOPE_INSTITUTION => "System_Assets/Institutions/" . Str::slug($asset->institution?->name ?? 'institution', '_'),
+            default                                    => "System_Assets/Global/{$categoryDir}",
+        };
+
+        if (!empty($settings->system_assets_folder_id) && $this->driver instanceof GoogleDriveStorageDriver) {
+            $this->driver->setRootFolderId($settings->system_assets_folder_id);
+        }
+
+        $fileName = Str::slug($asset->name, '_') . "_v{$asset->version}." . pathinfo($asset->local_path, PATHINFO_EXTENSION);
+        $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $fileName);
+
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
+
+        $asset->update([
+            'drive_file_id'       => $uploadResult['file_id'],
+            'drive_web_view_link' => $uploadResult['web_view_link'],
+            'sync_status'         => $isRealDrive ? \App\Models\SystemAsset::SYNC_STATUS_SYNCED : \App\Models\SystemAsset::SYNC_STATUS_PENDING,
+            'drive_synced_at'     => $isRealDrive ? now() : null,
+            'sync_error_message'  => $isRealDrive ? null : 'Simulasi lokal: Google Drive belum terkonfigurasi aktif.',
+        ]);
+
+        ActivityLogger::log(
+            action: 'system_asset_drive_synced',
+            description: "Aset sistem '{$asset->name}' berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $asset,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
+                'driver'              => $uploadResult['driver'],
+            ]
+        );
+
+        return $uploadResult;
+    }
+
+    /**
+     * Sinkronisasikan berkas dokumen hasil generate ke cloud storage (Google Drive).
+     */
+    public function syncGeneratedDocument(\App\Models\GeneratedDocument $doc, ?User $actor = null): array
+    {
+        if (!Storage::disk('local')->exists($doc->file_path)) {
+            throw new RuntimeException("Berkas dokumen fisik lokal tidak ditemukan: {$doc->file_path}");
+        }
+
+        $fullPath = Storage::disk('local')->path($doc->file_path);
+        $doc->loadMissing(['internshipRegistration', 'institution']);
+
+        $intern = $doc->internshipRegistration;
+        $remoteFolder = "Generated_Documents/General/" . Str::studly($doc->document_type);
+
+        if ($intern) {
+            $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
+            $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
+            $regId = $intern->id;
+            $typeFolder = strtoupper($doc->document_type);
+            $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
+
+            if ($this->driver instanceof GoogleDriveStorageDriver) {
+                try {
+                    \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
+                    $regFolderId = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)
+                        ->value('drive_folder_id');
+                    if (!empty($regFolderId)) {
+                        $this->driver->setRootFolderId((string) $regFolderId);
+                    }
+                } catch (\Throwable) {
+                    // Ignore
+                }
+            }
+        } elseif ($doc->institution) {
+            $institutionSlug = Str::slug($doc->institution->name, '_');
+            $remoteFolder = "Generated_Documents/Institutions/{$institutionSlug}/" . strtoupper($doc->document_type);
+
+            $settings = \App\Models\CloudStorageSetting::getEffectiveSettings();
+            if (!empty($settings->generated_docs_folder_id) && $this->driver instanceof GoogleDriveStorageDriver) {
+                $this->driver->setRootFolderId($settings->generated_docs_folder_id);
+            }
+        }
+
+        $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $doc->file_name);
+
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
+
+        $doc->update([
+            'drive_file_id'       => $uploadResult['file_id'],
+            'drive_web_view_link' => $uploadResult['web_view_link'],
+            'status'              => $isRealDrive ? \App\Models\GeneratedDocument::STATUS_SYNCED : \App\Models\GeneratedDocument::STATUS_SYNC_PENDING,
+            'synced_at'           => $isRealDrive ? now() : null,
+            'sync_error_message'  => $isRealDrive ? null : 'Simulasi lokal: Google Drive belum terkonfigurasi aktif.',
+        ]);
+
+        ActivityLogger::log(
+            action: 'document_drive_synced',
+            description: "Dokumen {$doc->document_number} ({$doc->document_type}) berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
+            subject: $doc,
+            actor: $actor,
+            metadata: [
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'folder'              => $remoteFolder,
+                'driver'              => $uploadResult['driver'],
             ]
         );
 

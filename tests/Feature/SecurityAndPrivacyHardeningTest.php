@@ -36,6 +36,8 @@ class SecurityAndPrivacyHardeningTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+
         $this->unique = uniqid('sec_test_', true);
 
         $this->admin = User::create([

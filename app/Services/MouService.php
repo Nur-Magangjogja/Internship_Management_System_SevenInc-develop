@@ -231,6 +231,15 @@ class MouService
                 actor: $actor
             );
 
+            // Integrasikan dengan DocumentPublishingService & GeneratedDocument
+            try {
+                if (class_exists(\App\Services\DocumentPublishingService::class)) {
+                    app(\App\Services\DocumentPublishingService::class)->publishMouDocument($mou, $actor);
+                }
+            } catch (\Throwable $pubEx) {
+                \Illuminate\Support\Facades\Log::warning("Gagal menerbitkan GeneratedDocument untuk MOU {$mou->company_mou_number}: " . $pubEx->getMessage());
+            }
+
             return $mou;
         });
     }

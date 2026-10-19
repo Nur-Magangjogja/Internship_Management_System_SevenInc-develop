@@ -201,6 +201,7 @@ class MouTemplateController extends Controller
         $renderedHtml = $mouTemplate->renderContent($mockData, false);
         $pageConfig = MouDocumentRenderer::renderPageConfig($mouTemplate, $mockData, false);
         $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
+        $editorJson = $mouTemplate->getEditorJson();
 
         return view('admin.mou-templates.preview', compact(
             'mouTemplate',
@@ -208,7 +209,8 @@ class MouTemplateController extends Controller
             'selectedInstitution',
             'renderedHtml',
             'pageConfig',
-            'canonicalCss'
+            'canonicalCss',
+            'editorJson'
         ));
     }
 
@@ -235,8 +237,13 @@ class MouTemplateController extends Controller
         $safeFileName = Str::slug($mouTemplate->name, '-') . '-v' . $mouTemplate->version_number . '.pdf';
 
         return response($pdfBinary, 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $safeFileName . '"',
+            'Content-Type'              => 'application/pdf',
+            'Content-Disposition'       => 'inline; filename="' . $safeFileName . '"',
+            'Content-Length'            => strlen($pdfBinary),
+            'Content-Transfer-Encoding' => 'binary',
+            'Accept-Ranges'             => 'bytes',
+            'Cache-Control'             => 'private, max-age=0, must-revalidate',
+            'Pragma'                    => 'public',
         ]);
     }
 

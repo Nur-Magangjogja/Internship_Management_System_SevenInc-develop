@@ -31,6 +31,7 @@ class StabilizationPhaseS9Test extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         Storage::fake('public');
 
         $this->unique = uniqid('s9_', true);
