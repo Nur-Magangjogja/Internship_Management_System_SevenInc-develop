@@ -46,11 +46,15 @@ class DocumentPublishingService
     public function publishInternDocument(
         InternshipRegistration $intern,
         string $documentType,
-        string $htmlContent,
+        ?string $htmlContent = null,
         array $variableSnapshot = [],
         array $assetReferences = [],
         ?string $customDocNumber = null,
-        ?User $actor = null
+        ?User $actor = null,
+        ?string $pdfBinary = null,
+        ?\App\Models\DocumentTemplate $template = null,
+        bool $isRevision = false,
+        int $revisionVersion = 1
     ): GeneratedDocument {
         // 1. Validasi Kelayakan Bisnis
         if (!$this->docNumberService->canGenerate($intern, $documentType)) {
@@ -67,34 +71,48 @@ class DocumentPublishingService
             };
         }
 
-        $idempotencyKey = 'PUB-DOC-' . md5("{$documentType}-{$intern->id}-{$docNumber}");
+        // Kunci idempotensi stabil berbasis identitas penerbitan pemagang, jenis dokumen, dan versi (jika revisi)
+        $idempotencyKey = $isRevision
+            ? 'PUB-DOC-' . md5("intern-{$intern->id}-{$documentType}-v{$revisionVersion}")
+            : 'PUB-DOC-' . md5("intern-{$intern->id}-{$documentType}");
 
-        // Cek jika dokumen dengan idempotency key ini sudah pernah dipublish
+        // Cek jika dokumen dengan idempotency key ini sudah pernah dibuat/dipublish
         $existing = GeneratedDocument::where('idempotency_key', $idempotencyKey)->first();
-        if ($existing && in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && Storage::disk('local')->exists($existing->file_path)) {
-            return $existing;
+        if ($existing) {
+            $hasLocalFile = Storage::disk('local')->exists($existing->file_path);
+            if (in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && $hasLocalFile) {
+                return $existing;
+            }
         }
 
         $year = date('Y');
         $safeDocNumber = Str::slug(str_replace('/', '-', $docNumber));
         $safeName = Str::slug($intern->fullname ?? 'intern', '_');
-        $fileName = "{$safeDocNumber}_{$safeName}.pdf";
+        $fileName = $isRevision
+            ? "{$safeDocNumber}_v{$revisionVersion}_{$safeName}.pdf"
+            : "{$safeDocNumber}_{$safeName}.pdf";
         $relativeLocalDir = "generated_documents/{$documentType}/{$year}";
         $relativeLocalPath = "{$relativeLocalDir}/{$fileName}";
 
-        // 3. Render PDF ke disk lokal privat
+        // 3. Render atau simpan PDF ke disk lokal privat
         if (!Storage::disk('local')->exists($relativeLocalDir)) {
             Storage::disk('local')->makeDirectory($relativeLocalDir);
         }
 
         $fullLocalPath = Storage::disk('local')->path($relativeLocalPath);
 
-        try {
-            $pdf = Pdf::loadHTML($htmlContent)->setPaper('a4', 'portrait');
-            $pdf->save($fullLocalPath);
-        } catch (\Throwable $e) {
-            Log::error("Gagal render PDF untuk {$documentType} (Reg #{$intern->id}): " . $e->getMessage());
-            throw new RuntimeException("Gagal melakukan render PDF: " . $e->getMessage(), 0, $e);
+        if ($pdfBinary !== null && strlen($pdfBinary) > 0) {
+            Storage::disk('local')->put($relativeLocalPath, $pdfBinary);
+        } else {
+            try {
+                $paperSize = 'a4';
+                $orientation = ($documentType === 'certificate' || $template?->type === 'certificate') ? 'landscape' : 'portrait';
+                $pdf = Pdf::loadHTML($htmlContent ?? '')->setPaper($paperSize, $orientation);
+                $pdf->save($fullLocalPath);
+            } catch (\Throwable $e) {
+                Log::error("Gagal render PDF untuk {$documentType} (Reg #{$intern->id}): " . $e->getMessage());
+                throw new RuntimeException("Gagal melakukan render PDF: " . $e->getMessage(), 0, $e);
+            }
         }
 
         if (!file_exists($fullLocalPath) || filesize($fullLocalPath) === 0) {
@@ -103,6 +121,11 @@ class DocumentPublishingService
 
         $fileSizeBytes = filesize($fullLocalPath);
         $checksum = hash_file('sha256', $fullLocalPath);
+
+        if ($isRevision) {
+            $variableSnapshot['_is_revision'] = true;
+            $variableSnapshot['_revision_version'] = $revisionVersion;
+        }
 
         // 4. Catat record GeneratedDocument dengan status GENERATED
         $doc = GeneratedDocument::updateOrCreate(
@@ -113,6 +136,9 @@ class DocumentPublishingService
                 'document_number'            => $docNumber,
                 'internship_registration_id' => $intern->id,
                 'institution_id'             => $intern->institution_id,
+                'template_type'              => $template?->type ?? $documentType,
+                'template_id'                => $template?->id,
+                'template_version'           => $isRevision ? $revisionVersion : ($template?->version_number ?? 1),
                 'variable_snapshot'          => $variableSnapshot,
                 'asset_references'           => $assetReferences,
                 'file_path'                  => $relativeLocalPath,
@@ -125,7 +151,10 @@ class DocumentPublishingService
             ]
         );
 
-        $doc->recordStatusChange(GeneratedDocument::STATUS_GENERATED, "Dokumen fisik PDF berhasil dibuat.");
+        $statusMsg = $isRevision
+            ? "Dokumen fisik PDF revisi resmi versi {$revisionVersion} berhasil dibuat."
+            : "Dokumen fisik PDF berhasil dibuat.";
+        $doc->recordStatusChange(GeneratedDocument::STATUS_GENERATED, $statusMsg);
 
         // 5. Coba sinkronisasi ke Google Drive Folder Pemagang Existing
         try {
@@ -236,26 +265,93 @@ class DocumentPublishingService
 
         $intern = $doc->internshipRegistration;
         $remoteFolder = "Generated_Documents/General/" . Str::studly($doc->document_type);
+        $existingFolderId = null;
 
         if ($intern) {
-            // Gunakan struktur subfolder pemagang existing
-            $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
-            $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
-            $regId = $intern->id;
-            $typeFolder = strtoupper($doc->document_type);
-            $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
+            // 1. Cek apakah dokumen ini atau dokumen pemagang sejenis sudah memiliki drive_folder_id permanen
+            $existingFolderId = $doc->drive_folder_id;
+            if (empty($existingFolderId)) {
+                $existingFolderId = GeneratedDocument::where('internship_registration_id', $intern->id)
+                    ->where('document_type', $doc->document_type)
+                    ->whereNotNull('drive_folder_id')
+                    ->latest('id')
+                    ->value('drive_folder_id');
+            }
 
-            // Gunakan configured drive folder ID dari koneksi registrasi pemagang
-            if ($this->cloudDriver instanceof GoogleDriveStorageDriver) {
-                try {
-                    SpreadsheetConnection::ensureDriveFolderColumns();
-                    $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
-                        ->value('drive_folder_id');
-                    if (!empty($regFolderId)) {
-                        $this->cloudDriver->setRootFolderId((string) $regFolderId);
+            if (!empty($existingFolderId)) {
+                // Folder sebenarnya sudah tercatat permanen: gunakan ID langsung tanpa membangun path string
+                $remoteFolder = $existingFolderId;
+            } else {
+                // 2. Dokumen pertama untuk pemagang ini / belum memiliki folder dokumen:
+                // Cek folder Google Drive pemagang yang sudah dibentuk saat proses registrasi/sinkronisasi
+                $regBaseFolderId = $intern->resolveDriveFolderId();
+                $typeFolder = strtoupper($doc->document_type);
+
+                if (!empty($regBaseFolderId)) {
+                    // Gunakan root folder ID pemagang existing, jangan buat folder pemagang paralel
+                    if (method_exists($this->cloudDriver, 'setRootFolderId')) {
+                        $this->cloudDriver->setRootFolderId($regBaseFolderId);
                     }
-                } catch (\Throwable) {
-                    // Ignore
+                    $remoteFolder = "Dokumen_Diterbitkan/{$typeFolder}";
+                } else {
+                    // Belum ada mapping permanen pada registrasi: gunakan struktur Registrasi/{year}/{applicantName}_REG{id}
+                    $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
+                    $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
+                    $regId = $intern->id;
+                    $applicantFolderRelative = "Registrasi/{$year}/{$applicantName}_REG{$regId}";
+
+                    // Gunakan configured drive folder ID dari koneksi registrasi pemagang jika menggunakan path
+                    if ($this->cloudDriver instanceof GoogleDriveStorageDriver) {
+                        try {
+                            SpreadsheetConnection::ensureDriveFolderColumns();
+                            $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                                ->value('drive_folder_id');
+                            if (!empty($regFolderId)) {
+                                $this->cloudDriver->setRootFolderId((string) $regFolderId);
+                            }
+                        } catch (\Throwable) {
+                            // Ignore
+                        }
+                    }
+
+                    // Buat / dapatkan applicant folder ID permanen dan simpan ke registration_attachments sebagai mapping permanen
+                    try {
+                        if (method_exists($this->cloudDriver, 'getOrCreateFolderPath')) {
+                            $createdApplicantFolderId = $this->cloudDriver->getOrCreateFolderPath($applicantFolderRelative);
+                            if (!empty($createdApplicantFolderId)) {
+                                \App\Models\RegistrationAttachment::updateOrCreate(
+                                    [
+                                        'internship_registration_id' => $intern->id,
+                                        'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                                    ],
+                                    [
+                                        'category'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                                        'file_path'           => 'drive_root:default',
+                                        'original_name'       => "Folder_{$applicantName}_REG{$regId}",
+                                        'file_size'           => 0,
+                                        'mime_type'           => 'application/vnd.google-apps.folder',
+                                        'drive_file_id'       => $createdApplicantFolderId,
+                                        'drive_web_view_link' => "https://drive.google.com/drive/folders/{$createdApplicantFolderId}",
+                                        'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
+                                        'drive_synced_at'     => now(),
+                                        'drive_error_message' => null,
+                                    ]
+                                );
+
+                                if (method_exists($this->cloudDriver, 'setRootFolderId')) {
+                                    $this->cloudDriver->setRootFolderId($createdApplicantFolderId);
+                                }
+                                $remoteFolder = "Dokumen_Diterbitkan/{$typeFolder}";
+                            } else {
+                                $remoteFolder = "{$applicantFolderRelative}/Dokumen_Diterbitkan/{$typeFolder}";
+                            }
+                        } else {
+                            $remoteFolder = "{$applicantFolderRelative}/Dokumen_Diterbitkan/{$typeFolder}";
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning("Gagal resolusi awal folder pendaftar di Google Drive: " . $e->getMessage());
+                        $remoteFolder = "{$applicantFolderRelative}/Dokumen_Diterbitkan/{$typeFolder}";
+                    }
                 }
             }
         } elseif ($doc->institution) {
@@ -277,8 +373,11 @@ class DocumentPublishingService
                 && !str_starts_with($uploadResult['file_id'], 'local_sim_')
                 && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
+            $targetFolderId = $uploadResult['folder_id'] ?? $existingFolderId ?? $doc->drive_folder_id;
+
             $doc->update([
                 'drive_file_id'       => $uploadResult['file_id'],
+                'drive_folder_id'     => $targetFolderId,
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'status'              => $isRealDrive ? GeneratedDocument::STATUS_SYNCED : GeneratedDocument::STATUS_SYNC_PENDING,
                 'synced_at'           => $isRealDrive ? now() : null,
@@ -312,5 +411,13 @@ class DocumentPublishingService
             $doc->recordStatusChange(GeneratedDocument::STATUS_FAILED, "Gagal sinkronisasi: " . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Ulangi sinkronisasi cloud storage untuk dokumen yang gagal/pending secara aman dan idempotent.
+     */
+    public function retrySync(GeneratedDocument $doc, ?User $actor = null): array
+    {
+        return $this->syncDocumentToDrive($doc, $actor);
     }
 }

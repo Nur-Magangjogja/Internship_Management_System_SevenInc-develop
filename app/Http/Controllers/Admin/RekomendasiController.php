@@ -202,34 +202,36 @@ class RekomendasiController extends Controller
                     'stampData'            => $stampData,
                 ])->render();
 
+                /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+                $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+                $generatedDoc = $issuanceService->issueDocument(
+                    intern: $intern,
+                    documentType: 'recommendation',
+                    options: [
+                        'document_number' => $letterNumber,
+                        'body_text'       => $bodyText,
+                        'variables'       => [
+                            'perusahaan.nama'               => $brand->name,
+                            'perusahaan.alamat'             => $brand->company_address,
+                            'dokumen.penandatangan_nama'    => $brand->signatory_name,
+                            'dokumen.penandatangan_jabatan' => $brand->signatory_position,
+                            'rekomendasi.isi'               => $bodyText,
+                        ],
+                    ],
+                    actor: auth()->user()
+                );
+
                 $safeName = Str::slug($intern->fullname ?? 'pemagang', '-');
                 $fileName = "rekomendasi-{$intern->id}-{$safeName}-" . now()->format('Ymd_His') . '-' . uniqid() . '.pdf';
                 $relPath  = "documents/rekomendasi/{$fileName}";
-                $fullPath = storage_path("app/public/{$relPath}");
+                $fullGeneratedPath = Storage::disk('local')->path($generatedDoc->file_path);
 
-                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHtml($html)
-                    ->setPaper('A4', 'portrait')
-                    ->setOptions([
-                        'isRemoteEnabled'      => true,
-                        'isHtml5ParserEnabled' => true,
-                        'defaultPaperSize'     => 'A4',
-                        'defaultFont'          => 'serif',
-                        'dpi'                  => 96,
-                    ]);
-
-                $pdfContents = $pdf->output();
-                if ($pdfContents === false) {
-                    throw new \RuntimeException('Gagal menghasilkan PDF rekomendasi.');
+                if (file_exists($fullGeneratedPath)) {
+                    Storage::disk('public')->put($relPath, file_get_contents($fullGeneratedPath));
                 }
 
-                if (!Storage::disk('public')->put($relPath, $pdfContents)) {
-                    throw new \RuntimeException("Gagal menyimpan file ke: {$relPath}");
-                }
-
-                // Update InternExtra
+                // Update InternExtra untuk kompatibilitas
                 $extra = InternExtra::firstOrNew(['intern_id' => $intern->id]);
-
-                // Simpan snapshot data ke intern_extras
                 $extra->letter_number        = $letterNumber;
                 $extra->brand_id             = $brand->id;
                 $extra->company_name         = $brand->name;
@@ -238,16 +240,9 @@ class RekomendasiController extends Controller
                 $extra->signatory_name       = $brand->signatory_name;
                 $extra->signatory_position   = $brand->signatory_position;
                 $extra->signature_image_path = $brand->signature;
-
-                // Hapus file lama jika ada
-                if ($extra->rekomendasi_path && file_exists(storage_path('app/public/' . $extra->rekomendasi_path))) {
-                    @unlink(storage_path('app/public/' . $extra->rekomendasi_path));
-                }
-
-                $extra->intern_id = $intern->id;
-                $extra->rekomendasi_path           = $relPath;
-                $extra->rekomendasi_url            = asset('storage/' . $relPath);
-                $extra->rekomendasi_granted_at     = now();
+                $extra->rekomendasi_path     = $relPath;
+                $extra->rekomendasi_url      = $generatedDoc->drive_web_view_link ?: asset('storage/' . $relPath);
+                $extra->rekomendasi_granted_at = now();
                 $extra->save();
 
                 $generated[] = $intern->fullname;

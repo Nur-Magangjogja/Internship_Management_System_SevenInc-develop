@@ -93,108 +93,24 @@ class LoaController extends Controller
                 $loaNumber = $docService->generateUniqueLoaNumber($intern, $brandData);
                 $safeLoaNumber = str_replace('/', '-', $loaNumber);
 
-                $rows = $this->buildRows([$intern]);
+                /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+                $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+                $generatedDoc = $issuanceService->issueDocument(
+                    intern: $intern,
+                    documentType: 'loa',
+                    options: ['document_number' => $loaNumber],
+                    actor: $user
+                );
 
-                $pdf = Pdf::loadView('user.loa', [
-                    'intern'          => $intern,
-                    'loaNumber'       => $loaNumber,
-                    'user'            => $user,
-                    'loaSettings'     => (object)[
-                        'header_text' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                        'footer_text' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                        'company_name' => $companyName,
-                        'company_address' => $brandData?->company_address,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                    ],
-                    'rows'            => $rows,
-                    'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                    'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                    'logoData'        => $logoData,
-                    'stampData'       => $stampData,
-                ])->setPaper('A4', 'portrait');
-
-                $pdf->setOptions(['isRemoteEnabled' => true, 'isPhpEnabled' => true]);
-
+                $fullGeneratedPath = Storage::disk('local')->path($generatedDoc->file_path);
                 $safeName = Str::slug($intern->fullname ?? 'intern', '-');
                 $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
                 $path     = $dir . '/' . $fileName;
 
-                Storage::disk('local')->put($path, $pdf->output());
-
-                // Insert snapshot to intern_loas (if missing or update if needed)
-                $internLoa = InternLoa::updateOrCreate(
-                    ['intern_id' => $intern->id],
-                    [
-                        'loa_number' => $loaNumber,
-                        'accepted_start_date' => $intern->start_date ?? now(),
-                        'accepted_end_date' => $intern->end_date ?? now(),
-                        'company_name' => $companyName,
-                        'company_logo_path' => $brandData?->logo,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                        'signature_image_path' => $brandData?->signature,
-                    ]
-                );
-
-                // Catat audit log setelah file PDF LOA dan snapshot DB berhasil dibuat
-                if ($user && $user->role === 'admin') {
-                    $docService->logDocumentAccess('loa', $intern, $user, 'generated');
-                }
-
-                $html = view('user.loa', [
-                    'intern'          => $intern,
-                    'loaNumber'       => $loaNumber,
-                    'user'            => $user,
-                    'loaSettings'     => (object)[
-                        'header_text' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                        'footer_text' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                        'company_name' => $companyName,
-                        'company_address' => $brandData?->company_address,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                    ],
-                    'rows'            => $rows,
-                    'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                    'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                    'logoData'        => $logoData,
-                    'stampData'       => $stampData,
-                ])->render();
-
-                $safeName = Str::slug($intern->fullname ?? 'intern', '-');
-                $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
-                $tmpPath  = storage_path('app/tmp/' . $fileName);
-                
-                if (!is_dir(dirname($tmpPath))) {
-                    mkdir(dirname($tmpPath), 0775, true);
-                }
-
-                try {
-                    if (app()->environment('testing')) {
-                        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                            \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->save($tmpPath);
-                        } else {
-                            file_put_contents($tmpPath, '%PDF-1.4 test loa');
-                        }
-                    } else {
-                        \Spatie\Browsershot\Browsershot::html($html)
-                            ->setOption('no-sandbox', true)
-                            ->setOption('args', ['--disable-setuid-sandbox'])
-                            ->emulateMedia('print')
-                            ->format('A4')
-                            ->margins(0, 0, 0, 0)
-                            ->showBackground()
-                            ->waitUntilNetworkIdle()
-                            ->timeout(180)
-                            ->savePdf($tmpPath);
-                    }
-                } catch (\Throwable $errBrowser) {
-                    \Illuminate\Support\Facades\Log::warning('Browsershot LOA generation failed, falling back to DomPDF: ' . $errBrowser->getMessage());
-                    if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                        \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->save($tmpPath);
-                    } else {
-                        file_put_contents($tmpPath, '%PDF-1.4 fallback loa');
-                    }
+                // Salin ke legacy path dan tmpPath
+                if (file_exists($fullGeneratedPath)) {
+                    Storage::disk('local')->put($path, file_get_contents($fullGeneratedPath));
+                    copy($fullGeneratedPath, $tmpPath);
                 }
 
                 if (file_exists($tmpPath) && filesize($tmpPath) > 0) {

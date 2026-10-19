@@ -20,7 +20,7 @@ class DocumentGeneratorService
     /**
      * Daftar role internal staf yang berhak membuat atau mengunduh dokumen atas nama pengguna lain.
      */
-    public const PRIVILEGED_ROLES = ['admin', 'hr_staff', 'staff', 'hrd'];
+    public const PRIVILEGED_ROLES = ['admin', 'superadmin', 'super_admin', 'hr_staff', 'staff', 'hrd'];
 
     /**
      * Periksa apakah pemagang memenuhi syarat untuk dokumen tertentu.
@@ -37,8 +37,11 @@ class DocumentGeneratorService
             ], true),
             'skl',
             'sertifikat',
+            'certificate',
             'penilaian',
+            'assessment',
             'rekomendasi',
+            'recommendation',
             'membercard'            => in_array($status, [InternshipRegistration::STATUS_COMPLETED], true),
             default                 => false,
         };

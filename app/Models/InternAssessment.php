@@ -35,4 +35,9 @@ class InternAssessment extends Model
         return $this->belongsTo(InternshipRegistration::class, 'intern_id')->withTrashed();
     }
 
+    public function generatedDocument()
+    {
+        return $this->hasOne(GeneratedDocument::class, 'internship_registration_id', 'intern_id')
+            ->where('document_type', GeneratedDocument::TYPE_ASSESSMENT);
+    }
 }

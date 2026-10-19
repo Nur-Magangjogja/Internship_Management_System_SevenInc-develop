@@ -44,4 +44,10 @@ class InternExtra extends Model
     {
         return $this->belongsTo(Brand::class, 'brand_id');
     }
+
+    public function generatedDocument()
+    {
+        return $this->hasOne(GeneratedDocument::class, 'internship_registration_id', 'intern_id')
+            ->where('document_type', GeneratedDocument::TYPE_RECOMMENDATION);
+    }
 }
