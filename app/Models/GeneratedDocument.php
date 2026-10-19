@@ -121,6 +121,31 @@ class GeneratedDocument extends Model
         return $this->belongsTo(User::class, 'generated_by')->withTrashed();
     }
 
+    public function internLoa(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(InternLoa::class, 'intern_id', 'internship_registration_id');
+    }
+
+    public function sklDocument(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(SklDocument::class, 'intern_id', 'internship_registration_id');
+    }
+
+    public function internCertificate(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(InternCertificate::class, 'intern_id', 'internship_registration_id');
+    }
+
+    public function internAssessment(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(InternAssessment::class, 'intern_id', 'internship_registration_id');
+    }
+
+    public function internExtra(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(InternExtra::class, 'intern_id', 'internship_registration_id');
+    }
+
     public function getFormattedSizeAttribute(): string
     {
         $bytes = (int) $this->file_size_bytes;

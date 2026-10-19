@@ -165,18 +165,19 @@ Route::get('/internship/table', fn () => redirect()->route('admin.interns.index'
 // Dokumen Kelulusan (SKL & LOA)
 // ========================
 
+Route::middleware(['auth'])->prefix('admin/generated-documents')->name('admin.generated-documents.')->group(function () {
+    Route::get('/{uuid}/download', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'download'])->name('download');
+    Route::get('/{uuid}/preview', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'preview'])->name('preview');
+    Route::get('/{uuid}/status', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'status'])->name('status');
+    Route::post('/{uuid}/retry-sync', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'retrySync'])
+        ->middleware('role:admin,hr_staff')
+        ->name('retry-sync');
+});
+
 Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // Halaman daftar SKL dan LOA
     Route::get('/documents/loas', [DocumentController::class, 'listLoas'])->name('documents.loas');
     Route::get('/documents/skls', [DocumentController::class, 'listSkls'])->name('documents.skls');
-
-    // Berkas Terbit & Status Sinkronisasi Dokumen
-    Route::prefix('generated-documents')->name('generated-documents.')->group(function () {
-        Route::get('/{uuid}/download', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'download'])->name('download');
-        Route::get('/{uuid}/preview', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'preview'])->name('preview');
-        Route::get('/{uuid}/status', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'status'])->name('status');
-        Route::post('/{uuid}/retry-sync', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'retrySync'])->name('retry-sync');
-    });
 
     // Serve file LOA/SKL dari storage (bypass symlink issue di XAMPP)
     Route::get('/documents/serve/{type}/{filename}', function (string $type, string $filename) {

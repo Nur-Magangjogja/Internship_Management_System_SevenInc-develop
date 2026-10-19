@@ -541,6 +541,16 @@ class InternshipRegistration extends Model
         return $this->hasMany(\App\Models\InternCertificate::class, 'intern_id');
     }
 
+    public function internExtra()
+    {
+        return $this->hasOne(\App\Models\InternExtra::class, 'intern_id');
+    }
+
+    public function generatedDocuments()
+    {
+        return $this->hasMany(\App\Models\GeneratedDocument::class, 'internship_registration_id');
+    }
+
     public function hasDocuments(): bool
     {
         return $this->membercards()->exists()

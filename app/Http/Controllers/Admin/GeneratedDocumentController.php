@@ -20,7 +20,13 @@ class GeneratedDocumentController extends Controller
      */
     public function download(string $uuid): BinaryFileResponse
     {
+        $user = auth()->user();
+        if (!$user) {
+            abort(401, 'Silakan login terlebih dahulu.');
+        }
+
         $doc = GeneratedDocument::where('public_uuid', $uuid)->firstOrFail();
+        $this->authorizeDocumentAccess($user, $doc);
 
         if (!Storage::disk('local')->exists($doc->file_path)) {
             abort(404, 'Berkas fisik dokumen tidak ditemukan di server penyimpanan.');
@@ -38,7 +44,13 @@ class GeneratedDocumentController extends Controller
      */
     public function preview(string $uuid): BinaryFileResponse
     {
+        $user = auth()->user();
+        if (!$user) {
+            abort(401, 'Silakan login terlebih dahulu.');
+        }
+
         $doc = GeneratedDocument::where('public_uuid', $uuid)->firstOrFail();
+        $this->authorizeDocumentAccess($user, $doc);
 
         if (!Storage::disk('local')->exists($doc->file_path)) {
             abort(404, 'Berkas fisik dokumen tidak ditemukan di server penyimpanan.');
@@ -57,10 +69,15 @@ class GeneratedDocumentController extends Controller
      */
     public function retrySync(Request $request, string $uuid)
     {
+        $user = $request->user();
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+            abort(403, 'Hanya Admin atau HR Staff yang berwenang mengulangi sinkronisasi cloud.');
+        }
+
         $doc = GeneratedDocument::where('public_uuid', $uuid)->firstOrFail();
 
         try {
-            $result = $this->issuanceService->retryDocumentSync($doc, $request->user());
+            $result = $this->issuanceService->retryDocumentSync($doc, $user);
 
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json([
@@ -90,7 +107,13 @@ class GeneratedDocumentController extends Controller
      */
     public function status(string $uuid)
     {
+        $user = auth()->user();
+        if (!$user) {
+            abort(401, 'Silakan login terlebih dahulu.');
+        }
+
         $doc = GeneratedDocument::where('public_uuid', $uuid)->firstOrFail();
+        $this->authorizeDocumentAccess($user, $doc);
 
         return response()->json([
             'uuid'                => $doc->public_uuid,
@@ -98,6 +121,7 @@ class GeneratedDocumentController extends Controller
             'type'                => $doc->document_type,
             'status'              => $doc->status,
             'drive_file_id'       => $doc->drive_file_id,
+            'drive_folder_id'     => $doc->drive_folder_id,
             'drive_web_view_link' => $doc->drive_web_view_link,
             'retry_count'         => $doc->retry_count,
             'sync_error_message'  => $doc->sync_error_message,
@@ -105,5 +129,22 @@ class GeneratedDocumentController extends Controller
             'published_at'        => $doc->published_at?->toIso8601String(),
             'synced_at'           => $doc->synced_at?->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Validasi hak akses dokumen privat: staf berwenang melihat semua, pemagang hanya dokumen milik sendiri.
+     */
+    protected function authorizeDocumentAccess(\App\Models\User $user, GeneratedDocument $doc): void
+    {
+        if (in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+            return;
+        }
+
+        $doc->loadMissing('internshipRegistration');
+        $isOwner = $doc->internshipRegistration && (int) $doc->internshipRegistration->user_id === (int) $user->id;
+
+        if (!$isOwner) {
+            abort(403, 'Anda tidak berhak mengakses dokumen ini.');
+        }
     }
 }

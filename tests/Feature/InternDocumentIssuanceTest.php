@@ -366,4 +366,185 @@ class InternDocumentIssuanceTest extends TestCase
             ]);
         $pemagangResponse->assertStatus(403);
     }
+
+    /**
+     * 9. Idempotensi penerbitan berulang tanpa custom document_number tidak menambah sequence nomor dokumen.
+     */
+    public function test_repeated_issuance_without_options_reuses_exact_number_and_idempotent_record()
+    {
+        $intern = $this->createIntern(IR::STATUS_ACCEPTED);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        // Panggilan pertama tanpa options
+        $doc1 = $service->issueDocument($intern, 'loa', [], $this->admin);
+        $number1 = $doc1->document_number;
+
+        // Panggilan kedua tanpa options (simulasi double click)
+        $doc2 = $service->issueDocument($intern, 'loa', [], $this->admin);
+        $number2 = $doc2->document_number;
+
+        $this->assertEquals($doc1->id, $doc2->id);
+        $this->assertEquals($number1, $number2);
+
+        // Pastikan hanya 1 record GeneratedDocument dan 1 InternLoa yang tercipta
+        $this->assertEquals(1, GeneratedDocument::where('internship_registration_id', $intern->id)->where('document_type', 'loa')->count());
+        $this->assertEquals(1, InternLoa::where('intern_id', $intern->id)->count());
+    }
+
+    /**
+     * 10. Folder Google Drive: drive_folder_id tersimpan permanen dan digunakan kembali pada sync berikutnya.
+     */
+    public function test_drive_folder_id_is_recorded_and_reused_without_rebuilding_path()
+    {
+        $intern = $this->createIntern(IR::STATUS_ACCEPTED);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        $doc = $service->issueDocument($intern, 'loa', [], $this->admin);
+
+        // Verifikasi drive_folder_id terisi permanen di GeneratedDocument
+        $this->assertNotNull($doc->drive_folder_id);
+        $savedFolderId = $doc->drive_folder_id;
+
+        // Buat mock upload driver yang memverifikasi folder target menggunakan folder ID yang sudah tercatat
+        $mockDriver = $this->createMock(\App\Services\CloudStorage\CloudStorageInterface::class);
+        $mockDriver->method('isConfigured')->willReturn(true);
+        $mockDriver->method('getDriverName')->willReturn('google_drive');
+        $mockDriver->expects($this->once())
+            ->method('uploadFile')
+            ->with(
+                $this->anything(),
+                $this->equalTo($savedFolderId), // Harus menggunakan folder ID langsung!
+                $this->anything()
+            )
+            ->willReturn([
+                'file_id'       => 'DRIVE-FILE-REUSED-001',
+                'web_view_link' => 'https://drive.google.com/file/d/DRIVE-FILE-REUSED-001/view',
+                'file_name'     => $doc->file_name,
+                'folder_id'     => $savedFolderId,
+                'driver'        => 'google_drive',
+            ]);
+
+        $publishingService = new \App\Services\DocumentPublishingService(
+            app(\App\Services\CloudStorage\SystemStorageConfigService::class),
+            app(\App\Services\DocumentGeneratorService::class),
+            app(\App\Services\MailMerge\VariableResolverService::class),
+            $mockDriver
+        );
+
+        $publishingService->syncDocumentToDrive($doc, $this->admin);
+
+        $freshDoc = $doc->fresh();
+        $this->assertEquals($savedFolderId, $freshDoc->drive_folder_id);
+        $this->assertEquals('DRIVE-FILE-REUSED-001', $freshDoc->drive_file_id);
+        $this->assertEquals(GeneratedDocument::STATUS_SYNCED, $freshDoc->status);
+    }
+
+    /**
+     * 11. Keamanan dokumen: validasi kepemilikan pemagang dan pembatasan retry-sync.
+     */
+    public function test_security_ownership_restricts_pemagang_and_blocks_unauthorized_retry_sync()
+    {
+        $internOwner = $this->createIntern(IR::STATUS_ACCEPTED, $this->pemagangUser);
+
+        // Buat pemagang lain (bukan pemilik)
+        $otherUser = User::create([
+            'name'     => 'Other Intern',
+            'email'    => 'other_' . uniqid() . '@test.com',
+            'password' => bcrypt('password123'),
+            'role'     => 'pemagang',
+        ]);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+        $doc = $service->issueDocument($internOwner, 'loa', [], $this->admin);
+
+        // Pemilik dapat mengunduh dokumen miliknya sendiri
+        $ownerDownload = $this->actingAs($this->pemagangUser)
+            ->get(route('admin.generated-documents.download', $doc->public_uuid));
+        $ownerDownload->assertStatus(200);
+
+        // Pemilik dapat melihat preview dokumen miliknya sendiri
+        $ownerPreview = $this->actingAs($this->pemagangUser)
+            ->get(route('admin.generated-documents.preview', $doc->public_uuid));
+        $ownerPreview->assertStatus(200);
+
+        // Pemilik dapat melihat status dokumen miliknya sendiri
+        $ownerStatus = $this->actingAs($this->pemagangUser)
+            ->get(route('admin.generated-documents.status', $doc->public_uuid));
+        $ownerStatus->assertStatus(200);
+
+        // Pengguna lain (pemagang lain) DIBLOKIR (403) saat mengakses download
+        $unauthorizedDownload = $this->actingAs($otherUser)
+            ->get(route('admin.generated-documents.download', $doc->public_uuid));
+        $unauthorizedDownload->assertStatus(403);
+
+        // Pengguna lain DIBLOKIR (403) saat mengakses preview
+        $unauthorizedPreview = $this->actingAs($otherUser)
+            ->get(route('admin.generated-documents.preview', $doc->public_uuid));
+        $unauthorizedPreview->assertStatus(403);
+
+        // Pemagang DIBLOKIR (403) dari endpoint retry-sync
+        $pemagangRetry = $this->actingAs($this->pemagangUser)
+            ->postJson(route('admin.generated-documents.retry-sync', $doc->public_uuid));
+        $pemagangRetry->assertStatus(403);
+
+        // Admin diizinkan melakukan retry-sync
+        $adminRetry = $this->actingAs($this->admin)
+            ->postJson(route('admin.generated-documents.retry-sync', $doc->public_uuid));
+        $adminRetry->assertStatus(200);
+        $adminRetry->assertJson(['success' => true]);
+    }
+
+    /**
+     * 12. Kompatibilitas historis: dokumen yang sudah memiliki data historis tidak berubah nomor atau timestamp-nya.
+     */
+    public function test_historical_records_and_numbers_are_preserved_without_corruption()
+    {
+        $intern = $this->createIntern(IR::STATUS_ACCEPTED);
+
+        $historicDate = now()->subMonths(6);
+        $historicNumber = 'LEGACY/LOA/999/HISTORIC';
+
+        // Buat record historis lama di intern_loas
+        $legacyLoa = InternLoa::create([
+            'intern_id'            => $intern->id,
+            'loa_number'           => $historicNumber,
+            'accepted_start_date'  => $intern->start_date,
+            'accepted_end_date'    => $intern->end_date,
+            'company_name'         => 'Seven Inc Historic',
+            'company_logo_path'    => 'logos/historic.png',
+            'signatory_name'       => 'Historic Signatory',
+            'signatory_position'   => 'Direktur',
+            'created_at'           => $historicDate,
+        ]);
+
+        /** @var InternDocumentIssuanceService $service */
+        $service = app(InternDocumentIssuanceService::class);
+
+        // Terbitkan LOA
+        $doc = $service->issueDocument($intern, 'loa', [], $this->admin);
+
+        // Nomor dokumen harus tetap sama dengan nomor historis
+        $this->assertEquals($historicNumber, $doc->document_number);
+
+        // Record legacy tidak terduplikasi
+        $this->assertEquals(1, InternLoa::where('intern_id', $intern->id)->count());
+
+        $freshLegacy = $legacyLoa->fresh();
+        // Nomor tidak berubah
+        $this->assertEquals($historicNumber, $freshLegacy->loa_number);
+
+        // Verifikasi relasi Eloquent
+        $this->assertNotNull($doc->internLoa);
+        $this->assertEquals($legacyLoa->id, $doc->internLoa->id);
+
+        $this->assertNotNull($freshLegacy->generatedDocument);
+        $this->assertEquals($doc->id, $freshLegacy->generatedDocument->id);
+
+        $this->assertTrue($intern->generatedDocuments()->exists());
+    }
 }

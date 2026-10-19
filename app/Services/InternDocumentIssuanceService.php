@@ -119,6 +119,35 @@ class InternDocumentIssuanceService
     }
 
     /**
+     * Resolusi nomor dokumen yang sudah pernah diterbitkan sebelumnya (GeneratedDocument atau tabel legacy).
+     */
+    public function resolveExistingDocumentNumber(InternshipRegistration $intern, string $documentType): ?string
+    {
+        $canonical = self::normalizeType($documentType);
+
+        // 1. Cek dari GeneratedDocument yang sudah ada
+        $existingGen = GeneratedDocument::where('internship_registration_id', $intern->id)
+            ->where('document_type', $canonical)
+            ->whereNotNull('document_number')
+            ->latest('id')
+            ->value('document_number');
+
+        if (!empty($existingGen)) {
+            return $existingGen;
+        }
+
+        // 2. Cek dari tabel legacy historis jika pernah diterbitkan
+        return match ($canonical) {
+            self::TYPE_LOA            => InternLoa::where('intern_id', $intern->id)->value('loa_number'),
+            self::TYPE_SKL            => SklDocument::where('intern_id', $intern->id)->value('skl_number'),
+            self::TYPE_CERTIFICATE    => InternCertificate::where('intern_id', $intern->id)->value('certificate_number'),
+            self::TYPE_ASSESSMENT     => InternAssessment::where('intern_id', $intern->id)->value('assessment_number'),
+            self::TYPE_RECOMMENDATION => InternExtra::where('intern_id', $intern->id)->value('letter_number'),
+            default                   => null,
+        };
+    }
+
+    /**
      * Bangun konteks variabel dan referensi aset sistem untuk dokumen pemagang.
      */
     public function buildContext(
@@ -132,15 +161,18 @@ class InternDocumentIssuanceService
         $brandModel = $intern->brandRel;
         $instModel  = $intern->institution;
 
-        // 1. Ekstraksi nomor dokumen unik
-        $docNumber = $options['document_number'] ?? match ($canonical) {
-            self::TYPE_LOA            => $this->docGeneratorService->generateUniqueLoaNumber($intern, $brandModel),
-            self::TYPE_SKL            => $this->docGeneratorService->generateUniqueSklNumber($intern, $brandModel),
-            self::TYPE_CERTIFICATE    => $this->generateUniqueCertificateNumber($intern),
-            self::TYPE_ASSESSMENT     => $this->generateUniqueAssessmentNumber($intern),
-            self::TYPE_RECOMMENDATION => $this->generateUniqueRecommendationNumber($intern),
-            default                   => strtoupper($canonical) . '/' . date('Ymd') . '/' . $intern->id,
-        };
+        // 1. Ekstraksi nomor dokumen: utamakan nomor custom dari options, nomor historis existing, baru generate nomor baru
+        $docNumber = $options['document_number'] ?? $this->resolveExistingDocumentNumber($intern, $canonical);
+        if (empty($docNumber)) {
+            $docNumber = match ($canonical) {
+                self::TYPE_LOA            => $this->docGeneratorService->generateUniqueLoaNumber($intern, $brandModel),
+                self::TYPE_SKL            => $this->docGeneratorService->generateUniqueSklNumber($intern, $brandModel),
+                self::TYPE_CERTIFICATE    => $this->generateUniqueCertificateNumber($intern),
+                self::TYPE_ASSESSMENT     => $this->generateUniqueAssessmentNumber($intern),
+                self::TYPE_RECOMMENDATION => $this->generateUniqueRecommendationNumber($intern),
+                default                   => strtoupper($canonical) . '/' . date('Ymd') . '/' . $intern->id,
+            };
+        }
 
         // 2. Resolusi dasar dari VariableResolverService
         $baseContext = $this->resolverService->resolveContext(
@@ -289,42 +321,47 @@ class InternDocumentIssuanceService
             );
         }
 
-        // 2. Resolve template aktif
-        $template = !empty($options['template_id'])
-            ? DocumentTemplate::findOrFail($options['template_id'])
-            : $this->resolveActiveTemplate($canonical);
+        return DB::transaction(function () use ($intern, $canonical, $options, $actor) {
+            // Row lock untuk mencegah race condition concurrent issuance
+            InternshipRegistration::where('id', $intern->id)->lockForUpdate()->first();
 
-        // 3. Bangun konteks variabel dan aset
-        $context = $this->buildContext($intern, $canonical, $options);
-        $variables = $context['variables'];
-        $assetReferences = $context['asset_references'];
-        $docNumber = $context['document_number'];
+            // 2. Resolve template aktif
+            $template = !empty($options['template_id'])
+                ? DocumentTemplate::findOrFail($options['template_id'])
+                : $this->resolveActiveTemplate($canonical);
 
-        // 4. Render binary PDF
-        $pdfBinary = DocumentTemplateRenderer::renderPdfBinary($template, $variables);
+            // 3. Bangun konteks variabel dan aset (dengan resolusi nomor dokumen yang stabil)
+            $context = $this->buildContext($intern, $canonical, $options);
+            $variables = $context['variables'];
+            $assetReferences = $context['asset_references'];
+            $docNumber = $context['document_number'];
 
-        // 5. Publikasikan berkas fisik, catat immutable snapshot, dan sinkronkan ke Google Drive
-        $generatedDoc = $this->publishingService->publishInternDocument(
-            intern: $intern,
-            documentType: $canonical,
-            htmlContent: null,
-            variableSnapshot: $variables,
-            assetReferences: $assetReferences,
-            customDocNumber: $docNumber,
-            actor: $actor,
-            pdfBinary: $pdfBinary,
-            template: $template
-        );
+            // 4. Render binary PDF
+            $pdfBinary = DocumentTemplateRenderer::renderPdfBinary($template, $variables);
 
-        // 6. Sinkronisasi tabel historis/legacy untuk kompatibilitas mundur 100%
-        $this->syncLegacyRecord($intern, $canonical, $docNumber, $variables, $generatedDoc, $options);
+            // 5. Publikasikan berkas fisik, catat immutable snapshot, dan sinkronkan ke Google Drive
+            $generatedDoc = $this->publishingService->publishInternDocument(
+                intern: $intern,
+                documentType: $canonical,
+                htmlContent: null,
+                variableSnapshot: $variables,
+                assetReferences: $assetReferences,
+                customDocNumber: $docNumber,
+                actor: $actor,
+                pdfBinary: $pdfBinary,
+                template: $template
+            );
 
-        // 7. Audit log penerbitan
-        if ($actor && in_array($actor->role, DocumentGeneratorService::PRIVILEGED_ROLES, true)) {
-            $this->docGeneratorService->logDocumentAccess($canonical, $intern, $actor, 'generated');
-        }
+            // 6. Sinkronisasi tabel historis/legacy untuk kompatibilitas mundur 100% tanpa mengubah riwayat
+            $this->syncLegacyRecord($intern, $canonical, $docNumber, $variables, $generatedDoc, $options);
 
-        return $generatedDoc;
+            // 7. Audit log penerbitan
+            if ($actor && in_array($actor->role, DocumentGeneratorService::PRIVILEGED_ROLES, true)) {
+                $this->docGeneratorService->logDocumentAccess($canonical, $intern, $actor, 'generated');
+            }
+
+            return $generatedDoc;
+        });
     }
 
     /**
@@ -336,7 +373,7 @@ class InternDocumentIssuanceService
     }
 
     /**
-     * Sinkronisasikan rekam dokumen ke tabel legacy aplikasi.
+     * Sinkronisasikan rekam dokumen ke tabel legacy aplikasi tanpa merusak atau mengubah data historis.
      */
     protected function syncLegacyRecord(
         InternshipRegistration $intern,
@@ -352,78 +389,77 @@ class InternDocumentIssuanceService
         $signatoryPosition = $variables['dokumen.penandatangan_jabatan'] ?? ($brand?->signatory_position ?? 'HRD');
 
         match ($canonicalType) {
-            self::TYPE_LOA => InternLoa::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
+            self::TYPE_LOA => tap(InternLoa::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $intern, $companyName, $brand, $signatoryName, $signatoryPosition) {
+                if (!$rec->exists) {
+                    $rec->created_at = now();
+                }
+                $rec->fill([
                     'loa_number'           => $docNumber,
                     'accepted_start_date'  => $intern->start_date ?? now(),
                     'accepted_end_date'    => $intern->end_date ?? now(),
                     'company_name'         => $companyName,
-                    'company_logo_path'    => $brand?->logo,
+                    'company_logo_path'    => $brand?->logo ?? $rec->company_logo_path,
                     'signatory_name'       => $signatoryName,
                     'signatory_position'   => $signatoryPosition,
-                    'signature_image_path' => $brand?->signature,
-                    'created_at'           => now(),
-                ]
-            ),
-            self::TYPE_SKL => SklDocument::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
+                    'signature_image_path' => $brand?->signature ?? $rec->signature_image_path,
+                ])->save();
+            }),
+            self::TYPE_SKL => tap(SklDocument::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $companyName, $brand, $signatoryName, $signatoryPosition) {
+                $rec->fill([
                     'skl_number'           => $docNumber,
                     'company_name'         => $companyName,
-                    'company_logo_path'    => $brand?->logo ?? 'images/logos/logo_seveninc.png',
+                    'company_logo_path'    => $brand?->logo ?? $rec->company_logo_path ?? 'images/logos/logo_seveninc.png',
                     'signatory_name'       => $signatoryName,
                     'signatory_position'   => $signatoryPosition,
-                    'signature_image_path' => $brand?->signature ?? 'images/signature/ttd_arisetiahusbana.png',
-                ]
-            ),
-            self::TYPE_CERTIFICATE => InternCertificate::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
+                    'signature_image_path' => $brand?->signature ?? $rec->signature_image_path ?? 'images/signature/ttd_arisetiahusbana.png',
+                ])->save();
+            }),
+            self::TYPE_CERTIFICATE => tap(InternCertificate::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $companyName, $brand, $signatoryName, $signatoryPosition) {
+                if (!$rec->exists) {
+                    $rec->created_at = now();
+                }
+                $rec->fill([
                     'certificate_number'    => $docNumber,
                     'company_name'          => $companyName,
-                    'background_image_path' => $brand?->internship_certificate_bg,
-                    'company_logo_path'     => $brand?->logo,
+                    'background_image_path' => $brand?->internship_certificate_bg ?? $rec->background_image_path,
+                    'company_logo_path'     => $brand?->logo ?? $rec->company_logo_path,
                     'signatory_name'        => $signatoryName,
                     'signatory_position'    => $signatoryPosition,
-                    'signature_image_path'  => $brand?->signature,
-                    'created_at'            => now(),
-                ]
-            ),
-            self::TYPE_ASSESSMENT => InternAssessment::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
+                    'signature_image_path'  => $brand?->signature ?? $rec->signature_image_path,
+                ])->save();
+            }),
+            self::TYPE_ASSESSMENT => tap(InternAssessment::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $companyName, $brand, $signatoryName, $signatoryPosition, $variables, $options) {
+                $rec->fill([
                     'assessment_number'    => $docNumber,
-                    'aspek_penilaian'      => $options['aspek_penilaian'] ?? [
+                    'aspek_penilaian'      => $options['aspek_penilaian'] ?? ($rec->aspek_penilaian ?: [
                         ['aspek' => 'Kedisiplinan & Kehadiran', 'nilai' => 90],
                         ['aspek' => 'Kualitas Kerja & Ketelitian', 'nilai' => 88],
                         ['aspek' => 'Inisiatif & Kerjasama Tim', 'nilai' => 87],
-                    ],
-                    'rata_rata'            => (float) ($options['rata_rata'] ?? 88.33),
+                    ]),
+                    'rata_rata'            => (float) ($options['rata_rata'] ?? ($rec->rata_rata ?: 88.33)),
                     'company_name'         => $companyName,
-                    'company_address'      => $variables['perusahaan.alamat'] ?? '',
-                    'company_logo_path'    => $brand?->logo,
+                    'company_address'      => $variables['perusahaan.alamat'] ?? ($rec->company_address ?: ''),
+                    'company_logo_path'    => $brand?->logo ?? $rec->company_logo_path,
                     'signatory_name'       => $signatoryName,
                     'signatory_position'   => $signatoryPosition,
-                    'signature_image_path' => $brand?->signature,
-                ]
-            ),
-            self::TYPE_RECOMMENDATION => InternExtra::updateOrCreate(
-                ['intern_id' => $intern->id],
-                [
+                    'signature_image_path' => $brand?->signature ?? $rec->signature_image_path,
+                ])->save();
+            }),
+            self::TYPE_RECOMMENDATION => tap(InternExtra::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $companyName, $brand, $signatoryName, $signatoryPosition, $variables, $generatedDoc, $intern) {
+                $rec->fill([
                     'rekomendasi_path'       => $generatedDoc->file_path,
                     'rekomendasi_url'        => $generatedDoc->drive_web_view_link,
-                    'rekomendasi_granted_at' => now(),
+                    'rekomendasi_granted_at' => $rec->rekomendasi_granted_at ?: now(),
                     'letter_number'          => $docNumber,
                     'brand_id'               => $intern->brand_id,
                     'company_name'           => $companyName,
-                    'company_address'        => $variables['perusahaan.alamat'] ?? '',
-                    'company_logo_path'      => $brand?->logo,
+                    'company_address'        => $variables['perusahaan.alamat'] ?? ($rec->company_address ?: ''),
+                    'company_logo_path'      => $brand?->logo ?? $rec->company_logo_path,
                     'signatory_name'         => $signatoryName,
                     'signatory_position'     => $signatoryPosition,
-                    'signature_image_path'   => $brand?->signature,
-                ]
-            ),
+                    'signature_image_path'   => $brand?->signature ?? $rec->signature_image_path,
+                ])->save();
+            }),
             default => null,
         };
     }

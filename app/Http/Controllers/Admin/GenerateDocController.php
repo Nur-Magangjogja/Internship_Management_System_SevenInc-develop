@@ -29,6 +29,14 @@ class GenerateDocController extends Controller
             'options'     => 'nullable|array',
         ]);
 
+        $user = $request->user();
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'hr_staff'], true)) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'error' => 'Hanya Admin atau HR Staff yang berwenang menerbitkan dokumen.'], 403);
+            }
+            abort(403, 'Hanya Admin atau HR Staff yang berwenang menerbitkan dokumen.');
+        }
+
         $intern = IR::with(['brandRel', 'division', 'institution'])->findOrFail($validated['intern_id']);
         $jenis  = InternDocumentIssuanceService::normalizeType($validated['jenis_surat']);
         $action = $validated['action'] ?? 'issue';

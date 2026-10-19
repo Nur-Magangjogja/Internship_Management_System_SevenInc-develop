@@ -69,12 +69,16 @@ class DocumentPublishingService
             };
         }
 
-        $idempotencyKey = 'PUB-DOC-' . md5("{$documentType}-{$intern->id}-{$docNumber}");
+        // Kunci idempotensi stabil berbasis identitas penerbitan pemagang dan jenis dokumen
+        $idempotencyKey = 'PUB-DOC-' . md5("intern-{$intern->id}-{$documentType}");
 
-        // Cek jika dokumen dengan idempotency key ini sudah pernah dipublish
+        // Cek jika dokumen dengan idempotency key ini sudah pernah dibuat/dipublish
         $existing = GeneratedDocument::where('idempotency_key', $idempotencyKey)->first();
-        if ($existing && in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && Storage::disk('local')->exists($existing->file_path)) {
-            return $existing;
+        if ($existing) {
+            $hasLocalFile = Storage::disk('local')->exists($existing->file_path);
+            if (in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && $hasLocalFile) {
+                return $existing;
+            }
         }
 
         $year = date('Y');
@@ -247,17 +251,33 @@ class DocumentPublishingService
 
         $intern = $doc->internshipRegistration;
         $remoteFolder = "Generated_Documents/General/" . Str::studly($doc->document_type);
+        $existingFolderId = null;
 
         if ($intern) {
-            // Gunakan struktur subfolder pemagang existing
-            $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
-            $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
-            $regId = $intern->id;
-            $typeFolder = strtoupper($doc->document_type);
-            $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
+            // 1. Cek apakah dokumen ini atau dokumen pemagang sejenis sudah memiliki drive_folder_id permanen
+            $existingFolderId = $doc->drive_folder_id;
+            if (empty($existingFolderId)) {
+                $existingFolderId = GeneratedDocument::where('internship_registration_id', $intern->id)
+                    ->where('document_type', $doc->document_type)
+                    ->whereNotNull('drive_folder_id')
+                    ->latest('id')
+                    ->value('drive_folder_id');
+            }
 
-            // Gunakan configured drive folder ID dari koneksi registrasi pemagang
-            if ($this->cloudDriver instanceof GoogleDriveStorageDriver) {
+            if (!empty($existingFolderId)) {
+                // Folder sebenarnya sudah tercatat permanen: gunakan ID langsung tanpa membangun path string
+                $remoteFolder = $existingFolderId;
+            } else {
+                // Gunakan struktur subfolder pemagang jika belum ada folder tercatat
+                $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
+                $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
+                $regId = $intern->id;
+                $typeFolder = strtoupper($doc->document_type);
+                $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
+            }
+
+            // Gunakan configured drive folder ID dari koneksi registrasi pemagang jika menggunakan path
+            if (empty($existingFolderId) && $this->cloudDriver instanceof GoogleDriveStorageDriver) {
                 try {
                     SpreadsheetConnection::ensureDriveFolderColumns();
                     $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
@@ -288,8 +308,11 @@ class DocumentPublishingService
                 && !str_starts_with($uploadResult['file_id'], 'local_sim_')
                 && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
+            $targetFolderId = $uploadResult['folder_id'] ?? $existingFolderId ?? $doc->drive_folder_id;
+
             $doc->update([
                 'drive_file_id'       => $uploadResult['file_id'],
+                'drive_folder_id'     => $targetFolderId,
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'status'              => $isRealDrive ? GeneratedDocument::STATUS_SYNCED : GeneratedDocument::STATUS_SYNC_PENDING,
                 'synced_at'           => $isRealDrive ? now() : null,

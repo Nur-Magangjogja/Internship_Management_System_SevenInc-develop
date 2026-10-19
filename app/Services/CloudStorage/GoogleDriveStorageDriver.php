@@ -86,8 +86,15 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
      */
     public function getOrCreateFolderPath(string $folderPath): ?string
     {
+        $clean = trim(str_replace('\\', '/', $folderPath), '/');
+
+        // Jika path sudah berupa Drive folder ID langsung (panjang 15-100 tanpa karakter slash)
+        if (!str_contains($clean, '/') && preg_match('/^[a-zA-Z0-9_-]{15,100}$/', $clean)) {
+            return $clean;
+        }
+
         $token = $this->getAccessToken();
-        $folders = array_values(array_filter(explode('/', str_replace('\\', '/', $folderPath))));
+        $folders = array_values(array_filter(explode('/', $clean)));
 
         $currentParentId = $this->rootFolderId ?: 'root';
 
@@ -208,6 +215,7 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
                 'file_id'       => $existingFile['id'],
                 'web_view_link' => $existingFile['webViewLink'] ?? "https://drive.google.com/file/d/{$existingFile['id']}/view",
                 'file_name'     => $existingFile['name'],
+                'folder_id'     => $targetFolderId,
                 'driver'        => $this->getDriverName(),
                 'operation'     => 'reused_existing',
             ];
@@ -256,6 +264,7 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
             'file_id'       => $data['id'],
             'web_view_link' => $data['webViewLink'] ?? "https://drive.google.com/file/d/{$data['id']}/view",
             'file_name'     => $data['name'] ?? $fileName,
+            'folder_id'     => $targetFolderId,
             'driver'        => $this->getDriverName(),
             'operation'     => 'created',
         ];
