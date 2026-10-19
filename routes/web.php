@@ -398,9 +398,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/', [\App\Http\Controllers\Admin\MouTemplateController::class, 'index'])->name('index');
         Route::get('/create', [\App\Http\Controllers\Admin\MouTemplateController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Admin\MouTemplateController::class, 'store'])->name('store');
+        Route::post('/upload-media', [\App\Http\Controllers\Admin\MouTemplateController::class, 'uploadMedia'])->name('upload-media');
         Route::get('/{mouTemplate}/edit', [\App\Http\Controllers\Admin\MouTemplateController::class, 'edit'])->name('edit');
         Route::put('/{mouTemplate}', [\App\Http\Controllers\Admin\MouTemplateController::class, 'update'])->name('update');
         Route::get('/{mouTemplate}/preview', [\App\Http\Controllers\Admin\MouTemplateController::class, 'preview'])->name('preview');
+        Route::get('/{mouTemplate}/preview-pdf', [\App\Http\Controllers\Admin\MouTemplateController::class, 'previewPdf'])->name('preview-pdf');
         Route::post('/{mouTemplate}/toggle-active', [\App\Http\Controllers\Admin\MouTemplateController::class, 'toggleActive'])->name('toggle-active');
         Route::delete('/{mouTemplate}', [\App\Http\Controllers\Admin\MouTemplateController::class, 'destroy'])->name('destroy');
     });
@@ -412,6 +414,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/', [\App\Http\Controllers\HR\MouController::class, 'store'])->name('store');
         Route::get('/{mou}', [\App\Http\Controllers\HR\MouController::class, 'show'])->name('show');
         Route::get('/{mou}/print', [\App\Http\Controllers\HR\MouController::class, 'print'])->name('print');
+        Route::get('/{mou}/download-pdf', [\App\Http\Controllers\HR\MouController::class, 'downloadPdf'])->name('download-pdf');
         Route::post('/{mou}/delivered', [\App\Http\Controllers\HR\MouController::class, 'markDelivered'])->name('delivered');
         Route::post('/{mou}/upload-signed', [\App\Http\Controllers\HR\MouController::class, 'uploadSigned'])->name('upload-signed');
         Route::get('/{mou}/download-signed', [\App\Http\Controllers\HR\MouController::class, 'downloadSigned'])->name('download-signed');
@@ -666,6 +669,7 @@ Route::middleware(['auth', 'active', 'role:hr_staff,admin'])->prefix('hr')->name
         Route::post('/', [\App\Http\Controllers\HR\MouController::class, 'store'])->name('store');
         Route::get('/{mou}', [\App\Http\Controllers\HR\MouController::class, 'show'])->name('show');
         Route::get('/{mou}/print', [\App\Http\Controllers\HR\MouController::class, 'print'])->name('print');
+        Route::get('/{mou}/download-pdf', [\App\Http\Controllers\HR\MouController::class, 'downloadPdf'])->name('download-pdf');
         Route::post('/{mou}/delivered', [\App\Http\Controllers\HR\MouController::class, 'markDelivered'])->name('delivered');
         Route::post('/{mou}/upload-signed', [\App\Http\Controllers\HR\MouController::class, 'uploadSigned'])->name('upload-signed');
         Route::get('/{mou}/download-signed', [\App\Http\Controllers\HR\MouController::class, 'downloadSigned'])->name('download-signed');
