@@ -756,6 +756,10 @@
                 <div class="flex items-center gap-1.5 pr-2 border-r border-slate-200 relative">
                     <button type="button" id="btnInsertPageBreak" onmousedown="event.preventDefault()" onclick="window.MouWordProcessor?.insertPageBreak()" class="mou-ribbon-btn border-slate-200 bg-slate-50 text-xs px-1.5" title="Sisipkan Halaman Baru (Ctrl+Enter)">+ Hal Baru</button>
                     <button type="button" id="btnInsertHyperlink" class="mou-ribbon-btn border-slate-200 bg-slate-50 text-xs px-1.5" title="Sisipkan Hyperlink">+ Tautan</button>
+                    <button type="button" id="btnOpenAssetLibraryModal" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 font-semibold text-xs px-2" title="Pilih Aset dari Perpustakaan Aset (Logo, Kop, TTD, Stempel)">
+                        <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span>+ Aset</span>
+                    </button>
                     <select id="ribbonQuickSymbolSelect" class="mou-ribbon-select min-w-[85px] text-xs" title="Sisipkan Simbol">
                         <option value="">Simbol...</option>
                         <option value="§">§ (Pasal)</option>
@@ -1020,6 +1024,22 @@
                 <p class="text-[10px] text-slate-500 mt-1">Klik tombol <strong>+ Sisip</strong> untuk memasukkan ke posisi kursor.</p>
             </div>
 
+            <!-- Quick Asset Library Launcher -->
+            <div class="px-2.5 pt-2">
+                <div class="p-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <div class="text-[11px] font-bold text-blue-900 flex items-center gap-1">
+                            <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>Perpustakaan Aset</span>
+                        </div>
+                        <div class="text-[10px] text-blue-600">Logo, Kop, TTD, Stempel</div>
+                    </div>
+                    <button type="button" onclick="document.getElementById('btnOpenAssetLibraryModal')?.click()" class="px-2 py-1 text-[10px] font-bold rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow-2xs transition">
+                        Buka Galeri
+                    </button>
+                </div>
+            </div>
+
             <!-- Category Accordion List (Scrollable) -->
             <div id="mouSidebarTokenCategories" class="flex-1 overflow-y-auto p-2.5 space-y-2">
                 @foreach($placeholderGroups as $groupLabel => $groupKeys)
@@ -1084,6 +1104,77 @@
                 <option value="115">115%</option>
                 <option value="125">125%</option>
             </select>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Pemilihan Aset Sistem (Perpustakaan Aset) -->
+<div id="mouAssetLibraryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-600 font-bold text-xs text-white shadow-xs">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </span>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Perpustakaan Aset &amp; Dokumen</h3>
+                    <p class="text-[11px] text-slate-400">Pilih logo, kop surat, tanda tangan, stempel, atau background dari penyimpanan terpusat.</p>
+                </div>
+            </div>
+            <button
+                type="button"
+                id="btnCloseAssetLibraryModal"
+                class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
+                title="Tutup (Esc)"
+            >
+                &times;
+            </button>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <!-- Category Tabs -->
+            <div class="flex items-center gap-1 overflow-x-auto text-xs" id="mouAssetCategoryTabs">
+                <button type="button" data-cat="" class="px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white">Semua</button>
+                <button type="button" data-cat="logo" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Logo</button>
+                <button type="button" data-cat="letterhead" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Kop Surat</button>
+                <button type="button" data-cat="signature" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Tanda Tangan</button>
+                <button type="button" data-cat="stamp" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Stempel</button>
+                <button type="button" data-cat="background" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Background</button>
+                <button type="button" data-cat="supporting_image" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Gambar Pendukung</button>
+            </div>
+
+            <!-- Search Field -->
+            <div class="relative w-full sm:w-64">
+                <input
+                    type="text"
+                    id="mouAssetSearchInput"
+                    placeholder="Cari aset (nama, kode)..."
+                    class="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                >
+                <svg class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Scrollable Asset Grid -->
+        <div id="mouAssetGridContainer" class="flex-1 overflow-y-auto p-4 min-h-[300px] max-h-[60vh] bg-slate-100">
+            <div id="mouAssetLoadingState" class="hidden flex flex-col items-center justify-center py-12 text-slate-400">
+                <svg class="animate-spin h-6 w-6 text-blue-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-xs">Memuat daftar aset...</span>
+            </div>
+            <div id="mouAssetEmptyState" class="hidden text-center py-12 text-slate-400 text-xs">
+                Tidak ada aset yang sesuai kriteria pencarian.
+            </div>
+            <div id="mouAssetItemsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <!-- Dynamically populated via JavaScript -->
+            </div>
         </div>
     </div>
 </div>
@@ -1641,6 +1732,119 @@
         document.getElementById('btnApplyImageSize')?.addEventListener('click', () => {
             const w = document.getElementById('ribbonImageWidthPx')?.value || '95';
             processor.updateSelectedImage(`${w}px`, null);
+        });
+
+        // Asset Library Modal Integration
+        const btnOpenAsset = document.getElementById('btnOpenAssetLibraryModal');
+        const assetModal = document.getElementById('mouAssetLibraryModal');
+        const btnCloseAsset = document.getElementById('btnCloseAssetLibraryModal');
+        const assetGrid = document.getElementById('mouAssetItemsList');
+        const assetLoading = document.getElementById('mouAssetLoadingState');
+        const assetEmpty = document.getElementById('mouAssetEmptyState');
+        const assetSearch = document.getElementById('mouAssetSearchInput');
+        const categoryTabs = document.getElementById('mouAssetCategoryTabs');
+
+        let currentCategory = '';
+        let currentSearch = '';
+
+        async function fetchSystemAssets() {
+            if (!assetGrid) return;
+            assetGrid.innerHTML = '';
+            assetLoading?.classList.remove('hidden');
+            assetEmpty?.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams();
+                if (currentCategory) params.append('category', currentCategory);
+                if (currentSearch) params.append('search', currentSearch);
+
+                const response = await fetch(`{{ route('admin.system-assets.api.index') }}?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const resData = await response.json();
+                assetLoading?.classList.add('hidden');
+
+                const items = resData.data || [];
+                if (items.length === 0) {
+                    assetEmpty?.classList.remove('hidden');
+                    return;
+                }
+
+                items.forEach(asset => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col justify-between hover:shadow-md transition';
+
+                    const previewUrl = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
+                    card.innerHTML = `
+                        <div class="h-24 bg-slate-50 rounded-lg flex items-center justify-center p-2 mb-2 border border-slate-100 overflow-hidden">
+                            <img src="${previewUrl}" alt="${asset.name}" class="max-h-full max-w-full object-contain">
+                        </div>
+                        <div class="mb-2">
+                            <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">${asset.category_label || asset.category}</span>
+                            <div class="text-xs font-semibold text-slate-800 truncate mt-1" title="${asset.name}">${asset.name}</div>
+                            <div class="text-[10px] text-slate-400 font-mono truncate">${asset.code || '-'}</div>
+                        </div>
+                        <button type="button" class="btn-insert-this-asset w-full py-1 text-center text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition">
+                            + Sisipkan
+                        </button>
+                    `;
+
+                    card.querySelector('.btn-insert-this-asset')?.addEventListener('click', () => {
+                        window.MouWordProcessor?.insertSystemAsset(asset);
+                        closeAssetLibraryModal();
+                    });
+
+                    assetGrid.appendChild(card);
+                });
+            } catch (err) {
+                assetLoading?.classList.add('hidden');
+                if (assetEmpty) {
+                    assetEmpty.textContent = 'Gagal memuat aset: ' + err.message;
+                    assetEmpty.classList.remove('hidden');
+                }
+            }
+        }
+
+        function openAssetLibraryModal() {
+            if (assetModal) {
+                assetModal.classList.remove('hidden');
+                fetchSystemAssets();
+            }
+        }
+
+        function closeAssetLibraryModal() {
+            if (assetModal) assetModal.classList.add('hidden');
+        }
+
+        btnOpenAsset?.addEventListener('click', openAssetLibraryModal);
+        btnCloseAsset?.addEventListener('click', closeAssetLibraryModal);
+
+        categoryTabs?.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryTabs.querySelectorAll('button[data-cat]').forEach(b => {
+                    b.className = 'px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200';
+                });
+                btn.className = 'px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white';
+                currentCategory = btn.getAttribute('data-cat') || '';
+                fetchSystemAssets();
+            });
+        });
+
+        let searchDebounce;
+        assetSearch?.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                currentSearch = e.target.value.trim();
+                fetchSystemAssets();
+            }, 300);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (assetModal && !assetModal.classList.contains('hidden')) {
+                    closeAssetLibraryModal();
+                }
+            }
         });
 
         // Paper Size & Orientation Controls

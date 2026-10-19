@@ -71,7 +71,7 @@ class DocumentPublishingService
 
         // Cek jika dokumen dengan idempotency key ini sudah pernah dipublish
         $existing = GeneratedDocument::where('idempotency_key', $idempotencyKey)->first();
-        if ($existing && $existing->status === GeneratedDocument::STATUS_SYNCED && Storage::disk('local')->exists($existing->file_path)) {
+        if ($existing && in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && Storage::disk('local')->exists($existing->file_path)) {
             return $existing;
         }
 
@@ -132,6 +132,91 @@ class DocumentPublishingService
             $this->syncDocumentToDrive($doc, $actor);
         } catch (\Throwable $syncEx) {
             Log::warning("Sinkronisasi otomatis ke Google Drive ditunda: " . $syncEx->getMessage());
+        }
+
+        return $doc->fresh();
+    }
+
+    /**
+     * Terbitkan berkas PDF MOU final secara idempotent dan catat sebagai GeneratedDocument.
+     */
+    public function publishMouDocument(\App\Models\Mou $mou, ?User $actor = null): GeneratedDocument
+    {
+        $mou->loadMissing(['institution', 'template']);
+
+        $idempotencyKey = 'PUB-MOU-' . md5("mou-{$mou->id}-{$mou->company_mou_number}");
+
+        $existing = GeneratedDocument::where('idempotency_key', $idempotencyKey)->first();
+        if ($existing && in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && Storage::disk('local')->exists($existing->file_path)) {
+            return $existing;
+        }
+
+        $template = $mou->template;
+        $pageConfig = $mou->render_data_snapshot['_page_config'] ?? \App\Models\MouTemplate::getDefaultPageConfig();
+
+        // 1. Render PDF binary menggunakan MouDocumentRenderer
+        $pdfBinary = \App\Services\MouDocumentRenderer::renderPdfBinary(
+            $mou->rendered_document_html,
+            $pageConfig,
+            $mou->company_mou_number . ' - ' . $mou->first_party_institution_name
+        );
+
+        $year = $mou->agreement_date ? date('Y', strtotime($mou->agreement_date)) : date('Y');
+        $safeNumber = Str::slug(str_replace('/', '-', $mou->company_mou_number), '-');
+        $instSlug = Str::slug($mou->first_party_institution_name ?? ($mou->institution?->name ?? 'institusi'), '_');
+        $fileName = "MOU_{$safeNumber}_{$instSlug}.pdf";
+        $relativeLocalDir = "generated_documents/mou/{$year}";
+        $relativeLocalPath = "{$relativeLocalDir}/{$fileName}";
+
+        if (!Storage::disk('local')->exists($relativeLocalDir)) {
+            Storage::disk('local')->makeDirectory($relativeLocalDir);
+        }
+
+        Storage::disk('local')->put($relativeLocalPath, $pdfBinary);
+        $fullLocalPath = Storage::disk('local')->path($relativeLocalPath);
+
+        $fileSizeBytes = strlen($pdfBinary);
+        $checksum = hash('sha256', $pdfBinary);
+
+        $snapshot = array_merge($mou->render_data_snapshot ?? [], [
+            'template_id'      => $template?->id,
+            'template_name'    => $template?->name ?? 'Default MoU Template',
+            'template_version' => $template?->version_number ?? 1,
+            'mou_id'           => $mou->id,
+        ]);
+
+        $assetReferences = $mou->render_data_snapshot['_media_assets'] ?? [];
+
+        $doc = GeneratedDocument::updateOrCreate(
+            ['idempotency_key' => $idempotencyKey],
+            [
+                'public_uuid'                => (string) Str::uuid(),
+                'document_type'              => GeneratedDocument::TYPE_MOU,
+                'document_number'            => $mou->company_mou_number,
+                'institution_id'             => $mou->institution_id,
+                'internship_registration_id' => null,
+                'template_type'              => 'mou',
+                'template_id'                => $mou->mou_template_id,
+                'template_version'           => $template?->version_number ?? 1,
+                'variable_snapshot'          => $snapshot,
+                'asset_references'           => $assetReferences,
+                'file_path'                  => $relativeLocalPath,
+                'file_name'                  => $fileName,
+                'file_size_bytes'            => $fileSizeBytes,
+                'checksum_sha256'            => $checksum,
+                'status'                     => GeneratedDocument::STATUS_GENERATED,
+                'published_at'               => now(),
+                'generated_by'               => $actor?->id,
+            ]
+        );
+
+        $doc->recordStatusChange(GeneratedDocument::STATUS_GENERATED, "Dokumen fisik PDF MOU berhasil dibuat.");
+
+        // 2. Coba sinkronisasi ke Google Drive
+        try {
+            $this->syncDocumentToDrive($doc, $actor);
+        } catch (\Throwable $syncEx) {
+            Log::warning("Sinkronisasi otomatis MOU ke Google Drive ditunda: " . $syncEx->getMessage());
         }
 
         return $doc->fresh();

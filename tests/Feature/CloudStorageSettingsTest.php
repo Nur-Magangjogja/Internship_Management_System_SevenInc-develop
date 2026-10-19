@@ -79,13 +79,16 @@ class CloudStorageSettingsTest extends TestCase
     public function test_registration_folder_reference_remains_separate(): void
     {
         SpreadsheetConnection::ensureDriveFolderColumns();
-        $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
-        if ($conn) {
-            $conn->update([
+        SpreadsheetConnection::updateOrCreate(
+            ['connection_key' => SpreadsheetConnection::KEY_REGISTRATION],
+            [
+                'display_name'     => 'Registration Connection',
+                'spreadsheet_id'   => 'mock_spreadsheet_id',
                 'drive_folder_id'  => 'REG_EXISTING_FOLDER_ID_999',
                 'drive_folder_url' => 'https://drive.google.com/drive/folders/REG_EXISTING_FOLDER_ID_999',
-            ]);
-        }
+                'is_enabled'       => true,
+            ]
+        );
 
         $response = $this->actingAs($this->admin)->get(route('admin.cloud-storage.index'));
 

@@ -68,8 +68,8 @@
     @endphp
     <style>
         @page {
-            size: {{ $paperSize }} {{ $orientation }};
             margin: {{ $reservedTopMm }}mm {{ $rightMm }}mm {{ $reservedBottomMm }}mm {{ $leftMm }}mm;
+            size: {{ $paperSize }} {{ $orientation }};
         }
         body {
             margin: 0;

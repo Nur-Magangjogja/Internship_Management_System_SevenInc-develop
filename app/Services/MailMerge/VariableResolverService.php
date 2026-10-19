@@ -83,10 +83,16 @@ class VariableResolverService
             $variables['dokumen.tanggal'] = $mou->agreement_date ? Carbon::parse($mou->agreement_date)->translatedFormat('d F Y') : now()->translatedFormat('d F Y');
             $variables['dokumen.penandatangan_nama'] = $mou->second_party_signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
             $variables['dokumen.penandatangan_jabatan'] = $mou->second_party_signatory_title ?? 'Pimpinan';
+            $variables['perusahaan.nama'] = $mou->second_party_company_name ?? 'SEVEN INC';
+            $variables['company_name'] = $variables['perusahaan.nama'];
+            $variables['institution_name'] = $mou->first_party_institution_name ?? ($instModel?->name ?? 'Institusi Mitra');
+            $variables['institusi.nama'] = $variables['institution_name'];
         } else {
             $variables['dokumen.tanggal'] = now()->translatedFormat('d F Y');
             $variables['dokumen.penandatangan_nama'] = $brandModel?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
             $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? 'Pimpinan';
+            $variables['perusahaan.nama'] = $brandModel?->name ?? 'SEVEN INC';
+            $variables['company_name'] = $variables['perusahaan.nama'];
         }
 
         // Terapkan overrides eksplisit jika ada

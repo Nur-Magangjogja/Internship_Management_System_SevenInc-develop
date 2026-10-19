@@ -155,6 +155,16 @@ class VariableRegistry
                 'scope'       => ['admin', 'hr_staff'],
                 'source'      => 'brand.signatory_position',
             ],
+            'perusahaan.nama' => [
+                'token'       => 'perusahaan.nama',
+                'aliases'     => ['company_name', 'nama_perusahaan', 'second_party_company_name'],
+                'label'       => 'Nama Perusahaan Pihak Kedua',
+                'category'    => 'Data Dokumen',
+                'type'        => 'text',
+                'sample'      => 'SEVEN INC',
+                'scope'       => ['admin', 'hr_staff'],
+                'source'      => 'company_name',
+            ],
 
             // ==================== VARIABEL DATA: INSTITUSI ====================
             'institusi.nama' => [

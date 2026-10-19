@@ -578,6 +578,18 @@ const WordImage = Image.extend({
                 default: 'mou-logo-img',
                 parseHTML: el => el.getAttribute('class') || 'mou-logo-img',
             },
+            assetId: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-asset-id') || null,
+            },
+            assetCode: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-asset-code') || null,
+            },
+            token: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-token') || null,
+            },
         };
     },
     renderHTML({ node, HTMLAttributes }) {
@@ -588,6 +600,16 @@ const WordImage = Image.extend({
             title: node.attrs.title || '',
             class: node.attrs.class || 'mou-logo-img',
         };
+
+        if (node.attrs.assetId) {
+            attrs['data-asset-id'] = node.attrs.assetId;
+        }
+        if (node.attrs.assetCode) {
+            attrs['data-asset-code'] = node.attrs.assetCode;
+        }
+        if (node.attrs.token) {
+            attrs['data-token'] = node.attrs.token;
+        }
 
         if (node.attrs.width) {
             const w = /^\d+$/.test(String(node.attrs.width)) ? `${node.attrs.width}px` : node.attrs.width;
@@ -3535,6 +3557,31 @@ export function initMouWordProcessor(config) {
                 src,
                 width: `${widthPx}px`,
                 align,
+            }).run();
+            scheduleSyncAndPagination();
+        },
+        insertSystemAsset: (asset) => {
+            const ed = getActiveEditor();
+            if (!ed || !asset) return;
+            const src = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
+            let width = '110px';
+            if (asset.category === 'letterhead') {
+                width = '100%';
+            } else if (asset.category === 'signature' || asset.category === 'stamp') {
+                width = '120px';
+            } else if (asset.category === 'logo') {
+                width = '100px';
+            }
+
+            ed.chain().focus().setImage({
+                src,
+                alt: asset.name || 'Aset Sistem',
+                title: asset.name || '',
+                assetId: String(asset.id),
+                assetCode: asset.code || '',
+                token: asset.code ? `asset.${asset.code}` : '',
+                width,
+                align: 'center',
             }).run();
             scheduleSyncAndPagination();
         },

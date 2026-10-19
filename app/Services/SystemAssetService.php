@@ -309,8 +309,14 @@ class SystemAssetService
     /**
      * Dapatkan representasi Data URI Base64 untuk rendering dokumen DomPDF secara stabil.
      */
-    public function getAssetAsBase64DataUri(?SystemAsset $asset, ?string $fallbackRelativePath = null): ?string
+    public function getAssetAsBase64DataUri(SystemAsset|int|string|null $asset, ?string $fallbackRelativePath = null): ?string
     {
+        if (is_numeric($asset)) {
+            $asset = $this->getAssetById((int) $asset);
+        } elseif (is_string($asset)) {
+            $asset = $this->getAssetByUuid($asset) ?? SystemAsset::where('asset_code', $asset)->first();
+        }
+
         if ($asset && Storage::disk('local')->exists($asset->local_path)) {
             $content = Storage::disk('local')->get($asset->local_path);
             return 'data:' . $asset->mime_type . ';base64,' . base64_encode($content);

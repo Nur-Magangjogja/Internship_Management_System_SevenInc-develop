@@ -80,6 +80,24 @@ class CloudSyncManager
             'drive_synced_at'     => now(),
         ]);
 
+        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
+
+        $genDoc = \App\Models\GeneratedDocument::where('document_type', \App\Models\GeneratedDocument::TYPE_MOU)
+            ->where('document_number', $mou->company_mou_number)
+            ->first();
+
+        if ($genDoc) {
+            $genDoc->update([
+                'drive_file_id'       => $uploadResult['file_id'],
+                'drive_web_view_link' => $uploadResult['web_view_link'],
+                'status'              => $isRealDrive ? \App\Models\GeneratedDocument::STATUS_SYNCED : \App\Models\GeneratedDocument::STATUS_SYNC_PENDING,
+                'synced_at'           => $isRealDrive ? now() : null,
+                'sync_error_message'  => $isRealDrive ? null : 'Simulasi lokal: Google Drive belum terkonfigurasi aktif.',
+            ]);
+        }
+
         ActivityLogger::log(
             action: 'mou_drive_synced',
             description: "Berkas MOU {$mou->company_mou_number} berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
