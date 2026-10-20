@@ -23,8 +23,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Plugin, PluginKey, TextSelection, Selection } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 const MM_TO_PX = 96 / 25.4; // ~3.779527559 px per mm
 
@@ -578,18 +577,6 @@ const WordImage = Image.extend({
                 default: 'mou-logo-img',
                 parseHTML: el => el.getAttribute('class') || 'mou-logo-img',
             },
-            assetId: {
-                default: null,
-                parseHTML: el => el.getAttribute('data-asset-id') || null,
-            },
-            assetCode: {
-                default: null,
-                parseHTML: el => el.getAttribute('data-asset-code') || null,
-            },
-            token: {
-                default: null,
-                parseHTML: el => el.getAttribute('data-token') || null,
-            },
         };
     },
     renderHTML({ node, HTMLAttributes }) {
@@ -600,16 +587,6 @@ const WordImage = Image.extend({
             title: node.attrs.title || '',
             class: node.attrs.class || 'mou-logo-img',
         };
-
-        if (node.attrs.assetId) {
-            attrs['data-asset-id'] = node.attrs.assetId;
-        }
-        if (node.attrs.assetCode) {
-            attrs['data-asset-code'] = node.attrs.assetCode;
-        }
-        if (node.attrs.token) {
-            attrs['data-token'] = node.attrs.token;
-        }
 
         if (node.attrs.width) {
             const w = /^\d+$/.test(String(node.attrs.width)) ? `${node.attrs.width}px` : node.attrs.width;
@@ -678,12 +655,6 @@ const WordPageBreak = Node.create({
                     { type: 'paragraph' },
                 ]);
             },
-        };
-    },
-
-    addKeyboardShortcuts() {
-        return {
-            'Mod-Enter': () => this.editor.commands.insertPageBreak(),
         };
     },
 });
@@ -984,53 +955,6 @@ function synchronizeSerializedHtml(rawHtml) {
 }
 
 /**
- * ProseMirror Plugin & Extension for Word 2013 "Highlight Merge Fields" (Surat Masal)
- */
-const mergeHighlightPluginKey = new PluginKey('mouMergeHighlightPlugin');
-
-const MergeHighlightExtension = Extension.create({
-    name: 'mouMergeHighlight',
-    addProseMirrorPlugins() {
-        return [
-            new Plugin({
-                key: mergeHighlightPluginKey,
-                state: {
-                    init() {
-                        return false;
-                    },
-                    apply(tr, prev) {
-                        const meta = tr.getMeta(mergeHighlightPluginKey);
-                        return typeof meta === 'boolean' ? meta : prev;
-                    },
-                },
-                props: {
-                    decorations(state) {
-                        const active = mergeHighlightPluginKey.getState(state);
-                        if (!active) return DecorationSet.empty;
-                        const decos = [];
-                        const regex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
-                        state.doc.descendants((node, pos) => {
-                            if (node.isText && node.text) {
-                                let match;
-                                while ((match = regex.exec(node.text)) !== null) {
-                                    const from = pos + match.index;
-                                    const to = from + match[0].length;
-                                    decos.push(Decoration.inline(from, to, {
-                                        class: 'mou-merge-field-highlight',
-                                        title: `Kolom Gabungan: ${match[0]}`,
-                                    }));
-                                }
-                            }
-                        });
-                        return DecorationSet.create(state.doc, decos);
-                    },
-                },
-            }),
-        ];
-    },
-});
-
-/**
  * Create the standard Tiptap extension list for Body, Header, and Footer editors.
  */
 function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') {
@@ -1069,7 +993,6 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
         WordTableHeader,
         WordPageBreak,
         WordTextBox,
-        MergeHighlightExtension,
         Placeholder.configure({
             placeholder: placeholderText,
         }),
@@ -1181,27 +1104,33 @@ class MouPageView {
             ? (state.firstPageFooterHtmlStore || '')
             : (state.footerHtmlStore || '');
 
-        this.headerEl.innerHTML = headerHtml || `
-            <div class="mou-header-empty-indicator text-slate-300 italic text-[10px] py-0.5 select-none text-center border-b border-dashed border-slate-200">
-                (Header Kosong &bull; Klik Ganda untuk Mengisi)
-            </div>
-        `;
-        const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
-        this.headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
-
-        const pageNumberHtml = state.showPageNumber
-            ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">Halaman ${pageNum} dari ${totalPages}</div>`
-            : '';
-        this.footerEl.innerHTML = `
-            <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
-                <div class="mou-footer-paraf-area flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'}">
-                    ${footerHtml}
+        const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
+        if (!this.headerEl.contains(headerWrapper)) {
+            this.headerEl.innerHTML = headerHtml || `
+                <div class="mou-header-empty-indicator text-slate-300 italic text-[10px] py-0.5 select-none text-center border-b border-dashed border-slate-200">
+                    (Header Kosong &bull; Klik Ganda untuk Mengisi)
                 </div>
-                ${pageNumberHtml}
-            </div>
-        `;
-        const bodyBtmGapMm = Math.max(2, state.marginBottomMm - state.footerDistanceMm);
-        this.footerEl.style.marginTop = `${bodyBtmGapMm}mm`;
+            `;
+            const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
+            this.headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
+        }
+
+        const footerWrapper = document.getElementById('mouFooterZoneWrapper');
+        if (!this.footerEl.contains(footerWrapper)) {
+            const pageNumberHtml = state.showPageNumber
+                ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">Halaman ${pageNum} dari ${totalPages}</div>`
+                : '';
+            this.footerEl.innerHTML = `
+                <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
+                    <div class="mou-footer-paraf-area flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'}">
+                        ${footerHtml}
+                    </div>
+                    ${pageNumberHtml}
+                </div>
+            `;
+            const bodyBtmGapMm = Math.max(2, state.marginBottomMm - state.footerDistanceMm);
+            this.footerEl.style.marginTop = `${bodyBtmGapMm}mm`;
+        }
 
         if (state.activeZone === 'header' || state.activeZone === 'footer') {
             this.contentDOM.classList.add('mou-zone-dimmed');
@@ -1298,118 +1227,6 @@ const MouPageNode = Node.create({
             return new MouPageView(node, editor, getPos);
         };
     },
-
-    addKeyboardShortcuts() {
-        return {
-            Backspace: ({ editor }) => {
-                const { state, dispatch } = editor.view;
-                const { selection } = state;
-                if (!selection.empty) return false;
-                const { $from } = selection;
-                if ($from.index(0) > 0 && $from.parentOffset === 0 && $from.index(1) === 0) {
-                    const prevPageIndex = $from.index(0) - 1;
-                    const prevPageNode = state.doc.child(prevPageIndex);
-
-                    let prevPageStartPos = 0;
-                    for (let i = 0; i < prevPageIndex; i++) {
-                        prevPageStartPos += state.doc.child(i).nodeSize;
-                    }
-
-                    if ($from.parent.content.size === 0) {
-                        const tr = state.tr.delete($from.before(), $from.after());
-                        const targetPos = Math.max(1, prevPageStartPos + prevPageNode.content.size);
-                        try {
-                            const $target = tr.doc.resolve(tr.mapping.map(targetPos));
-                            tr.setSelection(Selection.near($target, -1));
-                        } catch (e) {}
-                        dispatch(tr);
-                        scheduleReflow(true);
-                        return true;
-                    } else if (prevPageNode.childCount > 0) {
-                        const lastChild = prevPageNode.child(prevPageNode.childCount - 1);
-                        if (lastChild.type.name === 'pageBreak') {
-                            let pageBreakPos = prevPageStartPos + 1;
-                            for (let c = 0; c < prevPageNode.childCount - 1; c++) {
-                                pageBreakPos += prevPageNode.child(c).nodeSize;
-                            }
-                            const tr = state.tr.delete(pageBreakPos, pageBreakPos + lastChild.nodeSize);
-                            dispatch(tr);
-                            scheduleReflow(true);
-                            return true;
-                        } else if (lastChild.type.name === 'paragraph' && $from.parent.type.name === 'paragraph') {
-                            let prevLastParaEnd = prevPageStartPos + 1;
-                            for (let c = 0; c < prevPageNode.childCount - 1; c++) {
-                                prevLastParaEnd += prevPageNode.child(c).nodeSize;
-                            }
-                            prevLastParaEnd += lastChild.nodeSize - 1;
-
-                            const tr = state.tr;
-                            const curContent = $from.parent.content;
-                            tr.delete($from.before(), $from.after());
-                            const mappedEnd = tr.mapping.map(prevLastParaEnd);
-                            tr.insert(mappedEnd, curContent);
-                            try {
-                                const $target = tr.doc.resolve(mappedEnd);
-                                tr.setSelection(new TextSelection($target));
-                            } catch (e) {}
-                            dispatch(tr);
-                            scheduleReflow(true);
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            },
-            Delete: ({ editor }) => {
-                const { state, dispatch } = editor.view;
-                const { selection } = state;
-                if (!selection.empty) return false;
-                const { $from } = selection;
-
-                if ($from.parentOffset === $from.parent.content.size && $from.index(0) < state.doc.childCount - 1) {
-                    const pageNode = state.doc.child($from.index(0));
-                    if ($from.index(1) === pageNode.childCount - 1) {
-                        const nextPageIndex = $from.index(0) + 1;
-                        const nextPageNode = state.doc.child(nextPageIndex);
-                        if (nextPageNode.childCount > 0) {
-                            const firstNextChild = nextPageNode.child(0);
-                            let nextPageStartPos = 0;
-                            for (let i = 0; i < nextPageIndex; i++) {
-                                nextPageStartPos += state.doc.child(i).nodeSize;
-                            }
-                            const firstChildPos = nextPageStartPos + 1;
-
-                            if (firstNextChild.type.name === 'pageBreak') {
-                                const tr = state.tr.delete(firstChildPos, firstChildPos + firstNextChild.nodeSize);
-                                dispatch(tr);
-                                scheduleReflow(true);
-                                return true;
-                            } else if (firstNextChild.type.name === 'paragraph') {
-                                if (firstNextChild.content.size === 0) {
-                                    const tr = state.tr.delete(firstChildPos, firstChildPos + firstNextChild.nodeSize);
-                                    dispatch(tr);
-                                    scheduleReflow(true);
-                                    return true;
-                                } else if ($from.parent.type.name === 'paragraph') {
-                                    const tr = state.tr;
-                                    tr.delete(firstChildPos, firstChildPos + firstNextChild.nodeSize);
-                                    tr.insert($from.pos, firstNextChild.content);
-                                    try {
-                                        const $target = tr.doc.resolve($from.pos);
-                                        tr.setSelection(new TextSelection($target));
-                                    } catch (e) {}
-                                    dispatch(tr);
-                                    scheduleReflow(true);
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-                return false;
-            },
-        };
-    },
 });
 
 /**
@@ -1454,7 +1271,6 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         WordTableHeader,
         WordPageBreak,
         WordTextBox,
-        MergeHighlightExtension,
         Placeholder.configure({
             placeholder: placeholderText,
         }),
@@ -1519,7 +1335,6 @@ export function initMouWordProcessor(config) {
             company_logo_url: resolvedCompanyLogo,
         },
         selectedImageNodePos: null,
-        highlightMergeFields: false,
     };
 
     const rawFallbackHtml = (initialBodyHtml && initialBodyHtml.trim() !== '' && initialBodyHtml.trim() !== '<p></p>')
@@ -1569,12 +1384,10 @@ export function initMouWordProcessor(config) {
             onTransaction: ({ transaction }) => {
                 updateToolbarState();
                 updateDocumentMetrics();
-                if (transaction.docChanged) {
-                    scheduleSyncAndPagination();
-                    if (!transaction.getMeta(reflowPluginKey)) {
-                        reflowPassCount = 0;
-                        scheduleReflow(false);
-                    }
+                scheduleSyncAndPagination();
+                if (!transaction.getMeta(reflowPluginKey)) {
+                    reflowPassCount = 0;
+                    scheduleReflow(false);
                 }
             },
         });
@@ -1600,22 +1413,14 @@ export function initMouWordProcessor(config) {
             onTransaction: ({ transaction }) => {
                 updateToolbarState();
                 updateDocumentMetrics();
-                if (transaction.docChanged) {
-                    scheduleSyncAndPagination();
-                    if (!transaction.getMeta(reflowPluginKey)) {
-                        reflowPassCount = 0;
-                        scheduleReflow(false);
-                    }
+                scheduleSyncAndPagination();
+                if (!transaction.getMeta(reflowPluginKey)) {
+                    reflowPassCount = 0;
+                    scheduleReflow(false);
                 }
             },
         });
         bodyEditor.mouContext = { state, getPaperDimensionsMm, setActiveZone };
-    }
-
-    if (bodyMountEl) {
-        bodyMountEl.addEventListener('compositionend', () => {
-            scheduleReflow(false);
-        });
     }
 
     // Guarantee non-empty initial render when fallback HTML had content
@@ -1640,7 +1445,6 @@ export function initMouWordProcessor(config) {
                   saveActiveHeaderFooterToStore();
                   updateToolbarState();
                   scheduleSyncAndPagination();
-                  refreshAllPageViews();
               },
           })
         : null;
@@ -1662,7 +1466,6 @@ export function initMouWordProcessor(config) {
                   saveActiveHeaderFooterToStore();
                   updateToolbarState();
                   scheduleSyncAndPagination();
-                  refreshAllPageViews();
               },
           })
         : null;
@@ -1728,10 +1531,9 @@ export function initMouWordProcessor(config) {
         state.activeZone = zone;
         state.activePageNum = targetPageNum;
 
-        const overlay = document.getElementById('mouHfActiveEditorOverlay');
         const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
         const footerWrapper = document.getElementById('mouFooterZoneWrapper');
-        const deskStage = document.getElementById('mouPagesDeskStage');
+        const hfStaging = document.getElementById('mouHfStagingContainer');
         const zoneBadge = document.getElementById('activeEditorZoneBadge');
         const closeHfBtn = document.getElementById('btnCloseHeaderFooter');
 
@@ -1742,46 +1544,40 @@ export function initMouWordProcessor(config) {
             state.editingFirstPageVariant = false;
         }
 
-        if (zone === 'header' && overlay && headerWrapper && deskStage) {
-            document.querySelectorAll('.mou-page-body-content').forEach(el => el.classList.add('mou-zone-dimmed'));
+        // Return wrappers to staging first
+        if (headerWrapper && hfStaging && headerWrapper.parentNode !== hfStaging) {
+            hfStaging.appendChild(headerWrapper);
+        }
+        if (footerWrapper && hfStaging && footerWrapper.parentNode !== hfStaging) {
+            hfStaging.appendChild(footerWrapper);
+        }
+
+        if (zone === 'header' && headerWrapper) {
             const pageDoms = document.querySelectorAll('.mou-a4-page-node');
             const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const headerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-header') : null;
-
             if (headerSlot) {
-                const stageRect = deskStage.getBoundingClientRect();
-                const slotRect = headerSlot.getBoundingClientRect();
-                overlay.style.top = Math.max(0, slotRect.top - stageRect.top - 4) + 'px';
-                overlay.style.left = Math.max(0, slotRect.left - stageRect.left - 4) + 'px';
-                overlay.style.width = (slotRect.width + 8) + 'px';
-                overlay.classList.remove('hidden');
+                headerSlot.innerHTML = '';
+                headerSlot.appendChild(headerWrapper);
                 headerWrapper.classList.remove('hidden');
-                if (footerWrapper) footerWrapper.classList.add('hidden');
+                headerWrapper.classList.add('mou-zone-active');
             }
-
             loadHeaderFooterVariantIntoEditors();
             headerEditor?.setEditable(true);
             headerEditor?.commands.focus();
             bodyEditor?.setEditable(false);
             footerEditor?.setEditable(false);
             switchRibbonTab('headerfooter');
-        } else if (zone === 'footer' && overlay && footerWrapper && deskStage) {
-            document.querySelectorAll('.mou-page-body-content').forEach(el => el.classList.add('mou-zone-dimmed'));
+        } else if (zone === 'footer' && footerWrapper) {
             const pageDoms = document.querySelectorAll('.mou-a4-page-node');
             const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const footerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-footer') : null;
-
             if (footerSlot) {
-                const stageRect = deskStage.getBoundingClientRect();
-                const slotRect = footerSlot.getBoundingClientRect();
-                overlay.style.top = Math.max(0, slotRect.top - stageRect.top - 4) + 'px';
-                overlay.style.left = Math.max(0, slotRect.left - stageRect.left - 4) + 'px';
-                overlay.style.width = (slotRect.width + 8) + 'px';
-                overlay.classList.remove('hidden');
+                footerSlot.innerHTML = '';
+                footerSlot.appendChild(footerWrapper);
                 footerWrapper.classList.remove('hidden');
-                if (headerWrapper) headerWrapper.classList.add('hidden');
+                footerWrapper.classList.add('mou-zone-active');
             }
-
             loadHeaderFooterVariantIntoEditors();
             footerEditor?.setEditable(true);
             footerEditor?.commands.focus();
@@ -1790,11 +1586,6 @@ export function initMouWordProcessor(config) {
             switchRibbonTab('headerfooter');
         } else {
             // Body mode
-            document.querySelectorAll('.mou-page-body-content').forEach(el => el.classList.remove('mou-zone-dimmed'));
-            if (overlay) overlay.classList.add('hidden');
-            if (headerWrapper) headerWrapper.classList.add('hidden');
-            if (footerWrapper) footerWrapper.classList.add('hidden');
-
             headerEditor?.setEditable(false);
             footerEditor?.setEditable(false);
             bodyEditor?.setEditable(true);
@@ -1826,8 +1617,8 @@ export function initMouWordProcessor(config) {
                     : `Mode Edit: Footer & Kotak Paraf (Hal. ${targetPageNum})`;
                 zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-bold text-amber-800';
             } else {
-                zoneBadge.textContent = 'Mode Edit: Isi Dokumen Utama';
-                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-white/20 border border-white/30 px-2.5 py-0.5 text-[11px] font-semibold text-white';
+                zoneBadge.textContent = 'Mode Edit: Lembar Dokumen A4';
+                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-700';
             }
         }
         updateToolbarState();
@@ -1846,24 +1637,12 @@ export function initMouWordProcessor(config) {
         });
     }
 
-    // Keydown listener for Esc key to exit Header/Footer edit mode and Ctrl+S to save template
+    // Keydown listener for Esc key to exit Header/Footer edit mode
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' || e.keyCode === 27) {
             if (state.activeZone === 'header' || state.activeZone === 'footer') {
                 e.preventDefault();
                 setActiveZone('body');
-            }
-        }
-        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-            e.preventDefault();
-            syncAllToHiddenInputs();
-            const form = document.getElementById('mouTemplateForm');
-            if (form) {
-                if (typeof form.requestSubmit === 'function') {
-                    form.requestSubmit();
-                } else {
-                    form.submit();
-                }
             }
         }
     });
@@ -2245,7 +2024,7 @@ export function initMouWordProcessor(config) {
         if (syncFrame) cancelAnimationFrame(syncFrame);
         syncFrame = requestAnimationFrame(() => {
             syncAllToHiddenInputs();
-            scheduleReflow();
+            updateVisualPageBreakGuides();
             updateDocumentMetrics();
         });
     }
@@ -2445,24 +2224,18 @@ export function initMouWordProcessor(config) {
     }
 
     /**
-     * Automatic True Multi-Page A4 Reflow Engine with Selection Mapping & Hysteresis.
+     * Automatic True Multi-Page A4 Reflow Engine.
      */
     let reflowTimer = null;
     let reflowPassCount = 0;
-    let recentReflowActions = [];
 
     function scheduleReflow(immediate = false) {
         if (reflowTimer) clearTimeout(reflowTimer);
-        // Debounce: 200ms on typing, 0ms on immediate events (margins/loads/breaks)
-        const delay = immediate ? 0 : 200;
+        const delay = immediate ? 0 : 25;
         reflowTimer = setTimeout(() => {
             requestAnimationFrame(() => {
                 if (!bodyEditor || bodyEditor.isDestroyed) return;
-                if (bodyEditor.view?.composing) {
-                    // Do not reflow during active IME composition
-                    return;
-                }
-                if (reflowPassCount >= 5) {
+                if (reflowPassCount > 6) {
                     reflowPassCount = 0;
                     return;
                 }
@@ -2472,88 +2245,12 @@ export function initMouWordProcessor(config) {
         }, delay);
     }
 
-    /**
-     * Check if a page element contains an explicit manual page break.
-     */
-    function hasManualPageBreak(pageEl) {
-        if (!pageEl) return false;
-        return !!pageEl.querySelector('.mou-page-break, [data-page-break="true"]');
-    }
-
-    /**
-     * Find character offset where a multi-line paragraph exceeds available height on a page.
-     * Enforces Widow/Orphan protection (at least 2 lines in origin page and 2 lines in continuation page).
-     */
-    function findParagraphSplitOffset(paraEl, maxHeightPx) {
-        if (!paraEl || maxHeightPx <= 0) return -1;
-        const compStyle = window.getComputedStyle ? window.getComputedStyle(paraEl) : null;
-        const lineH = compStyle ? (parseFloat(compStyle.lineHeight) || 20) : 20;
-
-        // Widow/Orphan protection:
-        // Must leave at least 2 lines in origin page (maxHeightPx >= lineH * 2)
-        // Must carry at least 2 lines to next page (paraEl.offsetHeight - maxHeightPx >= lineH * 2)
-        if (maxHeightPx < lineH * 2 || (paraEl.offsetHeight - maxHeightPx) < lineH * 2) {
-            return -1; // Cannot safely split without leaving widow or orphan line
-        }
-
-        const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
-        const textNodes = [];
-        let tn;
-        while ((tn = walker.nextNode())) {
-            textNodes.push(tn);
-        }
-        if (textNodes.length === 0) return -1;
-
-        const range = document.createRange();
-        let charOffset = 0;
-        let lastSafeOffset = -1;
-        const paraRect = paraEl.getBoundingClientRect();
-
-        for (const tNode of textNodes) {
-            const str = tNode.nodeValue || '';
-            for (let i = 0; i < str.length; i++) {
-                range.setStart(tNode, i);
-                range.setEnd(tNode, Math.min(i + 1, str.length));
-                const rect = range.getBoundingClientRect();
-                const relBottom = rect.bottom - paraRect.top;
-                if (str[i] === ' ' || str[i] === '\n') {
-                    if (relBottom <= maxHeightPx) {
-                        lastSafeOffset = charOffset + i + 1;
-                    }
-                }
-                if (relBottom > maxHeightPx) {
-                    let chosenOffset = lastSafeOffset > 0 ? lastSafeOffset : (charOffset + i);
-                    // Mail Merge Placeholder Protection:
-                    // Never split inside placeholders like [institution_name], {{ company_name }}, or dotted variables {{ pemagang.nama }}, {{ asset.company.logo }}.
-                    const fullText = paraEl.textContent || '';
-                    const placeholderRegex = /(?:\[[a-zA-Z0-9_.\-]+\]|\{\{\s*[a-zA-Z0-9_.\-]+\s*\}\})/g;
-                    let match;
-                    while ((match = placeholderRegex.exec(fullText)) !== null) {
-                        const tokenStart = match.index;
-                        const tokenEnd = match.index + match[0].length;
-                        if (chosenOffset > tokenStart && chosenOffset < tokenEnd) {
-                            chosenOffset = tokenStart;
-                            break;
-                        }
-                    }
-                    return chosenOffset;
-                }
-            }
-            charOffset += str.length;
-        }
-        return -1;
-    }
-
     function checkAndReflowPages(editor) {
         if (!editor || !editor.view || editor.isDestroyed) return;
         // Never reflow body pages while user is editing Header or Footer
         if (state.activeZone !== 'body') return;
 
         const { state: edState, view } = editor;
-        if (view.composing) {
-            return;
-        }
-
         const doc = edState.doc;
         if (doc.type.name !== 'doc') return;
 
@@ -2609,7 +2306,7 @@ export function initMouWordProcessor(config) {
             const usableHeight = paperHeightPx
                 - (Math.min(state.headerDistanceMm, state.marginTopMm) * MM_TO_PX)
                 - (Math.min(state.footerDistanceMm, state.marginBottomMm) * MM_TO_PX)
-                - headerH - footerH - bodyTopGapPx - bodyBtmGapPx - 6;
+                - headerH - footerH - bodyTopGapPx - bodyBtmGapPx - 8;
 
             const children = contentDom.children;
             const contentDomRect = contentDom.getBoundingClientRect();
@@ -2631,66 +2328,7 @@ export function initMouWordProcessor(config) {
 
                 // 12px tolerance buffer so minor padding/cursor adjustments never cause spurious page breaks
                 if (childBottom > usableHeight + 12) {
-                    const childNode = pageNode.child(cIdx);
-                    const childTop = childRect.top - contentDomRect.top;
-                    const spaceForThisChild = usableHeight - childTop;
-
-                    // Paragraph splitting at line boundary (with widow/orphan protection)
-                    if (childNode.type.name === 'paragraph' && spaceForThisChild > 36 && childEl.offsetHeight > 45) {
-                        const splitCharOffset = findParagraphSplitOffset(childEl, spaceForThisChild);
-                        if (splitCharOffset > 10 && splitCharOffset < childNode.textContent.length - 5) {
-                            splitAction = {
-                                type: 'split_paragraph',
-                                pageIndex: pIdx,
-                                childIndex: cIdx,
-                                charOffset: splitCharOffset,
-                            };
-                            needsReflow = true;
-                            break;
-                        }
-                    }
-
-                    // Table splitting at row boundary
-                    if (childNode.type.name === 'table' && spaceForThisChild > 40) {
-                        const trEls = childEl.querySelectorAll('tr');
-                        let splitRowIdx = -1;
-                        for (let r = 0; r < trEls.length; r++) {
-                            const rRect = trEls[r].getBoundingClientRect();
-                            if (rRect.bottom - contentDomRect.top > usableHeight) {
-                                splitRowIdx = r;
-                                break;
-                            }
-                        }
-                        if (splitRowIdx > 0 && splitRowIdx < trEls.length) {
-                            let hasRowspanConflict = false;
-                            for (let checkR = 0; checkR < splitRowIdx; checkR++) {
-                                const row = childNode.child(checkR);
-                                row.forEach(cell => {
-                                    if ((cell.attrs?.rowspan || 1) > (splitRowIdx - checkR)) {
-                                        hasRowspanConflict = true;
-                                    }
-                                });
-                            }
-                            if (!hasRowspanConflict) {
-                                splitAction = {
-                                    type: 'split_table',
-                                    pageIndex: pIdx,
-                                    childIndex: cIdx,
-                                    splitRowIndex: splitRowIdx,
-                                };
-                                needsReflow = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (cIdx === 0) {
-                        // If the first child on the page itself exceeds usableHeight,
-                        // it cannot be moved earlier. It must stay on this page, and subsequent children move.
-                        if (children.length > 1) {
-                            overflowingIndex = 1;
-                            break;
-                        }
+                    if (cIdx === 0 && children.length === 1) {
                         continue;
                     }
                     overflowingIndex = cIdx;
@@ -2721,35 +2359,23 @@ export function initMouWordProcessor(config) {
                     continue;
                 }
 
-                // Check oscillation cycle
-                const justPulledUp = recentReflowActions.some(a => a.type === 'underflow' && a.from === pIdx + 1 && a.to === pIdx);
-                if (!justPulledUp) {
-                    splitAction = {
-                        type: 'overflow',
-                        pageIndex: pIdx,
-                        splitIndex: finalSplitIndex,
-                    };
-                    needsReflow = true;
-                    break;
-                }
+                splitAction = {
+                    type: 'overflow',
+                    pageIndex: pIdx,
+                    splitIndex: finalSplitIndex,
+                };
+                needsReflow = true;
+                break;
             }
 
-            // UNDERFLOW DETECTION with Dynamic Measurement Hysteresis & Anti-Oscillation
+            // UNDERFLOW:
             const availableSpace = usableHeight - contentDom.scrollHeight;
             if (availableSpace > 20 && pIdx < pageCount - 1) {
-                const curPageHasBreak = hasManualPageBreak(pageDom);
-                if (curPageHasBreak) {
-                    // Page pIdx ends with a manual page break; page pIdx + 1 was intentionally created.
-                    // Never pull content across an explicit manual page break!
-                    continue;
-                }
-
                 const nextPageNode = doc.child(pIdx + 1);
                 const nextPageDom = pageDoms[pIdx + 1];
-                const nextHasBreak = hasManualPageBreak(nextPageDom);
                 const nextContentDom = nextPageDom ? nextPageDom.querySelector('.mou-page-body-content') : null;
 
-                if (!nextHasBreak && (nextPageNode.childCount === 0 || (nextPageNode.childCount === 1 && nextPageNode.child(0).textContent.trim() === '' && nextPageNode.child(0).type.name === 'paragraph'))) {
+                if (nextPageNode.childCount === 0 || (nextPageNode.childCount === 1 && nextPageNode.child(0).textContent.trim() === '' && nextPageNode.child(0).type.name === 'paragraph')) {
                     splitAction = {
                         type: 'remove_empty_page',
                         pageIndex: pIdx + 1,
@@ -2761,19 +2387,8 @@ export function initMouWordProcessor(config) {
                     const isExplicitBreak = firstNextEl.classList.contains('mou-page-break') || firstNextEl.getAttribute('data-page-break') === 'true';
 
                     if (!isExplicitBreak) {
-                        // Measure actual outer height of candidate element including computed vertical margins
-                        const compStyle = window.getComputedStyle(firstNextEl);
-                        const mTop = parseFloat(compStyle.marginTop) || 0;
-                        const mBottom = parseFloat(compStyle.marginBottom) || 0;
-                        const candidateTotalHeight = firstNextEl.offsetHeight + mTop + mBottom;
-
-                        // Dynamic hysteresis buffer based on element height (10%, min 8px, max 24px)
-                        const hysteresisBuffer = Math.max(8, Math.min(24, Math.round(candidateTotalHeight * 0.1)));
-
-                        // Cycle protection: check if this page just overflowed to next page in recent reflow actions
-                        const justPushedDown = recentReflowActions.some(a => a.type === 'overflow' && a.from === pIdx && a.to === pIdx + 1);
-
-                        if (!justPushedDown && (candidateTotalHeight + hysteresisBuffer <= availableSpace)) {
+                        const firstNextH = firstNextEl.offsetHeight + 6;
+                        if (firstNextH <= availableSpace) {
                             splitAction = {
                                 type: 'underflow',
                                 fromPageIndex: pIdx + 1,
@@ -2790,7 +2405,6 @@ export function initMouWordProcessor(config) {
         if (needsReflow && splitAction) {
             executeReflowTransaction(editor, splitAction);
         } else {
-            reflowPassCount = 0;
             updateDocumentMetrics();
             refreshAllPageViews();
         }
@@ -2801,75 +2415,7 @@ export function initMouWordProcessor(config) {
         const doc = edState.doc;
         const tr = edState.tr;
 
-        // Capture user selection anchor and head for precise mapping
-        const sel = edState.selection;
-        const oldAnchor = sel.anchor;
-        const oldHead = sel.head;
-
-        if (action.type === 'split_paragraph') {
-            const { pageIndex, childIndex, charOffset } = action;
-            const pageNode = doc.child(pageIndex);
-            if (childIndex >= pageNode.childCount) return;
-
-            let pagePos = 0;
-            for (let i = 0; i < pageIndex; i++) {
-                pagePos += doc.child(i).nodeSize;
-            }
-            const insidePagePos = pagePos + 1;
-
-            let childOffset = 0;
-            for (let c = 0; c < childIndex; c++) {
-                childOffset += pageNode.child(c).nodeSize;
-            }
-            const paraPos = insidePagePos + childOffset;
-            const splitPos = paraPos + 1 + charOffset;
-
-            if (splitPos > paraPos && splitPos < paraPos + pageNode.child(childIndex).nodeSize - 1) {
-                tr.split(splitPos);
-                tr.setMeta('addToHistory', false);
-                tr.setMeta(reflowPluginKey, true);
-                view.dispatch(tr);
-                scheduleReflow(false);
-                return;
-            }
-        } else if (action.type === 'split_table') {
-            const { pageIndex, childIndex, splitRowIndex } = action;
-            const pageNode = doc.child(pageIndex);
-            if (childIndex >= pageNode.childCount) return;
-
-            const tableNode = pageNode.child(childIndex);
-            if (tableNode.type.name !== 'table' || splitRowIndex <= 0 || splitRowIndex >= tableNode.childCount) return;
-
-            let pagePos = 0;
-            for (let i = 0; i < pageIndex; i++) {
-                pagePos += doc.child(i).nodeSize;
-            }
-            const insidePagePos = pagePos + 1;
-
-            let childOffset = 0;
-            for (let c = 0; c < childIndex; c++) {
-                childOffset += pageNode.child(c).nodeSize;
-            }
-            const tablePos = insidePagePos + childOffset;
-
-            const rowsA = [];
-            const rowsB = [];
-            for (let r = 0; r < tableNode.childCount; r++) {
-                if (r < splitRowIndex) rowsA.push(tableNode.child(r));
-                else rowsB.push(tableNode.child(r));
-            }
-
-            if (rowsA.length > 0 && rowsB.length > 0) {
-                const tableA = tableNode.type.create(tableNode.attrs, rowsA);
-                const tableB = tableNode.type.create(tableNode.attrs, rowsB);
-                tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, [tableA, tableB]);
-                tr.setMeta('addToHistory', false);
-                tr.setMeta(reflowPluginKey, true);
-                view.dispatch(tr);
-                scheduleReflow(false);
-                return;
-            }
-        } else if (action.type === 'overflow') {
+        if (action.type === 'overflow') {
             const { pageIndex, splitIndex } = action;
             const pageNode = doc.child(pageIndex);
 
@@ -2901,12 +2447,6 @@ export function initMouWordProcessor(config) {
                 if (!hasSubstance) return;
             }
 
-            const isAnchorInMovedRange = (oldAnchor >= fromPos && oldAnchor <= toPos);
-            const isHeadInMovedRange = (oldHead >= fromPos && oldHead <= toPos);
-            const anchorOffsetInSlice = oldAnchor - fromPos;
-            const headOffsetInSlice = oldHead - fromPos;
-
-            let mappedTargetInsertPos = 0;
             if (pageIndex + 1 < doc.childCount) {
                 tr.delete(fromPos, toPos);
 
@@ -2914,8 +2454,8 @@ export function initMouWordProcessor(config) {
                 for (let i = 0; i < pageIndex + 1; i++) {
                     nextPagePos += doc.child(i).nodeSize;
                 }
-                mappedTargetInsertPos = tr.mapping.map(nextPagePos + 1);
-                tr.insert(mappedTargetInsertPos, nodesToMove);
+                const mappedNextPageStart = tr.mapping.map(nextPagePos + 1);
+                tr.insert(mappedNextPageStart, nodesToMove);
             } else {
                 tr.delete(fromPos, toPos);
 
@@ -2924,46 +2464,9 @@ export function initMouWordProcessor(config) {
                     nodesToMove
                 );
 
-                mappedTargetInsertPos = tr.mapping.map(pagePos + pageNode.nodeSize);
-                tr.insert(mappedTargetInsertPos, newPageNode);
-                mappedTargetInsertPos += 1; // into the first block of new page
+                const mappedInsertPos = tr.mapping.map(pagePos + pageNode.nodeSize);
+                tr.insert(mappedInsertPos, newPageNode);
             }
-
-            // Restore selection mapped directly into the moved slice if it was inside
-            if (isAnchorInMovedRange || isHeadInMovedRange) {
-                const targetAnchor = isAnchorInMovedRange
-                    ? Math.min(tr.doc.content.size - 1, Math.max(1, mappedTargetInsertPos + anchorOffsetInSlice))
-                    : tr.mapping.map(oldAnchor);
-                const targetHead = isHeadInMovedRange
-                    ? Math.min(tr.doc.content.size - 1, Math.max(1, mappedTargetInsertPos + headOffsetInSlice))
-                    : tr.mapping.map(oldHead);
-                try {
-                    const $anchor = tr.doc.resolve(targetAnchor);
-                    const $head = tr.doc.resolve(targetHead);
-                    tr.setSelection(new TextSelection($anchor, $head));
-                } catch (e) {
-                    try {
-                        const $pos = tr.doc.resolve(targetAnchor);
-                        tr.setSelection(Selection.near($pos, 1));
-                    } catch (e2) {}
-                }
-            } else {
-                try {
-                    const mappedAnchor = tr.mapping.map(oldAnchor);
-                    const mappedHead = tr.mapping.map(oldHead);
-                    const $anchor = tr.doc.resolve(mappedAnchor);
-                    const $head = tr.doc.resolve(mappedHead);
-                    tr.setSelection(new TextSelection($anchor, $head));
-                } catch (e) {
-                    try {
-                        const $pos = tr.doc.resolve(tr.mapping.map(oldAnchor));
-                        tr.setSelection(Selection.near($pos, 1));
-                    } catch (e2) {}
-                }
-            }
-
-            recentReflowActions.push({ type: 'overflow', from: pageIndex, to: pageIndex + 1 });
-            if (recentReflowActions.length > 6) recentReflowActions.shift();
 
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
@@ -2991,11 +2494,6 @@ export function initMouWordProcessor(config) {
             }
             const toInsideEnd = toPagePos + 1 + toPageNode.content.size;
 
-            const isAnchorInUnderflowNode = (oldAnchor >= fromInside && oldAnchor <= fromEnd);
-            const isHeadInUnderflowNode = (oldHead >= fromInside && oldHead <= fromEnd);
-            const anchorOffset = oldAnchor - fromInside;
-            const headOffset = oldHead - fromInside;
-
             tr.delete(fromInside, fromEnd);
 
             const mappedToInsideEnd = tr.mapping.map(toInsideEnd);
@@ -3006,42 +2504,6 @@ export function initMouWordProcessor(config) {
                 tr.delete(mappedFromPagePos, mappedFromPagePos + 2);
             }
 
-            // Restore selection mapped to the pulled node if it was inside
-            if (isAnchorInUnderflowNode || isHeadInUnderflowNode) {
-                const targetAnchor = isAnchorInUnderflowNode
-                    ? Math.min(tr.doc.content.size - 1, Math.max(1, mappedToInsideEnd + anchorOffset))
-                    : tr.mapping.map(oldAnchor);
-                const targetHead = isHeadInUnderflowNode
-                    ? Math.min(tr.doc.content.size - 1, Math.max(1, mappedToInsideEnd + headOffset))
-                    : tr.mapping.map(oldHead);
-                try {
-                    const $anchor = tr.doc.resolve(targetAnchor);
-                    const $head = tr.doc.resolve(targetHead);
-                    tr.setSelection(new TextSelection($anchor, $head));
-                } catch (e) {
-                    try {
-                        const $pos = tr.doc.resolve(targetAnchor);
-                        tr.setSelection(Selection.near($pos, 1));
-                    } catch (e2) {}
-                }
-            } else {
-                try {
-                    const mappedAnchor = tr.mapping.map(oldAnchor);
-                    const mappedHead = tr.mapping.map(oldHead);
-                    const $anchor = tr.doc.resolve(mappedAnchor);
-                    const $head = tr.doc.resolve(mappedHead);
-                    tr.setSelection(new TextSelection($anchor, $head));
-                } catch (e) {
-                    try {
-                        const $pos = tr.doc.resolve(tr.mapping.map(oldAnchor));
-                        tr.setSelection(Selection.near($pos, 1));
-                    } catch (e2) {}
-                }
-            }
-
-            recentReflowActions.push({ type: 'underflow', from: fromPageIndex, to: toPageIndex });
-            if (recentReflowActions.length > 6) recentReflowActions.shift();
-
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
             view.dispatch(tr);
@@ -3049,7 +2511,6 @@ export function initMouWordProcessor(config) {
         } else if (action.type === 'remove_empty_page') {
             const { pageIndex } = action;
             if (pageIndex === 0) return;
-            if (doc.childCount <= 1) return;
 
             let pagePos = 0;
             for (let i = 0; i < pageIndex; i++) {
@@ -3060,22 +2521,6 @@ export function initMouWordProcessor(config) {
             tr.delete(pagePos, pageEnd);
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
-
-            // If selection was on the deleted empty page, place it at the end of the previous page
-            if (oldAnchor >= pagePos && oldAnchor <= pageEnd) {
-                const prevPageEnd = Math.max(1, pagePos - 2);
-                try {
-                    const $pos = tr.doc.resolve(prevPageEnd);
-                    tr.setSelection(Selection.near($pos, -1));
-                } catch (e) {}
-            } else {
-                try {
-                    const mappedAnchor = tr.mapping.map(oldAnchor);
-                    const $pos = tr.doc.resolve(mappedAnchor);
-                    tr.setSelection(Selection.near($pos, 1));
-                } catch (e) {}
-            }
-
             view.dispatch(tr);
             scheduleReflow(false);
         }
@@ -3120,22 +2565,6 @@ export function initMouWordProcessor(config) {
         const editor = getActiveEditor();
         if (!editor) return;
 
-        // Undo & Redo button state reflection
-        const btnUndo = document.getElementById('btnRibbonUndo');
-        if (btnUndo) {
-            const canUndo = Boolean(editor.can?.().undo?.());
-            btnUndo.disabled = !canUndo;
-            btnUndo.classList.toggle('opacity-40', !canUndo);
-            btnUndo.classList.toggle('cursor-not-allowed', !canUndo);
-        }
-        const btnRedo = document.getElementById('btnRibbonRedo');
-        if (btnRedo) {
-            const canRedo = Boolean(editor.can?.().redo?.());
-            btnRedo.disabled = !canRedo;
-            btnRedo.classList.toggle('opacity-40', !canRedo);
-            btnRedo.classList.toggle('cursor-not-allowed', !canRedo);
-        }
-
         // Toggle active button states
         document.querySelectorAll('[data-tiptap-mark]').forEach(btn => {
             const mark = btn.getAttribute('data-tiptap-mark');
@@ -3155,12 +2584,6 @@ export function initMouWordProcessor(config) {
 
         // Update Table Context Indicator & inputs if inside a table
         const isInTable = editor.isActive('table');
-        const tableBtn = document.getElementById('btnTableContextMenuToggle');
-        if (tableBtn) {
-            tableBtn.classList.toggle('bg-blue-100', isInTable);
-            tableBtn.classList.toggle('border-blue-400', isInTable);
-            tableBtn.classList.toggle('text-blue-700', isInTable);
-        }
         const tableTabBadge = document.getElementById('ribbonTableContextBadge');
         if (tableTabBadge) {
             tableTabBadge.classList.toggle('hidden', !isInTable);
@@ -3223,27 +2646,19 @@ export function initMouWordProcessor(config) {
 
         const map = {
             company_name: getField('company_name', 'SEVEN INC'),
-            'company.name': getField('company_name', 'SEVEN INC'),
             company_signatory_name: getField('company_signatory_name', 'Rekario Danny Sanjaya, S.Kom.'),
-            'company.signatory.name': getField('company_signatory_name', 'Rekario Danny Sanjaya, S.Kom.'),
             company_signatory_title: getField('company_signatory_title', 'Pimpinan'),
-            'company.signatory.title': getField('company_signatory_title', 'Pimpinan'),
             company_correspondence_unit: getField('company_correspondence_unit', 'CEO'),
             company_address: getField('company_address', 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198'),
-            'company.address': getField('company_address', 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198'),
             company_phone: getField('company_phone', '089529002944'),
             company_fax: getField('company_fax', '-'),
             company_email: getField('company_email', 'magangjogjadotcom@gmail.com'),
-            'company.email': getField('company_email', 'magangjogjadotcom@gmail.com'),
             agreement_place: getField('agreement_place', 'Yogyakarta'),
             agreement_duration: getField('agreement_duration', '5 (lima) tahun'),
             company_mou_number: '004/SPK.MAGANG/CEO/SEVEN/V/' + new Date().getFullYear(),
-            'dokumen.nomor': '004/SPK.MAGANG/CEO/SEVEN/V/' + new Date().getFullYear(),
             institution_name: 'UNIVERSITAS CONTOH INDONESIA',
-            'institution.name': 'UNIVERSITAS CONTOH INDONESIA',
             institution_mou_number: '045/UNIV-CI/MOU/XI/' + new Date().getFullYear(),
             institution_signatory_name: 'Dr. Rido Kurnianto, M.Ag.',
-            'institution.signatory.name': 'Dr. Rido Kurnianto, M.Ag.',
             institution_signatory_title: 'Rektor',
             institution_address: 'Jl. Budi Utomo No.10, Ronowijayan, Kec. Ponorogo, Kabupaten Ponorogo, Jawa Timur 63471',
             institution_correspondence_unit: 'Kepala Bidang Kerjasama Dalam Negeri',
@@ -3256,29 +2671,24 @@ export function initMouWordProcessor(config) {
             agreement_date_words: 'tanggal dua puluh empat bulan Mei tahun ' + new Date().getFullYear(),
             effective_start: '24 Mei ' + new Date().getFullYear(),
             effective_end: '24 Mei ' + (new Date().getFullYear() + 5),
-            'pemagang.nama': 'Budi Santoso',
-            'pemagang.nim': '2023010042',
-            'pemagang.jurusan': 'Teknik Informatika',
-            'pemagang.institusi': 'UNIVERSITAS CONTOH INDONESIA',
         };
 
         let out = rawHtml;
-        // Replace logo placeholders first (supporting both standard and dotted asset keys)
+        // Replace logo placeholders first
         const compLogoImg = `<img src="${compLogo}" alt="Logo Seven Inc" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`;
         const instLogoImg = instLogo && instLogo !== 'none'
             ? `<img src="${instLogo}" alt="Logo Institusi" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`
             : '';
 
-        out = out.replace(/\[company_logo\]|\{\{\s*company_logo\s*\}\}|\[asset\.company\.logo\]|\{\{\s*asset\.company\.logo\s*\}\}/g, compLogoImg);
-        out = out.replace(/\[institution_logo\]|\{\{\s*institution_logo\s*\}\}|\[asset\.institution\.logo\]|\{\{\s*asset\.institution\.logo\s*\}\}/g, instLogoImg);
+        out = out.replace(/\[company_logo\]|\{\{\s*company_logo\s*\}\}/g, compLogoImg);
+        out = out.replace(/\[institution_logo\]|\{\{\s*institution_logo\s*\}\}/g, instLogoImg);
 
         Object.entries(map).forEach(([key, val]) => {
             const safeVal = String(val)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-            const escapedKey = key.replace(/\./g, '\\.');
-            const reg = new RegExp(`\\[${escapedKey}\\]|\\{\\{\\s*${escapedKey}\\s*\\}\\}`, 'g');
+            const reg = new RegExp(`\\[${key}\\]|\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
             out = out.replace(reg, safeVal);
         });
 
@@ -3286,6 +2696,8 @@ export function initMouWordProcessor(config) {
     }
 
     /**
+     * Multi-Sheet A4 Preview Renderer (Mode Pratinjau Lembar A4 inside the editor studio or modal)
+     */
     /**
      * Multi-Sheet A4 Preview Renderer (Mode Pratinjau Lembar A4 inside the editor studio or modal)
      * Maps 1-to-1 to the pages composed in the editor (saat menyusun).
@@ -3422,7 +2834,7 @@ export function initMouWordProcessor(config) {
     // Observe Header and Footer height changes (e.g. when resizing Kotak Paraf table)
     if (typeof ResizeObserver !== 'undefined') {
         const ro = new ResizeObserver(() => {
-            scheduleReflow();
+            updateVisualPageBreakGuides();
         });
         if (headerZoneWrapper) ro.observe(headerZoneWrapper);
         if (footerZoneWrapper) ro.observe(footerZoneWrapper);
@@ -3754,31 +3166,6 @@ export function initMouWordProcessor(config) {
             }).run();
             scheduleSyncAndPagination();
         },
-        insertSystemAsset: (asset) => {
-            const ed = getActiveEditor();
-            if (!ed || !asset) return;
-            const src = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
-            let width = '110px';
-            if (asset.category === 'letterhead') {
-                width = '100%';
-            } else if (asset.category === 'signature' || asset.category === 'stamp') {
-                width = '120px';
-            } else if (asset.category === 'logo') {
-                width = '100px';
-            }
-
-            ed.chain().focus().setImage({
-                src,
-                alt: asset.name || 'Aset Sistem',
-                title: asset.name || '',
-                assetId: String(asset.id),
-                assetCode: asset.code || '',
-                token: asset.code ? `asset.${asset.code}` : '',
-                width,
-                align: 'center',
-            }).run();
-            scheduleSyncAndPagination();
-        },
         updateSelectedImage: (widthVal, alignVal) => {
             const ed = getActiveEditor();
             if (!ed) return;
@@ -3865,18 +3252,6 @@ export function initMouWordProcessor(config) {
                 }
             }
             return count;
-        },
-
-        toggleHighlightMergeFields(forceState) {
-            const next = typeof forceState === 'boolean' ? forceState : !state.highlightMergeFields;
-            state.highlightMergeFields = next;
-            [bodyEditor, headerEditor, footerEditor].forEach(ed => {
-                if (ed && !ed.isDestroyed) {
-                    const tr = ed.state.tr.setMeta(mergeHighlightPluginKey, next);
-                    ed.view.dispatch(tr);
-                }
-            });
-            return next;
         },
 
         replaceLivePreviewPlaceholders,

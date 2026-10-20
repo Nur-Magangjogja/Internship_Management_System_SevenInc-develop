@@ -1226,32 +1226,30 @@ document.addEventListener('DOMContentLoaded', () => {
         loa: {
             title:    'Generate LOA',
             subtitle: 'Letter of Acceptance — surat penerimaan magang',
-            info:     'Sistem akan menerbitkan LOA resmi secara otomatis menggunakan template aktif dan menyinkronkan ke Drive pemagang.',
-            method:   'POST',
+            info:     'Anda akan diarahkan ke form LOA. Data pemagang sudah terisi otomatis, Anda bisa review sebelum generate.',
+            url:      (id) => `{{ url('admin/loa/generate') }}/${id}`,
+            method:   'REDIRECT',
         },
         skl: {
             title:    'Generate SKL',
             subtitle: 'Surat Keterangan Selesai Magang',
-            info:     'Sistem akan menerbitkan SKL resmi secara otomatis menggunakan template aktif dan menyinkronkan ke Drive pemagang.',
-            method:   'POST',
+            info:     'Anda akan diarahkan ke form SKL. Data pemagang sudah terisi otomatis, Anda bisa review dan ubah sebelum generate PDF.',
+            url:      (id) => `{{ url('admin/skl/generate') }}/${id}`,
+            method:   'REDIRECT',
         },
         sertifikat: {
             title:    'Generate Sertifikat',
-            subtitle: 'Sertifikat Magang Resmi',
-            info:     'Sistem akan menerbitkan Sertifikat resmi secara otomatis menggunakan visual canvas aktif dan menyinkronkan ke Drive pemagang.',
-            method:   'POST',
+            subtitle: 'Sertifikat Magang',
+            info:     'Anda akan diarahkan ke halaman buat sertifikat dengan data pemagang sudah terisi otomatis.',
+            url:      (id) => `{{ route('admin.certificate.create') }}?intern_id=${id}`,
+            method:   'REDIRECT',
         },
         penilaian: {
-            title:    'Surat Penilaian',
+            title:    'Buat Surat Penilaian',
             subtitle: 'Surat Penilaian Magang',
-            info:     'Sistem akan menerbitkan Surat Penilaian magang secara otomatis dan menyinkronkan ke Drive pemagang.',
-            method:   'POST',
-        },
-        rekomendasi: {
-            title:    'Surat Rekomendasi',
-            subtitle: 'Surat Rekomendasi Magang',
-            info:     'Sistem akan menerbitkan Surat Rekomendasi resmi dan menyinkronkan ke Drive pemagang.',
-            method:   'POST',
+            info:     'Anda akan diarahkan ke halaman buat penilaian dengan data pemagang sudah terisi otomatis.',
+            url:      (id) => `{{ route('interns.assessment.create') }}?intern_id=${id}`,
+            method:   'REDIRECT',
         },
         alumni: {
             title:    'Informasi Alumni',
@@ -1265,8 +1263,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Opsi yang tersedia per mode
     const GEN_OPTIONS_BY_MODE = {
         pendaftar: ['loa'],
-        pemagang:  ['loa', 'skl', 'sertifikat', 'penilaian', 'rekomendasi', 'alumni'],
-        all:       ['loa', 'skl', 'sertifikat', 'penilaian', 'rekomendasi', 'alumni'],
+        pemagang:  ['loa', 'skl', 'sertifikat', 'penilaian', 'alumni'],
+        all:       ['loa', 'skl', 'sertifikat', 'penilaian', 'alumni'],
     };
 
     let _genInternId  = null;
@@ -1412,31 +1410,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // POST
         const btn = document.getElementById('genModalBtn');
         btn.disabled = true;
-        btn.textContent = 'Menerbitkan...';
+        btn.textContent = 'Memproses...';
 
         try {
-            const fd = new FormData();
+            const body = cfg.body ? cfg.body(_genInternId) : { intern_id: _genInternId };
+            const fd   = new FormData();
             fd.append('_token', csrf);
-            fd.append('intern_id', _genInternId);
-            fd.append('jenis_surat', _genJenis);
+            Object.entries(body).forEach(([k, v]) => fd.append(k, v));
 
-            const res = await fetch(GENERATE_URL, {
+            const res = await fetch(cfg.url(_genInternId), {
                 method: 'POST',
                 body: fd,
-                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
 
-            const json = await res.json();
-            if (!res.ok || json.ok === false) {
-                throw new Error(json.error || `HTTP ${res.status}`);
-            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             closeGenerateModal();
-            pushToast(`✅ ${cfg.title} untuk ${name} berhasil diterbitkan.`);
-            if (json.download_url) {
-                window.open(json.download_url, '_blank');
-            }
+            pushToast(`${cfg.title} untuk ${name} berhasil di-generate.`);
             loadPage(window.__CURRENT_PAGE || 1);
         } catch (e) {
             pushToast(`Gagal generate: ${e.message}`, 'error');

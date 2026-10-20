@@ -140,29 +140,22 @@ class SKLController extends Controller
                 
                 $letterNumber = $docService->generateUniqueSklNumber($intern, $brandData);
 
-                /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
-                $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
-                $generatedDoc = $issuanceService->issueDocument(
-                    intern: $intern,
-                    documentType: 'skl',
-                    options: [
-                        'document_number' => $letterNumber,
-                        'variables' => [
-                            'perusahaan.nama'               => $validated['company_name'] ?? $companyName,
-                            'perusahaan.alamat'             => $companyAddress,
-                            'dokumen.penandatangan_nama'    => $validated['leader_name'] ?? $brandData?->signatory_name ?? 'Ari Setia Husbana',
-                            'dokumen.penandatangan_jabatan' => $validated['leader_title'] ?? $brandData?->signatory_position ?? 'HRD',
-                        ],
-                    ],
-                    actor: auth()->user()
+                // Simpan atau update data SklDocument
+                \App\Models\SklDocument::updateOrCreate(
+                    ['intern_id' => $intern->id],
+                    [
+                        'skl_number'           => $letterNumber,
+                        'company_name'         => $validated['company_name'] ?? $companyName,
+                        'company_logo_path'    => $logoPath ?? $brandData?->logo ?? 'images/logos/logo_seveninc.png',
+                        'signatory_name'       => $validated['leader_name'] ?? $brandData?->signatory_name ?? 'Ari Setia Husbana',
+                        'signatory_position'   => $validated['leader_title'] ?? $brandData?->signatory_position ?? 'HRD',
+                        'signature_image_path' => $stampPath ?? $brandData?->signature ?? 'images/signature/ttd_arisetiahusbana.png',
+                    ]
                 );
-
-                $safeName = preg_replace('/[^a-z0-9\-_]+/i', '_', $intern->fullname ?? 'pemagang');
-                $fullGeneratedPath = Storage::disk('local')->path($generatedDoc->file_path);
 
                 $generatedFiles[$intern->id] = [
                     'fullname' => $participantName,
-                    'path'     => $fullGeneratedPath,
+                    'path'     => '', // Removed physical path
                     'filename' => "SKL_{$safeName}.pdf",
                 ];
 
