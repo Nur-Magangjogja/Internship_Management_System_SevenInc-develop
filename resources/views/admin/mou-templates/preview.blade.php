@@ -24,6 +24,12 @@
     $padBtmMm    = min($footerDistance, $marginBottom);
     $headerGapMm = max(2.0, $marginTop - $headerDistance);
     $footerGapMm = max(2.0, $marginBottom - $footerDistance);
+
+    $mediaAssets = $mouTemplate->getMediaAssets();
+    $resolvedCompanyLogo = $mediaAssets['company_logo'] ?? '/images/mou/seven-inc-logo.png';
+    $resolvedInstitutionLogo = $selectedInstitution?->logo_url ?? ($mediaAssets['institution_logo'] ?? '/images/mou/institution-logo-placeholder.png');
+    $showHeaderLogos = (bool) ($pageCfg['show_header_logos'] ?? true);
+    $showWatermark   = (bool) ($pageCfg['show_watermark'] ?? false);
 @endphp
 
 @section('content')
@@ -56,44 +62,91 @@
             </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="flex flex-wrap items-center gap-2">
-            <a
-                href="{{ route('admin.mou-templates.edit', $mouTemplate) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-                Ubah Naskah
-            </a>
-
-            <a
-                href="{{ $pdfUrl }}"
-                target="_blank"
-                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-            >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Unduh PDF (A4)
-            </a>
-
+        <!-- Action Dropdown Toggle -->
+        <div class="relative inline-block text-left" id="previewActionDropdownContainer">
             <button
                 type="button"
-                onclick="window.print()"
-                class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                id="btnPreviewActionToggle"
+                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                aria-haspopup="true"
+                aria-expanded="false"
             >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 6 2 18 2 18 9"/>
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                    <rect x="6" y="14" width="12" height="8"/>
+                <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="1"/>
+                    <circle cx="12" cy="5" r="1"/>
+                    <circle cx="12" cy="19" r="1"/>
                 </svg>
-                Cetak Browser
+                <span>Aksi Dokumen</span>
+                <svg class="h-3.5 w-3.5 text-slate-400 transition-transform duration-150" id="previewActionChevron" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
             </button>
+
+            <!-- Dropdown Menu -->
+            <div
+                id="previewActionDropdownMenu"
+                class="hidden absolute right-0 mt-1.5 w-56 rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg ring-1 ring-black/5 z-50 divide-y divide-slate-100"
+                role="menu"
+            >
+                <div class="py-1">
+                    <a
+                        href="{{ route('admin.mou-templates.edit', $mouTemplate) }}"
+                        class="flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                        role="menuitem"
+                    >
+                        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-800">Ubah Naskah</div>
+                            <div class="text-[10px] text-slate-400">Buka editor Word studio</div>
+                        </div>
+                    </a>
+                </div>
+                <div class="py-1">
+                    <a
+                        href="{{ $pdfUrl }}"
+                        target="_blank"
+                        class="flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition"
+                        role="menuitem"
+                    >
+                        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-800">Unduh PDF (A4)</div>
+                            <div class="text-[10px] text-slate-400">Ekspor berkas PDF resmi</div>
+                        </div>
+                    </a>
+
+                    <button
+                        type="button"
+                        id="btnDropdownPrint"
+                        onclick="window.print()"
+                        class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition"
+                        role="menuitem"
+                    >
+                        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 6 2 18 2 18 9"/>
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                                <rect x="6" y="14" width="12" height="8"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-800">Cetak Browser</div>
+                            <div class="text-[10px] text-slate-400">Dialog cetak halaman</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -336,26 +389,68 @@
         size: A4 portrait;
         margin: 0;
     }
-    .no-print, header, aside, footer, nav {
+    *, *::before, *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .no-print, header, aside, footer, nav, #admin-topbar, #admin-sidebar {
         display: none !important;
     }
-    body, main {
-        background: white !important;
+    html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    main, #admin-main-content, .px-6, .py-8 {
+        background: #ffffff !important;
         padding: 0 !important;
         margin: 0 !important;
+        width: 100% !important;
+        min-height: 0 !important;
+        max-width: none !important;
+    }
+    #panelSheetPreview {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+    }
+    #previewScaleContainer {
+        transform: none !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
     }
     .mou-preview-pages-stage {
+        display: block !important;
+        width: 100% !important;
         gap: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     .mou-a4-page {
-        box-shadow: none !important;
+        width: 210mm !important;
+        min-height: 296.5mm !important;
+        max-height: 297mm !important;
+        margin: 0 auto !important;
         border: none !important;
-        page-break-after: always;
-        break-after: page;
+        box-shadow: none !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
     }
     .mou-a4-page:last-child {
-        page-break-after: auto;
-        break-after: auto;
+        page-break-after: auto !important;
+        break-after: auto !important;
     }
 }
 </style>
@@ -372,12 +467,35 @@
     const footerHtml = @json($footerHtml);
     const firstPageHeaderHtml = @json($firstPageHeaderHtml);
     const firstPageFooterHtml = @json($firstPageFooterHtml);
+    const showHeaderLogos = @json($showHeaderLogos);
+    const showWatermark = @json($showWatermark);
+    const resolvedInstitutionLogo = @json($resolvedInstitutionLogo);
+    const resolvedCompanyLogo = @json($resolvedCompanyLogo);
 
     if (!sourceEl || !stageEl) return;
 
     function createSheet(index) {
         const page = document.createElement('div');
         page.className = 'mou-a4-page';
+        page.style.position = 'relative';
+
+        if (index === 1 && showHeaderLogos) {
+            const wmLayer = document.createElement('div');
+            wmLayer.className = 'mou-watermark-layer';
+            wmLayer.innerHTML = `
+                <div class="mou-watermark-fixed-header">
+                    <img src="${resolvedInstitutionLogo}" class="mou-watermark-logo-left" alt="Logo Institusi" />
+                    <img src="${resolvedCompanyLogo}" class="mou-watermark-logo-right" alt="Logo Seven Inc" />
+                </div>
+                ${showWatermark ? `<img src="${resolvedCompanyLogo}" class="mou-watermark-center" alt="Watermark" />` : ''}
+            `;
+            page.appendChild(wmLayer);
+        } else if (showWatermark) {
+            const wmLayer = document.createElement('div');
+            wmLayer.className = 'mou-watermark-layer';
+            wmLayer.innerHTML = `<img src="${resolvedCompanyLogo}" class="mou-watermark-center" alt="Watermark" />`;
+            page.appendChild(wmLayer);
+        }
 
         const activeHeaderHtml = (differentFirstPage && index === 1) ? firstPageHeaderHtml : headerHtml;
         const activeFooterHtml = (differentFirstPage && index === 1 && firstPageFooterHtml !== '') ? firstPageFooterHtml : footerHtml;
@@ -601,6 +719,20 @@
             return;
         }
 
+        function isHeadingElement(el) {
+            if (!el) return false;
+            if (el.classList?.contains('mou-pasal-heading') || el.classList?.contains('mou-header-block')) return true;
+            const text = (el.textContent || '').trim();
+            if (/^Pasal\s+\d+/i.test(text)) return true;
+            if (el.tagName === 'P' && (el.querySelector('strong') || el.querySelector('b'))) {
+                const upper = text.toUpperCase();
+                if (upper === text && text.length >= 3 && text.length <= 60 && !text.includes(':')) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         let cur = openPage();
 
         for (let i = 0; i < rawBlocks.length; i++) {
@@ -612,6 +744,29 @@
                     cur = openPage();
                 }
                 continue;
+            }
+
+            // Proteksi Orphan Heading: Jika block adalah heading Pasal/Subjudul dan halaman sudah terisi,
+            // uji apakah heading ini BESERTA blok isi pertamanya muat di sisa halaman.
+            // Jika tidak muat bersama-sama, buka halaman baru agar heading tidak tertinggal sendirian di dasar lembar.
+            if (isHeadingElement(rawBlocks[i]) && cur.body.children.length > 0) {
+                let hEnd = i;
+                while (hEnd < rawBlocks.length && isHeadingElement(rawBlocks[hEnd])) {
+                    hEnd++;
+                }
+                const testClones = [];
+                for (let k = i; k <= Math.min(hEnd, rawBlocks.length - 1); k++) {
+                    const cl = rawBlocks[k].cloneNode(true);
+                    testClones.push(cl);
+                    cur.body.appendChild(cl);
+                }
+                const testMaxH = getMaxBodyHeight(cur);
+                const testUsedH = getUsedHeight(cur.body);
+                testClones.forEach(cl => cur.body.removeChild(cl));
+
+                if (testUsedH > testMaxH) {
+                    cur = openPage();
+                }
             }
 
             // Uji masukkan ke lembar saat ini
@@ -675,6 +830,25 @@
         const scaledH = naturalH * scale;
         scaleContainer.style.marginBottom = `${scaledH - naturalH}px`;
     }
+
+    let prePrintTransform = '';
+    window.addEventListener('beforeprint', () => {
+        const scaleContainer = document.getElementById('previewScaleContainer');
+        if (scaleContainer) {
+            prePrintTransform = scaleContainer.style.transform;
+            scaleContainer.style.transform = 'none';
+            scaleContainer.style.marginBottom = '0px';
+        }
+    });
+
+    window.addEventListener('afterprint', () => {
+        const scaleContainer = document.getElementById('previewScaleContainer');
+        if (scaleContainer && prePrintTransform) {
+            scaleContainer.style.transform = prePrintTransform;
+            const zoomSel = document.getElementById('previewZoomSelect');
+            if (zoomSel) applyPreviewZoom(zoomSel.value);
+        }
+    });
 
     // Tab Switcher & Official PDF Loader
     const btnSheet = document.getElementById('btnTabSheetPreview');
@@ -790,6 +964,47 @@
     btnReloadPdf?.addEventListener('click', function () {
         loadOfficialPdf(true);
     });
+
+    // Action Dropdown Toggle
+    const btnActionToggle = document.getElementById('btnPreviewActionToggle');
+    const actionMenu = document.getElementById('previewActionDropdownMenu');
+    const actionChevron = document.getElementById('previewActionChevron');
+
+    if (btnActionToggle && actionMenu) {
+        btnActionToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const isHidden = actionMenu.classList.contains('hidden');
+            actionMenu.classList.toggle('hidden', !isHidden);
+            btnActionToggle.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+            if (actionChevron) {
+                actionChevron.classList.toggle('rotate-180', isHidden);
+            }
+        });
+
+        actionMenu.addEventListener('click', function (e) {
+            if (e.target.closest('a') || e.target.closest('button')) {
+                actionMenu.classList.add('hidden');
+                btnActionToggle.setAttribute('aria-expanded', 'false');
+                if (actionChevron) actionChevron.classList.remove('rotate-180');
+            }
+        });
+
+        window.addEventListener('click', function (e) {
+            if (!actionMenu.classList.contains('hidden') && !e.target.closest('#previewActionDropdownContainer')) {
+                actionMenu.classList.add('hidden');
+                btnActionToggle.setAttribute('aria-expanded', 'false');
+                if (actionChevron) actionChevron.classList.remove('rotate-180');
+            }
+        });
+
+        window.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !actionMenu.classList.contains('hidden')) {
+                actionMenu.classList.add('hidden');
+                btnActionToggle.setAttribute('aria-expanded', 'false');
+                if (actionChevron) actionChevron.classList.remove('rotate-180');
+            }
+        });
+    }
 
     document.getElementById('previewZoomSelect')?.addEventListener('change', function (e) {
         applyPreviewZoom(e.target.value);

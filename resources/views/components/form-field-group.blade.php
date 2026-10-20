@@ -23,7 +23,7 @@
         Belum ada field di grup ini.
     </div>
     @else
-    <ul id="field-list-{{ $group === 'main' ? 'main' : 'extra' }}" class="divide-y divide-[#F4F8F6]">
+    <ul id="field-list-{{ $group }}" class="divide-y divide-[#F4F8F6]">
         @foreach($fields as $field)
         @php
             $isDeletable = $field->isDeletable();

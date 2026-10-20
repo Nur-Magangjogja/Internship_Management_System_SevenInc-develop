@@ -108,9 +108,16 @@ class FormFieldController extends Controller
         $currentDraft    = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
         $activePublished = FormSchema::where('year', $year)->activePublished()->first();
 
-        // Ambil field dari draf aktif
-        $mainFields     = $currentDraft->fields()->whereNull('group_name')->notArchived()->get();
-        $extraFields    = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->notArchived()->get();
+        // Ambil field dari draf aktif dikelompokkan ke 4 grup
+        $allActiveDraftFields = $currentDraft->fields()->notArchived()->get();
+        $groupedFields = [
+            FormField::GROUP_DATA_DIRI          => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_DATA_DIRI)->values(),
+            FormField::GROUP_PILIHAN_DURASI     => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_PILIHAN_DURASI)->values(),
+            FormField::GROUP_BERKAS             => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_BERKAS)->values(),
+            FormField::GROUP_INFORMASI_TAMBAHAN => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+        ];
+        $mainFields     = $allActiveDraftFields->filter(fn($f) => $f->resolved_group !== FormField::GROUP_INFORMASI_TAMBAHAN)->values();
+        $extraFields    = $groupedFields[FormField::GROUP_INFORMASI_TAMBAHAN];
         $archivedFields = $currentDraft->fields()->where('is_archived', true)->get();
 
         $types     = FormField::supportedTypes();
@@ -118,7 +125,7 @@ class FormFieldController extends Controller
         $divisions = $this->getActiveDivisions();
 
         return view('admin.form_settings.form_fields', compact(
-            'mainFields', 'extraFields', 'archivedFields', 'types', 'groups',
+            'groupedFields', 'mainFields', 'extraFields', 'archivedFields', 'types', 'groups',
             'currentDraft', 'activePublished', 'year', 'currentYear', 'nextYear', 'divisions'
         ));
     }
@@ -143,7 +150,7 @@ class FormFieldController extends Controller
             'placeholder'      => 'nullable|string|max:255',
             'helper_text'      => 'nullable|string|max:500',
             'is_required'      => 'nullable|boolean',
-            'group_name'       => 'nullable|in:,informasi_tambahan',
+            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,main',
             'column_span'      => 'nullable|integer|in:1,2',
             'options'          => 'nullable|string', // JSON string dari textarea
             'validation_rules' => 'nullable',
@@ -229,7 +236,7 @@ class FormFieldController extends Controller
             'column_span'      => 'nullable|integer|in:1,2',
             'options'          => 'nullable|string',
             'field_type'       => 'nullable|in:' . implode(',', array_keys(FormField::supportedTypes())),
-            'group_name'       => 'nullable|in:,informasi_tambahan',
+            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,main',
             'validation_rules' => 'nullable',
         ]);
 
@@ -595,6 +602,7 @@ class FormFieldController extends Controller
         $fieldData = $field->toArray();
         $fieldData['is_deletable'] = $field->isDeletable();
         $fieldData['is_structural_locked'] = $field->isStructuralLocked();
+        $fieldData['group_name'] = $field->resolved_group;
         return response()->json(['field' => $fieldData]);
     }
 
@@ -615,16 +623,26 @@ class FormFieldController extends Controller
 
         $year = $this->resolveYear($request);
         $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
-        $mainFields  = $currentDraft->fields()->whereNull('group_name')->active()->get();
-        $extraFields = $currentDraft->fields()->where('group_name', 'informasi_tambahan')->active()->get();
+        $allFields = $currentDraft->fields()->active()->get();
+
+        $groupedFields = [
+            'data_diri_edukasi'  => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_DATA_DIRI)->values(),
+            'pilihan_durasi'     => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_PILIHAN_DURASI)->values(),
+            'berkas_portofolio'  => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_BERKAS)->values(),
+            'informasi_tambahan' => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+        ];
+        $mainFields  = $allFields->filter(fn($f) => $f->resolved_group !== FormField::GROUP_INFORMASI_TAMBAHAN)->values();
+        $extraFields = $groupedFields['informasi_tambahan'];
         $divisions   = $this->getActiveDivisions();
 
         return response()->json([
-            'main_fields'  => $mainFields,
-            'extra_fields' => $extraFields,
-            'divisions'    => $divisions,
-            'draft_version'=> $currentDraft->version_code,
-            'year'         => $year,
+            'ok'             => true,
+            'grouped_fields' => $groupedFields,
+            'main_fields'    => $mainFields,
+            'extra_fields'   => $extraFields,
+            'divisions'      => $divisions,
+            'draft_version'  => $currentDraft->version_code,
+            'year'           => $year,
         ]);
     }
 }

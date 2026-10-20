@@ -582,6 +582,9 @@
 <input type="hidden" name="company_logo" id="inputCompanyLogo" value="{{ $resolvedCompanyLogo }}">
 <input type="hidden" name="institution_logo_url" id="inputInstitutionLogoUrl" value="{{ $resolvedInstitutionLogo }}">
 <input type="hidden" name="company_logo_url" id="inputCompanyLogoUrl" value="{{ $resolvedCompanyLogo }}">
+<input type="hidden" name="show_header_logos" id="inputShowHeaderLogos" value="{{ ($cfg['show_header_logos'] ?? true) ? '1' : '0' }}">
+<input type="hidden" name="show_watermark" id="inputShowWatermark" value="{{ ($cfg['show_watermark'] ?? false) ? '1' : '0' }}">
+<input type="hidden" name="watermark_opacity" id="inputWatermarkOpacity" value="{{ $cfg['watermark_opacity'] ?? 0.05 }}">
 
 <!-- Diagnostic Error Banner (Only visible if JS runtime fails to mount Tiptap) -->
 <div id="mouEditorDiagnosticBanner" class="hidden mb-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs text-rose-900">
@@ -816,6 +819,38 @@
                         <button type="button" id="btnInsertCustomTable" class="mou-ribbon-btn border-blue-300 bg-blue-50 text-blue-700">
                             + Sisipkan Tabel
                         </button>
+
+                        <!-- Menu Dropdown Tabel Kontekstual -->
+                        <div class="relative inline-block text-left">
+                            <button type="button" id="btnTableContextMenuToggle" class="mou-ribbon-btn inline-flex items-center gap-1 border-slate-200 bg-slate-50 text-slate-700 font-semibold px-2 text-xs" title="Menu Pengelolaan Tabel">
+                                <svg class="h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                                <span>Tabel</span>
+                                <svg class="h-3 w-3 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            </button>
+                            <div id="tableContextMenuDropdown" class="hidden absolute left-0 mt-1 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 divide-y divide-slate-100 p-1 text-xs">
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Sisipkan Tabel Baru</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 2 &times; 2</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(3, 3, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 3 &times; 3</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(4, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel Tanda Tangan (4 &times; 2)</button>
+                                </div>
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Baris &amp; Kolom</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.addRowBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Atas</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addRowAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Bawah</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addColumnBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kiri</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addColumnAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kanan</button>
+                                </div>
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Manipulasi Sel &amp; Hapus</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.mergeCells()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Gabung Sel (Merge)</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.splitCell()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Pisah Sel (Split)</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteRow()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Baris</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteColumn()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Kolom</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteTable()" class="w-full text-left px-2 py-1 hover:bg-rose-100 text-rose-700 rounded font-bold">Hapus Seluruh Tabel</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
                         <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tabel 2&times;2</button>
@@ -828,27 +863,32 @@
                 <!-- Group: Gambar & Logo -->
                 <div class="mou-ribbon-group">
                     <div class="flex items-center gap-1.5">
-                        <label class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 cursor-pointer">
-                            <span>Unggah Gambar</span>
+                        <label class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 cursor-pointer" title="Unggah gambar bebas ke dalam teks">
+                            <span>+ Gambar</span>
                             <input type="file" id="inputUploadCustomImage" accept="image/png,image/jpeg,image/webp" class="hidden">
                         </label>
-                        <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah &amp; Sisipkan Logo Institusi">
+                        <button type="button" id="btnOpenAssetLibraryModal" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 font-semibold text-xs px-2" title="Pilih Aset dari Perpustakaan Aset (Logo, Kop, TTD, Stempel)">
+                            <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>+ Aset</span>
+                        </button>
+                        <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah Logo Institusi (Tetap / Watermark Kiri Atas)">
                             <span>Logo Institusi</span>
                             <input type="file" id="inputUploadInstitutionLogo" accept="image/png,image/jpeg,image/webp" class="hidden">
                         </label>
-                        <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Sisipkan Logo Seven Inc">
+                        <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tetapkan Logo Seven Inc (Tetap / Watermark Kanan Atas)">
                             Logo Seven Inc
                         </button>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
-                        <span class="text-xs text-slate-500 font-semibold">Lebar (px):</span>
-                        <input type="number" id="ribbonImageWidthPx" value="95" min="24" max="650" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'left')" class="mou-ribbon-btn" title="Gambar Rata Kiri">Kiri</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'center')" class="mou-ribbon-btn" title="Gambar Rata Tengah">Tengah</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'right')" class="mou-ribbon-btn" title="Gambar Rata Kanan">Kanan</button>
+                        <button type="button" id="btnToggleHeaderLogos" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_header_logos'] ?? true) ? 'mou-ribbon-btn-active' : '' }}" title="Tampilkan / Sembunyikan Logo Tetap di Sudut Atas Kertas">
+                            Logo Tetap (Header)
+                        </button>
+                        <button type="button" id="btnToggleWatermark" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_watermark'] ?? false) ? 'mou-ribbon-btn-active' : '' }}" title="Aktifkan / Nonaktifkan Watermark Latar Tengah Kertas">
+                            Watermark Tengah
+                        </button>
+                        <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan Ukuran</button>
                     </div>
-                    <div class="mou-ribbon-group-label">Gambar &amp; Media</div>
+                    <div class="mou-ribbon-group-label">Logo Tetap &amp; Media</div>
                 </div>
 
                 <!-- Group: Elemen Dokumen, Tautan, Simbol & Variabel -->
@@ -1476,6 +1516,77 @@
     </div>
 </div>
 
+<!-- Modal Pemilihan Aset Sistem (Perpustakaan Aset) -->
+<div id="mouAssetLibraryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-600 font-bold text-xs text-white shadow-xs">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </span>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Perpustakaan Aset &amp; Dokumen</h3>
+                    <p class="text-[11px] text-slate-400">Pilih logo, kop surat, tanda tangan, stempel, atau background dari penyimpanan terpusat.</p>
+                </div>
+            </div>
+            <button
+                type="button"
+                id="btnCloseAssetLibraryModal"
+                class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
+                title="Tutup (Esc)"
+            >
+                &times;
+            </button>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <!-- Category Tabs -->
+            <div class="flex items-center gap-1 overflow-x-auto text-xs" id="mouAssetCategoryTabs">
+                <button type="button" data-cat="" class="px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white">Semua</button>
+                <button type="button" data-cat="logo" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Logo</button>
+                <button type="button" data-cat="letterhead" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Kop Surat</button>
+                <button type="button" data-cat="signature" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Tanda Tangan</button>
+                <button type="button" data-cat="stamp" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Stempel</button>
+                <button type="button" data-cat="background" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Background</button>
+                <button type="button" data-cat="supporting_image" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Gambar Pendukung</button>
+            </div>
+
+            <!-- Search Field -->
+            <div class="relative w-full sm:w-64">
+                <input
+                    type="text"
+                    id="mouAssetSearchInput"
+                    placeholder="Cari aset (nama, kode)..."
+                    class="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                >
+                <svg class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Scrollable Asset Grid -->
+        <div id="mouAssetGridContainer" class="flex-1 overflow-y-auto p-4 min-h-[300px] max-h-[60vh] bg-slate-100">
+            <div id="mouAssetLoadingState" class="hidden flex flex-col items-center justify-center py-12 text-slate-400">
+                <svg class="animate-spin h-6 w-6 text-blue-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-xs">Memuat daftar aset...</span>
+            </div>
+            <div id="mouAssetEmptyState" class="hidden text-center py-12 text-slate-400 text-xs">
+                Tidak ada aset yang sesuai kriteria pencarian.
+            </div>
+            <div id="mouAssetItemsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <!-- Dynamically populated via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Template Data Store for Sample, Default Paraf, Saved Templates & Initial Editor JSON -->
 <script type="application/json" id="mouSampleHtmlJson">{!! json_encode($sampleWordHtml) !!}</script>
 <script type="application/json" id="mouDefaultParafHtmlJson">{!! json_encode($defaultParafHtml) !!}</script>
@@ -1912,6 +2023,139 @@
             }
         });
 
+        // Table Context Menu Dropdown
+        const tableMenuBtn = document.getElementById('btnTableContextMenuToggle');
+        const tableMenuDropdown = document.getElementById('tableContextMenuDropdown');
+        if (tableMenuBtn && tableMenuDropdown && tableMenuBtn.dataset.boundMenu !== '1') {
+            tableMenuBtn.dataset.boundMenu = '1';
+            tableMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const willOpen = tableMenuDropdown.classList.contains('hidden');
+                tableMenuDropdown.classList.toggle('hidden', !willOpen);
+            });
+            tableMenuDropdown.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                    tableMenuDropdown.classList.add('hidden');
+                }
+            });
+            window.addEventListener('click', () => {
+                tableMenuDropdown.classList.add('hidden');
+            });
+        }
+
+        // Asset Library Modal Integration
+        const btnOpenAsset = document.getElementById('btnOpenAssetLibraryModal');
+        const assetModal = document.getElementById('mouAssetLibraryModal');
+        const btnCloseAsset = document.getElementById('btnCloseAssetLibraryModal');
+        const assetGrid = document.getElementById('mouAssetItemsList');
+        const assetLoading = document.getElementById('mouAssetLoadingState');
+        const assetEmpty = document.getElementById('mouAssetEmptyState');
+        const assetSearch = document.getElementById('mouAssetSearchInput');
+        const categoryTabs = document.getElementById('mouAssetCategoryTabs');
+
+        let currentCategory = '';
+        let currentSearch = '';
+
+        async function fetchSystemAssets() {
+            if (!assetGrid) return;
+            assetGrid.innerHTML = '';
+            assetLoading?.classList.remove('hidden');
+            assetEmpty?.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams();
+                if (currentCategory) params.append('category', currentCategory);
+                if (currentSearch) params.append('search', currentSearch);
+
+                const response = await fetch(`{{ route('admin.system-assets.api.index') }}?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const resData = await response.json();
+                assetLoading?.classList.add('hidden');
+
+                const items = resData.data || [];
+                if (items.length === 0) {
+                    assetEmpty?.classList.remove('hidden');
+                    return;
+                }
+
+                items.forEach(asset => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col justify-between hover:shadow-md transition';
+
+                    const previewUrl = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
+                    card.innerHTML = `
+                        <div class="h-24 bg-slate-50 rounded-lg flex items-center justify-center p-2 mb-2 border border-slate-100 overflow-hidden">
+                            <img src="${previewUrl}" alt="${asset.name}" class="max-h-full max-w-full object-contain">
+                        </div>
+                        <div class="mb-2">
+                            <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">${asset.category_label || asset.category}</span>
+                            <div class="text-xs font-semibold text-slate-800 truncate mt-1" title="${asset.name}">${asset.name}</div>
+                            <div class="text-[10px] text-slate-400 font-mono truncate">${asset.code || '-'}</div>
+                        </div>
+                        <button type="button" class="btn-insert-this-asset w-full py-1 text-center text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition">
+                            + Sisipkan
+                        </button>
+                    `;
+
+                    card.querySelector('.btn-insert-this-asset')?.addEventListener('click', () => {
+                        window.MouWordProcessor?.insertSystemAsset(asset);
+                        closeAssetLibraryModal();
+                    });
+
+                    assetGrid.appendChild(card);
+                });
+            } catch (err) {
+                assetLoading?.classList.add('hidden');
+                if (assetEmpty) {
+                    assetEmpty.textContent = 'Gagal memuat aset: ' + err.message;
+                    assetEmpty.classList.remove('hidden');
+                }
+            }
+        }
+
+        function openAssetLibraryModal() {
+            if (assetModal) {
+                assetModal.classList.remove('hidden');
+                fetchSystemAssets();
+            }
+        }
+
+        function closeAssetLibraryModal() {
+            if (assetModal) assetModal.classList.add('hidden');
+        }
+
+        btnOpenAsset?.addEventListener('click', openAssetLibraryModal);
+        btnCloseAsset?.addEventListener('click', closeAssetLibraryModal);
+
+        categoryTabs?.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryTabs.querySelectorAll('button[data-cat]').forEach(b => {
+                    b.className = 'px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200';
+                });
+                btn.className = 'px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white';
+                currentCategory = btn.getAttribute('data-cat') || '';
+                fetchSystemAssets();
+            });
+        });
+
+        let searchDebounce;
+        assetSearch?.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                currentSearch = e.target.value.trim();
+                fetchSystemAssets();
+            }, 300);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (assetModal && !assetModal.classList.contains('hidden')) {
+                    closeAssetLibraryModal();
+                }
+            }
+        });
+
         // Media Upload & Logo Insert
         document.getElementById('inputUploadCustomImage')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
@@ -1934,8 +2178,19 @@
             e.target.value = '';
         });
         document.getElementById('btnInsertCompanyLogo')?.addEventListener('click', () => {
-            const url = processor.state.mediaAssets.company_logo || processor.state.mediaAssets.company_logo_url || '/images/mou/seven-inc-logo.png';
-            processor.insertImageFromUrl(url, 88, 'center');
+            processor.state.showHeaderLogos = true;
+            processor.applyPageLayoutToCanvas();
+            processor.syncAllToHiddenInputs();
+            const btn = document.getElementById('btnToggleHeaderLogos');
+            if (btn) btn.classList.add('mou-ribbon-btn-active');
+        });
+        document.getElementById('btnToggleHeaderLogos')?.addEventListener('click', (e) => {
+            const active = processor.toggleHeaderLogos();
+            e.currentTarget.classList.toggle('mou-ribbon-btn-active', active);
+        });
+        document.getElementById('btnToggleWatermark')?.addEventListener('click', (e) => {
+            const active = processor.toggleWatermark();
+            e.currentTarget.classList.toggle('mou-ribbon-btn-active', active);
         });
         document.getElementById('btnApplyImageSize')?.addEventListener('click', () => {
             const w = document.getElementById('ribbonImageWidthPx')?.value || '95';

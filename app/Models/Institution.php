@@ -16,6 +16,7 @@ class Institution extends Model
         'public_uuid',
         'name',
         'normalized_name',
+        'logo',
         'address',
         'phone',
         'email',
@@ -28,6 +29,26 @@ class Institution extends Model
     protected $casts = [
         'is_active' => 'boolean',
     ];
+
+    /**
+     * URL publik untuk berkas logo institusi.
+     */
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (empty($this->logo)) {
+            return null;
+        }
+
+        if (str_starts_with($this->logo, 'http://') || str_starts_with($this->logo, 'https://') || str_starts_with($this->logo, 'data:')) {
+            return $this->logo;
+        }
+
+        if (str_starts_with($this->logo, '/')) {
+            return $this->logo;
+        }
+
+        return asset('storage/' . $this->logo);
+    }
 
     protected static function booted()
     {

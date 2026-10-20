@@ -31,7 +31,7 @@
                         </span>
                     @endif
                 </div>
-                <p class="text-sm text-slate-500">
+                <p class="text-sm text-slate-500 break-words [overflow-wrap:anywhere]">
                     Siklus Penjangkauan Kemitraan Tahun {{ $cycle->cycle_year }} &bull; Kontak: {{ $cycle->contact->name ?? '-' }}
                 </p>
             </div>
@@ -170,31 +170,31 @@
     <!-- Top Info Grid -->
     <div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <!-- Card 1: Profil Kontak Pembimbing -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Kontak Pembimbing (PIC)</span>
-                <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm min-w-0">
+            <div class="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 shrink-0">Kontak Pembimbing (PIC)</span>
+                <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 truncate max-w-[50%]" title="{{ $cycle->contact->position ?? 'Pembimbing' }}">
                     {{ $cycle->contact->position ?? 'Pembimbing' }}
                 </span>
             </div>
-            <div class="mt-4 space-y-3">
-                <div>
-                    <span class="text-base font-bold text-slate-800">{{ $cycle->contact->name ?? '-' }}</span>
+            <div class="mt-4 space-y-3 min-w-0">
+                <div class="min-w-0">
+                    <h4 class="text-base font-bold text-slate-800 break-words [overflow-wrap:anywhere]">{{ $cycle->contact->name ?? '-' }}</h4>
                     @if ($cycle->contact?->email)
-                        <div class="flex items-center gap-1.5 mt-1 text-xs text-slate-600">
+                        <div class="flex items-center gap-1.5 mt-1 text-xs text-slate-600 min-w-0">
                             <svg class="h-3.5 w-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                                 <polyline points="22,6 12,13 2,6"/>
                             </svg>
-                            <span>{{ $cycle->contact->email }}</span>
+                            <span class="break-all">{{ $cycle->contact->email }}</span>
                         </div>
                     @endif
                 </div>
 
-                <div class="pt-2 border-t border-slate-100">
+                <div class="pt-2 border-t border-slate-100 min-w-0">
                     <span class="text-[11px] font-medium text-slate-400">Nomor Telepon / WhatsApp:</span>
-                    <div class="mt-1 flex items-center gap-2">
-                        <span class="text-xs font-semibold text-slate-800">{{ $cycle->contact->phone ?? 'Tidak ada nomor' }}</span>
+                    <div class="mt-1 flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-semibold text-slate-800 break-all">{{ $cycle->contact->phone ?? 'Tidak ada nomor' }}</span>
                         @if ($cycle->contact?->phone)
                             @php
                                 $cleanPhone = preg_replace('/[^0-9]/', '', $cycle->contact->phone);
@@ -206,7 +206,7 @@
                                 href="https://wa.me/{{ $cleanPhone }}"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                class="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 transition"
+                                class="inline-flex shrink-0 items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 transition"
                             >
                                 <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -218,7 +218,7 @@
                 </div>
 
                 @if ($cycle->contact?->notes)
-                    <div class="rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-600">
+                    <div class="rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-600 break-words [overflow-wrap:anywhere]">
                         <span class="font-semibold text-slate-700">Catatan PIC:</span> {{ $cycle->contact->notes }}
                     </div>
                 @endif
@@ -226,7 +226,7 @@
         </div>
 
         <!-- Card 2: Informasi Institusi -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm min-w-0">
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Institusi Mitra</span>
                 @if ($cycle->institution?->is_active)
@@ -239,26 +239,26 @@
                     </span>
                 @endif
             </div>
-            <div class="mt-4 space-y-2 text-xs">
-                <div>
+            <div class="mt-4 space-y-2 text-xs min-w-0">
+                <div class="min-w-0">
                     <span class="text-[11px] text-slate-400">Nama Kampus / Sekolah:</span>
-                    <p class="font-bold text-slate-800">{{ $cycle->institution->name ?? '-' }}</p>
+                    <p class="font-bold text-slate-800 break-words [overflow-wrap:anywhere]">{{ $cycle->institution->name ?? '-' }}</p>
                 </div>
-                <div>
+                <div class="min-w-0">
                     <span class="text-[11px] text-slate-400">Unit Korespondensi:</span>
-                    <p class="font-medium text-slate-700">{{ $cycle->institution->correspondence_unit ?? '-' }}</p>
+                    <p class="font-medium text-slate-700 break-words [overflow-wrap:anywhere]">{{ $cycle->institution->correspondence_unit ?? '-' }}</p>
                 </div>
                 @if ($cycle->institution?->address)
-                    <div>
+                    <div class="min-w-0">
                         <span class="text-[11px] text-slate-400">Alamat:</span>
-                        <p class="text-slate-600">{{ $cycle->institution->address }}</p>
+                        <p class="text-slate-600 break-words [overflow-wrap:anywhere]">{{ $cycle->institution->address }}</p>
                     </div>
                 @endif
             </div>
         </div>
 
         <!-- Card 3: Status Siklus & Progres Attempt -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm min-w-0">
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Progres Follow-Up</span>
                 <span class="text-xs font-bold text-slate-700">Tahun {{ $cycle->cycle_year }}</span>
@@ -709,7 +709,7 @@
                 </div>
             @else
                 <!-- Banner Siklus Selesai / Closed -->
-                <div class="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="flex items-start gap-3">
                         <div class="rounded-lg bg-emerald-100 p-2 text-emerald-700">
                             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -723,7 +723,7 @@
                                 Keputusan Akhir: <span class="font-bold text-slate-800">{{ $cycle->finalResultLabel() }}</span>
                             </p>
                             @if ($cycle->final_notes)
-                                <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700">
+                                <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                                     <span class="font-semibold text-slate-500 block mb-0.5">Catatan Akhir:</span>
                                     {{ $cycle->final_notes }}
                                 </div>
@@ -735,14 +735,14 @@
                     </div>
 
                     @if ($cycle->final_result === \App\Models\FollowUpCycle::RESULT_WILLING)
-                        <div class="mt-4 rounded-xl border border-purple-200 bg-purple-50 p-4">
+                        <div class="mt-4 rounded-xl border border-purple-200 bg-white p-4 shadow-xs">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
                                     <div class="flex items-center gap-1.5">
                                         <span class="h-2 w-2 rounded-full bg-purple-600"></span>
-                                        <h4 class="text-xs font-bold text-purple-900">Mitra Menyatakan Kesediaan Kerja Sama</h4>
+                                        <h4 class="text-xs font-bold text-slate-800">Mitra Menyatakan Kesediaan Kerja Sama</h4>
                                     </div>
-                                    <p class="text-xs text-purple-700 mt-1">Siklus ini telah memenuhi syarat untuk penerbitan naskah dokumen MOU kemitraan resmi.</p>
+                                    <p class="text-xs text-slate-600 mt-1">Siklus ini telah memenuhi syarat untuk penerbitan naskah dokumen MOU kemitraan resmi.</p>
                                 </div>
                                 <a
                                     href="{{ route('hr.mous.create', ['institution_id' => $cycle->institution_id, 'cycle_id' => $cycle->id]) }}"
@@ -782,45 +782,8 @@
             @endif
         </div>
 
-        <!-- Col Right (1 Col): Linked Interns & MoU Status -->
+        <!-- Col Right (1 Col): Linked Interns -->
         <div class="space-y-6">
-            <!-- Dokumen Kerja Sama (MOU) Institusi Mitra -->
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h3 class="text-sm font-bold text-slate-800">Status Dokumen Kerja Sama (MOU)</h3>
-                    <a href="{{ route('hr.mous.index', ['institution_id' => $cycle->institution_id]) }}" class="text-xs font-semibold text-blue-600 hover:underline">
-                        Lihat MOU &rarr;
-                    </a>
-                </div>
-
-                <div class="space-y-3">
-                    <div>
-                        <span class="text-[11px] font-semibold text-slate-500 block">Status Perjanjian:</span>
-                        <div class="mt-1 flex items-center gap-2">
-                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border {{ $cooperationSummary['status_badge'] }}">
-                                {{ $cooperationSummary['status_label'] }}
-                            </span>
-                        </div>
-                        <p class="text-[11px] text-slate-500 mt-1">{{ $cooperationSummary['status_detail'] }}</p>
-                    </div>
-
-                    @if ($cooperationSummary['can_create_mou'])
-                        <div class="pt-2">
-                            <a
-                                href="{{ route('hr.mous.create', ['institution_id' => $cycle->institution_id, 'cycle_id' => $cycle->id]) }}"
-                                class="inline-flex items-center justify-center w-full gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition"
-                            >
-                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                    <polyline points="14 2 14 8 20 8"/>
-                                </svg>
-                                Terbitkan Naskah MOU Baru
-                            </a>
-                        </div>
-                    @endif
-                </div>
-            </div>
-
             <!-- Pemagang Terkait -->
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">

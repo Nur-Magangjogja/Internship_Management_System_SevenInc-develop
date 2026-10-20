@@ -328,6 +328,9 @@ HTML;
             'line_height'              => 1.15,
             'show_paraf_box'           => true,
             'show_paraf_footer'        => true,
+            'show_header_logos'        => true,
+            'show_watermark'           => false,
+            'watermark_opacity'        => 0.05,
             'paraf_first_party_label'  => 'Paraf PIHAK KESATU',
             'paraf_second_party_label' => 'Paraf PIHAK KEDUA',
             'show_page_number'         => true,
@@ -446,22 +449,7 @@ HTML;
         return <<<'HTML'
 <div class="mou-document mou-doc-canvas">
     <p style="text-align: center; margin-bottom: 6pt;"><strong>NOTA KESEPAHAMAN</strong></p>
-
-    <table class="mou-logo-row-table mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-bottom: 8pt;">
-        <colgroup>
-            <col width="210" style="width: 210px">
-            <col width="180" style="width: 180px">
-            <col width="210" style="width: 210px">
-        </colgroup>
-        <tbody>
-            <tr>
-                <td colwidth="210" data-cell-width="35%" style="width: 35%; text-align: left; vertical-align: middle;"><p style="text-align: left; margin: 0;">[institution_logo]</p></td>
-                <td colwidth="180" data-cell-width="30%" style="width: 30%; text-align: center; vertical-align: middle;"><p style="text-align: center; margin: 0;"><strong>ANTARA</strong></p></td>
-                <td colwidth="210" data-cell-width="35%" style="width: 35%; text-align: right; vertical-align: middle;"><p style="text-align: right; margin: 0;">[company_logo]</p></td>
-            </tr>
-        </tbody>
-    </table>
-
+    <p style="text-align: center; margin-bottom: 6pt;"><strong>ANTARA</strong></p>
     <p style="text-align: center; text-transform: uppercase; margin-bottom: 2pt;"><strong>[institution_name]</strong></p>
     <p style="text-align: center; text-transform: uppercase; margin-bottom: 8pt;"><strong>DENGAN [company_name]</strong></p>
     <p style="text-align: center; margin-bottom: 2pt;"><strong>TENTANG</strong></p>
@@ -471,25 +459,25 @@ HTML;
 
     <p style="text-align: justify; margin-bottom: 8pt;">Pada hari ini, [agreement_day], [agreement_date_words] ([agreement_date_short]), bertempat di [agreement_place], yang bertanda tangan di bawah ini :</p>
 
-    <table class="mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-bottom: 10pt;">
+    <table class="mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 10pt;">
         <colgroup>
-            <col width="30" style="width: 30px">
-            <col width="192" style="width: 192px">
             <col width="18" style="width: 18px">
-            <col width="360" style="width: 360px">
+            <col width="200" style="width: 200px">
+            <col width="14" style="width: 14px">
+            <col width="368" style="width: 368px">
         </colgroup>
         <tbody>
             <tr>
-                <td colwidth="30" data-cell-width="5%" style="width: 5%; vertical-align: top;"><p style="margin: 0;">1.</p></td>
-                <td colwidth="192" data-cell-width="32%" style="width: 32%; vertical-align: top;"><p style="margin: 0;"><strong>[institution_signatory_name]</strong></p></td>
-                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td colwidth="360" data-cell-width="60%" style="width: 60%; vertical-align: top; text-align: justify;"><p style="text-align: justify; margin: 0;">[institution_signatory_title] [institution_name], berkedudukan di [institution_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [institution_name], selanjutnya disebut <strong>PIHAK KESATU</strong>; dan</p></td>
+                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; padding-right: 0;"><p style="margin: 0;">1.</p></td>
+                <td colwidth="200" data-cell-width="33%" style="width: 33%; vertical-align: top; padding-left: 2pt; word-break: break-all; word-wrap: break-word;"><p style="margin: 0;"><strong>[institution_signatory_name]</strong></p></td>
+                <td colwidth="14" data-cell-width="2%" style="width: 2%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="368" data-cell-width="62%" style="width: 62%; vertical-align: top; text-align: justify; word-break: break-all; word-wrap: break-word;"><p style="text-align: justify; margin: 0;">[institution_signatory_title] [institution_name], berkedudukan di [institution_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [institution_name], selanjutnya disebut <strong>PIHAK KESATU</strong>; dan</p></td>
             </tr>
             <tr>
-                <td colwidth="30" data-cell-width="5%" style="width: 5%; vertical-align: top;"><p style="margin: 0;">2.</p></td>
-                <td colwidth="192" data-cell-width="32%" style="width: 32%; vertical-align: top;"><p style="margin: 0;"><strong>[company_signatory_name]</strong></p></td>
-                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td colwidth="360" data-cell-width="60%" style="width: 60%; vertical-align: top; text-align: justify;"><p style="text-align: justify; margin: 0;">[company_signatory_title] [company_name], Berkedudukan di [company_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [company_name], selanjutnya disebut <strong>PIHAK KEDUA</strong>.</p></td>
+                <td colwidth="18" data-cell-width="3%" style="width: 3%; vertical-align: top; padding-right: 0;"><p style="margin: 0;">2.</p></td>
+                <td colwidth="200" data-cell-width="33%" style="width: 33%; vertical-align: top; padding-left: 2pt; word-break: break-all; word-wrap: break-word;"><p style="margin: 0;"><strong>[company_signatory_name]</strong></p></td>
+                <td colwidth="14" data-cell-width="2%" style="width: 2%; vertical-align: top; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td colwidth="368" data-cell-width="62%" style="width: 62%; vertical-align: top; text-align: justify; word-break: break-all; word-wrap: break-word;"><p style="text-align: justify; margin: 0;">[company_signatory_title] [company_name], Berkedudukan di [company_address], oleh karena itu sah mewakili dan bertindak untuk dan atas nama [company_name], selanjutnya disebut <strong>PIHAK KEDUA</strong>.</p></td>
             </tr>
         </tbody>
     </table>
@@ -518,7 +506,7 @@ HTML;
     <p style="text-align: center; margin-bottom: 4pt;"><strong>KORESPONDENSI</strong></p>
     <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 6pt;"><strong>(1)</strong> semua pemberitahuan, permintaan dan atau usulan yang dibuat sehubungan dengan Nota Kesepahaman ini harus dilakukan secara tertulis dan diserahkan secara langsung, melalui pos, email, atau melalui faksimili kepada masing masing <strong>PIHAK</strong> yang alamatnya disebutkan dibawah ini.</p>
 
-    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 6pt; margin-bottom: 10pt;">
+    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 6pt; margin-bottom: 10pt;">
         <colgroup>
             <col width="132" style="width: 132px">
             <col width="24" style="width: 24px">
@@ -561,7 +549,7 @@ HTML;
         </tbody>
     </table>
 
-    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 6pt; margin-bottom: 10pt;">
+    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 6pt; margin-bottom: 10pt;">
         <colgroup>
             <col width="132" style="width: 132px">
             <col width="24" style="width: 24px">
@@ -616,7 +604,7 @@ HTML;
     <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 4pt;"><strong>(2)</strong> Nota Kesepahaman ini berlaku sejak tanggal ditandatangani untuk jangka waktu [agreement_duration] dan dapat diperpanjang atas persetujuan <strong>PARA PIHAK</strong>.</p>
     <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 10pt;"><strong>(3)</strong> Apabila terjadi perselisihan, perbedaan penafsiran terhadap Nota Kesepahaman ini, atau hal-hal lain terkait yang belum secara tersurat dinyatakan dalam Nota Kesepahaman ini, akan diselesaikan secara musyawarah untuk mufakat.</p>
 
-    <table class="mou-signature-table mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; margin-top: 24pt;">
+    <table class="mou-signature-table mou-table-borderless" data-table-style="borderless" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 24pt;">
         <colgroup>
             <col width="300" style="width: 300px">
             <col width="300" style="width: 300px">

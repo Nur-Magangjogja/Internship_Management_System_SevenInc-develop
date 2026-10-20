@@ -102,9 +102,83 @@ class FormField extends Model
         return $query->where('form_schema_id', $schemaId);
     }
 
+    public const GROUP_DATA_DIRI = 'data_diri_edukasi';
+    public const GROUP_PILIHAN_DURASI = 'pilihan_durasi';
+    public const GROUP_BERKAS = 'berkas_portofolio';
+    public const GROUP_INFORMASI_TAMBAHAN = 'informasi_tambahan';
+
+    /**
+     * Deteksi grup default untuk suatu field berdasarkan key dan tipenya.
+     */
+    public static function detectDefaultGroup(?string $key, ?string $type = null): string
+    {
+        $dataDiriKeys = [
+            'fullname', 'student_id', 'birth_place', 'born_date',
+            'gender', 'religion', 'institution_name', 'faculty',
+            'study_program', 'current_city', 'email', 'phone_number',
+            'current_status',
+        ];
+        $pilihanDurasiKeys = [
+            'internship_interest', 'start_date', 'end_date', 'planned_duration',
+            'internship_type', 'wfo_readiness', 'schedule_shift_readiness',
+            'internship_arrangement', 'has_laptop', 'owned_tools',
+            'internship_reason', 'design_software', 'video_software',
+            'programming_languages', 'digital_marketing_type',
+        ];
+        $berkasKeys = [
+            'cv', 'identity', 'portfolio', 'cover_letter', 'proposal',
+            'supporting_document', 'profile_photo', 'cv_ktp_portofolio_pdf',
+        ];
+        $infoTambahanKeys = [
+            'supervisor_name', 'supervisor_contact', 'boarding_info',
+            'social_media_instagram', 'internship_info_sources', 'current_activities',
+        ];
+
+        if ($key && in_array($key, $dataDiriKeys, true)) {
+            return self::GROUP_DATA_DIRI;
+        }
+        if ($key && in_array($key, $pilihanDurasiKeys, true)) {
+            return self::GROUP_PILIHAN_DURASI;
+        }
+        if ($key && in_array($key, $berkasKeys, true)) {
+            return self::GROUP_BERKAS;
+        }
+        if ($type === 'file') {
+            return self::GROUP_BERKAS;
+        }
+        if ($key && in_array($key, $infoTambahanKeys, true)) {
+            return self::GROUP_INFORMASI_TAMBAHAN;
+        }
+
+        return self::GROUP_INFORMASI_TAMBAHAN;
+    }
+
+    /**
+     * Resolusi nama grup field secara cerdas dan kompatibel ke belakang.
+     */
+    public function getResolvedGroupAttribute(): string
+    {
+        if (!empty($this->group_name)) {
+            if ($this->group_name === self::GROUP_DATA_DIRI
+                || $this->group_name === self::GROUP_PILIHAN_DURASI
+                || $this->group_name === self::GROUP_BERKAS
+                || $this->group_name === self::GROUP_INFORMASI_TAMBAHAN) {
+                return $this->group_name;
+            }
+            if ($this->group_name === 'informasi_tambahan') {
+                return self::GROUP_INFORMASI_TAMBAHAN;
+            }
+        }
+
+        return static::detectDefaultGroup($this->field_key, $this->field_type);
+    }
+
     /** Scope: berdasarkan grup */
     public function scopeInGroup($query, ?string $group)
     {
+        if (empty($group)) {
+            return $query;
+        }
         return $query->where('group_name', $group);
     }
 
@@ -129,13 +203,28 @@ class FormField extends Model
     }
 
     /**
-     * Daftar grup yang tersedia.
+     * Daftar grup yang tersedia dengan penomoran berurutan.
      */
     public static function groups(): array
     {
         return [
-            null                 => 'Form Utama',
-            'informasi_tambahan' => 'Informasi Tambahan',
+            self::GROUP_DATA_DIRI          => '1. Data Diri & Edukasi',
+            self::GROUP_PILIHAN_DURASI     => '2. Pilihan & Durasi',
+            self::GROUP_BERKAS             => '3. Berkas & Portofolio',
+            self::GROUP_INFORMASI_TAMBAHAN => '4. Informasi Tambahan',
+        ];
+    }
+
+    /**
+     * Label grup tanpa penomoran.
+     */
+    public static function groupLabels(): array
+    {
+        return [
+            self::GROUP_DATA_DIRI          => 'Data Diri & Edukasi',
+            self::GROUP_PILIHAN_DURASI     => 'Pilihan & Durasi',
+            self::GROUP_BERKAS             => 'Berkas & Portofolio',
+            self::GROUP_INFORMASI_TAMBAHAN => 'Informasi Tambahan',
         ];
     }
 

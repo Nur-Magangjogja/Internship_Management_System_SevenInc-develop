@@ -641,5 +641,72 @@ class MouLifecycleTest extends TestCase
         $this->assertEquals($alternateTemplate->id, $mou->mou_template_id);
         $this->assertStringContainsString('NASKAH KHUSUS VOKASI ANTARA ' . $this->institution->name . ' DAN PT SEVEN INC VOKASI', $mou->rendered_document_html);
     }
+
+    public function test_admin_and_hr_can_select_brand_on_create_and_company_name_and_logo_follow_brand()
+    {
+        $brand = \App\Models\Brand::create([
+            'code'               => 'UB_' . substr($this->unique, 0, 4),
+            'name'               => 'Brand Unggulan Seven Inc',
+            'company_address'    => 'Jl. Kaliurang KM 10, Sleman, Yogyakarta',
+            'logo'               => '/images/mou/seven-inc-logo.png',
+            'signatory_name'     => 'Budi Santoso, S.Kom.',
+            'signatory_position' => 'Direktur Eksekutif',
+            'signatory_email'    => 'budi@brandunggulan.test',
+        ]);
+
+        // 1. Periksa halaman create menampilkan dropdown brand dan elemen pratinjau logo perusahaan
+        $createRes = $this->actingAs($this->admin)->get(route('admin.mous.create', [
+            'institution_id' => $this->institution->id,
+            'cycle_id'       => $this->cycle->id,
+        ]));
+
+        $createRes->assertStatus(200);
+        $createHtml = $createRes->getContent();
+        $this->assertStringContainsString('id="brandSelect"', $createHtml);
+        $this->assertStringContainsString('Brand Unggulan Seven Inc', $createHtml);
+        $this->assertStringContainsString('id="companyLogoPreviewImg"', $createHtml);
+        $this->assertStringContainsString('id="companyLogoPathInput"', $createHtml);
+
+        // 2. Submit form create MOU dengan brand terpilih
+        $companyNumber = 'MOU/BRAND/' . substr($this->unique, 0, 8);
+        $storeRes = $this->actingAs($this->admin)->post(route('admin.mous.store'), [
+            'institution_id'                  => $this->institution->id,
+            'followup_cycle_id'               => $this->cycle->id,
+            'mou_template_id'                 => $this->template->id,
+            'brand_id'                        => $brand->id,
+            'company_mou_number'              => $companyNumber,
+            'agreement_place'                 => 'Yogyakarta',
+            'agreement_date'                  => '2026-10-20',
+            'effective_start'                 => '2026-10-20',
+            'effective_end'                   => '2031-10-20',
+            'first_party_institution_name'    => $this->institution->name,
+            'first_party_signatory_name'      => 'Dr. Hendra Saputra',
+            'first_party_signatory_title'     => 'Ketua Jurusan TI',
+            'second_party_company_name'       => $brand->name,
+            'second_party_signatory_name'     => $brand->signatory_name,
+            'second_party_signatory_title'    => $brand->signatory_position,
+            'second_party_address'            => $brand->company_address,
+            'second_party_email'              => $brand->signatory_email,
+            'company_logo_path'               => $brand->logo_url,
+        ]);
+
+        $storeRes->assertStatus(302);
+
+        $mou = Mou::with('brand')->where('company_mou_number', $companyNumber)->firstOrFail();
+        $this->assertEquals($brand->id, $mou->brand_id);
+        $this->assertEquals('Brand Unggulan Seven Inc', $mou->second_party_company_name);
+        $this->assertEquals($brand->logo_url, $mou->render_data_snapshot['company_logo_path']);
+        $this->assertNotNull($mou->brand);
+        $this->assertEquals($brand->name, $mou->brand->name);
+
+        // 3. Pastikan naskah HTML memuat nama perusahaan brand
+        $this->assertStringContainsString('Brand Unggulan Seven Inc', $mou->rendered_document_html);
+
+        // 4. Buka halaman show dan pastikan badge brand & logo tampil
+        $showRes = $this->actingAs($this->admin)->get(route('admin.mous.show', $mou));
+        $showRes->assertStatus(200);
+        $showRes->assertSee('Brand Unggulan Seven Inc');
+        $showRes->assertSee('Brand: ' . $brand->name);
+    }
 }
 

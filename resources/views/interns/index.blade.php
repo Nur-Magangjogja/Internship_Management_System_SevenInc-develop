@@ -1524,8 +1524,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getFieldSection(f) {
         if (f.group_name && f.group_name.trim() !== '' && f.group_name !== 'main') {
-            if (f.group_name === 'informasi_tambahan') return 'Informasi Tambahan';
-            if (f.group_name === 'berkas' || f.group_name === 'dokumen' || f.group_name === 'berkas_dokumen') return 'Berkas & Dokumen';
+            if (f.group_name === 'data_diri_edukasi') {
+                return SYSTEM_SECTION_MAP[f.field_key] || 'Data Pribadi';
+            }
+            if (f.group_name === 'pilihan_durasi') {
+                return SYSTEM_SECTION_MAP[f.field_key] || 'Informasi Magang';
+            }
+            if (f.group_name === 'berkas_portofolio' || f.group_name === 'berkas' || f.group_name === 'dokumen' || f.group_name === 'berkas_dokumen') {
+                return 'Berkas & Dokumen';
+            }
+            if (f.group_name === 'informasi_tambahan') {
+                return SYSTEM_SECTION_MAP[f.field_key] || 'Informasi Tambahan';
+            }
             if (f.group_name === 'data_pribadi') return 'Data Pribadi';
             if (f.group_name === 'data_akademik') return 'Data Akademik';
             if (f.group_name === 'informasi_magang') return 'Informasi Magang';

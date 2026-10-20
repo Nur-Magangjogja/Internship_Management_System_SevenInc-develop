@@ -144,6 +144,8 @@ class MouController extends Controller
         // Cek apakah institusi terpilih telah memiliki MOU yang sedang aktif
         $activeMou = $selectedInstitution ? $selectedInstitution->activeMou : null;
 
+        $brands = \App\Models\Brand::orderBy('name')->get();
+
         return view('hr.mou.create', compact(
             'institutions',
             'selectedInstitution',
@@ -154,7 +156,8 @@ class MouController extends Controller
             'selectedTemplate',
             'activeTemplate',
             'suggestedNumber',
-            'activeMou'
+            'activeMou',
+            'brands'
         ));
     }
 
@@ -165,6 +168,7 @@ class MouController extends Controller
     {
         $request->validate([
             'institution_id'                  => 'required|exists:institutions,id',
+            'institution_logo'                => 'nullable|image|mimes:png,jpg,jpeg,webp|max:2048',
             'company_mou_number'              => 'required|string|max:100|unique:mous,company_mou_number',
             'institution_mou_number'          => 'nullable|string|max:100',
             'agreement_place'                 => 'required|string|max:100',
@@ -188,6 +192,9 @@ class MouController extends Controller
             'second_party_fax'                => 'nullable|string|max:100',
             'second_party_email'              => 'nullable|email|max:150',
             'second_party_correspondence_unit'=> 'nullable|string|max:255',
+            'brand_id'                        => 'nullable|exists:brands,id',
+            'company_logo'                    => 'nullable|image|mimes:png,jpg,jpeg,webp|max:2048',
+            'company_logo_path'               => 'nullable|string|max:500',
             'notes'                           => 'nullable|string|max:1000',
             'cooperation_confirmed'           => 'nullable|boolean',
             'mou_template_id'                 => 'nullable|exists:mou_templates,id',
@@ -197,7 +204,32 @@ class MouController extends Controller
         ]);
 
         try {
-            $mou = $this->mouService->generateMou($request->all(), auth()->user());
+            $payload = $request->all();
+            $institution = Institution::find($request->institution_id);
+
+            if ($request->hasFile('institution_logo')) {
+                $logoPath = $request->file('institution_logo')->store('institutions/logos', 'public');
+                if ($institution) {
+                    $institution->update(['logo' => $logoPath]);
+                }
+                $payload['institution_logo_path'] = '/storage/' . $logoPath;
+            } elseif ($institution && $institution->logo) {
+                $payload['institution_logo_path'] = $institution->logo_url ?? ('/storage/' . $institution->logo);
+            }
+
+            if ($request->hasFile('company_logo')) {
+                $compLogoPath = $request->file('company_logo')->store('brands', 'public');
+                $payload['company_logo_path'] = '/storage/' . $compLogoPath;
+            } elseif ($request->filled('brand_id')) {
+                $brand = \App\Models\Brand::find($request->brand_id);
+                if ($brand && $brand->logo_url) {
+                    $payload['company_logo_path'] = $brand->logo_url;
+                }
+            } elseif ($request->filled('company_logo_path')) {
+                $payload['company_logo_path'] = $request->company_logo_path;
+            }
+
+            $mou = $this->mouService->generateMou($payload, auth()->user());
 
             $routePrefix = request()->routeIs('hr.*') ? 'hr.mous' : 'admin.mous';
 
@@ -215,9 +247,15 @@ class MouController extends Controller
     {
         $this->authorizeMouAccess($mou);
 
-        $mou->load(['institution', 'followupCycle', 'template', 'generatedBy', 'deliveredBy', 'signedUploadedBy', 'supersededBy', 'supersedes']);
+        $mou->load(['institution', 'followupCycle', 'template', 'brand', 'generatedBy', 'deliveredBy', 'signedUploadedBy', 'supersededBy', 'supersedes']);
 
         $pageConfig   = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+        $pageConfig['institution_logo'] = $mou->render_data_snapshot['institution_logo_path']
+            ?? ($mou->institution?->logo_url ?: ($mou->institution?->logo ? ('/storage/' . $mou->institution->logo) : '/images/mou/institution-logo-placeholder.png'));
+        $pageConfig['company_logo'] = $mou->render_data_snapshot['company_logo_path']
+            ?? ($mou->render_data_snapshot['company_logo']
+            ?? ($mou->render_data_snapshot['_media_assets']['company_logo']
+            ?? '/images/mou/seven-inc-logo.png'));
         $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
 
         return view('hr.mou.show', compact('mou', 'pageConfig', 'canonicalCss'));
@@ -231,6 +269,8 @@ class MouController extends Controller
         $this->authorizeMouAccess($mou);
 
         $pageConfig   = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+        $pageConfig['institution_logo'] = $mou->render_data_snapshot['institution_logo_path']
+            ?? ($mou->institution?->logo_url ?: ($mou->institution?->logo ? ('/storage/' . $mou->institution->logo) : '/images/mou/institution-logo-placeholder.png'));
         $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
 
         return view('hr.mou.print', compact('mou', 'pageConfig', 'canonicalCss'));
@@ -249,6 +289,8 @@ class MouController extends Controller
         }
 
         $pageConfig = $mou->render_data_snapshot['_page_config'] ?? MouTemplate::getDefaultPageConfig();
+        $pageConfig['institution_logo'] = $mou->render_data_snapshot['institution_logo_path']
+            ?? ($mou->institution?->logo_url ?: ($mou->institution?->logo ? ('/storage/' . $mou->institution->logo) : '/images/mou/institution-logo-placeholder.png'));
 
         $pdfBinary = MouDocumentRenderer::renderPdfBinary(
             $mou->rendered_document_html,
@@ -259,8 +301,13 @@ class MouController extends Controller
         $safeFileName = 'MOU-' . Str::slug(str_replace('/', '-', $mou->company_mou_number), '-') . '.pdf';
 
         return response($pdfBinary, 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $safeFileName . '"',
+            'Content-Type'              => 'application/pdf',
+            'Content-Disposition'       => 'inline; filename="' . $safeFileName . '"',
+            'Content-Length'            => strlen($pdfBinary),
+            'Content-Transfer-Encoding' => 'binary',
+            'Accept-Ranges'             => 'bytes',
+            'Cache-Control'             => 'private, max-age=0, must-revalidate',
+            'Pragma'                    => 'public',
         ]);
     }
 

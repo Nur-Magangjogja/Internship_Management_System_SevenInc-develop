@@ -238,7 +238,7 @@
                             </div>
                         </td>
                         <td class="px-5 py-3.5">
-                            <span class="font-semibold text-slate-800">{{ $cycle->contact->name ?? '-' }}</span>
+                            <span class="font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">{{ $cycle->contact->name ?? '-' }}</span>
                             <div class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
                                 <span>{{ $cycle->contact?->position_title ?? 'Pembimbing' }}</span>
                                 <span>&bull;</span>

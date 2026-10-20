@@ -136,18 +136,116 @@
                         <div id="form-preview-container" class="p-5">
                             {{-- SSR Fallback + langsung dirender dari INITIAL_PREVIEW_DATA saat halaman tampil --}}
                             <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang ({{ $activeYear }})</h3>
-                            <p class="text-xs text-gray-500 mb-4">Lengkapi data berikut untuk mendaftar program magang</p>
-                            <div class="space-y-3">
-                                @foreach($previewMainFields as $pf)
-                                    <div>
-                                        <label class="block mb-1 text-xs font-medium text-gray-700">
-                                            {{ $pf->label }}
-                                            @if($pf->is_required) <span class="text-red-500">*</span> @endif
-                                        </label>
-                                        <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
-                                            class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                            <p class="text-xs text-gray-500 mb-3">Lengkapi data berikut untuk mendaftar program magang</p>
+
+                            {{-- Stepper Progress Bar (5 Steps) --}}
+                            <div class="mb-4 rounded-lg border border-gray-150 bg-gray-50/80 p-2 text-[10px]">
+                                <div class="grid grid-cols-5 gap-1 text-center font-semibold text-gray-600">
+                                    <div class="flex items-center gap-1 justify-center text-emerald-800"><span class="h-4 w-4 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[9px] font-bold">1</span><span class="truncate">Data Diri</span></div>
+                                    <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">2</span><span class="truncate">Pilihan</span></div>
+                                    <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">3</span><span class="truncate">Berkas</span></div>
+                                    <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">4</span><span class="truncate">Info</span></div>
+                                    <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">5</span><span class="truncate">Submit</span></div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                @if(!empty($groupedFields['data_diri_edukasi']) && $groupedFields['data_diri_edukasi']->where('is_active', true)->isNotEmpty())
+                                <div class="border-b border-gray-100 pb-3">
+                                    <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">1</span>
+                                        Data Diri & Edukasi
+                                    </h4>
+                                    <div class="space-y-2.5">
+                                        @foreach($groupedFields['data_diri_edukasi']->where('is_active', true) as $pf)
+                                            <div>
+                                                <label class="block mb-1 text-xs font-medium text-gray-700">
+                                                    {{ $pf->label }}
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                </label>
+                                                <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                                    class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                            </div>
+                                        @endforeach
                                     </div>
-                                @endforeach
+                                </div>
+                                @endif
+
+                                @if(!empty($groupedFields['pilihan_durasi']) && $groupedFields['pilihan_durasi']->where('is_active', true)->isNotEmpty())
+                                <div class="border-b border-gray-100 pb-3">
+                                    <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">2</span>
+                                        Pilihan & Durasi
+                                    </h4>
+                                    <div class="space-y-2.5">
+                                        @foreach($groupedFields['pilihan_durasi']->where('is_active', true) as $pf)
+                                            <div>
+                                                <label class="block mb-1 text-xs font-medium text-gray-700">
+                                                    {{ $pf->label }}
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                </label>
+                                                <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                                    class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                @endif
+
+                                @if(!empty($groupedFields['berkas_portofolio']) && $groupedFields['berkas_portofolio']->where('is_active', true)->isNotEmpty())
+                                <div class="border-b border-gray-100 pb-3">
+                                    <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">3</span>
+                                        Berkas & Portofolio
+                                    </h4>
+                                    <div class="space-y-2.5">
+                                        @foreach($groupedFields['berkas_portofolio']->where('is_active', true) as $pf)
+                                            <div>
+                                                <label class="block mb-1 text-xs font-medium text-gray-700">
+                                                    {{ $pf->label }}
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                </label>
+                                                <input type="file" disabled
+                                                    class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                @endif
+
+                                @if(!empty($groupedFields['informasi_tambahan']) && $groupedFields['informasi_tambahan']->where('is_active', true)->isNotEmpty())
+                                <div class="border-b border-gray-100 pb-3">
+                                    <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">4</span>
+                                        Informasi Tambahan
+                                    </h4>
+                                    <div class="space-y-2.5">
+                                        @foreach($groupedFields['informasi_tambahan']->where('is_active', true) as $pf)
+                                            <div>
+                                                <label class="block mb-1 text-xs font-medium text-gray-700">
+                                                    {{ $pf->label }}
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                </label>
+                                                <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                                    class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                @endif
+
+                                <div class="pt-1">
+                                    <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">5</span>
+                                        Finalisasi & Submit
+                                    </h4>
+                                    <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 mb-2">
+                                        Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
+                                    </div>
+                                    <button disabled class="w-full py-2 bg-emerald-700 text-white rounded text-xs font-semibold opacity-80 cursor-not-allowed">
+                                        Kirim Pendaftaran (Preview)
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -260,19 +358,35 @@
                 </form>
             </div>
 
-            {{-- Field List: Form Utama --}}
-            <x-form-field-group
-                title="Form Utama"
-                :fields="$mainFields"
-                :types="$types"
-                group="main" />
+            <div class="space-y-5">
+                {{-- Grup 1: Data Diri & Edukasi --}}
+                <x-form-field-group
+                    title="1. Data Diri & Edukasi"
+                    :fields="$groupedFields['data_diri_edukasi'] ?? collect()"
+                    :types="$types"
+                    group="data_diri_edukasi" />
 
-            {{-- Field List: Informasi Tambahan --}}
-            <x-form-field-group
-                title="Informasi Tambahan"
-                :fields="$extraFields"
-                :types="$types"
-                group="informasi_tambahan" />
+                {{-- Grup 2: Pilihan & Durasi --}}
+                <x-form-field-group
+                    title="2. Pilihan & Durasi"
+                    :fields="$groupedFields['pilihan_durasi'] ?? collect()"
+                    :types="$types"
+                    group="pilihan_durasi" />
+
+                {{-- Grup 3: Berkas & Portofolio --}}
+                <x-form-field-group
+                    title="3. Berkas & Portofolio"
+                    :fields="$groupedFields['berkas_portofolio'] ?? collect()"
+                    :types="$types"
+                    group="berkas_portofolio" />
+
+                {{-- Grup 4: Informasi Tambahan --}}
+                <x-form-field-group
+                    title="4. Informasi Tambahan"
+                    :fields="$groupedFields['informasi_tambahan'] ?? collect()"
+                    :types="$types"
+                    group="informasi_tambahan" />
+            </div>
 
         </div>
 
@@ -402,7 +516,16 @@
 // ================================================================
 const CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 const CURRENT_YEAR = {{ (int) $activeYear }};
+@php
+    $previewGroupedFields = [
+        'data_diri_edukasi'  => ($groupedFields['data_diri_edukasi'] ?? collect())->where('is_active', true)->values(),
+        'pilihan_durasi'     => ($groupedFields['pilihan_durasi'] ?? collect())->where('is_active', true)->values(),
+        'berkas_portofolio'  => ($groupedFields['berkas_portofolio'] ?? collect())->where('is_active', true)->values(),
+        'informasi_tambahan' => ($groupedFields['informasi_tambahan'] ?? collect())->where('is_active', true)->values(),
+    ];
+@endphp
 const INITIAL_PREVIEW_DATA = {
+    grouped_fields: @json($previewGroupedFields),
     main_fields: @json($previewMainFields),
     extra_fields: @json($previewExtraFields),
     divisions: @json($previewDivisions),
@@ -732,10 +855,34 @@ function buildPreviewHtml(data) {
     const labelCls = 'block mb-1 text-xs font-medium text-gray-700';
     const reqStar  = '<span class="text-red-500">*</span>';
 
+    const grouped = data.grouped_fields || {
+        data_diri_edukasi: (data.main_fields || []).filter(f => ['fullname','student_id','birth_place','born_date','gender','religion','institution_name','faculty','study_program','current_city','email','phone_number','current_status'].includes(f.field_key)),
+        pilihan_durasi: (data.main_fields || []).filter(f => ['internship_interest','start_date','end_date','planned_duration','internship_type','wfo_readiness','schedule_shift_readiness','internship_arrangement','has_laptop','owned_tools','internship_reason','design_software','video_software','programming_languages','digital_marketing_type'].includes(f.field_key)),
+        berkas_portofolio: (data.main_fields || []).filter(f => ['cv','identity','portfolio','cover_letter','proposal','supporting_document','profile_photo','cv_ktp_portofolio_pdf'].includes(f.field_key) || f.field_type === 'file'),
+        informasi_tambahan: data.extra_fields || [],
+    };
+
+    const gDataDiri = grouped.data_diri_edukasi || [];
+    const gPilihan  = grouped.pilihan_durasi || [];
+    const gBerkas   = grouped.berkas_portofolio || [];
+    const gInfo     = grouped.informasi_tambahan || [];
+
     let html = `
         <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang (${escHtml(data.year || CURRENT_YEAR)})</h3>
-        <p class="text-xs text-gray-500 mb-4">Lengkapi data berikut untuk mendaftar program magang</p>
-        <div class="space-y-3">`;
+        <p class="text-xs text-gray-500 mb-3">Lengkapi data berikut untuk mendaftar program magang</p>
+
+        {{-- Stepper Progress Bar (5 Steps) --}}
+        <div class="mb-4 rounded-lg border border-gray-150 bg-gray-50/80 p-2 text-[10px]">
+            <div class="grid grid-cols-5 gap-1 text-center font-semibold text-gray-600">
+                <div class="flex items-center gap-1 justify-center text-emerald-800"><span class="h-4 w-4 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[9px] font-bold">1</span><span class="truncate">Data Diri</span></div>
+                <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">2</span><span class="truncate">Pilihan</span></div>
+                <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">3</span><span class="truncate">Berkas</span></div>
+                <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">4</span><span class="truncate">Info</span></div>
+                <div class="flex items-center gap-1 justify-center"><span class="h-4 w-4 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[9px] font-bold">5</span><span class="truncate">Submit</span></div>
+            </div>
+        </div>
+
+        <div class="space-y-4">`;
 
     function renderField(f) {
         const req = f.is_required ? reqStar : '';
@@ -797,18 +944,58 @@ function buildPreviewHtml(data) {
         </div>`;
     }
 
-    const mainFields  = data.main_fields  || [];
-    const extraFields = data.extra_fields || [];
-
-    html += renderFieldGroup(mainFields, renderField);
-
-    if (extraFields.length > 0) {
-        html += `<div class="border-t border-gray-100 pt-3">
-            <h4 class="text-xs font-semibold text-gray-700 mb-3">Informasi Tambahan</h4>
-            <div class="space-y-3">`;
-        html += renderFieldGroup(extraFields, renderField);
-        html += `</div></div>`;
+    if (gDataDiri.length > 0) {
+        html += `<div class="border-b border-gray-100 pb-3">
+            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">1</span>
+                Data Diri & Edukasi
+            </h4>
+            <div class="space-y-2.5">${renderFieldGroup(gDataDiri, renderField)}</div>
+        </div>`;
     }
+
+    if (gPilihan.length > 0) {
+        html += `<div class="border-b border-gray-100 pb-3">
+            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">2</span>
+                Pilihan & Durasi
+            </h4>
+            <div class="space-y-2.5">${renderFieldGroup(gPilihan, renderField)}</div>
+        </div>`;
+    }
+
+    if (gBerkas.length > 0) {
+        html += `<div class="border-b border-gray-100 pb-3">
+            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">3</span>
+                Berkas & Portofolio
+            </h4>
+            <div class="space-y-2.5">${renderFieldGroup(gBerkas, renderField)}</div>
+        </div>`;
+    }
+
+    if (gInfo.length > 0) {
+        html += `<div class="border-b border-gray-100 pb-3">
+            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">4</span>
+                Informasi Tambahan
+            </h4>
+            <div class="space-y-2.5">${renderFieldGroup(gInfo, renderField)}</div>
+        </div>`;
+    }
+
+    html += `<div class="pt-1">
+        <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">5</span>
+            Finalisasi & Submit
+        </h4>
+        <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 mb-2">
+            Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
+        </div>
+        <button disabled class="w-full py-2 bg-emerald-700 text-white rounded text-xs font-semibold opacity-80 cursor-not-allowed">
+            Kirim Pendaftaran (Preview)
+        </button>
+    </div>`;
 
     html += `</div>`;
     return html;
@@ -864,17 +1051,19 @@ if (initialContainer && typeof INITIAL_PREVIEW_DATA !== 'undefined') {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    const bindSortables = () => {
+        ['data_diri_edukasi', 'pilihan_durasi', 'berkas_portofolio', 'informasi_tambahan', 'main', 'extra'].forEach(grp => {
+            initSortable('field-list-' + grp, grp);
+        });
+    };
+
     if (typeof Sortable === 'undefined') {
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js';
-        s.onload = function () {
-            initSortable('field-list-main', 'main');
-            initSortable('field-list-extra', 'informasi_tambahan');
-        };
+        s.onload = bindSortables;
         document.head.appendChild(s);
     } else {
-        initSortable('field-list-main', 'main');
-        initSortable('field-list-extra', 'informasi_tambahan');
+        bindSortables();
     }
 });
 </script>

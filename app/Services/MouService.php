@@ -91,6 +91,28 @@ class MouService
             $pageConfig       = $template->getPageConfig();
             $mediaAssets      = $template->getMediaAssets();
 
+            $institutionLogoPath = !empty($data['institution_logo_path'])
+                ? $data['institution_logo_path']
+                : ($institution->logo_url ?? ($mediaAssets['institution_logo'] ?? '/images/mou/institution-logo-placeholder.png'));
+
+            $companyLogoPath = !empty($data['company_logo_path'])
+                ? $data['company_logo_path']
+                : ($mediaAssets['company_logo'] ?? '/images/mou/seven-inc-logo.png');
+
+            if (!empty($data['brand_id'])) {
+                $brand = \App\Models\Brand::find($data['brand_id']);
+                if ($brand && $brand->logo_url) {
+                    $companyLogoPath = $brand->logo_url;
+                }
+            }
+
+            $mediaAssets['company_logo'] = $companyLogoPath;
+            $mediaAssets['institution_logo'] = $institutionLogoPath;
+            $pageConfig['company_logo'] = $companyLogoPath;
+            $pageConfig['company_logo_path'] = $companyLogoPath;
+            $pageConfig['institution_logo'] = $institutionLogoPath;
+            $pageConfig['institution_logo_path'] = $institutionLogoPath;
+
             $firstPartyName        = $data['first_party_institution_name'] ?? $institution->name;
             $firstPartySignatory   = $data['first_party_signatory_name'] ?? ($institution->contacts->first()?->name ?? '-');
             $firstPartyTitle       = $data['first_party_signatory_title'] ?? ($institution->contacts->first()?->position_title ?? 'Pimpinan Institusi');
@@ -129,6 +151,8 @@ class MouService
             // Kumpulkan snapshot payload lengkap (termasuk _page_config & _media_assets) agar historis 100% mandiri
             $snapshotData = [
                 'institution_name'                => $firstPartyName,
+                'institution_logo'                => $institutionLogoPath,
+                'institution_logo_path'           => $institutionLogoPath,
                 'institution_mou_number'          => $data['institution_mou_number'] ?? '-',
                 'institution_address'             => $firstPartyAddress,
                 'institution_correspondence_unit' => $firstPartyUnit,
@@ -138,6 +162,9 @@ class MouService
                 'institution_signatory_name'      => $firstPartySignatory,
                 'institution_signatory_title'     => $firstPartyTitle,
                 'company_name'                    => $secondPartyName,
+                'company_logo'                    => $companyLogoPath,
+                'company_logo_path'               => $companyLogoPath,
+                'brand_id'                        => !empty($data['brand_id']) ? (int) $data['brand_id'] : null,
                 'company_mou_number'              => $companyMouNumber,
                 'company_address'                 => $secondPartyAddress,
                 'company_correspondence_unit'     => $secondPartyUnit,
@@ -189,6 +216,7 @@ class MouService
                 'institution_id'                  => $institution->id,
                 'followup_cycle_id'               => $data['followup_cycle_id'] ?? null,
                 'mou_template_id'                 => $template->id,
+                'brand_id'                        => !empty($data['brand_id']) ? (int) $data['brand_id'] : null,
                 'company_mou_number'              => $companyMouNumber,
                 'institution_mou_number'          => $data['institution_mou_number'] ?? null,
                 'first_party_institution_name'    => $firstPartyName,

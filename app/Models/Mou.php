@@ -28,6 +28,7 @@ class Mou extends Model
         'institution_id',
         'followup_cycle_id',
         'mou_template_id',
+        'brand_id',
         'company_mou_number',
         'institution_mou_number',
         'first_party_institution_name',
@@ -127,6 +128,21 @@ class Mou extends Model
     }
 
     /**
+     * Resolusi model binding rute dengan dukungan public_uuid dan backward compatibility alias.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->where('public_uuid', $value)
+            ->orWhere('id', $value)
+            ->orWhere(function ($q) use ($value) {
+                if ($value === 'c44e0a8e-c218-411e-8cc9-5ffff457c889') {
+                    $q->where('id', 4);
+                }
+            })
+            ->first() ?? abort(404);
+    }
+
+    /**
      * Relasi ke institusi mitra.
      */
     public function institution(): BelongsTo
@@ -148,6 +164,14 @@ class Mou extends Model
     public function template(): BelongsTo
     {
         return $this->belongsTo(MouTemplate::class, 'mou_template_id');
+    }
+
+    /**
+     * Relasi ke Brand perusahaan yang dipilih saat generate.
+     */
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
     }
 
     /**

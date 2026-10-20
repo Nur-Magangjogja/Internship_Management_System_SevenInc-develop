@@ -54,17 +54,22 @@
             ? max($topMm, round($headerDistanceMm + $effectiveHeaderMm + 4.0, 2))
             : $topMm;
 
-        // Ruang khusus footer (Kotak Paraf / Footer Kustom & Nomor Halaman) yang otomatis membesar jika tabel Paraf diperbesar
-        $reservedBottomMm = ($showParaf || $showPageNumber || $footerHtml !== '' || $firstPageFooterHtml !== '')
-            ? max(44.0, $bottomMm + 18.0, round($bottomMm + $effectiveFooterMm + 4.0, 2))
-            : $bottomMm;
-
         $footerBoxHeightMm = max(14.5, $effectiveFooterMm);
         $footerBottomOffsetMm = round($footerBoxHeightMm + 1.0, 2);
         $headerBoxHeightMm = max(12.0, $effectiveHeaderMm);
         $headerTopOffsetMm = round($headerBoxHeightMm + 2.0, 2);
+
+        // Ruang khusus footer (Kotak Paraf / Footer Kustom & Nomor Halaman) yang otomatis membesar jika tabel Paraf diperbesar
+        $reservedBottomMm = ($showParaf || $showPageNumber || $footerHtml !== '' || $firstPageFooterHtml !== '')
+            ? max(44.0, $bottomMm + 18.0, round($bottomMm + $effectiveFooterMm + 4.0, 2))
+            : $bottomMm;
         $paperSize = strtolower((string) ($pageConfig['paper_size'] ?? 'a4'));
         $orientation = strtolower((string) ($pageConfig['orientation'] ?? 'portrait'));
+
+        $paperWidthMm = $paperSize === 'legal' ? 215.9 : ($paperSize === 'letter' ? 215.9 : 210.0);
+        $contentWidthPt = ($paperWidthMm - $leftMm - $rightMm) * 2.83465;
+        $logoSizePt = 58.0;
+        $logoRightLeftPt = round($contentWidthPt - $logoSizePt, 2);
     @endphp
     <style>
         @page {
@@ -135,6 +140,28 @@
         .mou-pdf-paraf-space {
             height: 16pt;
         }
+        .mou-pdf-first-page-logos {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: {{ $logoSizePt }}pt;
+        }
+        .mou-pdf-logo-left {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: {{ $logoSizePt }}pt;
+            height: {{ $logoSizePt }}pt;
+        }
+        .mou-pdf-logo-right {
+            position: absolute;
+            top: 0;
+            left: {{ $logoRightLeftPt }}pt;
+            width: {{ $logoSizePt }}pt;
+            height: {{ $logoSizePt }}pt;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -178,7 +205,13 @@
         </div>
     @endif
 
-    <main class="mou-doc-canvas">
+    <main class="mou-doc-canvas" style="position: relative;">
+        @if(($showHeaderLogos ?? true) && !empty($institutionLogoBase64) && !empty($companyLogoBase64))
+            <div class="mou-pdf-first-page-logos">
+                <img src="{{ $institutionLogoBase64 }}" width="{{ $logoSizePt }}" height="{{ $logoSizePt }}" class="mou-pdf-logo-left" alt="Logo Institusi" />
+                <img src="{{ $companyLogoBase64 }}" width="{{ $logoSizePt }}" height="{{ $logoSizePt }}" class="mou-pdf-logo-right" alt="Logo Seven Inc" />
+            </div>
+        @endif
         {!! $renderedHtml !!}
     </main>
 </body>
