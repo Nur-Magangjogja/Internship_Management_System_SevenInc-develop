@@ -165,6 +165,15 @@ Route::get('/internship/table', fn () => redirect()->route('admin.interns.index'
 // Dokumen Kelulusan (SKL & LOA)
 // ========================
 
+Route::middleware(['auth'])->prefix('admin/generated-documents')->name('admin.generated-documents.')->group(function () {
+    Route::get('/{uuid}/download', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'download'])->name('download');
+    Route::get('/{uuid}/preview', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'preview'])->name('preview');
+    Route::get('/{uuid}/status', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'status'])->name('status');
+    Route::post('/{uuid}/retry-sync', [\App\Http\Controllers\Admin\GeneratedDocumentController::class, 'retrySync'])
+        ->middleware('role:admin,hr_staff')
+        ->name('retry-sync');
+});
+
 Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin.')->group(function () {
     // Halaman daftar SKL dan LOA
     Route::get('/documents/loas', [DocumentController::class, 'listLoas'])->name('documents.loas');
@@ -173,10 +182,20 @@ Route::middleware(['auth', 'role:admin,hr_staff'])->prefix('admin')->name('admin
     // Serve file LOA/SKL dari storage (bypass symlink issue di XAMPP)
     Route::get('/documents/serve/{type}/{filename}', function (string $type, string $filename) {
         // Validasi type
-        if (!in_array($type, ['loa', 'skl', 'tmp', 'rekomendasi'])) abort(404);
+        if (!in_array($type, ['loa', 'skl', 'tmp', 'rekomendasi', 'certificate', 'assessment', 'mou'])) abort(404);
 
         // Sanitize filename — hanya huruf, angka, dash, underscore, titik
         if (!preg_match('/^[A-Za-z0-9_\-\.]+\.pdf$/', $filename)) abort(404);
+
+        // Cari via GeneratedDocument di database jika ada
+        $genDoc = \App\Models\GeneratedDocument::where('file_name', $filename)->first();
+        if ($genDoc && \Illuminate\Support\Facades\Storage::disk('local')->exists($genDoc->file_path)) {
+            $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($genDoc->file_path);
+            return response()->file($fullPath, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            ]);
+        }
 
         // Cari file: coba di private storage dulu, lalu tmp, lalu legacy public disk
         $candidates = [
@@ -355,7 +374,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::put('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'update'])->name('institution-contacts.update');
     Route::post('institution-contacts/{contact}/toggle-status', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'toggleStatus'])->name('institution-contacts.toggle-status');
     Route::post('institution-contacts/{contact}/verify', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'verify'])->name('institution-contacts.verify');
-    Route::delete('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'destroy'])->name('institution-contacts.destroy');
+    Route::delete('institution-contacts/{contact}', [\App\Http\Controllers\Admin\InstitutionContactController::class, 'destroy'])
+        ->middleware('role:admin')
+        ->name('institution-contacts.destroy');
 
     // Review Kontak Pembimbing -> admin.contact-review.*
     Route::get('/contact-review', [\App\Http\Controllers\Admin\ContactReviewController::class, 'index'])->name('contact-review.index');
@@ -377,6 +398,24 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     // Log Aktivitas Terpusat -> admin.activity-logs.*
     Route::get('/activity-logs', [\App\Http\Controllers\Admin\ActivityLogController::class, 'index'])->name('activity-logs.index');
     Route::get('/activity-logs/{activityLog}', [\App\Http\Controllers\Admin\ActivityLogController::class, 'show'])->name('activity-logs.show');
+
+    // Pengaturan Penyimpanan Cloud Google Drive -> admin.cloud-storage.*
+    Route::prefix('cloud-storage')->name('cloud-storage.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'index'])->name('index');
+        Route::put('/', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'update'])->name('update');
+        Route::post('/test', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'test'])->name('test');
+    });
+
+    // Perpustakaan Aset Sistem (Manajemen Admin) -> admin.system-assets.*
+    Route::prefix('system-assets')->name('system-assets.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SystemAssetController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\Admin\SystemAssetController::class, 'store'])->name('store');
+        Route::post('/{systemAsset}/replace-version', [\App\Http\Controllers\Admin\SystemAssetController::class, 'replaceVersion'])->name('replace-version');
+        Route::post('/{systemAsset}/toggle-active', [\App\Http\Controllers\Admin\SystemAssetController::class, 'toggleActive'])->name('toggle-active');
+        Route::post('/{systemAsset}/set-default', [\App\Http\Controllers\Admin\SystemAssetController::class, 'setDefault'])->name('set-default');
+        Route::post('/{systemAsset}/sync-drive', [\App\Http\Controllers\Admin\SystemAssetController::class, 'syncDrive'])->name('sync-drive');
+        Route::delete('/{systemAsset}', [\App\Http\Controllers\Admin\SystemAssetController::class, 'destroy'])->name('destroy');
+    });
 
     // Integrasi Google Spreadsheet -> admin.spreadsheet-connections.*
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
@@ -444,6 +483,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
 /* =================== OPERATIONAL ROUTES (Admin & HR Staff) =================== */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff', 'prevent-back'])->group(function () {
+
+    // Preview & API Kontrak Aset Sistem (Admin & HR Staff untuk Editor Dokumen & MoU)
+    Route::prefix('system-assets')->name('system-assets.')->group(function () {
+        Route::get('/{systemAsset}/preview', [\App\Http\Controllers\Admin\SystemAssetController::class, 'preview'])->name('preview');
+        Route::prefix('api')->name('api.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'index'])->name('index');
+            Route::get('/resolve', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'resolve'])->name('resolve');
+            Route::get('/{idOrUuid}', [\App\Http\Controllers\Admin\Api\AssetApiController::class, 'show'])->name('show');
+        });
+    });
 
     // API: ambil pemagang selesai berdasarkan brand (HARUS sebelum resource agar tidak bentrok dengan {certificate})
     Route::get('/certificate/interns-by-brand', [CertificateController::class, 'getInternsByBrand'])->name('certificate.interns-by-brand');
