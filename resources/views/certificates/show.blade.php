@@ -51,8 +51,33 @@
   <style>
     @page { size: A4 landscape; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    html, body { width: 297mm; height: 210mm; overflow: hidden; font-family: Arial, sans-serif; background: #fff; }
-    .page { position: relative; width: 297mm; height: 210mm; overflow: hidden; background: #ffffff; }
+    @media screen {
+      html, body {
+        width: 100%;
+        min-height: 100vh;
+        overflow-x: auto;
+        font-family: Arial, sans-serif;
+        background: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 12px;
+      }
+      .page {
+        position: relative;
+        width: 297mm;
+        height: 210mm;
+        overflow: hidden;
+        background: #ffffff;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+        border-radius: 6px;
+        flex-shrink: 0;
+      }
+    }
+    @media print {
+      html, body { width: 297mm; height: 210mm; overflow: hidden; background: #fff; margin: 0; padding: 0; }
+      .page { position: relative; width: 297mm; height: 210mm; overflow: hidden; background: #ffffff; }
+    }
     .overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.72); z-index: 1; }
     .content { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12mm 25mm; text-align: center; z-index: 2; }
     .logo-wrap { margin-bottom: 5mm; } .logo-wrap img { max-height: 18mm; max-width: 50mm; object-fit: contain; }
@@ -147,7 +172,6 @@
 
   <style>
     @page { size: 1123px 794px; margin: 0; }
-    html, body { height: 100%; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     :root {
       --page-w: 1123px; --page-h: 794px; --text: #000; --dark: #293936;
@@ -155,8 +179,33 @@
       --script1: "Edwardian Script ITC", "Segoe Script", "Brush Script MT", cursive, serif;
       --script2: "Segoe Script", "Brush Script MT", cursive, serif;
     }
-    body { margin: 0; display: flex; align-items: center; justify-content: center; background: #f0f0f0; }
-    .page { position: relative; width: var(--page-w); height: var(--page-h); overflow: hidden; background: url('{{ $bgUrl }}') center/cover no-repeat; }
+    @media screen {
+      html, body {
+        width: 100%;
+        min-height: 100vh;
+        margin: 0;
+        padding: 24px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        overflow-x: auto;
+      }
+      .page {
+        position: relative;
+        width: var(--page-w);
+        height: var(--page-h);
+        overflow: hidden;
+        background: url('{{ $bgUrl }}') center/cover no-repeat;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+        border-radius: 6px;
+        flex-shrink: 0;
+      }
+    }
+    @media print {
+      html, body { height: 100%; margin: 0; padding: 0; background: #fff; }
+      .page { position: relative; width: var(--page-w); height: var(--page-h); overflow: hidden; background: url('{{ $bgUrl }}') center/cover no-repeat; }
+    }
     .content { position: absolute; inset: 0; padding: 60px 72px; display: grid; grid-template-rows: auto auto 1fr auto; }
     .logos { position: relative; width: 100%; height: 120px; }
     .logo-left { position: absolute; top: -20px; left: 2%; height: 100%; display: flex; align-items: center; }
@@ -223,5 +272,23 @@
   </div>
 
 @endif
+
+<script>
+  function autoScaleCert() {
+    const page = document.querySelector('.page');
+    if (!page) return;
+    const certW = 1123;
+    const availW = window.innerWidth - 32;
+    if (availW < certW) {
+      const scale = Math.max(0.35, availW / certW);
+      page.style.transform = `scale(${scale})`;
+      page.style.transformOrigin = 'center center';
+    } else {
+      page.style.transform = 'none';
+    }
+  }
+  window.addEventListener('resize', autoScaleCert);
+  window.addEventListener('DOMContentLoaded', autoScaleCert);
+</script>
 </body>
 </html>

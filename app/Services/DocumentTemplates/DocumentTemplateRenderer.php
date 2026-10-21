@@ -56,20 +56,20 @@ class DocumentTemplateRenderer
     /**
      * Render HTML lengkap untuk dokumen surat A4 (LOA, SKL, Penilaian, Rekomendasi).
      */
-    public static function renderLetterHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
+    public static function renderLetterHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false, bool $isForPdf = false): string
     {
         $rawContent = $template->content_html ?? '';
         $resolvedHtml = MailMergePlaceholderContract::resolve($rawContent, $data, $isLiveIssuance);
         $sanitizedHtml = static::sanitizeHtml($resolvedHtml);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig($template->type), $template->page_config ?? []);
 
-        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name);
+        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name, $isForPdf);
     }
 
     /**
      * Render HTML lengkap untuk sertifikat berbasis Canvas Layout.
      */
-    public static function renderCertificateHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
+    public static function renderCertificateHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false, bool $isForPdf = false): string
     {
         $layout = array_merge(DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? []);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig('certificate'), $template->page_config ?? []);
@@ -80,7 +80,7 @@ class DocumentTemplateRenderer
         $bgColor = $layout['canvas']['background_color'] ?? '#ffffff';
         $orientation = strtolower((string) ($pageConfig['orientation'] ?? 'landscape'));
 
-        return static::wrapCertificateDocumentHtml($renderedElementsHtml, $bgImage, $bgColor, $orientation, $template->name);
+        return static::wrapCertificateDocumentHtml($renderedElementsHtml, $bgImage, $bgColor, $orientation, $template->name, $isForPdf);
     }
 
     /**
@@ -89,11 +89,11 @@ class DocumentTemplateRenderer
     public static function renderPdfBinary(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
     {
         if ($template->type === 'certificate' || $template->editor_type === 'visual_canvas') {
-            $html = static::renderCertificateHtml($template, $data, $isLiveIssuance);
+            $html = static::renderCertificateHtml($template, $data, $isLiveIssuance, isForPdf: true);
             $paperSize = 'a4';
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'landscape'));
         } else {
-            $html = static::renderLetterHtml($template, $data, $isLiveIssuance);
+            $html = static::renderLetterHtml($template, $data, $isLiveIssuance, isForPdf: true);
             $paperSize = strtolower((string) ($template->page_config['paper_size'] ?? 'a4'));
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'portrait'));
         }
@@ -165,11 +165,20 @@ class DocumentTemplateRenderer
                     $src = $m[1];
                 }
                 $src = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
-                $w = isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : (isset($elem['width_percent']) ? "{$elem['width_percent']}%" : '120px');
-                $h = isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : (isset($elem['height_percent']) ? "{$elem['height_percent']}%" : 'auto');
+                
+                // Prioritaskan width_percent hasil kustomisasi visual studio, fallback ke width_px, lalu default 16.5% (~140px)
+                $w = (isset($elem['width_percent']) && is_numeric($elem['width_percent']))
+                    ? "{$elem['width_percent']}%" 
+                    : (isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : '16.5%');
+                    
+                $h = (isset($elem['height_percent']) && is_numeric($elem['height_percent']))
+                    ? "{$elem['height_percent']}%" 
+                    : (isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : 'auto');
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle}\">\n";
-                $out .= "<img src=\"{$src}\" style=\"width: {$w}; height: {$h}; max-width: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle} box-sizing: border-box;\">\n";
+                $out .= "<table style=\"width: 100%; height: 100%; border-collapse: collapse; margin: 0; padding: 0; border: none;\"><tr><td style=\"vertical-align: middle; text-align: {$align}; padding: 0; margin: 0; border: none;\">\n";
+                $out .= "<img src=\"{$src}\" style=\"max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: inline-block; vertical-align: middle; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                $out .= "</td></tr></table>\n";
                 $out .= "</div>\n";
             } elseif ($type === 'shape') {
                 $bgColor = htmlspecialchars($elem['bg_color'] ?? '#f1f5f9', ENT_QUOTES, 'UTF-8');
@@ -216,9 +225,9 @@ class DocumentTemplateRenderer
                 if ($roleText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 11pt;\">{$roleText}</p>\n";
                 $out .= "<div style=\"height: 70px; margin: 6px auto; position: relative; width: 220px;\">\n";
                 if ($sigImg) $out .= "<img src=\"{$sigImg}\" style=\"height: 60px; width: auto; position: relative; z-index: 10; display: block; margin: 0 auto;\" alt=\"Tanda Tangan\" />\n";
-                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: 65px; width: auto; position: absolute; left: 15px; top: -5px; opacity: 0.85; z-index: 20;\" alt=\"Stempel\" />\n";
+                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: 125px; width: 125px; position: absolute; left: 15px; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;\" alt=\"Stempel\" />\n";
                 $out .= "</div>\n";
-                if ($nameText) $out .= "<p style=\"margin: 0; font-size: 12pt; font-weight: bold; text-decoration: underline;\">{$nameText}</p>\n";
+                if ($nameText) $out .= "<p style=\"margin: 0; font-size: 12pt; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;\">{$nameText}</p>\n";
                 $out .= "</div>\n";
             }
         }
@@ -229,7 +238,7 @@ class DocumentTemplateRenderer
     /**
      * Wrapper HTML untuk Dokumen Surat A4.
      */
-    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen'): string
+    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen', bool $isForPdf = false): string
     {
         $mTop = (float) ($pageConfig['margin_top_mm'] ?? 20.0);
         $mBtm = (float) ($pageConfig['margin_bottom_mm'] ?? 20.0);
@@ -246,14 +255,40 @@ class DocumentTemplateRenderer
 
         $headerBlock = '';
         if ($headerHtml !== '') {
-            $headerBlock = '<div class="letter-running-header" style="position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;">' . $headerHtml . '</div>';
+            $headerBlock = '<div class="letter-running-header" style="position: ' . ($isForPdf ? 'fixed' : 'relative') . '; top: ' . ($isForPdf ? '-' . max(2, $mTop - 2) . 'mm' : '0') . '; left: 0; right: 0; overflow: hidden; margin-bottom: 4mm;">' . $headerHtml . '</div>';
         }
         $footerBlock = '';
         if ($footerHtml !== '') {
-            $footerBlock = '<div class="letter-running-footer" style="position: fixed; bottom: -' . max(2, $mBtm - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mBtm - 4) . 'mm; overflow: hidden;">' . $footerHtml . '</div>';
+            $footerBlock = '<div class="letter-running-footer" style="position: ' . ($isForPdf ? 'fixed' : 'relative') . '; bottom: ' . ($isForPdf ? '-' . max(2, $mBtm - 2) . 'mm' : '0') . '; left: 0; right: 0; overflow: hidden; margin-top: 6mm;">' . $footerHtml . '</div>';
         }
 
-        return <<<HTML
+        // Watermark support (Logo perusahaan tepat di tengah kertas, tidak menggeser teks)
+        $showWatermark = (bool) ($pageConfig['show_watermark'] ?? true);
+        $watermarkBlock = '';
+        if ($showWatermark) {
+            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
+            $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
+            $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
+            $posStyle = $isForPdf 
+                ? 'position: fixed; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: -1000; pointer-events: none;'
+                : 'position: absolute; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: 1; pointer-events: none;';
+            $watermarkBlock = '<div class="letter-watermark-center" style="' . $posStyle . '"><img src="' . htmlspecialchars($compLogoBase64, ENT_QUOTES, 'UTF-8') . '" style="width: 300px; height: auto; opacity: ' . $wmOpacity . '; margin: 0 auto; display: inline-block;" alt="Watermark"/></div>';
+        }
+
+        // Header single logo (1 logo perusahaan di kiri saja untuk LOA/surat resmi)
+        $showHeaderLogos = (bool) ($pageConfig['show_header_logos'] ?? false);
+        $headerLogoBlock = '';
+        if ($showHeaderLogos && empty($headerHtml)) {
+            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
+            $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
+            $posLogoStyle = $isForPdf
+                ? 'position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;'
+                : 'position: relative; left: 0; margin-bottom: 4mm;';
+            $headerLogoBlock = '<div class="letter-fixed-header-logo" style="' . $posLogoStyle . '"><img src="' . htmlspecialchars($compLogoBase64, ENT_QUOTES, 'UTF-8') . '" style="height: 65px; width: auto;" alt="Logo Perusahaan"/></div>';
+        }
+
+        if ($isForPdf) {
+            return <<<HTML
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -284,6 +319,7 @@ class DocumentTemplateRenderer
         }
         table {
             border-collapse: collapse;
+            width: 100%;
         }
         .page-break {
             page-break-after: always;
@@ -295,44 +331,135 @@ class DocumentTemplateRenderer
             margin-top: 0 !important;
             margin-bottom: 6pt !important;
         }
-        ol {
-            list-style-type: decimal !important;
+        ol { list-style-type: decimal !important; }
+        ol[type="a"] { list-style-type: lower-alpha !important; }
+        ol[type="A"] { list-style-type: upper-alpha !important; }
+        ol[type="i"] { list-style-type: lower-roman !important; }
+        ol[type="I"] { list-style-type: upper-roman !important; }
+        ul { list-style-type: disc !important; }
+        ul ul { list-style-type: circle !important; }
+        ul ul ul { list-style-type: square !important; }
+        li { display: list-item !important; margin-bottom: 2pt !important; }
+        li > p { display: inline !important; margin-bottom: 0 !important; }
+    </style>
+</head>
+<body>
+    {$watermarkBlock}
+    {$headerBlock}
+    {$headerLogoBlock}
+    {$bodyHtml}
+    {$footerBlock}
+</body>
+</html>
+HTML;
         }
-        ol[type="a"] {
-            list-style-type: lower-alpha !important;
+
+        // Screen Preview Layout with Authentically Sized & Padded A4 Paper Sheet
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>{$title}</title>
+    <style>
+        @page {
+            size: {$pSize} {$orient};
+            margin: {$mTop}mm {$mRgt}mm {$mBtm}mm {$mLft}mm;
         }
-        ol[type="A"] {
-            list-style-type: upper-alpha !important;
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
-        ol[type="i"] {
-            list-style-type: lower-roman !important;
+        html {
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 24px 12px;
+            min-height: 100%;
         }
-        ol[type="I"] {
-            list-style-type: upper-roman !important;
+        body {
+            margin: 0 auto;
+            padding: 0;
+            font-family: '{$fontFamily}', Times, serif;
+            font-size: {$fontSize}pt;
+            line-height: {$lineHeight};
+            color: #000000;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        ul {
-            list-style-type: disc !important;
+        .letter-paper-sheet {
+            width: 210mm;
+            min-height: 297mm;
+            max-width: 100%;
+            background-color: #ffffff;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15), 0 2px 6px rgba(15, 23, 42, 0.08);
+            border: 1px solid #cbd5e1;
+            padding: {$mTop}mm {$mRgt}mm {$mBtm}mm {$mLft}mm;
+            box-sizing: border-box;
+            position: relative;
+            word-wrap: break-word;
         }
-        ul ul {
-            list-style-type: circle !important;
+        .letter-body-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
         }
-        ul ul ul {
-            list-style-type: square !important;
+        img {
+            max-width: 100%;
+            height: auto;
         }
-        li {
-            display: list-item !important;
-            margin-bottom: 2pt !important;
+        table {
+            border-collapse: collapse;
+            width: 100%;
         }
-        li > p {
-            display: inline !important;
-            margin-bottom: 0 !important;
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
+        ol, ul {
+            padding-left: 24pt !important;
+            margin-top: 0 !important;
+            margin-bottom: 6pt !important;
+        }
+        ol { list-style-type: decimal !important; }
+        ul { list-style-type: disc !important; }
+        li { display: list-item !important; margin-bottom: 2pt !important; }
+        li > p { display: inline !important; margin-bottom: 0 !important; }
+        @media print {
+            html {
+                background: #ffffff !important;
+                padding: 0 !important;
+            }
+            body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                display: block !important;
+            }
+            .letter-paper-sheet {
+                width: 100% !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
         }
     </style>
 </head>
 <body>
-    {$headerBlock}
-    {$bodyHtml}
-    {$footerBlock}
+    <div class="letter-paper-sheet">
+        {$watermarkBlock}
+        {$headerBlock}
+        {$headerLogoBlock}
+        <div class="letter-body-content">
+            {$bodyHtml}
+        </div>
+        {$footerBlock}
+    </div>
 </body>
 </html>
 HTML;
@@ -346,12 +473,14 @@ HTML;
         string $bgImage,
         string $bgColor,
         string $orientation = 'landscape',
-        string $title = 'Sertifikat'
+        string $title = 'Sertifikat',
+        bool $isForPdf = false
     ): string {
         $widthMm = $orientation === 'landscape' ? 297.0 : 210.0;
         $heightMm = $orientation === 'landscape' ? 210.0 : 297.0;
 
-        return <<<HTML
+        if ($isForPdf) {
+            return <<<HTML
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -395,6 +524,81 @@ HTML;
 </body>
 </html>
 HTML;
+        }
+
+        // Screen Preview Layout with Fully-Scaled Visual Canvas
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>{$title}</title>
+    <style>
+        @page {
+            size: a4 {$orientation};
+            margin: 0;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        html {
+            background-color: #0f172a;
+            margin: 0;
+            padding: 24px 12px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: auto;
+        }
+        body {
+            margin: auto;
+            padding: 0;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .cert-canvas-container {
+            position: relative;
+            width: {$widthMm}mm;
+            height: {$heightMm}mm;
+            min-width: {$widthMm}mm;
+            min-height: {$heightMm}mm;
+            background-color: {$bgColor};
+            background-image: url('{$bgImage}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        @media print {
+            html, body {
+                background: #ffffff !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+            }
+            .cert-canvas-container {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="cert-canvas-container">
+        {$canvasElementsHtml}
+    </div>
+</body>
+</html>
+HTML;
     }
 
     /**
@@ -427,6 +631,26 @@ HTML;
         if (!$root instanceof DOMElement) return '';
 
         static::sanitizeDomNode($root);
+
+        // Auto-balance 2-column kop surat table so middle text is centered on the whole page
+        $tables = $xpath->query('.//table', $root);
+        foreach ($tables as $tbl) {
+            $rows = $xpath->query('.//tr', $tbl);
+            if ($rows->length === 1) {
+                $cells = $xpath->query('.//td', $rows->item(0));
+                if ($cells->length === 2) {
+                    $img = $xpath->query('.//img', $cells->item(0));
+                    if ($img->length > 0) {
+                        $w1 = $cells->item(0)->getAttribute('style');
+                        preg_match('/width\s*:\s*([^;]+)/i', $w1, $wm);
+                        $widthStyle = !empty($wm[1]) ? trim($wm[1]) : '110px';
+                        $thirdCell = $dom->createElement('td');
+                        $thirdCell->setAttribute('style', "width: {$widthStyle}; vertical-align: middle;");
+                        $rows->item(0)->appendChild($thirdCell);
+                    }
+                }
+            }
+        }
 
         $out = '';
         foreach ($root->childNodes as $child) {

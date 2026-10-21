@@ -622,6 +622,11 @@ class WordImageView {
         this.dom.setAttribute('data-tiptap-image-wrapper', 'true');
 
         this.img = document.createElement('img');
+        this.img.onerror = () => {
+            if (this.img.src && !this.img.src.startsWith('data:image/svg+xml')) {
+                this.img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60"><rect width="100%" height="100%" fill="%23f8fafc" stroke="%23cbd5e1" stroke-dasharray="4 2"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="10" fill="%2394a3b8">Asset Preview</text></svg>';
+            }
+        };
         this.dom.appendChild(this.img);
 
         this.overlay = document.createElement('div');
@@ -657,36 +662,68 @@ class WordImageView {
         this.img.className = attrs.class || 'mou-logo-img';
 
         const styles = ['object-fit: contain', 'display: block'];
-        let wPx = 110;
+        let wPx = 120;
+        let rawW = '120px';
         if (attrs.width) {
-            const rawW = /^\d+$/.test(String(attrs.width)) ? `${attrs.width}px` : attrs.width;
+            rawW = /^\d+$/.test(String(attrs.width)) ? `${attrs.width}px` : attrs.width;
             styles.push(`width: ${rawW}`);
-            wPx = parseInt(rawW, 10) || 110;
+            wPx = parseInt(rawW, 10) || 120;
         } else {
-            styles.push('width: 110px');
+            styles.push('width: 120px');
         }
+
+        let rawH = 'auto';
         if (attrs.height && attrs.height !== 'auto') {
-            const rawH = /^\d+$/.test(String(attrs.height)) ? `${attrs.height}px` : attrs.height;
+            rawH = /^\d+$/.test(String(attrs.height)) ? `${attrs.height}px` : attrs.height;
             styles.push(`height: ${rawH}`);
         } else {
             styles.push('height: auto');
         }
 
-        if (attrs.align === 'center') {
+        if (attrs.position === 'absolute') {
+            this.dom.style.setProperty('position', 'absolute', 'important');
+            this.dom.style.left = attrs.left || '12%';
+            this.dom.style.top = attrs.top || '-10px';
+            if (attrs.right) this.dom.style.right = attrs.right;
+            if (attrs.bottom) this.dom.style.bottom = attrs.bottom;
+            this.dom.style.zIndex = attrs.zIndex || '20';
+            this.dom.style.width = rawW || '125px';
+            this.dom.style.height = (rawH && rawH !== 'auto') ? rawH : (rawW || '125px');
             this.dom.style.display = 'block';
-            this.dom.style.marginLeft = 'auto';
-            this.dom.style.marginRight = 'auto';
-            this.dom.style.textAlign = 'center';
-        } else if (attrs.align === 'right') {
-            this.dom.style.display = 'block';
-            this.dom.style.marginLeft = 'auto';
-            this.dom.style.marginRight = '0';
-            this.dom.style.textAlign = 'right';
+            this.dom.style.lineHeight = '0';
+            this.dom.classList.add('is-stamp-seal');
+            if (attrs.pointerEvents) {
+                this.dom.style.pointerEvents = attrs.pointerEvents;
+            }
+            if (attrs.opacity) {
+                this.dom.style.opacity = attrs.opacity;
+            }
+            styles.length = 0;
+            styles.push('object-fit: contain', 'display: block', 'width: 100%', 'height: 100%');
         } else {
-            this.dom.style.display = 'inline-block';
-            this.dom.style.marginLeft = '0';
-            this.dom.style.marginRight = 'auto';
-            this.dom.style.textAlign = 'left';
+            this.dom.classList.remove('is-stamp-seal');
+            this.dom.style.position = attrs.position || '';
+            if (attrs.zIndex) this.dom.style.zIndex = attrs.zIndex;
+            if (attrs.pointerEvents) this.dom.style.pointerEvents = attrs.pointerEvents;
+            if (attrs.opacity) {
+                this.dom.style.opacity = attrs.opacity;
+            }
+            if (attrs.align === 'center') {
+                this.dom.style.display = 'block';
+                this.dom.style.marginLeft = 'auto';
+                this.dom.style.marginRight = 'auto';
+                this.dom.style.textAlign = 'center';
+            } else if (attrs.align === 'right') {
+                this.dom.style.display = 'block';
+                this.dom.style.marginLeft = 'auto';
+                this.dom.style.marginRight = '0';
+                this.dom.style.textAlign = 'right';
+            } else {
+                this.dom.style.display = 'inline-block';
+                this.dom.style.marginLeft = '0';
+                this.dom.style.marginRight = 'auto';
+                this.dom.style.textAlign = 'left';
+            }
         }
 
         this.img.style.cssText = styles.join('; ');
@@ -870,6 +907,38 @@ const WordImage = Image.extend({
                 default: null,
                 parseHTML: el => el.getAttribute('data-token') || null,
             },
+            position: {
+                default: null,
+                parseHTML: el => el.style.position || extractStyleProperty(el.getAttribute('style'), 'position') || null,
+            },
+            left: {
+                default: null,
+                parseHTML: el => el.style.left || extractStyleProperty(el.getAttribute('style'), 'left') || null,
+            },
+            top: {
+                default: null,
+                parseHTML: el => el.style.top || extractStyleProperty(el.getAttribute('style'), 'top') || null,
+            },
+            right: {
+                default: null,
+                parseHTML: el => el.style.right || extractStyleProperty(el.getAttribute('style'), 'right') || null,
+            },
+            bottom: {
+                default: null,
+                parseHTML: el => el.style.bottom || extractStyleProperty(el.getAttribute('style'), 'bottom') || null,
+            },
+            opacity: {
+                default: null,
+                parseHTML: el => el.style.opacity || extractStyleProperty(el.getAttribute('style'), 'opacity') || null,
+            },
+            zIndex: {
+                default: null,
+                parseHTML: el => el.style.zIndex || extractStyleProperty(el.getAttribute('style'), 'z-index') || null,
+            },
+            pointerEvents: {
+                default: null,
+                parseHTML: el => el.style.pointerEvents || extractStyleProperty(el.getAttribute('style'), 'pointer-events') || null,
+            },
         };
     },
     addNodeView() {
@@ -906,17 +975,28 @@ const WordImage = Image.extend({
             styles.push('height: auto');
         }
 
-        if (node.attrs.align === 'center') {
-            attrs['data-align'] = 'center';
-            styles.push('display: block', 'margin-left: auto', 'margin-right: auto');
-        } else if (node.attrs.align === 'right') {
-            attrs['data-align'] = 'right';
-            styles.push('display: block', 'margin-left: auto', 'margin-right: 0');
-        } else if (node.attrs.align === 'left') {
-            attrs['data-align'] = 'left';
-            styles.push('display: inline-block');
-        } else {
-            styles.push('display: inline-block');
+        if (node.attrs.position) styles.push(`position: ${node.attrs.position}`);
+        if (node.attrs.left) styles.push(`left: ${node.attrs.left}`);
+        if (node.attrs.top) styles.push(`top: ${node.attrs.top}`);
+        if (node.attrs.right) styles.push(`right: ${node.attrs.right}`);
+        if (node.attrs.bottom) styles.push(`bottom: ${node.attrs.bottom}`);
+        if (node.attrs.opacity) styles.push(`opacity: ${node.attrs.opacity}`);
+        if (node.attrs.zIndex) styles.push(`z-index: ${node.attrs.zIndex}`);
+        if (node.attrs.pointerEvents) styles.push(`pointer-events: ${node.attrs.pointerEvents}`);
+
+        if (node.attrs.position !== 'absolute') {
+            if (node.attrs.align === 'center') {
+                attrs['data-align'] = 'center';
+                styles.push('display: block', 'margin-left: auto', 'margin-right: auto');
+            } else if (node.attrs.align === 'right') {
+                attrs['data-align'] = 'right';
+                styles.push('display: block', 'margin-left: auto', 'margin-right: 0');
+            } else if (node.attrs.align === 'left') {
+                attrs['data-align'] = 'left';
+                styles.push('display: inline-block');
+            } else {
+                styles.push('display: inline-block');
+            }
         }
 
         attrs.style = buildStyleString(styles);
@@ -1039,6 +1119,88 @@ const WordTextBox = Node.create({
 });
 
 /**
+ * Signature & Stamp Overlapping Block (<div class="signature-block" data-signature-block="true" style="...">)
+ * Provides the relative positioning container for wet-ink seal stamps overlapping signatures and signer names.
+ */
+const WordSignatureBlock = Node.create({
+    name: 'signatureBlock',
+    group: 'block',
+    content: 'inline*',
+    defining: true,
+    isolating: true,
+
+    addAttributes() {
+        return {
+            style: {
+                default: 'height: 75px; margin: 8px 0; position: relative;',
+                parseHTML: el => el.getAttribute('style') || 'height: 75px; margin: 8px 0; position: relative;',
+            },
+        };
+    },
+
+    parseHTML() {
+        return [
+            {
+                tag: 'div',
+                getAttrs: (el) => {
+                    if (
+                        el.hasAttribute('data-mou-page') || 
+                        el.classList.contains('mou-a4-page-node') || 
+                        el.classList.contains('mou-a4-paper-sheet') || 
+                        el.classList.contains('mou-document') ||
+                        !el.closest('table')
+                    ) {
+                        return false;
+                    }
+                    const isSigBlock = el.classList.contains('signature-block') || el.hasAttribute('data-signature-block');
+                    if (isSigBlock) {
+                        return { style: el.getAttribute('style') || 'height: 75px; margin: 8px 0; position: relative;' };
+                    }
+                    const style = el.getAttribute('style') || '';
+                    const isRelative = style.includes('position: relative') || style.includes('position:relative');
+                    if (isRelative) {
+                        const directImgs = Array.from(el.querySelectorAll(':scope > img, :scope > span > img'));
+                        const hasDirectStamp = directImgs.some(img => /stamp/i.test(img.getAttribute('src') || '') || /stempel|stamp/i.test(img.getAttribute('alt') || ''));
+                        const hasDirectSig = directImgs.some(img => /signature/i.test(img.getAttribute('src') || '') || /tanda.?tangan|signature/i.test(img.getAttribute('alt') || ''));
+                        if (hasDirectStamp || hasDirectSig) {
+                            return { style: el.getAttribute('style') || 'height: 75px; margin: 8px 0; position: relative;' };
+                        }
+                    }
+                    return false;
+                },
+            },
+            {
+                tag: 'div[data-signature-block="true"]',
+                getAttrs: el => {
+                    if (el.hasAttribute('data-mou-page') || el.classList.contains('mou-a4-page-node')) return false;
+                    return { style: el.getAttribute('style') || 'height: 75px; margin: 8px 0; position: relative;' };
+                },
+            },
+            {
+                tag: 'div.signature-block',
+                getAttrs: el => {
+                    if (el.hasAttribute('data-mou-page') || el.classList.contains('mou-a4-page-node')) return false;
+                    return { style: el.getAttribute('style') || 'height: 75px; margin: 8px 0; position: relative;' };
+                },
+            },
+        ];
+    },
+
+    renderHTML({ node, HTMLAttributes }) {
+        const style = node.attrs.style || 'height: 75px; margin: 8px 0; position: relative;';
+        return [
+            'div',
+            mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+                style,
+                class: 'signature-block',
+                'data-signature-block': 'true',
+            }),
+            0,
+        ];
+    },
+});
+
+/**
  * Normalize legacy V1/V2 HTML (such as .mou-pasal wrappers) into clean free-form HTML
  * before feeding into Tiptap so all historical templates open cleanly.
  */
@@ -1079,6 +1241,88 @@ function normalizeLegacyHtmlForTiptap(rawHtml) {
                 tr.style.height = rHeight;
             }
         });
+    });
+
+    // Auto-balance 2-column kop surat table (logo kiri + teks tengah) by adding matching 3rd empty column
+    // so the middle column text (company name, address) is geometrically and visually perfectly centered on the A4 sheet.
+    root.querySelectorAll('table').forEach(table => {
+        const rows = Array.from(table.querySelectorAll('tr'));
+        if (rows.length === 1) {
+            const cells = Array.from(rows[0].children);
+            if (cells.length === 2 && cells[0].querySelector('img')) {
+                const w1 = cells[0].style.width || cells[0].getAttribute('width') || '110px';
+                cells[0].style.width = w1;
+                cells[0].style.textAlign = 'left';
+                const thirdCell = doc.createElement('td');
+                thirdCell.style.width = w1;
+                thirdCell.style.verticalAlign = 'middle';
+                thirdCell.innerHTML = '<p></p>';
+                rows[0].appendChild(thirdCell);
+            }
+        }
+    });
+
+    // Convert any paragraph inside a table cell containing both signature and stamp into a .signature-block div
+    root.querySelectorAll('td p, th p').forEach(p => {
+        const directImgs = Array.from(p.querySelectorAll(':scope > img, :scope > span > img'));
+        const hasStamp = directImgs.some(img => /stamp/i.test(img.getAttribute('src') || '') || /stempel|stamp/i.test(img.getAttribute('alt') || ''));
+        const hasSig = directImgs.some(img => /signature/i.test(img.getAttribute('src') || '') || /tanda.?tangan|signature/i.test(img.getAttribute('alt') || ''));
+        if (hasStamp && hasSig) {
+            const sigDiv = doc.createElement('div');
+            sigDiv.className = 'signature-block';
+            sigDiv.setAttribute('data-signature-block', 'true');
+            sigDiv.setAttribute('style', 'height: 75px; margin: 8px 0; position: relative;');
+            while (p.firstChild) {
+                sigDiv.appendChild(p.firstChild);
+            }
+            p.parentNode.replaceChild(sigDiv, p);
+        }
+    });
+
+    // Ensure signature container divs inside table cells have standard class and relative positioning
+    root.querySelectorAll('td div, th div').forEach(div => {
+        const style = div.getAttribute('style') || '';
+        const isRelative = style.includes('position: relative') || style.includes('position:relative');
+        const directImgs = Array.from(div.querySelectorAll(':scope > img, :scope > span > img'));
+        const hasStamp = directImgs.some(img => /stamp/i.test(img.getAttribute('src') || '') || /stempel|stamp/i.test(img.getAttribute('alt') || ''));
+        const hasSig = directImgs.some(img => /signature/i.test(img.getAttribute('src') || '') || /tanda.?tangan|signature/i.test(img.getAttribute('alt') || ''));
+        if (div.classList.contains('signature-block') || (isRelative && (hasStamp || hasSig))) {
+            div.classList.add('signature-block');
+            div.setAttribute('data-signature-block', 'true');
+            div.setAttribute('style', 'height: 75px; margin: 8px 0; position: relative;');
+        }
+    });
+
+    // Substitute asset placeholder URLs for img elements so they render natively in Tiptap
+    root.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src') || '';
+        const alt = img.getAttribute('alt') || '';
+        if (/\{\{\s*asset\.(?:brand|company)\.logo\s*\}\}|\[\s*(?:asset\.(?:brand|company)\.logo|company_logo)\s*\]|\{\{\s*company_logo\s*\}\}/i.test(src)) {
+            img.setAttribute('src', '/images/mou/seven-inc-logo.png');
+            if (!img.style.width && !img.getAttribute('width')) {
+                img.style.width = '95px';
+            }
+        } else if (/\{\{\s*asset\.(?:brand\.)?tanda_tangan\s*\}\}|\[\s*signature\s*\]|\{\{\s*asset\.signature\s*\}\}/i.test(src) || /tanda.?tangan/i.test(alt)) {
+            img.setAttribute('src', '/images/mou/signature-sample.png');
+            if (!img.style.height && !img.getAttribute('height')) {
+                img.style.height = '65px';
+            }
+            if (!img.style.width && !img.getAttribute('width')) {
+                img.style.width = 'auto';
+            }
+            img.style.position = 'relative';
+            img.style.zIndex = '10';
+        } else if (/\{\{\s*asset\.(?:brand\.)?stempel\s*\}\}|\[\s*stamp\s*\]|\{\{\s*asset\.stamp\s*\}\}/i.test(src) || /stempel|stamp/i.test(alt)) {
+            img.setAttribute('src', '/images/mou/stamp-sample.png');
+            img.style.position = 'absolute';
+            img.style.left = '12%';
+            img.style.top = '-10px';
+            img.style.width = '125px';
+            img.style.height = '125px';
+            img.style.opacity = '0.78';
+            img.style.zIndex = '20';
+            img.style.pointerEvents = 'none';
+        }
     });
 
     const res = root.innerHTML.trim();
@@ -1290,6 +1534,7 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
         WordTableHeader,
         WordPageBreak,
         WordTextBox,
+        WordSignatureBlock,
         Placeholder.configure({
             placeholder: placeholderText,
         }),
@@ -1305,6 +1550,46 @@ const WordDocument = Node.create({
     topNode: true,
     content: 'mouPage+',
 });
+
+/**
+ * Renders the watermark and fixed header logo HTML layer for a page.
+ * - For MOU: renders institution logo (left) and company logo (right)
+ * - For LOA and official letters: renders ONLY 1 company logo on the left
+ * - Center watermark (company logo) is rendered if showWatermark is true
+ */
+function renderWatermarkLayerHtml(state, isFirstPage) {
+    if (!state) return '';
+    const isMou = (state.documentType === 'mou');
+    const showHeaderLogos = state.showHeaderLogos !== false;
+    const showWatermark = state.showWatermark !== undefined ? Boolean(state.showWatermark) : true;
+    let watermarkHtml = '';
+
+    // Watermark Tengah: tepat di tengah lembar kertas, tidak menggeser teks naskah
+    if (showWatermark) {
+        const wmUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+        const wmOpacity = state.watermarkOpacity ?? 0.05;
+        watermarkHtml += `
+            <div class="mou-watermark-center-wrapper">
+                <img src="${wmUrl}" class="mou-watermark-center" style="opacity: ${wmOpacity};" alt="Watermark" />
+            </div>
+        `;
+    }
+
+    // Logo Tetap Header: HANYA untuk MOU (institusi di kiri, brand di kanan)
+    if (isMou && isFirstPage && showHeaderLogos) {
+        const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+        const topHeaderMm = Math.max(10, state.marginTopMm - 10);
+        const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+        watermarkHtml += `
+            <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
+                <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
+                <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
+            </div>
+        `;
+    }
+
+    return watermarkHtml;
+}
 
 /**
  * Custom PageNode View representing a single physical A4 paper sheet in Print Layout mode.
@@ -1411,28 +1696,7 @@ class MouPageView {
             this.dom.insertBefore(this.watermarkEl, this.dom.firstChild);
         }
 
-        const showHeaderLogos = state.showHeaderLogos !== false;
-        const showWatermark = !!state.showWatermark;
-        let watermarkHtml = '';
-
-        if (showWatermark) {
-            const wmUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
-            watermarkHtml += `<img src="${wmUrl}" class="mou-watermark-center" alt="Watermark" />`;
-        }
-
-        if (isFirstPage && showHeaderLogos) {
-            const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
-            const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
-            const topHeaderMm = Math.max(10, state.marginTopMm - 10);
-            watermarkHtml += `
-                <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
-                    <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
-                    <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
-                </div>
-            `;
-        }
-
-        this.watermarkEl.innerHTML = watermarkHtml;
+        this.watermarkEl.innerHTML = renderWatermarkLayerHtml(state, isFirstPage);
 
         const headerHtml = (state.differentFirstPage && isFirstPage)
             ? (state.firstPageHeaderHtmlStore || '')
@@ -1616,6 +1880,7 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         WordTableHeader,
         WordPageBreak,
         WordTextBox,
+        WordSignatureBlock,
         Placeholder.configure({
             placeholder: placeholderText,
         }),
@@ -1646,17 +1911,22 @@ export function initMouWordProcessor(config) {
 
     if (!bodyMountEl) return null;
 
+    const docTypeStr = String(config.documentType || 'mou').toLowerCase();
+    const isMouDocument = (docTypeStr === 'mou');
     const resolvedCompanyLogo = mediaAssets.company_logo || mediaAssets.company_logo_url || '/images/mou/seven-inc-logo.png';
-    const resolvedInstitutionLogo = mediaAssets.institution_logo || mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+    const resolvedInstitutionLogo = isMouDocument
+        ? (mediaAssets.institution_logo || mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png')
+        : '';
 
     const state = {
+        documentType: docTypeStr,
         activeZone: 'body', // 'body' | 'header' | 'footer'
         editingFirstPageVariant: false,
         differentFirstPage: Boolean(pageConfig.different_first_page),
         showParafBox: pageConfig.show_paraf_box !== undefined ? Boolean(pageConfig.show_paraf_box) : true,
         showPageNumber: pageConfig.show_page_number !== undefined ? Boolean(pageConfig.show_page_number) : true,
-        showHeaderLogos: pageConfig.show_header_logos !== undefined ? Boolean(pageConfig.show_header_logos) : true,
-        showWatermark: pageConfig.show_watermark !== undefined ? Boolean(pageConfig.show_watermark) : false,
+        showHeaderLogos: isMouDocument ? (pageConfig.show_header_logos !== undefined ? Boolean(pageConfig.show_header_logos) : true) : false,
+        showWatermark: pageConfig.show_watermark !== undefined ? Boolean(pageConfig.show_watermark) : true,
         watermarkOpacity: parseFloat(pageConfig.watermark_opacity ?? 0.05),
         paperSize: (pageConfig.paper_size || 'A4').toUpperCase(),
         orientation: (pageConfig.orientation || 'portrait').toLowerCase(),
@@ -2714,6 +2984,15 @@ export function initMouWordProcessor(config) {
     }
 
     /**
+     * Reflow visual page breaks and layout guides across sheets.
+     */
+    function updateVisualPageBreakGuides() {
+        if (typeof scheduleReflow === 'function') {
+            scheduleReflow(false);
+        }
+    }
+
+    /**
      * Synchronize all editors and page configuration to hidden form inputs.
      */
     let syncFrame = null;
@@ -2762,7 +3041,10 @@ export function initMouWordProcessor(config) {
         };
 
         const compLogo = state.mediaAssets.company_logo || state.mediaAssets.company_logo_url || '/images/mou/seven-inc-logo.png';
-        const instLogo = state.mediaAssets.institution_logo || state.mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+        const isMouDoc = (state.documentType === 'mou');
+        const instLogo = isMouDoc
+            ? (state.mediaAssets.institution_logo || state.mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png')
+            : '';
 
         setInputVal('inputTemplateHtml', bodyHtml);
         setInputVal('inputContentHtml', bodyHtml);
@@ -2786,9 +3068,11 @@ export function initMouWordProcessor(config) {
         setInputVal('inputFontFamily', state.fontFamily);
         setInputVal('inputFontSizePt', String(state.fontSizePt));
         setInputVal('inputLineHeight', String(state.lineHeight));
-        setInputVal('inputInstitutionLogo', instLogo);
+        if (isMouDoc) {
+            setInputVal('inputInstitutionLogo', instLogo);
+            setInputVal('inputInstitutionLogoUrl', instLogo);
+        }
         setInputVal('inputCompanyLogo', compLogo);
-        setInputVal('inputInstitutionLogoUrl', instLogo);
         setInputVal('inputCompanyLogoUrl', compLogo);
         setInputVal('inputShowHeaderLogos', state.showHeaderLogos ? '1' : '0');
         setInputVal('inputShowWatermark', state.showWatermark ? '1' : '0');
@@ -2899,28 +3183,7 @@ export function initMouWordProcessor(config) {
                 pageDom.insertBefore(watermarkEl, pageDom.firstChild);
             }
 
-            const showHeaderLogos = state.showHeaderLogos !== false;
-            const showWatermark = !!state.showWatermark;
-            let watermarkHtml = '';
-
-            if (showWatermark) {
-                const wmUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
-                watermarkHtml += `<img src="${wmUrl}" class="mou-watermark-center" alt="Watermark" />`;
-            }
-
-            if (isFirstPage && showHeaderLogos) {
-                const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
-                const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
-                const topHeaderMm = Math.max(10, state.marginTopMm - 10);
-                watermarkHtml += `
-                    <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
-                        <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
-                        <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
-                    </div>
-                `;
-            }
-
-            watermarkEl.innerHTML = watermarkHtml;
+            watermarkEl.innerHTML = renderWatermarkLayerHtml(state, isFirstPage);
 
             const headerHtml = (state.differentFirstPage && isFirstPage)
                 ? (state.firstPageHeaderHtmlStore || '')
@@ -3477,8 +3740,9 @@ export function initMouWordProcessor(config) {
             return (el && el.value && el.value.trim() !== '') ? el.value.trim() : fallback;
         };
 
+        const isMou = (state.documentType || 'mou') === 'mou';
         const compLogo = state.mediaAssets.company_logo || state.mediaAssets.company_logo_url || '/images/mou/seven-inc-logo.png';
-        const instLogo = state.mediaAssets.institution_logo || state.mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+        const instLogo = isMou ? (state.mediaAssets.institution_logo || state.mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png') : '';
 
         const map = {
             company_name: getField('company_name', 'SEVEN INC'),
@@ -3492,15 +3756,15 @@ export function initMouWordProcessor(config) {
             agreement_place: getField('agreement_place', 'Yogyakarta'),
             agreement_duration: getField('agreement_duration', '5 (lima) tahun'),
             company_mou_number: '004/SPK.MAGANG/CEO/SEVEN/V/' + new Date().getFullYear(),
-            institution_name: 'UNIVERSITAS CONTOH INDONESIA',
-            institution_mou_number: '045/UNIV-CI/MOU/XI/' + new Date().getFullYear(),
-            institution_signatory_name: 'Dr. Rido Kurnianto, M.Ag.',
-            institution_signatory_title: 'Rektor',
-            institution_address: 'Jl. Budi Utomo No.10, Ronowijayan, Kec. Ponorogo, Kabupaten Ponorogo, Jawa Timur 63471',
-            institution_correspondence_unit: 'Kepala Bidang Kerjasama Dalam Negeri',
-            institution_phone: '0352-481124',
-            institution_fax: '461796',
-            institution_email: 'kerjasama@univ-contoh.ac.id',
+            institution_name: isMou ? 'UNIVERSITAS CONTOH INDONESIA' : '',
+            institution_mou_number: isMou ? ('045/UNIV-CI/MOU/XI/' + new Date().getFullYear()) : '',
+            institution_signatory_name: isMou ? 'Dr. Rido Kurnianto, M.Ag.' : '',
+            institution_signatory_title: isMou ? 'Rektor' : '',
+            institution_address: isMou ? 'Jl. Budi Utomo No.10, Ronowijayan, Kec. Ponorogo, Kabupaten Ponorogo, Jawa Timur 63471' : '',
+            institution_correspondence_unit: isMou ? 'Kepala Bidang Kerjasama Dalam Negeri' : '',
+            institution_phone: isMou ? '0352-481124' : '',
+            institution_fax: isMou ? '461796' : '',
+            institution_email: isMou ? 'kerjasama@univ-contoh.ac.id' : '',
             agreement_day: 'Sabtu',
             agreement_date: '24 Mei ' + new Date().getFullYear(),
             agreement_date_short: '24-05-' + new Date().getFullYear(),
@@ -3511,13 +3775,26 @@ export function initMouWordProcessor(config) {
 
         let out = rawHtml;
         // Replace logo placeholders first
-        const compLogoImg = `<img src="${compLogo}" alt="Logo Seven Inc" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`;
-        const instLogoImg = instLogo && instLogo !== 'none'
-            ? `<img src="${instLogo}" alt="Logo Institusi" class="mou-logo-img" style="width: 88px; height: auto; display: block; margin: 0 auto;" />`
+        const compLogoImg = `<img src="${compLogo}" alt="Logo Perusahaan" class="mou-logo-img" style="width: 95px; height: auto; display: block; margin: 0 auto;" />`;
+        const instLogoImg = (isMou && instLogo && instLogo !== 'none')
+            ? `<img src="${instLogo}" alt="Logo Institusi" class="mou-logo-img" style="width: 95px; height: auto; display: block; margin: 0 auto;" />`
             : '';
 
+        out = out.replace(/(src=["'])\{\{\s*asset\.(?:brand|company)\.logo\s*\}\}(["'])/gi, `$1${compLogo}$2`);
+        out = out.replace(/(src=["'])\{\{\s*(?:company_logo|brand_logo)\s*\}\}(["'])/gi, `$1${compLogo}$2`);
+        out = out.replace(/(src=["'])\[(?:company_logo|brand_logo)\](["'])/gi, `$1${compLogo}$2`);
         out = out.replace(/\[company_logo\]|\{\{\s*company_logo\s*\}\}/g, compLogoImg);
+        out = out.replace(/\[asset\.(?:brand|company)\.logo\]|\{\{\s*asset\.(?:brand|company)\.logo\s*\}\}/g, compLogoImg);
+
+        out = out.replace(/(src=["'])\{\{\s*asset\.(?:institusi|institution)\.logo\s*\}\}(["'])/gi, isMou ? `$1${instLogo}$2` : '');
         out = out.replace(/\[institution_logo\]|\{\{\s*institution_logo\s*\}\}/g, instLogoImg);
+        out = out.replace(/\[asset\.(?:institusi|institution)\.logo\]|\{\{\s*asset\.(?:institusi|institution)\.logo\s*\}\}/g, instLogoImg);
+
+        const sigSrc = state.mediaAssets?.signature || state.mediaAssets?.tanda_tangan || '/images/mou/signature-sample.png';
+        const stampSrc = state.mediaAssets?.stamp || state.mediaAssets?.stempel || '/images/mou/stamp-sample.png';
+
+        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature)\s*\}\}(["'])/gi, `$1${sigSrc}$2`);
+        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp)\s*\}\}(["'])/gi, `$1${stampSrc}$2`);
 
         Object.entries(map).forEach(([key, val]) => {
             const safeVal = String(val)
@@ -3613,6 +3890,15 @@ export function initMouWordProcessor(config) {
                 sheet.style.fontFamily = `'${state.fontFamily}', Times, serif`;
                 sheet.style.fontSize = `${state.fontSizePt}pt`;
                 sheet.style.lineHeight = String(state.lineHeight);
+
+                // Watermark & Fixed Header Logo Layer
+                const watermarkHtml = renderWatermarkLayerHtml(state, pageIndex === 1);
+                if (watermarkHtml) {
+                    const watermarkEl = document.createElement('div');
+                    watermarkEl.className = 'mou-page-watermark-layer';
+                    watermarkEl.innerHTML = watermarkHtml;
+                    sheet.appendChild(watermarkEl);
+                }
 
                 // Header
                 const useFirstPage = state.differentFirstPage && pageIndex === 1;
@@ -3769,7 +4055,9 @@ export function initMouWordProcessor(config) {
 
             if (tplData.media_assets) {
                 const cLogo = tplData.media_assets.company_logo || tplData.media_assets.company_logo_url || '/images/mou/seven-inc-logo.png';
-                const iLogo = tplData.media_assets.institution_logo || tplData.media_assets.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+                const iLogo = (state.documentType === 'mou')
+                    ? (tplData.media_assets.institution_logo || tplData.media_assets.institution_logo_url || '/images/mou/institution-logo-placeholder.png')
+                    : '';
                 state.mediaAssets.company_logo = cLogo;
                 state.mediaAssets.company_logo_url = cLogo;
                 state.mediaAssets.institution_logo = iLogo;
@@ -4113,10 +4401,12 @@ export function initMouWordProcessor(config) {
             let width = '110px';
             if (asset.category === 'letterhead') {
                 width = '100%';
-            } else if (asset.category === 'signature' || asset.category === 'stamp') {
+            } else if (asset.category === 'signature') {
                 width = '120px';
+            } else if (asset.category === 'stamp') {
+                width = '125px';
             } else if (asset.category === 'logo') {
-                width = '100px';
+                width = '110px';
             }
 
             ed.chain().focus().setImage({

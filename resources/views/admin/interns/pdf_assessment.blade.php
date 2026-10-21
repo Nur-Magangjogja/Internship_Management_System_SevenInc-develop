@@ -20,6 +20,34 @@
       background-color: #ffffff;
     }
 
+    @if(!isset($isDomPdf) && !isset($autoPrint))
+    @media screen {
+      html {
+        background-color: #f1f5f9;
+        padding: 24px 12px;
+      }
+      body {
+        max-width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto !important;
+        padding: 15mm 20mm !important;
+        box-sizing: border-box !important;
+        background: #ffffff;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+      }
+    }
+    @media print {
+      body {
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+    }
+    @endif
+
     .wrap {
       width: 100%;
       margin: 0 auto;

@@ -89,7 +89,16 @@ class DivisionController extends Controller
     public function destroy(Division $division)
     {
         $name = $division->name;
-        $division->delete();
+        try {
+            $division->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            $msg = "Divisi \"{$name}\" tidak dapat dihapus karena masih digunakan pada data pendaftaran pemagang. Anda dapat menonaktifkannya agar tidak muncul di form dan landing page.";
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return redirect()->route('admin.form-settings.divisions')
+                ->with('error', $msg);
+        }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json(['ok' => true, 'message' => "Divisi \"{$name}\" dihapus."]);

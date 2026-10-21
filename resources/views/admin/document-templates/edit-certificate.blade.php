@@ -195,6 +195,15 @@
                         <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 19v-4a2 2 0 0 0-2-2h-4"/><path d="M4 19v-4a2 2 0 0 1 2-2h4"/><line x1="12" y1="15" x2="12" y2="3"/><polyline points="8 7 12 3 16 7"/></svg>
                         <span>Tanda Tangan</span>
                     </button>
+                    <button
+                        type="button"
+                        @click="activeDrawerTab = 'canvas'"
+                        class="inline-flex items-center gap-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 font-semibold transition"
+                        title="Buka Pilihan Background Kertas & Desain"
+                    >
+                        <svg class="h-3.5 w-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span>Ganti Background</span>
+                    </button>
                 </div>
 
                 <!-- Layer Quick Actions for Selected Element -->
@@ -247,16 +256,18 @@
                     <div
                         id="certificate-viewport"
                         class="relative bg-white shadow-2xl select-none overflow-hidden"
+                        style="width: 840px; height: 594px; background-color: #ffffff;"
                         :style="canvasStyle()"
                         @click.self="selectedElementId = null"
                     >
                         <!-- Background Image Layer -->
-                        <template x-if="layout.canvas.background_image">
+                        <template x-if="layout && layout.canvas && layout.canvas.background_image">
                             <img
-                                :src="layout.canvas.background_image"
+                                :src="resolveImage(layout.canvas.background_image)"
                                 alt="Background Sertifikat"
                                 class="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                :style="`opacity: ${layout.canvas.background_opacity || 1.0};`"
+                                :style="`opacity: ${layout.canvas.background_opacity ?? 1.0};`"
+                                x-on:error="$event.target.style.display = 'none'"
                             />
                         </template>
 
@@ -286,9 +297,10 @@
                                     <div class="w-full h-full flex items-center justify-center pointer-events-none">
                                         <img
                                             :src="resolveImage(elem.src)"
-                                            class="max-w-full max-h-full object-contain"
+                                            class="max-w-full max-h-full w-auto h-auto object-contain pointer-events-none"
                                             :style="`opacity: ${elem.opacity ?? 1.0};`"
                                             alt="Gambar Sertifikat"
+                                            x-on:error="$event.target.style.display = 'none'"
                                         />
                                     </div>
                                 </template>
@@ -346,16 +358,16 @@
                                         <div class="text-[11px] text-slate-500 mt-0.5" x-html="resolveText(elem.role_text)"></div>
                                         
                                         <!-- Sig & Stamp Stack -->
-                                        <div class="relative inline-block my-1.5 h-14 w-40">
+                                        <div class="relative inline-block my-1.5 h-16 w-44">
                                             <template x-if="elem.sig_image">
-                                                <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" />
+                                                <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" x-on:error="$event.target.style.display = 'none'" />
                                             </template>
                                             <template x-if="elem.stamp_image">
-                                                <img :src="resolveImage(elem.stamp_image)" class="absolute -right-2 -top-2 h-14 w-14 object-contain opacity-85 z-20" />
+                                                <img :src="resolveImage(elem.stamp_image)" class="absolute -left-2 -top-2 h-24 w-24 object-contain opacity-80 z-20 pointer-events-none" x-on:error="$event.target.style.display = 'none'" />
                                             </template>
                                         </div>
 
-                                        <div class="text-[12px] font-bold text-slate-800 underline" x-html="resolveText(elem.name_text)"></div>
+                                        <div class="text-[12px] font-bold text-slate-800 underline relative z-10" x-html="resolveText(elem.name_text)"></div>
                                     </div>
                                 </template>
 
@@ -875,9 +887,16 @@
                 </div>
 
                 <!-- Tab 3: Paper Setup & Canvas Background -->
-                <div x-show="activeDrawerTab === 'canvas'" class="p-4 space-y-4">
-                    <div class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Orientasi Kertas & Latar Belakang</div>
+                <div x-show="activeDrawerTab === 'canvas'" class="p-4 space-y-4 max-h-[750px] overflow-y-auto">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Kertas & Latar Belakang</span>
+                        <a href="{{ route('admin.system-assets.index') }}" target="_blank" class="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                            <span>Perpustakaan Drive</span>
+                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                        </a>
+                    </div>
 
+                    <!-- Orientasi Kertas -->
                     <div>
                         <label class="block text-[11px] font-semibold text-slate-600 mb-1">Orientasi Kertas Cetak</label>
                         <select x-model="layout.canvas.orientation" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
@@ -886,20 +905,135 @@
                         </select>
                     </div>
 
+                    <!-- Pilihan Background Gallery (Drive & Sistem Assets) -->
                     <div>
-                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Gambar Background</label>
-                        <div class="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                            @foreach ($assetCatalog['backgrounds'] ?? [] as $bg)
-                                <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
-                                    <input type="radio" name="bg_select" :checked="layout.canvas.background_image === '{{ $bg['url'] }}'" @change="layout.canvas.background_image = '{{ $bg['url'] }}'; pushHistory()" />
-                                    <img src="{{ $bg['thumb'] }}" class="h-8 w-12 object-cover rounded border" />
-                                    <span class="text-xs text-slate-700 truncate">{{ $bg['name'] }}</span>
-                                </label>
-                            @endforeach
-                            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
-                                <input type="radio" name="bg_select" :checked="!layout.canvas.background_image" @change="layout.canvas.background_image = ''; pushHistory()" />
-                                <span class="text-xs text-slate-500">Tanpa Gambar Background (Latar Polos)</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-[11px] font-semibold text-slate-700 uppercase">Pilih Gambar Background</label>
+                            <span class="text-[10px] text-slate-400" x-text="`${backgroundCatalog.length} Aset Tersedia`"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mb-2.5">Klik thumbnail untuk langsung mengganti latar belakang sertifikat di kanvas.</p>
+
+                        <!-- Grid Cards -->
+                        <div class="grid grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-1 p-0.5">
+                            <template x-for="(bg, idx) in backgroundCatalog" :key="bg.id || idx">
+                                <div
+                                    @click="selectBackground(bg.url)"
+                                    class="relative rounded-lg border-2 p-1.5 cursor-pointer transition flex flex-col justify-between group"
+                                    :class="isSelectedBg(bg.url) ? 'border-blue-600 ring-2 ring-blue-100 bg-blue-50/30' : 'border-slate-200 hover:border-blue-300 bg-white'"
+                                >
+                                    <div class="relative w-full h-16 rounded overflow-hidden bg-slate-100 border border-slate-200 mb-1">
+                                        <img :src="bg.thumb || bg.url" :alt="bg.name" class="w-full h-full object-cover" x-on:error="$event.target.src='/images/certificate/certificate-bg.png'" />
+                                        
+                                        <!-- Active Checkmark Indicator -->
+                                        <template x-if="isSelectedBg(bg.url)">
+                                            <div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                                <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                            </div>
+                                        </template>
+
+                                        <!-- Source Badge -->
+                                        <template x-if="bg.is_drive">
+                                            <span class="absolute top-1 right-1 inline-flex items-center gap-0.5 rounded bg-emerald-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+                                                Drive
+                                            </span>
+                                        </template>
+                                        <template x-if="!bg.is_drive && bg.is_real">
+                                            <span class="absolute top-1 right-1 rounded bg-indigo-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                Sistem
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="text-[10px] font-semibold text-slate-800 truncate" :title="bg.name" x-text="bg.name"></div>
+                                    <div class="text-[9px] text-slate-400 mt-0.5" x-text="bg.source || 'Bawaan'"></div>
+                                </div>
+                            </template>
+
+                            <!-- Option: Tanpa Background (Polos) -->
+                            <div
+                                @click="selectBackground('')"
+                                class="relative rounded-lg border-2 p-2 cursor-pointer transition flex flex-col justify-center items-center text-center group"
+                                :class="!layout?.canvas?.background_image ? 'border-blue-600 ring-2 ring-blue-100 bg-blue-50/30' : 'border-dashed border-slate-300 hover:border-blue-300 bg-white'"
+                            >
+                                <template x-if="!layout?.canvas?.background_image">
+                                    <div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                        <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </div>
+                                </template>
+                                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                                </div>
+                                <span class="text-[10px] font-bold text-slate-700">Latar Polos</span>
+                                <span class="text-[8px] text-slate-400">Tanpa Gambar</span>
+                            </div>
+                        </div>
+
+                        <!-- Upload Background Langsung dari Komputer / Drive -->
+                        <div class="mt-2.5 pt-2.5 border-t border-slate-100">
+                            <input
+                                type="file"
+                                id="upload-bg-input"
+                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                class="hidden"
+                                @change="uploadNewBackground($event)"
+                            />
+                            <label
+                                for="upload-bg-input"
+                                class="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100/60 text-blue-700 text-xs font-semibold cursor-pointer transition shadow-sm"
+                                :class="isUploadingBg ? 'opacity-50 pointer-events-none' : ''"
+                            >
+                                <svg x-show="!isUploadingBg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <span x-show="isUploadingBg" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                                <span x-text="isUploadingBg ? 'Mengunggah Background...' : '+ Unggah Gambar Background Baru'"></span>
                             </label>
+                            <p x-show="bgUploadError" x-text="bgUploadError" class="text-[10px] text-rose-600 mt-1 font-medium"></p>
+                        </div>
+
+                        <!-- Input URL / Link Eksternal -->
+                        <div class="mt-2">
+                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Atau Masukkan URL / Path Gambar:</label>
+                            <div class="flex gap-1.5">
+                                <input
+                                    type="text"
+                                    x-model="customBgUrl"
+                                    placeholder="Contoh: /images/certificate/bg-custom.png"
+                                    class="flex-1 rounded border border-slate-300 p-1 text-xs font-mono text-slate-800"
+                                    @keydown.enter.prevent="applyCustomBgUrl()"
+                                />
+                                <button
+                                    type="button"
+                                    @click="applyCustomBgUrl()"
+                                    class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded border"
+                                >
+                                    Terapkan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pengaturan Opasitas & Warna Dasar -->
+                    <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5 space-y-2">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-[10px] font-semibold text-slate-600">Opasitas Background</label>
+                                <span class="text-[10px] font-mono text-slate-500" x-text="`${Math.round((layout.canvas.background_opacity ?? 1.0) * 100)}%`"></span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.1"
+                                max="1.0"
+                                step="0.05"
+                                x-model.number="layout.canvas.background_opacity"
+                                @change="pushHistory()"
+                                class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                        </div>
+                        <div class="flex items-center justify-between pt-1 border-t border-slate-200">
+                            <label class="text-[10px] font-semibold text-slate-600">Warna Dasar Kertas</label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="color" x-model="layout.canvas.background_color" @change="pushHistory()" class="h-6 w-7 rounded border p-0.5 cursor-pointer" />
+                                <span class="text-[10px] font-mono text-slate-600" x-text="layout.canvas.background_color || '#ffffff'"></span>
+                            </div>
                         </div>
                     </div>
 
@@ -932,6 +1066,16 @@
 
 @push('scripts')
 <script>
+@php
+    $defaultLayout = \App\Models\DocumentTemplate::getDefaultCertificateCanvasLayout();
+    $dbLayout = $template->canvas_layout ?? [];
+    $mergedCanvas = array_merge($defaultLayout['canvas'] ?? [], $dbLayout['canvas'] ?? []);
+    $mergedElements = !empty($dbLayout['elements']) ? $dbLayout['elements'] : ($defaultLayout['elements'] ?? []);
+    $initialLayout = [
+        'canvas'   => $mergedCanvas,
+        'elements' => $mergedElements,
+    ];
+@endphp
 function certificateCanvasApp() {
     return {
         activeDrawerTab: 'element',
@@ -946,25 +1090,109 @@ function certificateCanvasApp() {
         zoomLevel: 1.0,
         saveAlert: { message: '', type: 'success' },
 
-        layout: @json(array_merge(\App\Models\DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? [])),
+        layout: @json($initialLayout),
         mockData: @json($mockData),
+        backgroundCatalog: @json($assetCatalog['backgrounds'] ?? []),
+        isUploadingBg: false,
+        customBgUrl: '',
+        bgUploadError: '',
 
         // Undo / Redo history state stack
         historyStack: [],
         historyIndex: -1,
 
         init() {
-            // Ensure every element has normalized default fields
+            if (!this.layout) {
+                this.layout = { canvas: { orientation: 'landscape', background_color: '#ffffff', background_image: '/images/certificate/certificate-bg.png' }, elements: [] };
+            }
+            if (!this.layout.canvas) {
+                this.layout.canvas = { orientation: 'landscape', background_color: '#ffffff', background_image: '/images/certificate/certificate-bg.png' };
+            }
+            if (!Array.isArray(this.layout.elements)) {
+                this.layout.elements = [];
+            }
+            // Ensure every element has normalized default fields and sizes
             this.layout.elements.forEach(elem => {
                 if (elem.rotation === undefined) elem.rotation = 0;
                 if (elem.aspect_locked === undefined) elem.aspect_locked = (elem.type === 'image' || elem.type === 'qr_code');
                 if (elem.opacity === undefined) elem.opacity = 1.0;
+
+                // Normalisasi proporsi ukuran gambar/logo agar seimbang antara kanvas visual studio dan output PDF
+                if (elem.type === 'image') {
+                    if (elem.width_percent === undefined || elem.width_percent === null) {
+                        elem.width_percent = elem.width_px ? Math.round((elem.width_px / 840) * 1000) / 10 : 16.5;
+                    }
+                    if (elem.height_percent === undefined || elem.height_percent === null) {
+                        elem.height_percent = elem.height_px ? Math.round((elem.height_px / 594) * 1000) / 10 : 10.0;
+                    }
+                }
             });
+            if (!this.selectedElement && this.layout.elements.length > 0) {
+                this.selectedElementId = this.layout.elements[0].id;
+            }
             this.pushHistory();
         },
 
+        selectBackground(url) {
+            if (!this.layout.canvas) this.layout.canvas = {};
+            this.layout.canvas.background_image = url;
+            this.pushHistory();
+        },
+
+        isSelectedBg(bgUrl) {
+            const current = this.layout?.canvas?.background_image || '';
+            if (!bgUrl && !current) return true;
+            if (!bgUrl || !current) return false;
+            return current === bgUrl || current.includes(bgUrl) || bgUrl.includes(current);
+        },
+
+        applyCustomBgUrl() {
+            if (!this.customBgUrl) return;
+            this.selectBackground(this.customBgUrl.trim());
+            this.customBgUrl = '';
+        },
+
+        async uploadNewBackground(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingBg = true;
+            this.bgUploadError = '';
+
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-background") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: formData,
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    this.backgroundCatalog.unshift(data.asset);
+                    this.selectBackground(data.asset.url);
+                    this.saveAlert = { message: data.message || 'Background berhasil diunggah.', type: 'success' };
+                } else {
+                    this.bgUploadError = data.message || 'Gagal mengunggah file background.';
+                }
+            } catch (err) {
+                this.bgUploadError = 'Terjadi kesalahan jaringan: ' + err.message;
+            } finally {
+                this.isUploadingBg = false;
+                event.target.value = '';
+            }
+        },
+
         get selectedElement() {
-            return this.layout.elements.find(e => e.id === this.selectedElementId);
+            if (!this.layout || !Array.isArray(this.layout.elements)) return null;
+            return this.layout.elements.find(e => e.id === this.selectedElementId) || null;
         },
 
         get canUndo() {
@@ -1017,17 +1245,42 @@ function certificateCanvasApp() {
         },
 
         canvasStyle() {
-            const isLandscape = (this.layout.canvas.orientation !== 'portrait');
+            const orientation = this.layout?.canvas?.orientation || 'landscape';
+            const isLandscape = (orientation !== 'portrait');
             const width = isLandscape ? 840 : 594;
             const height = isLandscape ? 594 : 840;
-            return `width: ${width}px; height: ${height}px; background-color: ${this.layout.canvas.background_color || '#ffffff'};`;
+            const bgColor = this.layout?.canvas?.background_color || '#ffffff';
+            return `width: ${width}px; height: ${height}px; background-color: ${bgColor};`;
         },
 
         elementOuterStyle(elem) {
             const x = elem.x_percent ?? 50;
             const y = elem.y_percent ?? 50;
-            const width = elem.width_percent ?? 50;
-            const height = elem.height_percent ? `${elem.height_percent}%` : 'auto';
+
+            // Resolusi lebar proporsional: prioritaskan width_percent, fallback konversi width_px ke % kanvas 840px
+            let width;
+            if (elem.width_percent !== undefined && elem.width_percent !== null) {
+                width = `${elem.width_percent}%`;
+            } else if (elem.width_px) {
+                width = `${Math.round((elem.width_px / 840) * 1000) / 10}%`;
+            } else if (elem.type === 'image') {
+                width = '16.5%';
+            } else if (elem.type === 'qr_code') {
+                width = '14%';
+            } else {
+                width = '50%';
+            }
+
+            // Resolusi tinggi: prioritaskan height_percent, fallback konversi height_px ke % kanvas 594px
+            let height = 'auto';
+            if (elem.height_percent !== undefined && elem.height_percent !== null) {
+                height = `${elem.height_percent}%`;
+            } else if (elem.height_px) {
+                height = `${Math.round((elem.height_px / 594) * 1000) / 10}%`;
+            } else if (elem.type === 'image') {
+                height = '10%';
+            }
+
             const align = elem.align ?? 'center';
             const rot = elem.rotation ?? 0;
 
@@ -1040,7 +1293,7 @@ function certificateCanvasApp() {
             return `
                 left: ${x}%;
                 top: ${y}%;
-                width: ${width}%;
+                width: ${width};
                 height: ${height};
                 transform: ${transform};
                 z-index: ${elem.z_index || 10};
@@ -1106,9 +1359,11 @@ function certificateCanvasApp() {
 
         resolveImage(tagOrUrl) {
             if (!tagOrUrl) return '';
-            if (tagOrUrl.includes('asset.signature')) return this.mockData.asset.signature;
-            if (tagOrUrl.includes('asset.stamp')) return this.mockData.asset.stamp;
-            if (tagOrUrl.includes('asset.company.logo')) return this.mockData.asset.company.logo;
+            if (tagOrUrl.includes('asset.background')) return this.mockData?.asset?.background || '/images/certificate/certificate-bg.png';
+            if (tagOrUrl.includes('asset.signature')) return this.mockData?.asset?.signature || '/images/mou/signature-sample.png';
+            if (tagOrUrl.includes('asset.stamp')) return this.mockData?.asset?.stamp || '/images/mou/stamp-sample.png';
+            if (tagOrUrl.includes('asset.company.logo')) return this.mockData?.asset?.company?.logo || '/images/mou/seven-inc-logo.png';
+            if (tagOrUrl.includes('asset.institution.logo')) return this.mockData?.asset?.institution?.logo || '/images/mou/institution-logo-placeholder.png';
             return tagOrUrl;
         },
 
@@ -1152,9 +1407,11 @@ function certificateCanvasApp() {
                 type: 'image',
                 src: '@{{asset.company.logo}}',
                 x_percent: 50.0,
-                y_percent: 20.0,
-                width_percent: 20.0,
-                height_percent: 12.0,
+                y_percent: 10.0,
+                width_percent: 16.5,
+                height_percent: 10.0,
+                width_px: 140,
+                height_px: 60,
                 align: 'center',
                 rotation: 0,
                 aspect_locked: true,
@@ -1385,8 +1642,8 @@ function certificateCanvasApp() {
             const startY = event.clientY;
             const zoom = this.zoomLevel || 1.0;
 
-            const initW = elem.width_percent ?? 40;
-            const initH = elem.height_percent ?? 20;
+            const initW = elem.width_percent ?? (elem.width_px ? Math.round((elem.width_px / 840) * 1000) / 10 : 16.5);
+            const initH = elem.height_percent ?? (elem.height_px ? Math.round((elem.height_px / 594) * 1000) / 10 : 10.0);
             const initX = elem.x_percent ?? 50;
             const initY = elem.y_percent ?? 50;
             const initFontSize = elem.font_size_pt ?? 16;
@@ -1423,8 +1680,10 @@ function certificateCanvasApp() {
                 }
 
                 elem.width_percent = Math.round(nextW * 10) / 10;
+                elem.width_px = Math.round((elem.width_percent / 100) * 840);
                 if (elem.type !== 'text') {
                     elem.height_percent = Math.round(nextH * 10) / 10;
+                    elem.height_px = Math.round((elem.height_percent / 100) * 594);
                 } else {
                     // Scale font size proportionally on diagonal drag for text
                     const fontRatio = nextW / initW;

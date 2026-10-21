@@ -222,6 +222,10 @@ class DocumentTemplate extends Model
             'line_height'         => 1.3,
             'header_distance_mm'  => 10.0,
             'footer_distance_mm'  => 10.0,
+            'show_header_logos'   => false,
+            'show_watermark'      => true,
+            'watermark_opacity'   => 0.05,
+            'company_logo'        => '/images/mou/seven-inc-logo.png',
         ];
     }
 
@@ -353,13 +357,14 @@ class DocumentTemplate extends Model
             'loa' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -413,9 +418,9 @@ di Tempat</p>
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -423,13 +428,14 @@ HTML,
             'skl' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -493,9 +499,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -503,13 +509,14 @@ HTML,
             'assessment' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -598,9 +605,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -608,13 +615,14 @@ HTML,
             'recommendation' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -680,9 +688,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -705,15 +713,18 @@ HTML,
             ],
             'elements' => [
                 [
-                    'id'          => 'elem_logo',
-                    'type'        => 'image',
-                    'src'         => '{{asset.company.logo}}',
-                    'x_percent'   => 50.0, // centered
-                    'y_percent'   => 10.0,
-                    'width_px'    => 140,
-                    'height_px'   => 60,
-                    'align'       => 'center',
-                    'z_index'     => 10,
+                    'id'             => 'elem_logo',
+                    'type'           => 'image',
+                    'src'            => '{{asset.company.logo}}',
+                    'x_percent'      => 50.0, // centered
+                    'y_percent'      => 10.0,
+                    'width_percent'  => 16.5,
+                    'height_percent' => 10.0,
+                    'width_px'       => 140,
+                    'height_px'      => 60,
+                    'align'          => 'center',
+                    'aspect_locked'  => true,
+                    'z_index'        => 10,
                 ],
                 [
                     'id'          => 'elem_title',

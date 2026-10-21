@@ -178,6 +178,55 @@
                         </label>
                     </div>
                 </div>
+
+                <!-- Pilihan Latar Belakang Sertifikat (Khusus Sertifikat Magang) -->
+                <div id="certificate-bg-picker-container" class="{{ old('type', $selectedType) === 'certificate' ? '' : 'hidden' }} border-t border-slate-100 pt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase">Pilih Gambar Background Sertifikat Awal</label>
+                            <p class="text-xs text-slate-500">Tersedia aset dari Google Drive, Penyimpanan Sistem, dan desain bawaan. Anda juga dapat menggantinya kapan saja di editor visual.</p>
+                        </div>
+                        <a href="{{ route('admin.system-assets.index') }}" target="_blank" class="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1">
+                            <span>Buka Perpustakaan Aset / Drive</span>
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                        </a>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto p-1">
+                        @foreach ($assetCatalog['backgrounds'] ?? [] as $idx => $bg)
+                            <label class="relative flex flex-col rounded-xl border border-slate-200 bg-white p-2.5 cursor-pointer hover:border-amber-400 hover:shadow-sm transition has-[:checked]:border-amber-500 has-[:checked]:ring-2 has-[:checked]:ring-amber-200 has-[:checked]:bg-amber-50/20">
+                                <input type="radio" name="certificate_background" value="{{ $bg['url'] }}" {{ $idx === 0 ? 'checked' : '' }} class="sr-only">
+                                <div class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 mb-2">
+                                    <img src="{{ $bg['thumb'] }}" alt="{{ $bg['name'] }}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='/images/certificate/certificate-bg.png';">
+                                    @if (!empty($bg['is_drive']))
+                                        <span class="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 shadow">
+                                            <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+                                            Drive
+                                        </span>
+                                    @elseif (!empty($bg['is_real']))
+                                        <span class="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 shadow">
+                                            Sistem
+                                        </span>
+                                    @endif
+                                </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="font-bold text-slate-800 truncate" title="{{ $bg['name'] }}">{{ $bg['name'] }}</span>
+                                    <span class="text-[10px] text-slate-400 shrink-0 ml-1">{{ $bg['source'] ?? 'Bawaan' }}</span>
+                                </div>
+                            </label>
+                        @endforeach
+
+                        <!-- Pilihan Tanpa Background -->
+                        <label class="relative flex flex-col justify-center items-center rounded-xl border border-dashed border-slate-300 bg-white p-4 cursor-pointer hover:border-amber-400 hover:bg-slate-50 transition has-[:checked]:border-amber-500 has-[:checked]:ring-2 has-[:checked]:ring-amber-200 has-[:checked]:bg-amber-50/20 text-center">
+                            <input type="radio" name="certificate_background" value="none" class="sr-only">
+                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                            </div>
+                            <span class="text-xs font-bold text-slate-700">Latar Polos (Tanpa Gambar)</span>
+                            <span class="text-[10px] text-slate-400 mt-0.5">Warna dasar putih atau box custom</span>
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -208,13 +257,16 @@
     function updateEditorHint(type) {
         const hintText = document.getElementById('editor-hint-text');
         const container = document.getElementById('editor-hint-container');
+        const bgPickerContainer = document.getElementById('certificate-bg-picker-container');
 
         if (type === 'certificate') {
             container.className = 'mt-5 rounded-lg border border-amber-100 bg-amber-50/60 p-4 text-xs text-amber-900 flex items-start gap-3';
             hintText.innerHTML = 'Untuk <strong>Sertifikat Magang</strong>, Anda akan menggunakan <strong>Visual Canvas Editor</strong> (A4 Landscape) dengan posisi koordinat layer (X%, Y%), pilihan border/background piagam, tipografi sertifikat, serta tanda tangan & stempel digital.';
+            if (bgPickerContainer) bgPickerContainer.classList.remove('hidden');
         } else {
             container.className = 'mt-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4 text-xs text-blue-900 flex items-start gap-3';
             hintText.innerHTML = 'Untuk <strong>Surat Resmi (' + type.toUpperCase() + ')</strong>, sistem menyediakan <strong>Editor Dokumen A4 Visual</strong> dengan pengaturan paragraf, margin kertas, tabel, dan variabel Mail Merge.';
+            if (bgPickerContainer) bgPickerContainer.classList.add('hidden');
         }
     }
 

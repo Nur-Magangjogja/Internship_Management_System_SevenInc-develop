@@ -35,6 +35,10 @@ class DocumentController extends Controller
     public function index()
     {
         $user         = auth()->user();
+        if ($user && method_exists($user, 'markDocumentsAsViewed')) {
+            $user->markDocumentsAsViewed();
+        }
+
         $regId        = request()->query('registration_id');
         $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
         $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null);

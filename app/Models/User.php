@@ -8,6 +8,16 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use App\Models\DailyReport;
 use App\Models\LeaveRequest;
 use App\Models\PendingTask;
+use App\Models\InternshipRegistration;
+use App\Models\InternLoa;
+use App\Models\SklDocument;
+use App\Models\InternCertificate;
+use App\Models\InternAssessment;
+use App\Models\AlumniMembercard;
+use App\Models\InternExtra;
+use App\Models\WebinarCertificate;
+use App\Models\WebinarAttendance;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -154,6 +164,7 @@ class User extends Authenticatable
         'is_gps_support',
         'is_gps_active',
         'is_gps_activate',
+        'documents_viewed_at',
     ];
 
     /**
@@ -172,13 +183,14 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'banned_at'         => 'datetime',
-        'is_banned'         => 'boolean',
-        'is_online'         => 'boolean',
-        'is_gps_support'    => 'boolean',
-        'is_gps_active'     => 'boolean',
-        'is_gps_activate'   => 'boolean',
+        'email_verified_at'   => 'datetime',
+        'banned_at'           => 'datetime',
+        'documents_viewed_at' => 'datetime',
+        'is_banned'           => 'boolean',
+        'is_online'           => 'boolean',
+        'is_gps_support'      => 'boolean',
+        'is_gps_active'       => 'boolean',
+        'is_gps_activate'     => 'boolean',
     ];
 
     public function internshipRegistration(): HasOne
@@ -414,5 +426,108 @@ class User extends Authenticatable
 
         $activation = $this->accountActivation;
         return $activation !== null && $activation->isPending();
+    }
+
+    /**
+     * Tandai bahwa pengguna (pemagang) telah membuka halaman Dokumen Saya.
+     */
+    public function markDocumentsAsViewed(): void
+    {
+        $now = now();
+        if (\Illuminate\Support\Facades\Schema::connection($this->getConnectionName())->hasColumn('users', 'documents_viewed_at')) {
+            $this->update(['documents_viewed_at' => $now]);
+        }
+        session(['documents_viewed_at' => $now]);
+        \Illuminate\Support\Facades\Cache::forever("user_{$this->id}_documents_viewed_at", $now->toDateTimeString());
+    }
+
+    /**
+     * Cek apakah ada file/dokumen baru untuk pemagang yang belum dibuka.
+     */
+    public function hasUnreadDocuments(): bool
+    {
+        if ($this->role !== self::ROLE_PEMAGANG) {
+            return false;
+        }
+
+        $registration = $this->internshipRegistration
+            ?? InternshipRegistration::where('user_id', $this->id)->latest('id')->first();
+
+        if (!$registration || $registration->is_draft) {
+            return false;
+        }
+
+        $status = $registration->internship_status;
+        $isAccepted = in_array($status, [
+            InternshipRegistration::STATUS_ACCEPTED,
+            InternshipRegistration::STATUS_ACTIVE,
+            InternshipRegistration::STATUS_COMPLETED,
+        ], true);
+
+        if (!$isAccepted) {
+            return false;
+        }
+
+        $lastViewed = $this->documents_viewed_at
+            ?? session('documents_viewed_at')
+            ?? \Illuminate\Support\Facades\Cache::get("user_{$this->id}_documents_viewed_at");
+
+        $timestamps = [];
+
+        // 1. LOA
+        $loaTime = InternLoa::where('intern_id', $registration->id)->latest('id')->value('created_at');
+        if ($loaTime) {
+            $timestamps[] = $loaTime;
+        } elseif ($registration->updated_at) {
+            $timestamps[] = $registration->updated_at;
+        }
+
+        // 2. Dokumen Kelulusan jika status completed
+        if ($status === InternshipRegistration::STATUS_COMPLETED) {
+            $sklTime = SklDocument::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            $timestamps[] = $sklTime ?: $registration->updated_at;
+
+            $sertifTime = InternCertificate::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($sertifTime) {
+                $timestamps[] = $sertifTime;
+            }
+
+            $assessTime = InternAssessment::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($assessTime) {
+                $timestamps[] = $assessTime;
+            }
+
+            $membercardTime = AlumniMembercard::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($membercardTime) {
+                $timestamps[] = $membercardTime;
+            }
+        }
+
+        // 3. Surat Rekomendasi
+        $extra = InternExtra::where('intern_id', $registration->id)->first();
+        if ($extra && $extra->surat_rekomendasi) {
+            $timestamps[] = $extra->updated_at ?? $extra->created_at;
+        }
+
+        // 4. Sertifikat Webinar
+        $webinarTime = WebinarCertificate::whereHas('attendance', function ($q) {
+            $q->where('user_id', $this->id)
+              ->where('status', WebinarAttendance::STATUS_APPROVED);
+        })->latest('id')->value('created_at');
+        if ($webinarTime) {
+            $timestamps[] = $webinarTime;
+        }
+
+        if (empty($timestamps)) {
+            return false;
+        }
+
+        $latestDocTime = max($timestamps);
+
+        if (!$lastViewed) {
+            return true;
+        }
+
+        return Carbon::parse($latestDocTime)->gt(Carbon::parse($lastViewed));
     }
 }

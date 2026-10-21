@@ -145,10 +145,16 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            $hasNewDocuments = false;
+            if ($user && method_exists($user, 'hasUnreadDocuments')) {
+                $hasNewDocuments = $user->hasUnreadDocuments();
+            }
+
             $view->with([
                 'notifications'          => $notifications,
                 'notificationCount'      => $notifications->count(),
                 'notificationWebinarCount' => $notifications->filter(fn($n) => str_contains($n['url'] ?? '', 'webinar'))->count(),
+                'hasNewDocuments'        => $hasNewDocuments,
             ]);
         });
     }

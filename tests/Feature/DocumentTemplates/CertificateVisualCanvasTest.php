@@ -276,4 +276,140 @@ class CertificateVisualCanvasTest extends TestCase
         $this->assertNotEmpty($pdfBinary);
         $this->assertStringStartsWith('%PDF-', $pdfBinary);
     }
+
+    /**
+     * Test tampilan editor sertifikat memuat asset Alpine.js dan berkas certificate-bg.png tersedia.
+     */
+    public function test_certificate_editor_renders_with_alpine_and_valid_background_asset(): void
+    {
+        // 1. Verifikasi background image fisik ada di disk
+        $bgPath = public_path('images/certificate/certificate-bg.png');
+        $this->assertFileExists($bgPath);
+        $this->assertGreaterThan(1000, filesize($bgPath));
+
+        // 2. Buat template sertifikat
+        $template = DocumentTemplate::create([
+            'type'           => 'certificate',
+            'name'           => 'Sertifikat Visual Test ' . $this->unique,
+            'editor_type'    => 'visual_canvas',
+            'canvas_layout'  => DocumentTemplate::getDefaultCertificateCanvasLayout(),
+            'page_config'    => ['orientation' => 'landscape', 'paper_size' => 'a4'],
+            'version_number' => 1,
+            'is_active'      => true,
+            'is_default'     => false,
+            'created_by'     => $this->admin->id,
+            'updated_by'     => $this->admin->id,
+        ]);
+
+        // 3. Akses halaman edit
+        $response = $this->actingAs($this->admin)->get(route('admin.document-templates.edit', $template));
+        $response->assertStatus(200);
+
+        // 4. Pastikan Alpine.js script tag termuat di layout
+        $response->assertSee('vendor/alpine/alpine.min.js', false);
+        $response->assertSee('[x-cloak]', false);
+
+        // 5. Pastikan viewport kanvas memiliki styling dasar dan tidak ambles
+        $response->assertSee('id="certificate-viewport"', false);
+        $response->assertSee('width: 840px; height: 594px;', false);
+        $response->assertSee('x-data="certificateCanvasApp()"', false);
+        $response->assertSee('/images/certificate/certificate-bg.png', false);
+    }
+
+    /**
+     * Test ukuran logo perusahaan proporsional dan selaras antara visual canvas dan render PDF preview.
+     */
+    public function test_certificate_logo_dimensions_match_between_editor_and_renderer(): void
+    {
+        $defaultLayout = DocumentTemplate::getDefaultCertificateCanvasLayout();
+        $logoElem = collect($defaultLayout['elements'])->firstWhere('id', 'elem_logo');
+
+        $this->assertNotNull($logoElem);
+        $this->assertEquals('image', $logoElem['type']);
+        $this->assertEquals(16.5, (float) ($logoElem['width_percent'] ?? 0));
+        $this->assertEquals(10.0, (float) ($logoElem['height_percent'] ?? 0));
+        $this->assertTrue($logoElem['aspect_locked'] ?? false);
+
+        $template = DocumentTemplate::create([
+            'type'           => 'certificate',
+            'name'           => 'Sertifikat Logo Size Test',
+            'editor_type'    => 'visual_canvas',
+            'canvas_layout'  => $defaultLayout,
+            'page_config'    => ['orientation' => 'landscape', 'paper_size' => 'a4'],
+            'version_number' => 1,
+            'is_active'      => true,
+            'is_default'     => false,
+            'created_by'     => $this->admin->id,
+            'updated_by'     => $this->admin->id,
+        ]);
+
+        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $html = DocumentTemplateRenderer::renderCertificateHtml($template, $mockData);
+
+        // Assert rendered logo element container has width: 16.5% and height: 10%
+        $this->assertStringContainsString('width: 16.5%', $html);
+        $this->assertStringContainsString('height: 10%', $html);
+        $this->assertStringContainsString('alt="Elemen Sertifikat"', $html);
+        $this->assertStringContainsString('max-width: 100%; max-height: 100%; width: auto; height: auto;', $html);
+
+        // Assert rendered PDF binary does NOT stretch the logo horizontally
+        $pdfBinary = DocumentTemplateRenderer::renderPdfBinary($template, $mockData);
+        $this->assertNotEmpty($pdfBinary);
+        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdfBinary, $matches)) {
+            $foundLogo = false;
+            foreach ($matches[1] as $stream) {
+                $uncompressed = @gzuncompress($stream);
+                $data = $uncompressed !== false ? $uncompressed : $stream;
+                if (preg_match_all('/([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+cm\s*\/([a-zA-Z0-9_]+)\s+Do/i', $data, $mList, PREG_SET_ORDER)) {
+                    foreach ($mList as $m) {
+                        $w = (float) $m[1];
+                        $h = (float) $m[4];
+                        // Background is ~842pt, logo is around 45-60pt
+                        if ($w > 20 && $w < 100 && $h > 20 && $h < 100) {
+                            $ratio = round($w / $h, 2);
+                            $this->assertEqualsWithDelta(1.0, $ratio, 0.05, "Logo aspect ratio in PDF should remain 1:1 and not be stretched");
+                            $foundLogo = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            $this->assertTrue($foundLogo, "Logo image was not found in PDF stream");
+        }
+    }
+
+    /**
+     * Test upload dan penggantian background sertifikat via endpoint API.
+     */
+    public function test_certificate_background_upload_and_switching_api(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $fakeImage = \Illuminate\Http\UploadedFile::fake()->image('custom_bg.png', 1920, 1080);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson(route('admin.document-templates.api-upload-background'), [
+                'file' => $fakeImage,
+                'name' => 'Background Mewah Drive',
+            ]);
+
+        $response->assertOk();
+        $response->assertJson(['success' => true]);
+        $json = $response->json();
+        $this->assertNotEmpty($json['asset']['url']);
+
+        // Verify template creation accepts certificate_background
+        $createResponse = $this->actingAs($this->admin)
+            ->post(route('admin.document-templates.store'), [
+                'name'                   => 'Template Sertifikat Background Custom',
+                'type'                   => 'certificate',
+                'preset_type'            => 'standard',
+                'certificate_background' => $json['asset']['url'],
+            ]);
+
+        $createResponse->assertRedirect();
+        $newTemplate = DocumentTemplate::where('name', 'Template Sertifikat Background Custom')->first();
+        $this->assertNotNull($newTemplate);
+        $this->assertEquals($json['asset']['url'], $newTemplate->canvas_layout['canvas']['background_image']);
+    }
 }

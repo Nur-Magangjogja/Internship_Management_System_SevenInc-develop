@@ -25,6 +25,19 @@
       background-color: #ffffff;
     }
 
+    @if(request()->routeIs('*.raw') || request()->is('*/raw/*') || request()->has('preview') || ($isScreenPreview ?? false))
+    @media screen {
+      html {
+        background-color: #f8fafc;
+      }
+      body {
+        padding: 12mm 18mm !important;
+        box-sizing: border-box !important;
+        background-color: #ffffff;
+      }
+    }
+    @endif
+
     .wrap {
       width: 100%;
       margin: 0 auto;

@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -52,9 +53,12 @@ class DocumentTemplateController extends Controller
             $selectedType = 'loa';
         }
 
+        $assetCatalog = AssetLibraryContract::getAssetCatalog();
+
         return view('admin.document-templates.create', [
             'documentTypes' => DocumentTemplate::getDocumentTypes(),
             'selectedType'  => $selectedType,
+            'assetCatalog'  => $assetCatalog,
         ]);
     }
 
@@ -64,10 +68,11 @@ class DocumentTemplateController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'type'           => 'required|string|in:' . implode(',', array_keys(DocumentTemplate::getDocumentTypes())),
-            'description'    => 'nullable|string|max:1000',
-            'preset_type'    => 'nullable|string|in:standard,blank',
+            'name'                   => 'required|string|max:255',
+            'type'                   => 'required|string|in:' . implode(',', array_keys(DocumentTemplate::getDocumentTypes())),
+            'description'            => 'nullable|string|max:1000',
+            'preset_type'            => 'nullable|string|in:standard,blank',
+            'certificate_background' => 'nullable|string|max:500',
         ]);
 
         $type = $validated['type'];
@@ -83,6 +88,26 @@ class DocumentTemplateController extends Controller
                 $canvasLayout = DocumentTemplate::getDefaultCertificateCanvasLayout();
             } else {
                 $contentHtml = DocumentTemplate::getDefaultStandardContent($type);
+            }
+        } elseif ($isCanvas) {
+            $defaultPage = DocumentTemplate::getDefaultPageConfig('certificate');
+            $canvasLayout = [
+                'canvas' => [
+                    'orientation'      => $defaultPage['orientation'] ?? 'landscape',
+                    'background_image' => '',
+                    'background_color' => '#ffffff',
+                ],
+                'elements' => [],
+            ];
+        }
+
+        // Terapkan pilihan background jika dispesifikasikan untuk sertifikat
+        if ($isCanvas && $request->filled('certificate_background')) {
+            $bgUrl = $request->input('certificate_background');
+            if ($bgUrl === 'none' || $bgUrl === 'blank') {
+                $canvasLayout['canvas']['background_image'] = '';
+            } else {
+                $canvasLayout['canvas']['background_image'] = $bgUrl;
             }
         }
 
@@ -493,5 +518,76 @@ class DocumentTemplateController extends Controller
             'success' => true,
             'data'    => AssetLibraryContract::getAssetCatalog(),
         ]);
+    }
+
+    /**
+     * Unggah berkas background sertifikat baru secara asinkron dari editor/create page.
+     */
+    public function uploadBackground(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:png,jpg,jpeg,webp,svg|max:10240', // Maks 10MB
+            'name' => 'nullable|string|max:255',
+        ]);
+
+        $file = $request->file('file');
+        $fileName = $request->input('name') ?: pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+
+        try {
+            // Jika SystemAssetService aktif, simpan sebagai SystemAsset resmi (terhubung sinkronisasi Drive)
+            if (class_exists(\App\Services\SystemAssetService::class) && \Illuminate\Support\Facades\Schema::hasTable('system_assets')) {
+                $service = app(\App\Services\SystemAssetService::class);
+                $asset = $service->storeAsset($file, [
+                    'name'       => $fileName,
+                    'category'   => \App\Models\SystemAsset::CATEGORY_BACKGROUND,
+                    'scope'      => \App\Models\SystemAsset::SCOPE_GLOBAL,
+                    'is_default' => false,
+                ], auth()->user());
+
+                $previewUrl = route('admin.system-assets.preview', $asset);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Background '{$asset->name}' berhasil diunggah ke Penyimpanan Sistem.",
+                    'asset'   => [
+                        'id'         => 'asset_' . $asset->id,
+                        'asset_id'   => $asset->id,
+                        'name'       => $asset->name,
+                        'url'        => $previewUrl,
+                        'thumb'      => $previewUrl,
+                        'tag'        => '{{' . ($asset->asset_code ?: 'asset.background') . '}}',
+                        'source'     => !empty($asset->drive_file_id) ? 'Google Drive' : 'Penyimpanan Sistem',
+                        'is_drive'   => !empty($asset->drive_file_id),
+                        'is_real'    => true,
+                    ],
+                ]);
+            }
+
+            // Fallback penyimpanan lokal public disk
+            $ext = $file->getClientOriginalExtension() ?: 'png';
+            $safeName = 'bg_' . time() . '_' . Str::random(6) . '.' . $ext;
+            $path = $file->storeAs('backgrounds', $safeName, 'public');
+            $url = '/storage/' . $path;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Background berhasil diunggah.',
+                'asset'   => [
+                    'id'       => 'asset_bg_' . time(),
+                    'name'     => $fileName,
+                    'url'      => $url,
+                    'thumb'    => $url,
+                    'tag'      => $url,
+                    'source'   => 'Penyimpanan Lokal',
+                    'is_drive' => false,
+                    'is_real'  => true,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengunggah background: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

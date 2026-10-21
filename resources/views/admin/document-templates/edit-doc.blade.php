@@ -344,18 +344,19 @@
     const btnClosePreview = document.getElementById('btnCloseBrowserPreview');
     const previewContainer = document.getElementById('browserPreviewContainer');
 
-    btnPreview?.addEventListener('click', async () => {
+    btnPreview?.addEventListener('click', () => {
         modalPreview?.classList.remove('hidden');
         if (!previewContainer) return;
-        previewContainer.innerHTML = '<div class="text-center p-12 text-slate-500 text-xs">Memuat pratinjau dokumen...</div>';
-
-        try {
-            const res = await fetch('{{ route("admin.document-templates.preview", $template) }}?raw=1');
-            const html = await res.text();
-            previewContainer.innerHTML = html;
-        } catch (err) {
-            previewContainer.innerHTML = `<div class="p-6 text-rose-600 text-xs">Gagal memuat pratinjau: ${err.message}</div>`;
-        }
+        previewContainer.innerHTML = `
+            <div class="flex flex-col items-center w-full py-2">
+                <iframe id="modalPreviewIframe"
+                        src="{{ route('admin.document-templates.preview', $template) }}?raw=1&_t=${Date.now()}"
+                        class="w-[215mm] max-w-full rounded-xl shadow-2xl border border-slate-300 bg-white"
+                        style="height: 75vh;"
+                        title="Pratinjau Lembar Dokumen">
+                </iframe>
+            </div>
+        `;
     });
 
     btnClosePreview?.addEventListener('click', () => {

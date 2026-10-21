@@ -5,15 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>InternHub — Platform Program Magang</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: { extend: {} }
-    }
-  </script>
+  @vite(['resources/css/app.css', 'resources/js/app.js'])
   <style>
     * { font-family: 'Inter', sans-serif; }
     html { scroll-behavior: smooth; }
@@ -92,8 +87,15 @@
         </a>
       </div>
       {{-- Stats --}}
+      @php
+        $divisionList = $divisions ?? \App\Models\Division::active()->pluck('name');
+        if ($divisionList->isEmpty()) {
+            $divisionList = \App\Models\Division::orderBy('name')->pluck('name');
+        }
+        $divStatLabel = $divisionList->isNotEmpty() ? ($divisionList->count() . '+') : '10+';
+      @endphp
       <div style="display:flex;justify-content:center;gap:48px;margin-top:56px;flex-wrap:wrap;">
-        @foreach([['10+','Divisi Magang'],['100+','Alumni Magang'],['100%','Dokumen Resmi']] as [$num,$label])
+        @foreach([[$divStatLabel,'Divisi Magang'],['100+','Alumni Magang'],['100%','Dokumen Resmi']] as [$num,$label])
         <div style="text-align:center;">
           <div style="font-size:32px;font-weight:800;color:#fff;">{{ $num }}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px;">{{ $label }}</div>
@@ -142,9 +144,11 @@
     <p style="color:#1a5c38;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Divisi Tersedia</p>
     <h2 style="font-size:32px;font-weight:800;color:#111;margin-bottom:32px;">Pilih Bidangmu</h2>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
-      @foreach(['Project Manager','Administration','Human Resources','UI/UX','Programmer','Photographer','Videographer','Graphic Designer','Social Media','Content Writer','Content Planner','Sales & Marketing','Public Relations','Digital Marketing','TikTok Creator','Welding','Customer Service'] as $div)
-      <span style="background:#fff;border:1px solid #d1fae5;color:#065f46;font-size:13px;font-weight:500;padding:8px 18px;border-radius:100px;box-shadow:0 1px 3px rgba(0,0,0,.05);">{{ $div }}</span>
-      @endforeach
+      @forelse($divisionList as $div)
+      <span style="background:#fff;border:1px solid #d1fae5;color:#065f46;font-size:13px;font-weight:500;padding:8px 18px;border-radius:100px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:inline-block;transition:all .15s ease;">{{ is_string($div) ? $div : ($div->name ?? $div) }}</span>
+      @empty
+      <p style="color:#6b7280;font-size:14px;">Belum ada divisi yang tersedia.</p>
+      @endforelse
     </div>
   </div>
 </section>

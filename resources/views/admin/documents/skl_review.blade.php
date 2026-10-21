@@ -64,7 +64,8 @@
             <iframe id="sklIframe"
                     src="{{ route('admin.skl.raw', $intern->id) }}"
                     class="w-full border-0"
-                    style="height: 1120px;"
+                    style="height: 1160px; min-height: 1120px;"
+                    onload="try { const h = this.contentWindow.document.body.scrollHeight; if(h > 400) this.style.height = (h + 30) + 'px'; } catch(e){}"
                     title="Pratinjau SKL">
             </iframe>
         </div>

@@ -854,7 +854,7 @@ class MouDocumentRenderer
         $safeAlt = e($alt);
         $safeSrc = e($finalSrc);
 
-        return '<img src="' . $safeSrc . '" alt="' . $safeAlt . '" class="mou-header-logo" style="height: ' . $heightPx . 'px; width: auto; max-width: 120px; object-fit: contain; display: inline-block; vertical-align: middle;">';
+        return '<img src="' . $safeSrc . '" alt="' . $safeAlt . '" class="mou-header-logo" style="height: ' . $heightPx . 'px; width: auto; max-width: 130px; object-fit: contain; display: inline-block; vertical-align: middle;">';
     }
 
     /**
@@ -1107,7 +1107,10 @@ class MouDocumentRenderer
             }
         }
 
-        // 3. Jika untuk snapshot terbit (Published MOU) atau PDF, konversi semua gambar lokal di dalam naskah ke Base64
+        // 3. Normalisasi tabel korespondensi agar proporsional, rapat, dan rapi
+        $rendered = static::normalizeCorrespondenceTablesHtml($rendered);
+
+        // 4. Jika untuk snapshot terbit (Published MOU) atau PDF, konversi semua gambar lokal di dalam naskah ke Base64
         if ($forPublishedSnapshot) {
             $rendered = static::embedLocalImagesAsBase64($rendered);
             $inlineCss = static::getCanonicalDocumentCss($pageConfig);
@@ -1115,16 +1118,19 @@ class MouDocumentRenderer
             $showHeaderLogos = (bool) ($pageConfig['show_header_logos'] ?? true);
             $showWatermark   = (bool) ($pageConfig['show_watermark'] ?? false);
 
+            $docType = strtolower((string) ($template->type ?? ($pageConfig['document_type'] ?? 'mou')));
+            $isMou   = ($docType === 'mou');
+
             $watermarkHeaderHtml = '';
-            if ($showHeaderLogos || $showWatermark) {
+            if ($isMou && ($showHeaderLogos || $showWatermark)) {
                 $instSrc = !str_starts_with($institutionLogoPath, 'data:') ? (static::convertLocalPathToBase64($institutionLogoPath) ?? $institutionLogoPath) : $institutionLogoPath;
                 $compSrc = !str_starts_with($companyLogoPath, 'data:') ? (static::convertLocalPathToBase64($companyLogoPath) ?? $companyLogoPath) : $companyLogoPath;
 
                 $watermarkHeaderHtml = '<div class="mou-watermark-layer" data-watermark-layer="true">';
                 if ($showHeaderLogos) {
                     $watermarkHeaderHtml .= '<div class="mou-watermark-fixed-header">'
-                        . '<img src="' . e($instSrc) . '" width="58" height="58" class="mou-watermark-logo-left" alt="Logo Institusi" />'
-                        . '<img src="' . e($compSrc) . '" width="58" height="58" class="mou-watermark-logo-right" alt="Logo Seven Inc" />'
+                        . '<img src="' . e($instSrc) . '" width="66" height="66" class="mou-watermark-logo-left" alt="Logo Institusi" />'
+                        . '<img src="' . e($compSrc) . '" width="66" height="66" class="mou-watermark-logo-right" alt="Logo Seven Inc" />'
                         . '</div>';
                 }
                 if ($showWatermark) {
@@ -1480,15 +1486,15 @@ class MouDocumentRenderer
     pointer-events: none;
     user-select: none;
     box-sizing: border-box;
-    height: 80px;
+    height: 86px;
 }
 .mou-watermark-logo-left {
     position: absolute;
     top: 0;
     left: 0;
-    height: 72px;
+    height: 78px;
     width: auto;
-    max-width: 110px;
+    max-width: 120px;
     object-fit: contain;
     pointer-events: none;
     user-select: none;
@@ -1497,9 +1503,9 @@ class MouDocumentRenderer
     position: absolute;
     top: 0;
     right: 0;
-    height: 72px;
+    height: 78px;
     width: auto;
-    max-width: 110px;
+    max-width: 120px;
     object-fit: contain;
     pointer-events: none;
     user-select: none;
@@ -1569,8 +1575,20 @@ class MouDocumentRenderer
     break-inside: avoid;
 }
 .mou-correspondence-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-top: 4pt;
+    margin-bottom: 6pt;
+}
+.mou-correspondence-table tr {
     page-break-inside: avoid;
     break-inside: avoid;
+}
+.mou-correspondence-table td, .mou-correspondence-table th {
+    border: 1px solid #000000;
+    padding: 2.5pt 5pt;
+    vertical-align: top;
 }
 .mou-pasal {
     margin-top: 10pt;
@@ -1671,6 +1689,88 @@ CSS;
     }
 
     /**
+     * Normalisasi tabel korespondensi Pasal 5 (3 kolom: label, titik dua, dan kontak):
+     * 1. Menyatukan dua tabel korespondensi berurutan (PIHAK KESATU & PIHAK KEDUA) menjadi satu kesatuan rapi.
+     * 2. Menetapkan proporsi kolom persentase presisi (22%, 4%, 74%) agar tidak terjadi jarak kosong lebar di DomPDF.
+     * 3. Menerapkan page-break-inside: avoid per baris (bukan per tabel penuh) agar tidak memicu lompatan halaman kosong.
+     */
+    public static function normalizeCorrespondenceTablesHtml(string $html): string
+    {
+        if (!str_contains($html, 'mou-correspondence-table')) {
+            return $html;
+        }
+
+        // 1. Jika ada dua tabel korespondensi berurutan (PIHAK KESATU & PIHAK KEDUA), satukan baris-barisnya ke tabel pertama
+        $html = preg_replace_callback(
+            '/(<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>)\s*(<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>)/i',
+            function ($matches) {
+                $t1 = $matches[1];
+                $t2 = $matches[2];
+
+                preg_match('/<tbody[^>]*>([\s\S]*?)<\/tbody>/i', $t1, $tb1);
+                preg_match('/<tbody[^>]*>([\s\S]*?)<\/tbody>/i', $t2, $tb2);
+
+                $rows1 = $tb1[1] ?? '';
+                $rows2 = $tb2[1] ?? '';
+
+                return '<table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;">' .
+                       '<tbody>' . $rows1 . $rows2 . '</tbody>' .
+                       '</table>';
+            },
+            $html
+        );
+
+        // 2. Normalisasi setiap tabel korespondensi: colgroup proporsional dan style sel per baris
+        return preg_replace_callback('/<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>/is', function ($matches) {
+            $tableHtml = $matches[0];
+
+            // Pasang colgroup proporsional 22%, 4%, 74%
+            $newColgroup = '<colgroup><col style="width: 22%;"><col style="width: 4%;"><col style="width: 74%;"></colgroup>';
+            if (preg_match('/<colgroup>[\s\S]*?<\/colgroup>/is', $tableHtml)) {
+                $tableHtml = preg_replace('/<colgroup>[\s\S]*?<\/colgroup>/is', $newColgroup, $tableHtml);
+            } else {
+                $tableHtml = preg_replace('/(<table[^>]*>)/i', '$1' . $newColgroup, $tableHtml);
+            }
+
+            // Atur style tabel agar table-layout: fixed dan margin rapat
+            $tableHtml = preg_replace_callback('/<table\b([^>]*)>/i', function ($tm) {
+                $attrs = $tm[1];
+                if (preg_match('/style="([^"]*)"/i', $attrs, $sm)) {
+                    $newStyle = 'width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;';
+                    $attrs = str_replace($sm[0], 'style="' . $newStyle . '"', $attrs);
+                } else {
+                    $attrs .= ' style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;"';
+                }
+                return '<table' . $attrs . '>';
+            }, $tableHtml);
+
+            // Format baris: header (colspan=3) dan 3 kolom data
+            $tableHtml = preg_replace_callback('/<tr[^>]*>([\s\S]*?)<\/tr>/is', function ($rowMatches) {
+                $rowContent = $rowMatches[1];
+                if (preg_match_all('/<td\b([^>]*)>([\s\S]*?)<\/td>/is', $rowContent, $tdMatches)) {
+                    if (count($tdMatches[0]) === 1 && stripos($tdMatches[1][0], 'colspan') !== false) {
+                        return '<tr style="page-break-inside: avoid; break-inside: avoid;"><td colspan="3" style="border: 1px solid #000000; padding: 2.5pt 6pt; font-weight: bold; background-color: #f8fafc;">' . $tdMatches[2][0] . '</td></tr>';
+                    }
+                    if (count($tdMatches[0]) === 3) {
+                        $c0 = trim($tdMatches[2][0]);
+                        $c1 = trim($tdMatches[2][1]);
+                        $c2 = trim($tdMatches[2][2]);
+
+                        $td0 = '<td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;">' . $c0 . '</td>';
+                        $td1 = '<td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;">' . $c1 . '</td>';
+                        $td2 = '<td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">' . $c2 . '</td>';
+
+                        return '<tr style="page-break-inside: avoid; break-inside: avoid;">' . $td0 . $td1 . $td2 . '</tr>';
+                    }
+                }
+                return $rowMatches[0];
+            }, $tableHtml);
+
+            return $tableHtml;
+        }, $html);
+    }
+
+    /**
      * Hasilkan binary PDF A4 menggunakan DomPDF dengan ruang Header & Footer dinamis (termasuk Tabel Paraf & Nomor Halaman).
      */
     public static function renderPdfBinary(
@@ -1746,6 +1846,10 @@ CSS;
             }
             return $tableHtml;
         }, $htmlWithBase64);
+
+        // Normalisasi tabel korespondensi Pasal 5 (3 kolom: label, titik dua, kontak)
+        // agar proporsi lebar persen (22%, 4%, 74%) diterapkan secara presisi di DomPDF dan tidak berjarak jauh.
+        $htmlWithBase64 = static::normalizeCorrespondenceTablesHtml($htmlWithBase64);
 
         $canonicalCss   = static::getCanonicalDocumentCss($pageConfig);
 

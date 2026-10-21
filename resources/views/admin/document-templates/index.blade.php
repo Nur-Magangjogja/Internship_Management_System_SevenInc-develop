@@ -305,47 +305,30 @@
                             </a>
 
                             <!-- More Actions Menu -->
-                            <div class="relative" x-data="{ open: false }">
-                                <button
-                                    type="button"
-                                    @click="open = !open"
-                                    class="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50"
-                                >
-                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <circle cx="12" cy="12" r="1"/>
-                                        <circle cx="12" cy="5" r="1"/>
-                                        <circle cx="12" cy="19" r="1"/>
-                                    </svg>
-                                </button>
+                            @if (!$item->is_default)
+                                <div class="relative template-action-menu">
+                                    <button
+                                        type="button"
+                                        class="template-action-toggle rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none"
+                                        title="Opsi Lainnya"
+                                        aria-expanded="false"
+                                    >
+                                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="1"/>
+                                            <circle cx="12" cy="5" r="1"/>
+                                            <circle cx="12" cy="19" r="1"/>
+                                        </svg>
+                                    </button>
 
-                                <div
-                                    x-show="open"
-                                    @click.away="open = false"
-                                    x-cloak
-                                    class="absolute right-0 bottom-full mb-1 z-20 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-                                >
-                                    <!-- Duplikasi -->
-                                    <form method="POST" action="{{ $item->duplicate_url ?? route('admin.document-templates.duplicate', $item) }}">
-                                        @csrf
-                                        <button
-                                            type="submit"
-                                            class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                        >
-                                            <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                                            </svg>
-                                            Gandakan (Salin)
-                                        </button>
-                                    </form>
-
-                                    <!-- Tetapkan Default -->
-                                    @if (!$item->is_default)
+                                    <div
+                                        class="template-action-dropdown hidden absolute right-0 bottom-full mb-1 z-30 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                                    >
+                                        <!-- Tetapkan Default -->
                                         <form method="POST" action="{{ $item->set_default_url ?? route('admin.document-templates.set-default', $item) }}">
                                             @csrf
                                             <button
                                                 type="submit"
-                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50"
+                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 transition"
                                             >
                                                 <svg class="h-3.5 w-3.5 text-amber-500 fill-amber-500" viewBox="0 0 24 24">
                                                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -353,15 +336,13 @@
                                                 Jadikan Default
                                             </button>
                                         </form>
-                                    @endif
 
-                                    <!-- Toggle Active -->
-                                    @if (!$item->is_default)
+                                        <!-- Toggle Active -->
                                         <form method="POST" action="{{ $item->toggle_active_url ?? route('admin.document-templates.toggle-active', $item) }}">
                                             @csrf
                                             <button
                                                 type="submit"
-                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition"
                                             >
                                                 <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                     <circle cx="12" cy="12" r="10"/>
@@ -370,10 +351,8 @@
                                                 {{ $item->is_active ? 'Nonaktifkan (Draf)' : 'Aktifkan' }}
                                             </button>
                                         </form>
-                                    @endif
 
-                                    <!-- Delete (Hanya jika bukan default) -->
-                                    @if (!$item->is_default)
+                                        <!-- Delete (Hanya jika bukan default) -->
                                         <div class="my-1 border-t border-slate-100"></div>
                                         <form
                                             method="POST"
@@ -384,7 +363,7 @@
                                             @method('DELETE')
                                             <button
                                                 type="submit"
-                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50"
+                                                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
                                             >
                                                 <svg class="h-3.5 w-3.5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                     <polyline points="3 6 5 6 21 6"/>
@@ -393,9 +372,9 @@
                                                 Hapus
                                             </button>
                                         </form>
-                                    @endif
+                                    </div>
                                 </div>
-                            </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -444,3 +423,48 @@
     @endif
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Dropdown toggle handler
+    document.addEventListener('click', function (e) {
+        const toggleBtn = e.target.closest('.template-action-toggle');
+        const activeDropdown = toggleBtn ? toggleBtn.closest('.template-action-menu')?.querySelector('.template-action-dropdown') : null;
+
+        // Close all other dropdowns
+        document.querySelectorAll('.template-action-dropdown').forEach(function (dd) {
+            if (dd !== activeDropdown) {
+                dd.classList.add('hidden');
+                const btn = dd.closest('.template-action-menu')?.querySelector('.template-action-toggle');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        // Toggle current dropdown if clicked on toggle button
+        if (toggleBtn && activeDropdown) {
+            e.stopPropagation();
+            const isHidden = activeDropdown.classList.contains('hidden');
+            if (isHidden) {
+                activeDropdown.classList.remove('hidden');
+                toggleBtn.setAttribute('aria-expanded', 'true');
+            } else {
+                activeDropdown.classList.add('hidden');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            }
+        }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.template-action-dropdown').forEach(function (dd) {
+                dd.classList.add('hidden');
+                const btn = dd.closest('.template-action-menu')?.querySelector('.template-action-toggle');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            });
+        }
+    });
+});
+</script>
+@endpush
