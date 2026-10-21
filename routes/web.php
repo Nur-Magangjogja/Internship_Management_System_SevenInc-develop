@@ -430,6 +430,30 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/{spreadsheetConnection}/schemas', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'storeSchema'])->name('schemas.store');
         Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/activate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'activateSchema'])->name('schemas.activate');
         Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/deactivate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'deactivateSchema'])->name('schemas.deactivate');
+
+        // Read-only universal discovery & inspection (F1)
+        Route::get('/{spreadsheetConnection}/tabs', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'getTabs'])->name('tabs');
+        Route::get('/{spreadsheetConnection}/inspect-schema', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'inspectSchema'])->name('inspect-schema');
+        Route::get('/{spreadsheetConnection}/preview-rows', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'previewRows'])->name('preview-rows');
+        Route::get('/{spreadsheetConnection}/draft-mapping-proposals', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'draftMappingProposals'])->name('draft-mapping-proposals');
+
+        // Interactive field selection, proposal lifecycle, diff & approval (F2)
+        Route::post('/{spreadsheetConnection}/tab-profile', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'saveTabProfile'])->name('tab-profile.save');
+        Route::post('/{spreadsheetConnection}/snapshots', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'saveSnapshot'])->name('snapshots.store');
+        Route::post('/{spreadsheetConnection}/proposals', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'createProposal'])->name('proposals.store');
+        Route::get('/{spreadsheetConnection}/proposals/{proposal}/diff', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'previewDiff'])->name('proposals.diff');
+        Route::post('/{spreadsheetConnection}/proposals/{proposal}/apply', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'applyProposal'])->name('proposals.apply');
+        Route::put('/{spreadsheetConnection}/proposals/{proposal}/items/{item}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'updateProposalItem'])->name('proposals.items.update');
+
+        // Safe Header / Column Deletion Eligibility & Execution (Fase 3)
+        Route::get('/{spreadsheetConnection}/tabs/{sheetId}/columns/{columnIdentity}/deletion-eligibility', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'checkColumnDeletionEligibility'])->name('columns.deletion-eligibility');
+        Route::post('/{spreadsheetConnection}/tabs/{sheetId}/columns/{columnIdentity}/delete-empty-column', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'deleteEmptyColumn'])->name('columns.delete-empty');
+
+        // Controlled Bidirectional Sync Engine & Inbound Staging (Fase 4)
+        Route::post('/{spreadsheetConnection}/tabs/{sheetId}/inbound-scan', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'scanInboundChanges'])->name('inbound.scan');
+        Route::get('/{spreadsheetConnection}/inbound-staging', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'getInboundStaging'])->name('inbound.staging');
+        Route::post('/{spreadsheetConnection}/inbound-staging/{staging}/approve', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'approveInboundStaging'])->name('inbound.staging.approve');
+        Route::post('/{spreadsheetConnection}/inbound-staging/{staging}/reject', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'rejectInboundStaging'])->name('inbound.staging.reject');
     });
 
     // Manajemen Template MOU -> admin.mou-templates.*
@@ -831,4 +855,11 @@ Route::middleware(['auth', 'role:pemagang'])->prefix('pemagang')->name('pemagang
     Route::get('/webinar', [\App\Http\Controllers\Pemagang\WebinarController::class, 'index'])->name('webinar.index');
     Route::get('/webinar/{webinar}', [\App\Http\Controllers\Pemagang\WebinarController::class, 'show'])->name('webinar.show');
     Route::post('/webinar/{webinar}/upload-proof', [\App\Http\Controllers\Pemagang\WebinarController::class, 'uploadProof'])->name('webinar.upload_proof');
+});
+
+// Master Plan V1 Fase 5: Universal Cloud File Access (RBAC Controlled)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/cloud-files/{uuid}/preview', [\App\Http\Controllers\UniversalFileController::class, 'preview'])->name('cloud-files.preview');
+    Route::get('/cloud-files/{uuid}/download', [\App\Http\Controllers\UniversalFileController::class, 'download'])->name('cloud-files.download');
+    Route::get('/cloud-files/{uuid}/metadata', [\App\Http\Controllers\UniversalFileController::class, 'metadata'])->name('cloud-files.metadata');
 });

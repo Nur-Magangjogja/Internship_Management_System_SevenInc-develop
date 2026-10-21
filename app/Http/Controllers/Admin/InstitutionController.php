@@ -60,6 +60,7 @@ class InstitutionController extends Controller
     {
         $request->validate([
             'name'                => 'required|string|max:255',
+            'logo'                => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'address'             => 'nullable|string',
             'phone'               => 'nullable|string|max:30',
             'email'               => 'nullable|email|max:100',
@@ -75,8 +76,14 @@ class InstitutionController extends Controller
             return back()->withInput()->withErrors(['name' => 'Institusi dengan nama ini sudah terdaftar.']);
         }
 
+        $logoPath = null;
+        if ($request->hasFile('logo')) {
+            $logoPath = $request->file('logo')->store('institutions', 'public');
+        }
+
         $institution = Institution::create([
             'name'                => trim($request->name),
+            'logo'                => $logoPath,
             'address'             => $request->address,
             'phone'               => $request->phone,
             'email'               => $request->email,
@@ -143,6 +150,7 @@ class InstitutionController extends Controller
     {
         $request->validate([
             'name'                => 'required|string|max:255',
+            'logo'                => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'address'             => 'nullable|string',
             'phone'               => 'nullable|string|max:30',
             'email'               => 'nullable|email|max:100',
@@ -161,16 +169,23 @@ class InstitutionController extends Controller
             return back()->withInput()->withErrors(['name' => 'Institusi dengan nama serupa sudah terdaftar.']);
         }
 
-        $before = $institution->only(['name', 'address', 'phone', 'email', 'fax', 'correspondence_unit']);
-
-        $institution->update([
+        $updateData = [
             'name'                => trim($request->name),
             'address'             => $request->address,
             'phone'               => $request->phone,
             'email'               => $request->email,
             'fax'                 => $request->fax,
             'correspondence_unit' => $request->correspondence_unit,
-        ]);
+        ];
+
+        if ($request->hasFile('logo')) {
+            // Addendum Final V4: Simpan logo baru tanpa hard delete file lama (menjaga immutability riwayat)
+            $updateData['logo'] = $request->file('logo')->store('institutions', 'public');
+        }
+
+        $before = $institution->only(['name', 'address', 'phone', 'email', 'fax', 'correspondence_unit', 'logo']);
+
+        $institution->update($updateData);
 
         ActivityLogger::log(
             action: 'institution_updated',

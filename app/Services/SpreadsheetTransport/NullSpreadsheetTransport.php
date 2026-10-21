@@ -100,4 +100,59 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
     {
         return false;
     }
+
+    public function listTabs(SpreadsheetConnection $connection): SpreadsheetTransportResponse
+    {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
+
+    public function inspectSchema(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
+
+    public function readRowsPage(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null,
+        int $page = 1,
+        int $pageSize = 20,
+        bool $maskPii = true
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
+
+    public function deleteEmptyColumn(
+        SpreadsheetConnection $connection,
+        int $sheetId,
+        string $tabName,
+        string $columnIdentity,
+        string $expectedSchemaHash,
+        ?string $idempotencyKey = null
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
 }

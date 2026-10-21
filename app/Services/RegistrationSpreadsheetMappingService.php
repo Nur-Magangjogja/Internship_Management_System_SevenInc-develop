@@ -302,10 +302,29 @@ class RegistrationSpreadsheetMappingService
 
         foreach ($mappings as $mapping) {
             $value = $this->resolveColumnValue($registration, $mapping);
-            $payload[$mapping->sheet_header] = $value;
+            $payload[$mapping->sheet_header] = self::escapeFormulaInjection($value);
         }
 
         return $payload;
+    }
+
+    /**
+     * Mencegah formula injection (CWE-1236) pada saat menulis ke Spreadsheet.
+     * Jika string diawali karakter formula (=, +, -, @, \t, \r), escape dengan apostrof tunggal di depan.
+     */
+    public static function escapeFormulaInjection(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+        if ($value === '') {
+            return '';
+        }
+        $firstChar = $value[0];
+        if (in_array($firstChar, ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $value;
+        }
+        return $value;
     }
 
     /**
@@ -660,7 +679,7 @@ class RegistrationSpreadsheetMappingService
             if (is_string($val) && (str_starts_with($val, 'private/') || str_starts_with($val, 'uploads/'))) {
                 $sanitizedAnswers[$key] = basename($val);
             } else {
-                $sanitizedAnswers[$key] = $val;
+                $sanitizedAnswers[$key] = self::escapeFormulaInjection($val);
             }
         }
 

@@ -74,9 +74,7 @@ class BrandController extends Controller
 
         foreach ($fileFields as $fileField) {
             if ($request->hasFile($fileField)) {
-                if ($brand->$fileField) {
-                    Storage::disk('public')->delete($brand->$fileField);
-                }
+                // Addendum Final V4: Jangan langsung delete file lama agar issued document snapshots & histori tetap utuh
                 $path = $request->file($fileField)->store('brands', 'public');
                 $data[$fileField] = $path;
             }
@@ -89,12 +87,7 @@ class BrandController extends Controller
 
     public function destroy(Brand $brand)
     {
-        $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature'];
-        foreach ($fileFields as $fileField) {
-            if ($brand->$fileField) {
-                Storage::disk('public')->delete($brand->$fileField);
-            }
-        }
+        // Addendum Final V4: Pertahankan berkas fisik aset untuk integritas snapshot dokumen terbit
         $brand->delete();
         
         return redirect()->route('admin.brands.index')->with('success', 'Brand berhasil dihapus.');

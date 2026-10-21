@@ -116,40 +116,20 @@ class CloudSyncManager
 
     /**
      * Sinkronisasikan paket berkas arsip tahunan ZIP ke cloud storage.
+     * CATATAN ADDENDUM FINAL V4: Pembuatan arsip tahunan baru ke Google Drive dinonaktifkan.
+     * Berkas historis yang sudah ada tetap aman dan dipertahankan.
      */
     public function syncArchiveExport(ArchiveExport $archive, ?User $actor = null): array
     {
-        if (!Storage::disk('local')->exists($archive->file_path)) {
-            throw new RuntimeException("Berkas arsip ZIP tidak ditemukan di server: {$archive->file_path}");
-        }
+        Log::info("syncArchiveExport: Pembuatan arsip tahunan baru ke Cloud Storage dinonaktifkan per Addendum Final V4. Berkas arsip historis tetap utuh.");
 
-        $fullPath = Storage::disk('local')->path($archive->file_path);
-
-        // Struktur folder hierarkis: Arsip/{year}
-        $remoteFolder = "Arsip/{$archive->archive_year}";
-
-        $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $archive->file_name);
-
-        $archive->update([
-            'drive_file_id'       => $uploadResult['file_id'],
-            'drive_web_view_link' => $uploadResult['web_view_link'],
-            'drive_synced_at'     => now(),
-        ]);
-
-        ActivityLogger::log(
-            action: 'archive_drive_synced',
-            description: "Paket arsip tahun {$archive->archive_year} ({$archive->file_name}) berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
-            subject: $archive,
-            actor: $actor,
-            metadata: [
-                'drive_file_id'       => $uploadResult['file_id'],
-                'drive_web_view_link' => $uploadResult['web_view_link'],
-                'folder'              => $remoteFolder,
-                'driver'              => $uploadResult['driver'],
-            ]
-        );
-
-        return $uploadResult;
+        return [
+            'success'       => true,
+            'driver'        => 'deactivated',
+            'file_id'       => $archive->drive_file_id,
+            'web_view_link' => $archive->drive_web_view_link,
+            'message'       => 'Penyimpanan paket arsip tahunan baru ke cloud storage telah dinonaktifkan. Arsip historis dipertahankan.',
+        ];
     }
 
     /**

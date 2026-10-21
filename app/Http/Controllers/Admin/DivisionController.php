@@ -86,16 +86,23 @@ class DivisionController extends Controller
     }
 
     /** DELETE /admin/form-settings/divisions/{division} */
-    public function destroy(Division $division)
+    public function destroy(Division $division, \App\Services\DivisionLifecycleService $lifecycleService)
     {
-        $name = $division->name;
-        $division->delete();
+        $result = $lifecycleService->deleteOrDeactivate($division, auth()->user());
 
         if (request()->wantsJson() || request()->ajax()) {
-            return response()->json(['ok' => true, 'message' => "Divisi \"{$name}\" dihapus."]);
+            return response()->json([
+                'ok'        => true,
+                'action'    => $result['action'],
+                'archived'  => $result['action'] === 'deactivated',
+                'is_active' => $result['is_active'],
+                'message'   => $result['message'],
+            ]);
         }
 
+        $flashType = $result['action'] === 'deactivated' ? 'warning' : 'success';
+
         return redirect()->route('admin.form-settings.divisions')
-            ->with('success', "Divisi \"{$name}\" berhasil dihapus.");
+            ->with($flashType, $result['message']);
     }
 }

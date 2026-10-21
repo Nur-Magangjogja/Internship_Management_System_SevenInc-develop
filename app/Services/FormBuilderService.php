@@ -731,8 +731,49 @@ class FormBuilderService
             ->exists();
         $hasAnswers = RegistrationCustomAnswer::where('field_key', $field->field_key)->exists();
 
-        if ($isRegistered || $existsInPublishedSchema || $hasAnswers) {
-            throw new DomainException("Pertanyaan '{$field->label}' telah dipublikasikan atau memiliki jawaban historis dan tidak boleh dihapus sama sekali.");
+        // Guardrail tambahan F2: Cek dependensi snapshot historis, remote spreadsheet mapping, proposal disetujui, dan pending outbox
+        $hasSnapshot = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('registration_form_snapshots')) {
+                $hasSnapshot = RegistrationFormSnapshot::where('schema_snapshot', 'LIKE', '%"' . $field->field_key . '"%')->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasSpreadsheetMapping = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('spreadsheet_column_mappings')) {
+                $hasSpreadsheetMapping = \App\Models\SpreadsheetColumnMapping::where('target_field', $field->field_key)->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasApprovedProposal = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('sheet_mapping_proposal_items')) {
+                $hasApprovedProposal = \App\Models\SheetMappingProposalItem::where('field_key', $field->field_key)
+                    ->whereHas('proposal', function ($q) {
+                        $q->whereIn('status', [
+                            \App\Models\SheetMappingProposal::STATUS_APPROVED_TO_DRAFT,
+                            \App\Models\SheetMappingProposal::STATUS_APPLIED,
+                        ]);
+                    })
+                    ->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasPendingOutbox = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('integration_outbox_events')) {
+                $hasPendingOutbox = \App\Models\IntegrationOutboxEvent::whereIn('status', [
+                    \App\Models\IntegrationOutboxEvent::STATUS_PENDING,
+                    \App\Models\IntegrationOutboxEvent::STATUS_PROCESSING,
+                ])
+                ->where('payload', 'LIKE', '%"' . $field->field_key . '"%')
+                ->exists();
+            }
+        } catch (\Throwable) {}
+
+        if ($isRegistered || $existsInPublishedSchema || $hasAnswers || $hasSnapshot || $hasSpreadsheetMapping || $hasApprovedProposal || $hasPendingOutbox) {
+            throw new DomainException("Pertanyaan '{$field->label}' telah dipublikasikan, memiliki jawaban/snapshot historis, atau terhubung dengan integrasi spreadsheet/antrean sinkronisasi sehingga tidak boleh dihapus sama sekali.");
         }
 
         return (bool) $field->delete();

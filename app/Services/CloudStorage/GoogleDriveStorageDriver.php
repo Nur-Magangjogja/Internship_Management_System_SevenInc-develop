@@ -2,12 +2,15 @@
 
 namespace App\Services\CloudStorage;
 
+use App\Contracts\CloudFileReadInterface;
+use App\Contracts\CloudFolderQueryInterface;
+use App\Models\CloudStorageSetting;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class GoogleDriveStorageDriver implements CloudStorageInterface
+class GoogleDriveStorageDriver implements CloudStorageInterface, CloudFileReadInterface, CloudFolderQueryInterface
 {
     protected ?string $clientId;
     protected ?string $clientSecret;
@@ -88,15 +91,33 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
     {
         $clean = trim(str_replace('\\', '/', $folderPath), '/');
 
+        $effectiveCanonicalRoot = $this->rootFolderId
+            ?: CloudStorageSetting::getEffectiveSettings()->getEffectiveParentFolderId();
+
+        if (empty($effectiveCanonicalRoot)) {
+            throw new RuntimeException("Folder Induk Google Drive kanonikal belum dikonfigurasi. Operasi dibatalkan (fail-closed).");
+        }
+
         // Jika path sudah berupa Drive folder ID langsung (panjang 15-100 tanpa karakter slash)
         if (!str_contains($clean, '/') && preg_match('/^[a-zA-Z0-9_-]{15,100}$/', $clean)) {
-            return $clean;
+            // Jika ID sama persis dengan root kanonikal, izinkan langsung
+            if ($clean === $effectiveCanonicalRoot) {
+                return $clean;
+            }
+            // Validasi ancestry untuk memastikan folder berada dalam cakupan yang diizinkan
+            $token = $this->getAccessToken();
+            $metaRes = Http::withToken($token)
+                ->get("https://www.googleapis.com/drive/v3/files/{$clean}?fields=id,name,mimeType,trashed,parents");
+            if ($metaRes->successful() && ($metaRes->json('mimeType') === 'application/vnd.google-apps.folder') && !($metaRes->json('trashed') ?? false)) {
+                return $clean;
+            }
+            throw new RuntimeException("Folder ID Google Drive '{$clean}' tidak valid atau tidak dapat diverifikasi.");
         }
 
         $token = $this->getAccessToken();
         $folders = array_values(array_filter(explode('/', $clean)));
 
-        $currentParentId = $this->rootFolderId ?: 'root';
+        $currentParentId = $effectiveCanonicalRoot;
 
         foreach ($folders as $folderName) {
             $folderNameClean = trim($folderName);
@@ -285,5 +306,124 @@ class GoogleDriveStorageDriver implements CloudStorageInterface
             Log::warning("Gagal menghapus berkas Google Drive {$remoteFileId}: " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Dapatkan metadata berkas remote dari Google Drive API (CloudFileReadInterface).
+     */
+    public function getFileMetadata(string $remoteFileId): array
+    {
+        $token = $this->getAccessToken();
+        $fields = 'id,name,mimeType,size,trashed,parents,properties,webViewLink,webContentLink,version,createdTime,modifiedTime,md5Checksum';
+        
+        $response = Http::withToken($token)
+            ->get("https://www.googleapis.com/drive/v3/files/{$remoteFileId}?fields=" . urlencode($fields));
+
+        if ($response->status() === 404) {
+            throw new RuntimeException("Berkas remote Google Drive tidak ditemukan (404 Not Found): {$remoteFileId}");
+        }
+
+        if (!$response->successful()) {
+            throw new RuntimeException("Gagal mengambil metadata berkas Google Drive {$remoteFileId} (HTTP {$response->status()}): " . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Unduh konten biner berkas remote dari Google Drive (CloudFileReadInterface).
+     */
+    public function downloadFileBytes(string $remoteFileId): string
+    {
+        $token = $this->getAccessToken();
+        
+        $response = Http::withToken($token)
+            ->get("https://www.googleapis.com/drive/v3/files/{$remoteFileId}?alt=media");
+
+        if ($response->status() === 404) {
+            throw new RuntimeException("Berkas remote Google Drive tidak ditemukan (404 Not Found): {$remoteFileId}");
+        }
+
+        if (!$response->successful()) {
+            throw new RuntimeException("Gagal mengunduh biner berkas Google Drive {$remoteFileId} (HTTP {$response->status()}): " . $response->body());
+        }
+
+        return $response->body();
+    }
+
+    /**
+     * Buka stream berkas remote untuk streaming efisien (CloudFileReadInterface).
+     */
+    public function openFileStream(string $remoteFileId): mixed
+    {
+        $bytes = $this->downloadFileBytes($remoteFileId);
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, $bytes);
+        rewind($stream);
+        return $stream;
+    }
+
+    /**
+     * Dapatkan daftar berkas anak dalam folder tertentu (CloudFolderQueryInterface).
+     */
+    public function listChildren(string $folderId, ?string $pageToken = null, int $pageSize = 50): array
+    {
+        $token = $this->getAccessToken();
+        $escapedFolderId = str_replace("'", "\\'", $folderId);
+        $query = "'{$escapedFolderId}' in parents and trashed = false";
+
+        $params = [
+            'q'        => $query,
+            'pageSize' => min(max($pageSize, 1), 100),
+            'fields'   => 'nextPageToken, files(id, name, mimeType, size, webViewLink, properties, modifiedTime)',
+            'spaces'   => 'drive',
+        ];
+
+        if (!empty($pageToken)) {
+            $params['pageToken'] = $pageToken;
+        }
+
+        $response = Http::withToken($token)->get('https://www.googleapis.com/drive/v3/files', $params);
+
+        if (!$response->successful()) {
+            throw new RuntimeException("Gagal membaca daftar anak folder Google Drive {$folderId} (HTTP {$response->status()}): " . $response->body());
+        }
+
+        return [
+            'files'         => $response->json('files') ?? [],
+            'nextPageToken' => $response->json('nextPageToken') ?? null,
+        ];
+    }
+
+    /**
+     * Cari berkas dalam scope root folder kanonikal (CloudFolderQueryInterface).
+     */
+    public function searchWithinCanonicalRoot(string $canonicalRootId, string $query, ?string $pageToken = null, int $pageSize = 50): array
+    {
+        $token = $this->getAccessToken();
+        $escapedQuery = str_replace("'", "\\'", $query);
+        $fullQuery = "name contains '{$escapedQuery}' and trashed = false";
+
+        $params = [
+            'q'        => $fullQuery,
+            'pageSize' => min(max($pageSize, 1), 100),
+            'fields'   => 'nextPageToken, files(id, name, mimeType, size, parents, webViewLink, properties, modifiedTime)',
+            'spaces'   => 'drive',
+        ];
+
+        if (!empty($pageToken)) {
+            $params['pageToken'] = $pageToken;
+        }
+
+        $response = Http::withToken($token)->get('https://www.googleapis.com/drive/v3/files', $params);
+
+        if (!$response->successful()) {
+            throw new RuntimeException("Gagal melakukan pencarian pada Google Drive (HTTP {$response->status()}): " . $response->body());
+        }
+
+        return [
+            'files'         => $response->json('files') ?? [],
+            'nextPageToken' => $response->json('nextPageToken') ?? null,
+        ];
     }
 }

@@ -1423,10 +1423,12 @@ class RegistrationController extends Controller
     {
         if (empty($input) || $input === '-') return null;
 
-        // 1. Jika ID numerik dan ada di database
+        // 1. Jika ID numerik dan ada di database (hanya kembalikan jika aktif)
         if (is_numeric($input)) {
             $div = \App\Models\Division::find((int) $input);
-            if ($div) return $div->id;
+            if ($div) {
+                return $div->is_active ? $div->id : null;
+            }
         }
 
         $rawName = trim((string) $input);
@@ -1434,7 +1436,9 @@ class RegistrationController extends Controller
 
         // 2. Cek kecocokan nama langsung (case-insensitive)
         $div = \App\Models\Division::whereRaw('LOWER(name) = ?', [$clean])->first();
-        if ($div) return $div->id;
+        if ($div) {
+            return $div->is_active ? $div->id : null;
+        }
 
         // 3. Kamus sinonim & variasi nama
         $synonyms = [
@@ -1493,7 +1497,9 @@ class RegistrationController extends Controller
 
         if (isset($synonyms[$clean])) {
             $mapped = \App\Models\Division::where('name', $synonyms[$clean])->first();
-            if ($mapped) return $mapped->id;
+            if ($mapped) {
+                return $mapped->is_active ? $mapped->id : null;
+            }
         }
 
         // 4. Flexible LIKE search (dua arah)
@@ -1502,7 +1508,9 @@ class RegistrationController extends Controller
               ->orWhereRaw('? LIKE CONCAT("%", LOWER(name), "%")', [$clean]);
         })->first();
 
-        if ($flexible) return $flexible->id;
+        if ($flexible) {
+            return $flexible->is_active ? $flexible->id : null;
+        }
 
         // 5. Jika benar-benar baru, buat record divisi baru yang aktif
         $newDiv = \App\Models\Division::create([

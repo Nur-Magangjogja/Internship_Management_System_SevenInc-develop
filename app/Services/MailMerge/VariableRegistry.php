@@ -885,8 +885,8 @@ class VariableRegistry
             // =========================================================================
             'asset.brand.logo' => [
                 'token'                  => 'asset.brand.logo',
-                'aliases'                => ['asset.company.logo', 'company_logo', 'brand_logo', 'logo_perusahaan', 'logo_brand', 'logo_seveninc', 'asset.logo_perusahaan', 'asset.logo_brand'],
-                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara',
+                'aliases'                => ['brand_logo', 'logo_perusahaan', 'logo_brand', 'asset.logo_perusahaan', 'asset.logo_brand'],
+                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara Terpilih',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -903,8 +903,8 @@ class VariableRegistry
             ],
             'asset.company.logo' => [
                 'token'                  => 'asset.company.logo',
-                'aliases'                => ['asset.brand.logo', 'company_logo', 'brand_logo', 'logo_perusahaan', 'logo_brand', 'logo_seveninc', 'asset.logo_perusahaan', 'asset.logo_brand'],
-                'label'                  => 'Logo Resmi Perusahaan (Seven Inc)',
+                'aliases'                => ['company_logo', 'logo_seveninc'],
+                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara (Legacy Alias)',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -921,8 +921,8 @@ class VariableRegistry
             ],
             'asset.institusi.logo' => [
                 'token'                  => 'asset.institusi.logo',
-                'aliases'                => ['asset.institution.logo', 'institution_logo', 'logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
-                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra',
+                'aliases'                => ['logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
+                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra Terpilih',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -939,8 +939,8 @@ class VariableRegistry
             ],
             'asset.institution.logo' => [
                 'token'                  => 'asset.institution.logo',
-                'aliases'                => ['asset.institusi.logo', 'institution_logo', 'logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
-                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra',
+                'aliases'                => ['institution_logo'],
+                'label'                  => 'Logo Resmi Institusi Mitra (Legacy Alias)',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -1330,5 +1330,30 @@ class VariableRegistry
         }
 
         return $grouped;
+    }
+
+    /**
+     * Dapatkan seluruh token sebagai kamus token => metadata (C17, C29).
+     */
+    public static function getAllTokens(): array
+    {
+        $tokens = [];
+        foreach (static::getDefinitions() as $canonical => $def) {
+            $tokens[$canonical] = $def;
+        }
+        return $tokens;
+    }
+
+    /**
+     * Dapatkan peta alias legacy untuk backward compatibility (C15).
+     */
+    public static function buildLegacyAliasesMap(): array
+    {
+        return [
+            'asset.company.logo'     => 'asset.brand.logo',
+            'asset.institution.logo' => 'asset.institusi.logo',
+            'company_logo'           => 'asset.brand.logo',
+            'institution_logo'       => 'asset.institusi.logo',
+        ];
     }
 }

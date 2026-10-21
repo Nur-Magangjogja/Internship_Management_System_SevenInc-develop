@@ -180,96 +180,90 @@
 
             <hr class="border-slate-100" />
 
-            <!-- Folders Configuration -->
-            <h2 class="text-base font-bold text-slate-800">Pemetaan Folder Google Drive (Root Sistem)</h2>
+            <!-- Single Canonical Parent Root Configuration (Addendum Final V4) -->
+            <div>
+                <h2 class="text-base font-bold text-slate-800">Folder Induk Tunggal Google Drive (Kanonikal)</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Satu-satunya folder induk yang diverifikasi. Seluruh folder anak (REGISTRASI, SYSTEM-ASSETS, GENERATED-DOCUMENTS) otomatis dibuat secara malas (lazy-create) oleh sistem.</p>
+            </div>
 
-            <!-- 1. Folder Root System Assets -->
-            <div class="space-y-1">
+            <div class="space-y-2 rounded-xl border-2 {{ $settings->is_verified ? 'border-emerald-300 bg-emerald-50/20' : ($settings->canonical_parent_folder_id ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 bg-slate-50/50') }} p-4">
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    1. Folder Root Aset Sistem (System Assets)
+                    Folder Induk Google Drive SERTIF (URL atau Folder ID) <span class="text-rose-500">*</span>
                 </label>
-                <p class="text-xs text-slate-500">Tempat penyimpanan logo perusahaan, logo brand, kop surat, tanda tangan pejabat, dan stempel.</p>
                 <div class="flex flex-col gap-2 sm:flex-row">
                     <input
                         type="text"
-                        name="system_assets_folder_url"
-                        value="{{ old('system_assets_folder_url', $settings->system_assets_folder_url ?: $settings->system_assets_folder_id) }}"
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="Masukkan URL Folder Google Drive atau Folder ID"
+                        name="canonical_parent_folder_url"
+                        value="{{ old('canonical_parent_folder_url', $settings->canonical_parent_folder_url ?: $settings->canonical_parent_folder_id) }}"
+                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                        placeholder="Contoh: https://drive.google.com/drive/folders/1a2B3c... atau 1a2B3c..."
                     />
-                    @if ($settings->system_assets_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-700">
-                            ID: {{ $settings->system_assets_folder_id }}
+                    @if ($settings->canonical_parent_folder_id)
+                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono font-bold text-slate-700">
+                            ID: {{ $settings->canonical_parent_folder_id }}
                         </span>
                     @endif
                 </div>
+
+                <!-- Status Verifikasi Folder Induk -->
+                <div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                    @if ($settings->is_verified)
+                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 font-bold text-emerald-800">
+                            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                            Terverifikasi Aktif
+                        </span>
+                        <span class="text-slate-500">Terakhir diverifikasi: {{ $settings->verified_at ? $settings->verified_at->format('d M Y H:i') : '-' }}</span>
+                    @elseif ($settings->canonical_parent_folder_id)
+                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 font-bold text-amber-800">
+                            <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                            Menunggu Uji Verifikasi
+                        </span>
+                        <span class="text-slate-500">Klik tombol "Uji Koneksi & Izin Folder" di atas untuk memvalidasi hak tulis akun Google Drive.</span>
+                    @else
+                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
+                            Belum Dikonfigurasi
+                        </span>
+                    @endif
+
+                    @if ($settings->hasRootConfigConflict())
+                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 font-bold text-amber-900">
+                            ⚠️ ROOT_CONFIG_CONFLICT: UI ≠ ENV
+                        </span>
+                    @endif
+                </div>
+
+                @if ($settings->validation_error)
+                    <div class="mt-2 rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-700 font-medium">
+                        <strong>Kendala Validasi:</strong> {{ $settings->validation_error }}
+                    </div>
+                @endif
             </div>
 
-            <!-- 2. Folder Root Document Templates -->
-            <div class="space-y-1">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    2. Folder Root Template Dokumen (Document Templates)
-                </label>
-                <p class="text-xs text-slate-500">Folder naskah template MoU, LOA, SKL, dan sertifikat.</p>
-                <div class="flex flex-col gap-2 sm:flex-row">
-                    <input
-                        type="text"
-                        name="document_templates_folder_url"
-                        value="{{ old('document_templates_folder_url', $settings->document_templates_folder_url ?: $settings->document_templates_folder_id) }}"
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="Masukkan URL Folder Google Drive atau Folder ID"
-                    />
-                    @if ($settings->document_templates_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-700">
-                            ID: {{ $settings->document_templates_folder_id }}
-                        </span>
-                    @endif
+            <!-- Legacy Folders (Read-Only / Migrasi) -->
+            <details class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-600">
+                <summary class="cursor-pointer font-bold uppercase tracking-wider text-slate-700 hover:text-slate-900">
+                    Konfigurasi Folder Legacy / Transisi (Opsional / Read-Only)
+                </summary>
+                <p class="mt-2 text-slate-500">Folder legacy di bawah ini dipertahankan sebagai referensi riwayat audit. Operasi baru sepenuhnya menggunakan Folder Induk Tunggal di atas.</p>
+                <div class="mt-3 space-y-3">
+                    <div>
+                        <span class="font-semibold text-slate-700">1. System Assets:</span>
+                        <span class="font-mono text-slate-600">{{ $settings->system_assets_folder_id ?: 'Belum diatur' }}</span>
+                    </div>
+                    <div>
+                        <span class="font-semibold text-slate-700">2. Document Templates:</span>
+                        <span class="font-mono text-slate-600">{{ $settings->document_templates_folder_id ?: 'Tidak diperlukan untuk operasi baru (Database-versioned)' }}</span>
+                    </div>
+                    <div>
+                        <span class="font-semibold text-slate-700">3. Generated Documents:</span>
+                        <span class="font-mono text-slate-600">{{ $settings->generated_docs_folder_id ?: 'Lazy-created di Folder Induk' }}</span>
+                    </div>
+                    <div>
+                        <span class="font-semibold text-slate-700">4. Archives:</span>
+                        <span class="font-mono text-slate-600">{{ $settings->archives_folder_id ?: 'Tidak diperlukan untuk operasi baru' }}</span>
+                    </div>
                 </div>
-            </div>
-
-            <!-- 3. Folder Root Generated Documents (Non-Pemagang / Institusi / Umum) -->
-            <div class="space-y-1">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    3. Folder Root Dokumen Hasil Generate (Generated Documents)
-                </label>
-                <p class="text-xs text-slate-500">Folder berkas dokumen kemitraan institusi, MoU terbit, dan dokumen umum non-pemagang.</p>
-                <div class="flex flex-col gap-2 sm:flex-row">
-                    <input
-                        type="text"
-                        name="generated_docs_folder_url"
-                        value="{{ old('generated_docs_folder_url', $settings->generated_docs_folder_url ?: $settings->generated_docs_folder_id) }}"
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="Masukkan URL Folder Google Drive atau Folder ID"
-                    />
-                    @if ($settings->generated_docs_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-700">
-                            ID: {{ $settings->generated_docs_folder_id }}
-                        </span>
-                    @endif
-                </div>
-            </div>
-
-            <!-- 4. Folder Root Archives -->
-            <div class="space-y-1">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    4. Folder Root Arsip Tahunan (Archives)
-                </label>
-                <p class="text-xs text-slate-500">Penyimpanan paket ekspor ZIP arsip administratif tahunan sistem.</p>
-                <div class="flex flex-col gap-2 sm:flex-row">
-                    <input
-                        type="text"
-                        name="archives_folder_url"
-                        value="{{ old('archives_folder_url', $settings->archives_folder_url ?: $settings->archives_folder_id) }}"
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="Masukkan URL Folder Google Drive atau Folder ID"
-                    />
-                    @if ($settings->archives_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-700">
-                            ID: {{ $settings->archives_folder_id }}
-                        </span>
-                    @endif
-                </div>
-            </div>
+            </details>
 
             <hr class="border-slate-100" />
 

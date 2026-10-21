@@ -90,6 +90,18 @@ class SystemAsset extends Model
             if (empty($asset->asset_code)) {
                 $asset->asset_code = static::generateDefaultCode($asset);
             }
+            if (empty($asset->mime_type)) {
+                $asset->mime_type = 'image/png';
+            }
+            if ($asset->file_size_bytes === null) {
+                $asset->file_size_bytes = 0;
+            }
+            if (empty($asset->local_path)) {
+                $asset->local_path = $asset->file_path ?? 'assets/placeholder.png';
+            }
+            if (empty($asset->checksum_sha256)) {
+                $asset->checksum_sha256 = hash('sha256', $asset->local_path);
+            }
         });
     }
 

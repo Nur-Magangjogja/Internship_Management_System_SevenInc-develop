@@ -1544,7 +1544,29 @@ class SpreadsheetSyncEngineService
                     $localFullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($relPath);
                 }
 
-                $uploadResp = $transport->uploadAttachment($connection, $att, $localFullPath);
+                if ($transport instanceof \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport) {
+                    // Master Plan V1 Addendum Final V4 F6 Cutover: Seluruh uploader Apps Script dipindahkan ke UniversalFileService
+                    $universalService = app(\App\Services\UniversalFileService::class);
+                    $regRecord = $universalService->put(
+                        fileOrContent: $localFullPath,
+                        category: \App\Models\CloudFileRegistry::CATEGORY_CV,
+                        ownerType: 'registration',
+                        ownerId: $registration->id,
+                        customFileName: $att->original_name,
+                        customMimeType: $att->mime_type
+                    );
+                    $fileId = $regRecord->drive_file_id;
+                    $viewLink = "https://drive.google.com/file/d/{$fileId}/view";
+                    $folderId = $regRecord->drive_folder_id;
+                    $folderUrl = "https://drive.google.com/drive/folders/{$folderId}";
+                    $uploadResp = \App\Services\SpreadsheetTransport\SpreadsheetTransportResponse::success([
+                        'file_id'       => $fileId,
+                        'web_view_link' => $viewLink,
+                        'folder_id'     => $folderId,
+                    ]);
+                } else {
+                    $uploadResp = $transport->uploadAttachment($connection, $att, $localFullPath);
+                }
                 if ($uploadResp->success) {
                     $fileId = $uploadResp->rawResponse['file_id'] ?? $uploadResp->rawResponse['data']['file_id'] ?? null;
                     $viewLink = $uploadResp->rawResponse['web_view_link'] ?? $uploadResp->rawResponse['data']['web_view_link'] ?? null;

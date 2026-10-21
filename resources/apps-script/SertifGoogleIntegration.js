@@ -1,24 +1,22 @@
 /**
  * ============================================================================
- * SERTIF - GOOGLE APPS SCRIPT INTEGRATION GATEWAY (PHASE S9E)
+ * SERTIF SHEETS GATEWAY — MASTER PLAN V1 (ADDENDUM FINAL V4)
  * ============================================================================
  * 
- * Panduan Deployment untuk Operator Seven Inc:
- * 1. Buka https://script.google.com dengan Akun Google Operasional Seven Inc.
- * 2. Buat "New Project", beri nama: "SertIF Google Integration Gateway".
- * 3. Hapus kode bawaan, lalu salin seluruh isi file ini ke dalam editor (Code.gs).
- * 4. Buka Project Settings (ikon gerigi) -> Script Properties -> Add Script Property:
- *    - SHARED_API_KEY             : [Kunci rahasia panjang acak, sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
- *    - REGISTRATION_SPREADSHEET_ID: 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU
- *    - FOLLOWUP_SPREADSHEET_ID    : 1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
- *    - ATTACHMENTS_ROOT_FOLDER_ID : 1QRk_vowPYJfx2SmNkbg8-W2yy5o0nPRB
- * 5. Klik "Deploy" -> "New deployment" -> Select type: "Web app":
- *    - Description : SertIF Integration V1
- *    - Execute as  : Me (Akun operasional Seven Inc)
- *    - Who has access: Anyone (Wajib agar webhook Laravel dapat mengirim request)
- * 6. Klik Deploy, berikan otorisasi izin akses Google (Spreadsheets & Drive).
- * 7. Salin "Web app URL" (akhiran /exec) dan tempel ke .env (GOOGLE_APPS_SCRIPT_ENDPOINT_URL)
- *    atau masukkan ke antarmuka admin SertIF di /admin/spreadsheet-connections.
+ * Panduan Deployment untuk Operator:
+ * 1. Buka proyek Google Apps Script EXISTING pada https://script.google.com
+ *    (Jangan membuat New Project kecuali diperintahkan khusus).
+ * 2. Perbarui seluruh isi file Code.gs dengan kode ini secara utuh.
+ * 3. Buka Project Settings (ikon gerigi) -> Script Properties:
+ *    - SHARED_API_KEY              : [Kunci rahasia HMAC sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
+ *    - REGISTRATION_SPREADSHEET_ID : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU
+ *    - FOLLOWUP_SPREADSHEET_ID     : 1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
+ *    - SPREADSHEET_ALLOWLIST       : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU,1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
+ *    - ATTACHMENTS_ROOT_FOLDER_ID  : [Properti Transisi - pertahankan selama uploader legacy bermigrasi ke Drive API]
+ * 4. Klik "Deploy" -> "Manage deployments" -> Pilih deployment aktif -> Edit -> New version -> Deploy.
+ *    (Pertahankan URL /exec yang sama untuk koneksi Laravel).
+ * 5. Apps Script ini khusus berfungsi sebagai SHEETS GATEWAY.
+ *    Penyimpanan berkas fisik dikelola langsung oleh backend Laravel melalui Google Drive API.
  */
 
 // Canonical 40-Column Contract Definition for Registration Tab 2026 (Order 1 to 40)
@@ -293,37 +291,9 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
     }
   } catch (uhErr) {}
 
-  // Clear and delete/hide leftover columns to the right if column count shrank (e.g. fields disabled)
-  if (lastCol > schemaHeaders.length) {
-    var extraCols = lastCol - schemaHeaders.length;
-    var clearRows = Math.max(1, lastRow - headerRowIndex + 1);
-    var extraRange = sheet.getRange(headerRowIndex, schemaHeaders.length + 1, clearRows, extraCols);
-    try {
-      if (typeof extraRange.clear === "function") {
-        extraRange.clear({ contentsOnly: false, formatOnly: false });
-      } else if (typeof extraRange.clearContent === "function") {
-        extraRange.clearContent();
-      }
-    } catch (clrErr) {
-      try { extraRange.clearContent(); } catch (clrErr2) {}
-    }
-
-    // Attempt to permanently delete excess columns or hide them so they disappear from view
-    try {
-      if (typeof sheet.deleteColumns === "function" && sheet.getMaxColumns() > schemaHeaders.length) {
-        var colsToDelete = Math.min(extraCols, sheet.getMaxColumns() - schemaHeaders.length);
-        if (colsToDelete > 0) {
-          sheet.deleteColumns(schemaHeaders.length + 1, colsToDelete);
-        }
-      }
-    } catch (delErr) {
-      try {
-        if (typeof sheet.hideColumns === "function") {
-          sheet.hideColumns(schemaHeaders.length + 1, extraCols);
-        }
-      } catch (hideErr) {}
-    }
-  }
+  // F2 SAFETY MANDATE (P0): Non-destructive preservation.
+  // DO NOT deleteColumns, DO NOT clear, DO NOT clearContent when schema length shrinks.
+  // Existing columns, custom formulas, and user data MUST remain completely intact.
 
   return sheet;
 }
@@ -531,6 +501,18 @@ function doPost(e) {
       case "clear_tab_data":
         return handleClearTabDataAction(payload);
 
+      case "list_tabs":
+        return handleListTabsAction(payload);
+
+      case "inspect_schema":
+        return handleInspectSchemaAction(payload);
+
+      case "read_rows_page":
+        return handleReadRowsPageAction(payload);
+
+      case "delete_empty_column":
+        return handleDeleteEmptyColumnAction(payload);
+
       default:
         return createJsonResponse({
           success: false,
@@ -639,47 +621,15 @@ function handlePingAction(payload) {
 }
 
 /**
- * Handle Clear Tab Data Action (Resets sheet data rows while preserving headers)
+ * Handle Clear Tab Data Action (Fail-closed in F2 for data safety)
  */
 function handleClearTabDataAction(payload) {
-  var connectionKey = payload.connection_key;
-  var targetTabName = payload.tab_name;
-  var requestedSpreadsheetId = (payload.spreadsheet_id || "").toString().trim();
-  var props = PropertiesService.getScriptProperties();
-  var expectedSpreadsheetId = (connectionKey === "followup")
-    ? props.getProperty("FOLLOWUP_SPREADSHEET_ID")
-    : props.getProperty("REGISTRATION_SPREADSHEET_ID");
-  var spreadsheetId = requestedSpreadsheetId || expectedSpreadsheetId;
-  var headerRowIndex = (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) ? 12 : 1;
-
-  var lock = (typeof LockService !== "undefined" && LockService && LockService.getScriptLock)
-    ? LockService.getScriptLock() : null;
-  if (lock) {
-    try { lock.tryLock(30000); } catch (e) {}
-  }
-
-  try {
-    var ss = SpreadsheetApp.openById(spreadsheetId);
-    var sheet = ss.getSheetByName(targetTabName);
-    if (!sheet) {
-      return createJsonResponse({ success: false, error_code: "TAB_NOT_FOUND", message: "Tab tidak ditemukan." }, 404);
-    }
-    var lastRow = sheet.getLastRow();
-    if (lastRow > headerRowIndex) {
-      sheet.deleteRows(headerRowIndex + 1, lastRow - headerRowIndex);
-    }
-    SpreadsheetApp.flush();
-    return createJsonResponse({
-      success: true,
-      action: "clear_tab_data",
-      tab_name: targetTabName,
-      cleared_rows: lastRow - headerRowIndex
-    });
-  } catch (err) {
-    return createJsonResponse({ success: false, error_code: "CLEAR_ERROR", message: err.toString() }, 500);
-  } finally {
-    if (lock) { lock.releaseLock(); }
-  }
+  return createJsonResponse({
+    success: false,
+    error_code: "UNSAFE_LEGACY_SCHEMA_SYNC_DISABLED",
+    is_retryable: false,
+    message: "Aksi destruktif 'clear_tab_data' telah dinonaktifkan secara permanen demi integritas data historis pemagang."
+  }, 403);
 }
 
 /**
@@ -1508,11 +1458,24 @@ function handleLookupRowAction(payload) {
 }
 
 /**
- * Handle Idempotent Upload Attachment to Google Drive
+ * Handle Idempotent Upload Attachment to Google Drive (DEPRECATED per F6 Cutover)
  */
 function handleUploadAttachmentAction(payload) {
+  // Addendum Final V4 F6 Cutover (GS-05, C27):
+  // Aksi upload_attachment pada Apps Script resmi dipensiunkan (fail-closed).
+  // Seluruh penyimpanan berkas ditangani eksklusif oleh backend Laravel melalui Google Drive API.
+  return createJsonResponse({
+    success: false,
+    error_code: "ACTION_DEPRECATED_USE_DRIVE_GATEWAY",
+    is_retryable: false,
+    message: "Aksi upload_attachment pada Apps Script telah dipensiunkan. Gunakan Google Drive API gateway pada backend Laravel."
+  }, 410);
+}
+
+function handleUploadAttachmentActionLegacy(payload) {
   var props = PropertiesService.getScriptProperties();
-  var rootFolderId = (payload.drive_folder_id || props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") || "1d3TqOQO7x1REOYPNSRlZRLc7nH4K5G3u").toString().trim();
+  // Catatan Addendum Final V4: Cabut hardcoded fallback folder. Gunakan ATTACHMENTS_ROOT_FOLDER_ID transisi saja.
+  var rootFolderId = (payload.drive_folder_id || (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "").toString().trim();
 
   if (!rootFolderId) {
     return createJsonResponse({
@@ -2724,6 +2687,802 @@ function handleInspectSidecarAlignmentAction(payload) {
 }
 
 /**
+ * =========================================================================
+ * FASE 1: READ-ONLY UNIVERSAL SPREADSHEET DISCOVERY & INSPECTION ENGINE
+ * =========================================================================
+ */
+
+/**
+ * Convert 1-based column index to letter string (e.g. 1 -> A, 27 -> AA).
+ */
+function columnIndexToLetter(colIndex) {
+  var temp = 0;
+  var letter = "";
+  var col = parseInt(colIndex, 10) || 1;
+  while (col > 0) {
+    temp = (col - 1) % 26;
+    letter = String.fromCharCode(temp + 65) + letter;
+    col = Math.floor((col - temp - 1) / 26);
+  }
+  return letter;
+}
+
+/**
+ * Mask PII value in read-only previews (email, phone, NIK, names).
+ */
+function maskPiiValue(val) {
+  if (val === null || val === undefined) return "";
+  var str = val.toString().trim();
+  if (str === "") return "";
+
+  // 1. Email masking
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str)) {
+    var atIdx = str.indexOf("@");
+    var local = str.substring(0, atIdx);
+    var domain = str.substring(atIdx + 1);
+    var maskedLocal = local.length > 2 ? local[0] + "***" + local[local.length - 1] : local[0] + "***";
+    return maskedLocal + "@" + domain;
+  }
+
+  // 2. Phone / WhatsApp masking
+  var digitsOnly = str.replace(/\D/g, "");
+  if (digitsOnly.length >= 10 && (/^(08|\+?62)/.test(str) || digitsOnly.length >= 11)) {
+    var pfx = digitsOnly.substring(0, 4);
+    var sfx = digitsOnly.substring(digitsOnly.length - 3);
+    return pfx + "****" + sfx;
+  }
+
+  // 3. NIK / NIM / Long numeric identifier (>= 6 digits)
+  if (/^\d{6,}$/.test(str)) {
+    var p = str.substring(0, 3);
+    var s = str.substring(str.length - 3);
+    return p + "****" + s;
+  }
+
+  // 4. Person full name / Multi-word text masking
+  var words = str.split(/\s+/);
+  if (words.length >= 2 && !/^\d{4}-\d{2}-\d{2}/.test(str) && !/^https?:\/\//i.test(str)) {
+    var mw = [];
+    for (var w = 0; w < words.length; w++) {
+      var word = words[w];
+      if (word.length > 1) {
+        mw.push(word[0] + "***");
+      } else {
+        mw.push(word);
+      }
+    }
+    return mw.join(" ");
+  }
+
+  return str;
+}
+
+/**
+ * Compute deterministic SHA-256 schema hash from ordered column definitions.
+ */
+function computeDeterministicSchemaHash(columns) {
+  var parts = [];
+  for (var i = 0; i < columns.length; i++) {
+    parts.push((columns[i].col_letter || "") + ":" + (columns[i].header_name || ""));
+  }
+  var raw = parts.join("|");
+
+  if (typeof Utilities !== "undefined" && Utilities && Utilities.computeDigest && Utilities.DigestAlgorithm) {
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
+    return bytesToHex(digest);
+  }
+
+  if (typeof require !== "undefined") {
+    try {
+      var crypto = require("crypto");
+      return crypto.createHash("sha256").update(raw, "utf8").digest("hex");
+    } catch (e) {}
+  }
+
+  return "";
+}
+
+/**
+ * Derive canonical header row: row 12 for 4-digit year tabs or registration, row 1 for others.
+ */
+function deriveHeaderRowForSheet(sheetName, connectionKey, explicitHeaderRow) {
+  if (explicitHeaderRow !== undefined && explicitHeaderRow !== null && !isNaN(parseInt(explicitHeaderRow, 10)) && parseInt(explicitHeaderRow, 10) > 0) {
+    return parseInt(explicitHeaderRow, 10);
+  }
+  var cleanName = (sheetName || "").toString().trim();
+  // Strictly 4-digit year tabs (e.g. 2026, 2025) have header on row 12.
+  // Other tabs (Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
+  if (/^\d{4}$/.test(cleanName)) {
+    return 12;
+  }
+  return 1;
+}
+
+/**
+ * Resolve target Spreadsheet with strict allowlist verification.
+ */
+function resolveSpreadsheetWithAllowlist(payload) {
+  var props = null;
+  try {
+    if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+      props = PropertiesService.getScriptProperties();
+    }
+  } catch (e) {
+    props = null;
+  }
+  if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+    props = global._mockScriptProperties;
+  }
+
+  var regSheetId = "";
+  var fwuSheetId = "";
+  var allowlistStr = "";
+  if (props && typeof props.getProperty === "function") {
+    regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
+    fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
+    allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+  }
+
+  var targetId = (payload.spreadsheet_id || regSheetId || "").toString().trim();
+  if (!targetId) {
+    return { error: "Spreadsheet ID belum dikonfigurasi di payload atau Script Properties.", code: "SPREADSHEET_ID_MISSING" };
+  }
+
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
+  // GS-02: Strict Fail-Closed Check per Addendum Final V4
+  if (allowedIds.length === 0) {
+    return {
+      error: "Tidak ada Spreadsheet ID yang terdaftar dalam allowlist script (SPREADSHEET_ALLOWLIST kosong).",
+      code: "SPREADSHEET_ALLOWLIST_EMPTY"
+    };
+  }
+
+  if (allowedIds.indexOf(targetId) === -1) {
+    return {
+      error: "Spreadsheet ID (" + targetId + ") tidak diizinkan (tidak terdaftar dalam allowlist script).",
+      code: "SPREADSHEET_NOT_ALLOWLISTED"
+    };
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById(targetId);
+    return { spreadsheet: ss, spreadsheetId: targetId };
+  } catch (err) {
+    return { error: "Spreadsheet target (" + targetId + ") tidak dapat dibuka: " + err.toString(), code: "SPREADSHEET_NOT_FOUND" };
+  }
+}
+
+/**
+ * Handle list_tabs Action (Read-Only)
+ */
+function handleListTabsAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    var ss = resolved.spreadsheet;
+    var sheets = ss.getSheets();
+    var connectionKey = (payload.connection_key || "").toString().trim();
+    var tabs = [];
+
+    for (var i = 0; i < sheets.length; i++) {
+      var sheet = sheets[i];
+      var name = sheet.getName();
+      var maxRows = sheet.getMaxRows();
+      var maxCols = sheet.getMaxColumns();
+      var lastRow = sheet.getLastRow();
+      var lastCol = sheet.getLastColumn();
+      var isHidden = false;
+      if (typeof sheet.isSheetHidden === "function") {
+        isHidden = sheet.isSheetHidden();
+      }
+      var sheetId = null;
+      if (typeof sheet.getSheetId === "function") {
+        sheetId = sheet.getSheetId();
+      }
+
+      var headerRow = deriveHeaderRowForSheet(name, connectionKey, payload.header_row);
+
+      tabs.push({
+        id: sheetId,
+        name: name,
+        index: i,
+        row_count: maxRows,
+        column_count: maxCols,
+        last_row: lastRow,
+        last_column: lastCol,
+        is_hidden: isHidden,
+        header_row: headerRow
+      });
+    }
+
+    return createJsonResponse({
+      success: true,
+      spreadsheet_id: resolved.spreadsheetId,
+      tabs_count: tabs.length,
+      tabs: tabs
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "LIST_TABS_FAILED",
+      is_retryable: true,
+      message: "Gagal membaca daftar tab spreadsheet: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle inspect_schema Action (Read-Only)
+ */
+function handleInspectSchemaAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    if (!tabName) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NAME_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'tab_name' wajib diisi untuk inspeksi schema."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan di spreadsheet target."
+      }, 404);
+    }
+
+    var connectionKey = (payload.connection_key || "").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    if (lastCol < 1 || lastRow < headerRow) {
+      return createJsonResponse({
+        success: true,
+        tab_name: tabName,
+        header_row: headerRow,
+        last_row: lastRow,
+        last_column: lastCol,
+        columns_count: 0,
+        columns: [],
+        schema_hash: "",
+        has_data: false
+      }, 200);
+    }
+
+    var headerRange = sheet.getRange(headerRow, 1, 1, lastCol);
+    var headerValues = headerRange.getValues()[0];
+
+    var sampleRowsCount = Math.min(3, Math.max(0, lastRow - headerRow));
+    var sampleValues = [];
+    var sampleFormulas = [];
+    if (sampleRowsCount > 0) {
+      var sampleRange = sheet.getRange(headerRow + 1, 1, sampleRowsCount, lastCol);
+      sampleValues = sampleRange.getValues();
+      if (typeof sampleRange.getFormulas === "function") {
+        sampleFormulas = sampleRange.getFormulas();
+      }
+    }
+
+    var columns = [];
+    for (var c = 0; c < headerValues.length; c++) {
+      var rawHeader = headerValues[c];
+      var colLetter = columnIndexToLetter(c + 1);
+      var headerText = (rawHeader === null || rawHeader === undefined) ? "" : rawHeader.toString().trim();
+
+      var samples = [];
+      var hasFormula = false;
+      var inferredType = "string";
+
+      for (var r = 0; r < sampleRowsCount; r++) {
+        var cellFormula = (sampleFormulas[r] && sampleFormulas[r][c]) ? sampleFormulas[r][c] : "";
+        if (cellFormula && cellFormula.toString().trim().indexOf("=") === 0) {
+          hasFormula = true;
+        }
+
+        var cellVal = (sampleValues[r] && sampleValues[r][c] !== undefined && sampleValues[r][c] !== null) ? sampleValues[r][c] : "";
+        if (cellVal !== "") {
+          if (typeof cellVal === "number") {
+            inferredType = "number";
+          } else if (cellVal instanceof Date) {
+            inferredType = "date";
+            cellVal = cellVal.toISOString().split("T")[0];
+          } else if (typeof cellVal === "boolean") {
+            inferredType = "boolean";
+          }
+          var masked = maskPiiValue(cellVal);
+          samples.push(masked);
+        }
+      }
+
+      if (hasFormula) {
+        inferredType = "formula";
+      }
+
+      columns.push({
+        col_index: c + 1,
+        col_letter: colLetter,
+        header_name: headerText,
+        inferred_type: inferredType,
+        has_formula: hasFormula,
+        samples: samples,
+        is_empty_header: headerText === ""
+      });
+    }
+
+    var schemaHash = computeDeterministicSchemaHash(columns);
+
+    return createJsonResponse({
+      success: true,
+      tab_name: tabName,
+      header_row: headerRow,
+      last_row: lastRow,
+      last_column: lastCol,
+      columns_count: columns.length,
+      columns: columns,
+      schema_hash: schemaHash,
+      has_data: sampleRowsCount > 0
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "INSPECT_SCHEMA_FAILED",
+      is_retryable: true,
+      message: "Gagal menginspeksi schema tab: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle read_rows_page Action (Read-Only)
+ */
+function handleReadRowsPageAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    if (!tabName) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NAME_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'tab_name' wajib diisi untuk membaca data baris."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan di spreadsheet target."
+      }, 404);
+    }
+
+    var connectionKey = (payload.connection_key || "").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    var page = parseInt(payload.page, 10);
+    if (isNaN(page) || page < 1) page = 1;
+
+    var pageSize = parseInt(payload.page_size, 10);
+    if (isNaN(pageSize) || pageSize < 1) pageSize = 20;
+    if (pageSize > 100) pageSize = 100; // STRICT UPPER BOUND 100
+
+    var totalDataRows = Math.max(0, lastRow - headerRow);
+    if (totalDataRows === 0 || lastCol < 1) {
+      return createJsonResponse({
+        success: true,
+        tab_name: tabName,
+        header_row: headerRow,
+        page: page,
+        page_size: pageSize,
+        total_rows: 0,
+        total_pages: 0,
+        has_more: false,
+        next_page: null,
+        rows: []
+      }, 200);
+    }
+
+    var totalPages = Math.ceil(totalDataRows / pageSize);
+    if (page > totalPages) {
+      return createJsonResponse({
+        success: true,
+        tab_name: tabName,
+        header_row: headerRow,
+        page: page,
+        page_size: pageSize,
+        total_rows: totalDataRows,
+        total_pages: totalPages,
+        has_more: false,
+        next_page: null,
+        rows: []
+      }, 200);
+    }
+
+    var headerRange = sheet.getRange(headerRow, 1, 1, lastCol);
+    var headerValues = headerRange.getValues()[0];
+    var headerMap = [];
+    for (var c = 0; c < headerValues.length; c++) {
+      var hText = (headerValues[c] === null || headerValues[c] === undefined) ? "" : headerValues[c].toString().trim();
+      var cLetter = columnIndexToLetter(c + 1);
+      headerMap.push({
+        col_index: c + 1,
+        col_letter: cLetter,
+        header_name: hText || ("COL_" + cLetter)
+      });
+    }
+
+    var startOffset = (page - 1) * pageSize;
+    var rowsToFetch = Math.min(pageSize, totalDataRows - startOffset);
+    var startSheetRow = headerRow + 1 + startOffset;
+
+    var dataRange = sheet.getRange(startSheetRow, 1, rowsToFetch, lastCol);
+    var dataValues = dataRange.getValues();
+
+    var rows = [];
+    var maskPii = payload.mask_pii !== false;
+
+    for (var r = 0; r < dataValues.length; r++) {
+      var currentRowNumber = startSheetRow + r;
+      var rowObj = {
+        _row_number: currentRowNumber
+      };
+
+      for (var colIdx = 0; colIdx < headerMap.length; colIdx++) {
+        var hName = headerMap[colIdx].header_name;
+        var cellRaw = dataValues[r][colIdx];
+        if (cellRaw instanceof Date) {
+          cellRaw = cellRaw.toISOString().split("T")[0];
+        } else if (cellRaw === null || cellRaw === undefined) {
+          cellRaw = "";
+        }
+
+        if (maskPii && typeof cellRaw === "string" && cellRaw !== "") {
+          rowObj[hName] = maskPiiValue(cellRaw);
+        } else {
+          rowObj[hName] = cellRaw;
+        }
+      }
+
+      rows.push(rowObj);
+    }
+
+    var hasMore = page < totalPages;
+    var nextPage = hasMore ? (page + 1) : null;
+
+    return createJsonResponse({
+      success: true,
+      tab_name: tabName,
+      header_row: headerRow,
+      page: page,
+      page_size: pageSize,
+      total_rows: totalDataRows,
+      total_pages: totalPages,
+      has_more: hasMore,
+      next_page: nextPage,
+      rows: rows
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "READ_ROWS_FAILED",
+      is_retryable: true,
+      message: "Gagal membaca halaman baris spreadsheet: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle delete_empty_column Action
+ * Heavily audited, fail-closed deletion of proven empty, unused column.
+ */
+function handleDeleteEmptyColumnAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    if (!tabName) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NAME_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'tab_name' wajib diisi."
+      }, 400);
+    }
+
+    var columnIdentity = (payload.column_identity || "").toString().trim();
+    if (!columnIdentity) {
+      return createJsonResponse({
+        success: false,
+        error_code: "COLUMN_IDENTITY_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'column_identity' wajib diisi."
+      }, 400);
+    }
+
+    var expectedSchemaHash = (payload.expected_schema_hash || "").toString().trim();
+    if (!expectedSchemaHash) {
+      return createJsonResponse({
+        success: false,
+        error_code: "EXPECTED_SCHEMA_HASH_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'expected_schema_hash' wajib disertakan untuk perlindungan drift."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan di spreadsheet target."
+      }, 404);
+    }
+
+    if (payload.sheet_id !== undefined && payload.sheet_id !== null && typeof sheet.getSheetId === "function") {
+      var actualSheetId = sheet.getSheetId();
+      if (parseInt(payload.sheet_id, 10) !== parseInt(actualSheetId, 10)) {
+        return createJsonResponse({
+          success: false,
+          error_code: "SHEET_ID_MISMATCH",
+          is_retryable: false,
+          message: "Sheet ID tidak cocok dengan tab '" + tabName + "'."
+        }, 409);
+      }
+    }
+
+    var connectionKey = (payload.connection_key || "").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    if (lastCol < 1 || lastRow < headerRow) {
+      return createJsonResponse({
+        success: false,
+        error_code: "COLUMN_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak memiliki header row atau kolom."
+      }, 404);
+    }
+
+    var headerRange = sheet.getRange(headerRow, 1, 1, lastCol);
+    var headerValues = headerRange.getValues()[0];
+
+    // Compute current schema hash
+    var currentColumns = [];
+    for (var c = 0; c < headerValues.length; c++) {
+      var rawH = headerValues[c];
+      var hText = (rawH === null || rawH === undefined) ? "" : rawH.toString().trim();
+      currentColumns.push({
+        col_index: c + 1,
+        col_letter: columnIndexToLetter(c + 1),
+        header_name: hText
+      });
+    }
+    var currentSchemaHash = computeDeterministicSchemaHash(currentColumns);
+
+    if (currentSchemaHash !== expectedSchemaHash) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SCHEMA_CONFLICT",
+        is_retryable: false,
+        message: "Schema drift terdeteksi pada tab '" + tabName + "'. Hash remote (" + currentSchemaHash + ") berbeda dengan expected (" + expectedSchemaHash + ").",
+        context: {
+          current_schema_hash: currentSchemaHash,
+          expected_schema_hash: expectedSchemaHash
+        }
+      }, 409);
+    }
+
+    // Locate target column index (1-based)
+    var targetColIdx = -1;
+    var targetHeaderText = "";
+    var targetLower = columnIdentity.toLowerCase();
+
+    for (var i = 0; i < currentColumns.length; i++) {
+      var col = currentColumns[i];
+      if (col.header_name === columnIdentity || col.header_name.toLowerCase() === targetLower || col.col_letter.toLowerCase() === targetLower || ("COL_" + col.col_letter).toLowerCase() === targetLower) {
+        targetColIdx = col.col_index;
+        targetHeaderText = col.header_name;
+        break;
+      }
+    }
+
+    if (targetColIdx === -1) {
+      return createJsonResponse({
+        success: false,
+        error_code: "COLUMN_NOT_FOUND",
+        is_retryable: false,
+        message: "Kolom '" + columnIdentity + "' tidak ditemukan pada baris header tab '" + tabName + "'."
+      }, 404);
+    }
+
+    // Protected / System Column Check
+    if (matchRegistrationSlot(targetHeaderText) !== null || matchFollowUpSlot(targetHeaderText) !== null) {
+      return createJsonResponse({
+        success: false,
+        error_code: "PROTECTED_SYSTEM_COLUMN",
+        is_retryable: false,
+        message: "Kolom '" + targetHeaderText + "' merupakan kolom sistem/resmi dan tidak boleh dihapus."
+      }, 403);
+    }
+
+    if (/^(sertif_sync_id|sertif_registration_id|sertif_sync_status|sertif_last_sync_at|form_schema_version|timestamp|nama lengkap|email|no\.?\s*hp)/i.test(targetHeaderText)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "PROTECTED_SYSTEM_COLUMN",
+        is_retryable: false,
+        message: "Kolom '" + targetHeaderText + "' dilindungi oleh sistem."
+      }, 403);
+    }
+
+    // Check if column is part of any merge
+    if (typeof sheet.getRange === "function") {
+      var colRange = sheet.getRange(headerRow, targetColIdx, Math.max(1, lastRow - headerRow + 1), 1);
+      if (typeof colRange.isPartOfMerge === "function" && colRange.isPartOfMerge()) {
+        return createJsonResponse({
+          success: false,
+          error_code: "COLUMN_PART_OF_MERGE",
+          is_retryable: false,
+          message: "Kolom '" + targetHeaderText + "' memiliki merged cells sehingga tidak dapat dihapus secara aman."
+        }, 422);
+      }
+    }
+
+    // Check protected ranges
+    if (typeof sheet.getProtections === "function") {
+      try {
+        var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+        for (var p = 0; p < protections.length; p++) {
+          var pRange = protections[p].getRange();
+          if (pRange.getColumn() <= targetColIdx && (pRange.getColumn() + pRange.getNumColumns() - 1) >= targetColIdx) {
+            return createJsonResponse({
+              success: false,
+              error_code: "COLUMN_RANGE_PROTECTED",
+              is_retryable: false,
+              message: "Kolom '" + targetHeaderText + "' berada di dalam protected range spreadsheet."
+            }, 403);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Scan all rows from data_start_row (headerRow + 1) to lastRow
+    var dataRowsCount = Math.max(0, lastRow - headerRow);
+    if (dataRowsCount > 0) {
+      var scanRange = sheet.getRange(headerRow + 1, targetColIdx, dataRowsCount, 1);
+      var scanValues = scanRange.getValues();
+      var scanFormulas = (typeof scanRange.getFormulas === "function") ? scanRange.getFormulas() : [];
+
+      for (var r = 0; r < dataRowsCount; r++) {
+        var rowNumber = headerRow + 1 + r;
+
+        // Formula check: Any formula, even evaluating to empty string, is strictly data!
+        var cellFormula = (scanFormulas[r] && scanFormulas[r][0]) ? scanFormulas[r][0].toString().trim() : "";
+        if (cellFormula !== "" && cellFormula.indexOf("=") === 0) {
+          return createJsonResponse({
+            success: false,
+            error_code: "COLUMN_HAS_FORMULAS",
+            is_retryable: false,
+            message: "Kolom '" + targetHeaderText + "' berisi formula pada baris " + rowNumber + " (" + cellFormula + "). Penghapusan ditolak."
+          }, 422);
+        }
+
+        // Value check: non-null, non-empty, symbols, whitespace
+        var cellVal = scanValues[r][0];
+        if (cellVal !== null && cellVal !== undefined) {
+          var strVal = cellVal.toString();
+          if (strVal !== "") {
+            return createJsonResponse({
+              success: false,
+              error_code: "COLUMN_NOT_EMPTY",
+              is_retryable: false,
+              message: "Kolom '" + targetHeaderText + "' berisi data pada baris " + rowNumber + ". Penghapusan ditolak."
+            }, 422);
+          }
+        }
+      }
+    }
+
+    // All safety checks passed! Perform deletion
+    sheet.deleteColumn(targetColIdx);
+
+    // Compute new schema hash for remaining columns
+    var newLastCol = sheet.getLastColumn();
+    var remainingColumns = [];
+    if (newLastCol > 0) {
+      var newHeaderValues = sheet.getRange(headerRow, 1, 1, newLastCol).getValues()[0];
+      for (var nc = 0; nc < newHeaderValues.length; nc++) {
+        var rawNH = newHeaderValues[nc];
+        var nhText = (rawNH === null || rawNH === undefined) ? "" : rawNH.toString().trim();
+        remainingColumns.push({
+          col_index: nc + 1,
+          col_letter: columnIndexToLetter(nc + 1),
+          header_name: nhText
+        });
+      }
+    }
+    var newSchemaHash = computeDeterministicSchemaHash(remainingColumns);
+
+    return createJsonResponse({
+      success: true,
+      deleted_column: targetHeaderText || columnIdentity,
+      tab_name: tabName,
+      col_index: targetColIdx,
+      remaining_columns: newLastCol,
+      new_schema_hash: newSchemaHash
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DELETE_COLUMN_FAILED",
+      is_retryable: false,
+      message: "Gagal menghapus kolom: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
  * Convert byte array to hexadecimal string
  */
 function bytesToHex(bytes) {
@@ -2775,6 +3534,15 @@ if (typeof module !== "undefined" && module.exports) {
     resolveMainSheetHeaderAndIndices: resolveMainSheetHeaderAndIndices,
     handleUploadAttachmentAction: handleUploadAttachmentAction,
     createJsonResponse: createJsonResponse,
-    bytesToHex: bytesToHex
+    bytesToHex: bytesToHex,
+    handleListTabsAction: handleListTabsAction,
+    handleInspectSchemaAction: handleInspectSchemaAction,
+    handleReadRowsPageAction: handleReadRowsPageAction,
+    handleDeleteEmptyColumnAction: handleDeleteEmptyColumnAction,
+    resolveSpreadsheetWithAllowlist: resolveSpreadsheetWithAllowlist,
+    deriveHeaderRowForSheet: deriveHeaderRowForSheet,
+    columnIndexToLetter: columnIndexToLetter,
+    maskPiiValue: maskPiiValue,
+    computeDeterministicSchemaHash: computeDeterministicSchemaHash
   };
 }

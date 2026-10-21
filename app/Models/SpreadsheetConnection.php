@@ -187,6 +187,26 @@ class SpreadsheetConnection extends Model
         return $this->hasMany(SpreadsheetSchemaVersion::class, 'spreadsheet_connection_id')->orderBy('year', 'desc');
     }
 
+    public function tabProfiles(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SpreadsheetTabProfile::class, 'spreadsheet_connection_id');
+    }
+
+    public function discoverySnapshots(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SheetDiscoverySnapshot::class, 'spreadsheet_connection_id')->latest('scanned_at');
+    }
+
+    public function mappingProposals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SheetMappingProposal::class, 'spreadsheet_connection_id')->latest('id');
+    }
+
+    public function outboxEvents(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(IntegrationOutboxEvent::class, 'target_connection_id')->latest('id');
+    }
+
     public function createdByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by')->withTrashed();

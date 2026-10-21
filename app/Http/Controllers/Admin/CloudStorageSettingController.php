@@ -35,6 +35,7 @@ class CloudStorageSettingController extends Controller
     {
         $validated = $request->validate([
             'name'                          => 'required|string|max:255',
+            'canonical_parent_folder_url'   => 'nullable|string|max:500',
             'system_assets_folder_url'      => 'nullable|string|max:500',
             'document_templates_folder_url' => 'nullable|string|max:500',
             'generated_docs_folder_url'     => 'nullable|string|max:500',
@@ -47,7 +48,7 @@ class CloudStorageSettingController extends Controller
         $this->storageService->updateSettings($validated, Auth::user());
 
         return redirect()->route('admin.cloud-storage.index')
-            ->with('success', 'Konfigurasi folder root penyimpanan cloud Google Drive berhasil disimpan.');
+            ->with('success', 'Konfigurasi folder induk penyimpanan cloud Google Drive berhasil disimpan.');
     }
 
     /**

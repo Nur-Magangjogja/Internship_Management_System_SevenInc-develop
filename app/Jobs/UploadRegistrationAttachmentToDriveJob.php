@@ -203,30 +203,29 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
         $response = null;
 
         try {
-            if ($fileSize > 5 * 1024 * 1024 && $hasDirectDriveDriver) {
-                // Direct Drive API for large files (> 5 MB) - Finding E: upload without DB write
-                $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
-                $driveFileId = $uploadResult['file_id'] ?? null;
-                $driveViewLink = $uploadResult['web_view_link'] ?? null;
-            } elseif ($transport instanceof GoogleAppsScriptTransport) {
-                $response = $transport->uploadAttachment($connection, $attachment, $localPath);
+            if ($hasDirectDriveDriver || $transport instanceof GoogleAppsScriptTransport) {
+                // Master Plan V1 Addendum Final V4 Cutover: Seluruh berkas diarahkan ke UniversalFileService (Laravel Google Drive API)
+                $universalService = app(\App\Services\UniversalFileService::class);
+                $category = match ($attachment->type ?? '') {
+                    'cv'             => \App\Models\CloudFileRegistry::CATEGORY_CV,
+                    'identity', 'ktp', 'ktm' => \App\Models\CloudFileRegistry::CATEGORY_IDENTITY,
+                    'portfolio'      => \App\Models\CloudFileRegistry::CATEGORY_PORTFOLIO,
+                    'recommendation' => \App\Models\CloudFileRegistry::CATEGORY_RECOMMENDATION_LETTER,
+                    'proposal'       => \App\Models\CloudFileRegistry::CATEGORY_PROPOSAL,
+                    default          => \App\Models\CloudFileRegistry::CATEGORY_CV,
+                };
 
-                if (!$response->success) {
-                    $this->releaseLeaseAndFail(
-                        $attachment,
-                        $response->errorMessage,
-                        isRetryable: $response->isRetryable
-                    );
-                    return;
-                }
+                $regRecord = $universalService->put(
+                    fileOrContent: $localPath,
+                    category: $category,
+                    ownerType: 'registration',
+                    ownerId: $attachment->registration_id,
+                    customFileName: $attachment->original_name,
+                    customMimeType: $attachment->mime_type
+                );
 
-                $driveFileId = $response->rawResponse['file_id'] ?? $response->rawResponse['data']['file_id'] ?? null;
-                $driveViewLink = $response->rawResponse['web_view_link'] ?? $response->rawResponse['data']['web_view_link'] ?? null;
-            } elseif ($hasDirectDriveDriver) {
-                // Direct Drive API - Finding E: upload without DB write
-                $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
-                $driveFileId = $uploadResult['file_id'] ?? null;
-                $driveViewLink = $uploadResult['web_view_link'] ?? null;
+                $driveFileId = $regRecord->drive_file_id;
+                $driveViewLink = "https://drive.google.com/file/d/{$driveFileId}/view";
             } else {
                 // Test transport / Mock transport handling
                 $response = $transport->sendRowUpsert($connection, 'Drive', 'ATT-' . $attachment->id, [

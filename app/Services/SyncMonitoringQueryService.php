@@ -842,11 +842,69 @@ class SyncMonitoringQueryService
 
         return [
             'is_locked'    => $isLocked,
-            'locked_by'    => $record->locked_by,
-            'locked_at'    => $lockedAt,
+            'locked_by'    => $record->locked_by ?? null,
+            'expires_at'   => $lockedAt ? $lockedAt->copy()->addMinutes(5) : null,
             'is_expired'   => $isExpired,
-            'status_label' => $isLocked ? ($isExpired ? 'Lock Kedaluwarsa (>5 mnt)' : 'Worker Aktif Mengunci') : 'Tidak Terkunci',
+            'status_label' => $isLocked ? ($isExpired ? 'Lease Kedaluwarsa (Siap Dipulihkan)' : 'Lease Aktif (Worker Berjalan)') : 'Tidak Terkunci',
             'badge_class'  => $isLocked ? ($isExpired ? 'bg-amber-50 text-amber-700' : 'bg-purple-50 text-purple-700') : 'bg-slate-100 text-slate-600',
+        ];
+    }
+
+    /**
+     * Dapatkan status kesehatan terpisah antara Sheets Gateway dan Google Drive API (Master Plan V1 Addendum Final V4 F7, C28).
+     */
+    public function getSplitIntegrationHealth(): array
+    {
+        $regConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $driveSetting = \App\Models\CloudStorageSetting::getEffectiveSettings();
+
+        // 1. Sheets Gateway Health
+        $pendingStagingCount = \App\Models\SheetInboundChangeStaging::where('staging_status', \App\Models\SheetInboundChangeStaging::STATUS_STAGED)->count();
+        $conflictStagingCount = \App\Models\SheetInboundChangeStaging::whereIn('conflict_status', [
+            \App\Models\SheetInboundChangeStaging::CONFLICT_DIVERGENT,
+            \App\Models\SheetInboundChangeStaging::CONFLICT_DUPLICATE_ROW_ID,
+            \App\Models\SheetInboundChangeStaging::CONFLICT_CORE_REQUIRES_APPROVAL,
+        ])->count();
+
+        $sheetsHealth = [
+            'label'                 => 'Google Sheets Gateway (Apps Script)',
+            'status'                => $regConn?->is_active ? 'connected' : 'inactive',
+            'last_sync_at'          => $regConn?->last_synced_at,
+            'last_health_check_at'  => $regConn?->last_health_check_at,
+            'endpoint_configured'   => !empty($regConn?->apps_script_endpoint_url),
+            'target_spreadsheet_id' => $regConn?->spreadsheet_id,
+            'pending_staging_count' => $pendingStagingCount,
+            'conflict_count'        => $conflictStagingCount,
+        ];
+
+        // 2. Google Drive API Health (Strictly Decoupled from Sheets)
+        $totalFiles = \App\Models\CloudFileRegistry::count();
+        $verifiedFiles = \App\Models\CloudFileRegistry::where('sync_status', \App\Models\CloudFileRegistry::STATUS_VERIFIED)->count();
+        $failedFiles = \App\Models\CloudFileRegistry::where('sync_status', \App\Models\CloudFileRegistry::STATUS_FAILED)->count();
+        $queuedFiles = \App\Models\CloudFileRegistry::whereIn('sync_status', [
+            \App\Models\CloudFileRegistry::STATUS_QUEUED,
+            \App\Models\CloudFileRegistry::STATUS_UPLOADING,
+        ])->count();
+
+        $driveHealth = [
+            'label'             => 'Google Drive Storage API (Laravel Direct)',
+            'status'            => $driveSetting->connection_status,
+            'is_verified'       => $driveSetting->is_verified,
+            'verified_at'       => $driveSetting->verified_at,
+            'canonical_root_id' => $driveSetting->getEffectiveParentFolderId(),
+            'has_root_conflict' => $driveSetting->hasRootConfigConflict(),
+            'validation_error'  => $driveSetting->validation_error,
+            'stats'             => [
+                'total_files'    => $totalFiles,
+                'verified_files' => $verifiedFiles,
+                'failed_files'   => $failedFiles,
+                'queued_files'   => $queuedFiles,
+            ],
+        ];
+
+        return [
+            'sheets_gateway' => $sheetsHealth,
+            'drive_api'      => $driveHealth,
         ];
     }
 }
