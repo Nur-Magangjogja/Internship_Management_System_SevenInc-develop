@@ -83,7 +83,8 @@ class BrandStampIntegrationTest extends TestCase
 
         $brand->refresh();
         $this->assertNotEquals($oldStampPath, $brand->stamp);
-        Storage::disk('public')->assertMissing($oldStampPath);
+        // Addendum Final V4: File lama tetap dipertahankan demi integritas issued document snapshots
+        Storage::disk('public')->assertExists($oldStampPath);
         Storage::disk('public')->assertExists($brand->stamp);
     }
 
