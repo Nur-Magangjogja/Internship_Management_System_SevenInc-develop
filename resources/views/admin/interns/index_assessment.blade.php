@@ -39,20 +39,38 @@
 <div class="min-h-screen bg-[#F4F8F6] p-4 sm:p-6 lg:p-7">
 
     {{-- Header --}}
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <p class="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Dokumen & Sertifikat</p>
             <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Surat Penilaian</h1>
             <p class="mt-1 text-sm text-[#4B5F5A]">Kelola data penilaian magang dan cetak surat penilaian.</p>
         </div>
-        <form action="{{ route('interns.assessment.create') }}" method="GET" id="form-tambah-penilaian">
-            <input type="hidden" name="intern_ids" id="intern_ids_input">
-            <button type="button" id="btn-tambah-penilaian" onclick="submitTambahPenilaian()" disabled
-                class="flex items-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#1F5F3F] disabled:opacity-50 disabled:cursor-not-allowed">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Tambah Penilaian
-            </button>
-        </form>
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.document-templates.index', ['type' => 'assessment']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#1B3A34] shadow-xs transition hover:bg-[#F4F8F6]">
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M3 9h18M9 21V9"/>
+                </svg>
+                Kelola Template Penilaian
+            </a>
+            <a href="{{ route('admin.document-templates.create', ['type' => 'assessment']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#1B3A34] shadow-xs transition hover:bg-[#F4F8F6]">
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Buat Template Penilaian
+            </a>
+            <form action="{{ route('interns.assessment.create') }}" method="GET" id="form-tambah-penilaian">
+                <input type="hidden" name="intern_ids" id="intern_ids_input">
+                <button type="button" id="btn-tambah-penilaian" onclick="submitTambahPenilaian()" disabled
+                    class="flex items-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#1F5F3F] disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Tambah Penilaian
+                </button>
+            </form>
+        </div>
     </div>
 
     @if(session('success'))

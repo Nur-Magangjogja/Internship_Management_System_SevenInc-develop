@@ -267,67 +267,127 @@
         }
         return $out;
     };
+
+    if (empty($groupedFields)) {
+        $all = collect($mainFields ?? [])->merge($extraFields ?? [])->merge($customFields ?? []);
+        $groupedFields = [
+            'data_diri_edukasi'  => $all->filter(fn($f) => $f->resolved_group === 'data_diri_edukasi')->values(),
+            'pilihan_durasi'     => $all->filter(fn($f) => $f->resolved_group === 'pilihan_durasi')->values(),
+            'berkas_portofolio'  => $all->filter(fn($f) => $f->resolved_group === 'berkas_portofolio')->values(),
+            'informasi_tambahan' => $all->filter(fn($f) => $f->resolved_group === 'informasi_tambahan')->values(),
+        ];
+    }
+
+    $gDataDiri = $groupedFields['data_diri_edukasi'] ?? collect();
+    $gPilihan  = $groupedFields['pilihan_durasi'] ?? collect();
+    $gBerkas   = $groupedFields['berkas_portofolio'] ?? collect();
+    $gInfo     = $groupedFields['informasi_tambahan'] ?? collect();
 @endphp
 
 {{-- Sistem Magang selalu Onsite, tidak ditampilkan ke pengguna --}}
 <input type="hidden" name="internship_arrangement" value="Onsite">
 
-{{-- Render field grup utama --}}
-{!! $renderGroup($mainFields) !!}
-
-@if($reg && $reg->attachments && $reg->attachments->count() > 0)
-<div class="mt-3 p-4 rounded-xl bg-gray-50 border border-gray-200">
-    <p class="text-xs font-semibold text-gray-700 mb-2">Berkas Tersimpan di Server ({{ $reg->attachments->count() }} file):</p>
-    <ul class="space-y-1.5 text-xs text-gray-600">
-        @foreach($reg->attachments as $att)
-        <li class="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-gray-100">
-            <span class="truncate max-w-xs">
-                <strong class="uppercase text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 mr-1.5">{{ str_replace('_', ' ', $att->document_category) }}</strong>
-                {{ $att->original_filename }}
-            </span>
-            <span class="text-gray-400 text-[11px]">{{ number_format($att->file_size_bytes / 1024, 1) }} KB</span>
-        </li>
-        @endforeach
-    </ul>
-</div>
-@endif
-
-{{-- Render field grup informasi tambahan (jika ada) --}}
-@if($extraFields->isNotEmpty())
-<div class="border-t border-gray-100 pt-5">
-    <h3 class="text-sm font-semibold text-gray-700 mb-4">Informasi Tambahan</h3>
+{{-- ==================== 1. DATA DIRI & EDUKASI ==================== --}}
+@if($gDataDiri->isNotEmpty())
+<div id="section-1-data-diri" class="border-b border-gray-100 pb-6 pt-2">
+    <div class="mb-4">
+        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">1</span>
+            Data Diri & Edukasi <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
+        </h3>
+        <p class="text-xs text-gray-500 mt-1">Lengkapi data pribadi, kontak aktif, dan asal universitas / sekolah Anda.</p>
+    </div>
     <div class="space-y-4">
-        {{-- Instagram perlu prefix @ — handle khusus --}}
-        @foreach($extraFields as $field)
-        @if($field->field_key === 'social_media_instagram')
-        <div>
-            <label class="{{ $label }}">{{ $field->label }}@if($field->is_required) <span class="text-red-500">*</span>@endif</label>
-            <div class="flex items-center gap-0">
-                <span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>
-                <input type="text" name="social_media_instagram"
-                    placeholder="{{ $field->placeholder ?? 'username_kamu' }}"
-                    class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"
-                    value="{{ old('social_media_instagram', ($reg?->social_media_instagram !== '-' ? $reg?->social_media_instagram : '')) }}">
-            </div>
-            @if($field->helper_text)
-            <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
-            @endif
-        </div>
-
-        @else
-        <div>{!! $renderField($field) !!}</div>
-        @endif
-        @endforeach
+        {!! $renderGroup($gDataDiri) !!}
     </div>
 </div>
 @endif
 
-{{-- Render field kustom dari Form Builder (jika ada) --}}
-@if(!empty($customFields) && $customFields->isNotEmpty())
-<div class="border-t border-gray-100 pt-5">
-    <h3 class="text-sm font-semibold text-gray-700 mb-4">Pertanyaan Tambahan</h3>
+{{-- ==================== 2. PILIHAN & DURASI ==================== --}}
+@if($gPilihan->isNotEmpty())
+<div id="section-2-pilihan-durasi" class="border-b border-gray-100 pb-6 pt-5">
+    <div class="mb-4">
+        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">2</span>
+            Pilihan & Durasi <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
+        </h3>
+        <p class="text-xs text-gray-500 mt-1">Pilih program magang, estimasi durasi, kesiapan WFO di Yogyakarta, serta keahlian kerja.</p>
+    </div>
     <div class="space-y-4">
-        {!! $renderGroup($customFields) !!}
+        {!! $renderGroup($gPilihan) !!}
+    </div>
+</div>
+@endif
+
+{{-- ==================== 3. BERKAS & PORTOFOLIO ==================== --}}
+@if($gBerkas->isNotEmpty() || ($reg && $reg->attachments && $reg->attachments->count() > 0))
+<div id="section-3-berkas-portofolio" class="border-b border-gray-100 pb-6 pt-5">
+    <div class="mb-4">
+        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">3</span>
+            Berkas & Portofolio
+        </h3>
+        <p class="text-xs text-gray-500 mt-1">Unggah berkas CV, KTM/KTP, portofolio karya, dan dokumen pengantar dari kampus / sekolah.</p>
+    </div>
+
+    @if($reg && $reg->attachments && $reg->attachments->count() > 0)
+    <div class="mb-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
+        <p class="text-xs font-semibold text-gray-700 mb-2">Berkas Tersimpan di Server ({{ $reg->attachments->count() }} file):</p>
+        <ul class="space-y-1.5 text-xs text-gray-600">
+            @foreach($reg->attachments as $att)
+            <li class="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-gray-100">
+                <span class="truncate max-w-xs">
+                    <strong class="uppercase text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 mr-1.5">{{ str_replace('_', ' ', $att->document_category) }}</strong>
+                    {{ $att->original_filename }}
+                </span>
+                <span class="text-gray-400 text-[11px]">{{ number_format($att->file_size_bytes / 1024, 1) }} KB</span>
+            </li>
+            @endforeach
+        </ul>
+    </div>
+    @endif
+
+    <div class="space-y-4">
+        {!! $renderGroup($gBerkas) !!}
+    </div>
+</div>
+@endif
+
+{{-- ==================== 4. INFORMASI TAMBAHAN ==================== --}}
+@if($gInfo->isNotEmpty() || (!empty($customFields) && $customFields->isNotEmpty()))
+<div id="section-4-informasi-tambahan" class="border-b border-gray-100 pb-6 pt-5">
+    <div class="mb-4">
+        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">4</span>
+            Informasi Tambahan <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
+        </h3>
+        <p class="text-xs text-gray-500 mt-1">Data dosen/guru pembimbing, akun sosial media, info kost, dan aktivitas harian lainnya.</p>
+    </div>
+    <div class="space-y-4">
+        @foreach($gInfo as $field)
+            @if($field->field_key === 'social_media_instagram')
+            <div>
+                <label class="{{ $label }}">{{ $field->label }}@if($field->is_required) <span class="text-red-500">*</span>@endif</label>
+                <div class="flex items-center gap-0">
+                    <span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>
+                    <input type="text" name="social_media_instagram"
+                        placeholder="{{ $field->placeholder ?? 'username_kamu' }}"
+                        class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"
+                        value="{{ old('social_media_instagram', ($reg?->social_media_instagram !== '-' ? $reg?->social_media_instagram : '')) }}">
+                </div>
+                @if($field->helper_text)
+                <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
+                @endif
+            </div>
+            @else
+            <div>{!! $renderField($field) !!}</div>
+            @endif
+        @endforeach
+
+        {{-- Custom fields yang belum termasuk dalam 4 grup --}}
+        @if(!empty($customFields) && $customFields->isNotEmpty())
+            {!! $renderGroup($customFields) !!}
+        @endif
     </div>
 </div>
 @endif

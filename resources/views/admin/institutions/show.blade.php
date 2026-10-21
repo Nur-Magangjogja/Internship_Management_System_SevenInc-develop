@@ -168,7 +168,7 @@
                                     {{ $loop->iteration }}
                                 </td>
                                 <td class="px-5 py-3">
-                                    <span class="font-semibold text-slate-800">{{ $contact->name }}</span>
+                                    <span class="font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">{{ $contact->name }}</span>
                                     @if ($contact->notes)
                                         <p class="text-[11px] text-slate-400 truncate max-w-xs">{{ $contact->notes }}</p>
                                     @endif
@@ -548,7 +548,7 @@
                             </td>
                             <td class="px-5 py-3">
                                 @if ($cycle->contact)
-                                    <div class="font-semibold text-slate-800">{{ $cycle->contact->name }}</div>
+                                    <div class="font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">{{ $cycle->contact->name }}</div>
                                     <div class="text-[11px] text-slate-400">{{ $cycle->contact->position_title ?? 'Kontak Institusi' }}</div>
                                 @else
                                     <span class="text-slate-500 italic">Umum / Semua PIC</span>

@@ -1,29 +1,97 @@
 @php
-    $cfg = array_merge(\App\Models\MouTemplate::getDefaultPageConfig(), $pageConfig ?? []);
-    $assets = array_merge(\App\Models\MouTemplate::getDefaultMediaAssets(), $mediaAssets ?? []);
-    $placeholders = \App\Models\MouTemplate::getDefaultPlaceholders();
-    $metaMap = $placeholderMeta ?? \App\Models\MouTemplate::getPlaceholderMetadata();
+    $docType = $documentType ?? 'mou';
+    $isMou = ($docType === 'mou');
+
+    $defaultCfg = $isMou
+        ? \App\Models\MouTemplate::getDefaultPageConfig()
+        : \App\Models\DocumentTemplate::getDefaultPageConfig($docType);
+    $cfg = array_merge($defaultCfg, $pageConfig ?? []);
+
+    $defaultAssets = $isMou
+        ? \App\Models\MouTemplate::getDefaultMediaAssets()
+        : [
+            'company_logo' => '/images/mou/seven-inc-logo.png',
+            'institution_logo' => '/images/mou/institution-logo-placeholder.png',
+        ];
+    $assets = array_merge($defaultAssets, $mediaAssets ?? []);
+
+    if ($isMou) {
+        $placeholders = $placeholders ?? \App\Models\MouTemplate::getDefaultPlaceholders();
+        $metaMap = $placeholderMeta ?? \App\Models\MouTemplate::getPlaceholderMetadata();
+    } else {
+        $metaMap = $placeholderMeta ?? \App\Services\DocumentTemplates\MailMergePlaceholderContract::getAvailablePlaceholders($docType);
+        $placeholders = $placeholders ?? array_map(fn($item) => is_array($item) ? ($item['label'] ?? '') : (string)$item, $metaMap);
+    }
+
     $placeholderGroups = [];
     foreach ($metaMap as $phKey => $phItem) {
-        $grp = $phItem['group'] ?? 'Lainnya';
+        $grp = is_array($phItem) ? ($phItem['group'] ?? 'Lainnya') : 'Lainnya';
         $placeholderGroups[$grp][] = $phKey;
     }
-    $savedTemplates = $existingTemplatesPayload ?? [];
-    $sampleWordHtml = \App\Models\MouTemplate::getWordStandardTemplateContent();
-    $defaultParafHtml = \App\Models\MouTemplate::getDefaultFooterParafHtml();
 
-    $initialBodyContent = old('template_html', $initialHtml ?? $sampleWordHtml);
+    $savedTemplates = $existingTemplatesPayload ?? [];
+    $sampleWordHtml = $sampleWordHtml ?? ($isMou ? \App\Models\MouTemplate::getWordStandardTemplateContent() : \App\Models\DocumentTemplate::getDefaultStandardContent($docType));
+    $defaultParafHtml = $defaultParafHtml ?? ($isMou ? \App\Models\MouTemplate::getDefaultFooterParafHtml() : '');
+
+    $initialBodyContent = old('template_html', old('content_html', $initialHtml ?? $sampleWordHtml));
     $initialHeaderContent = old('header_html', $cfg['header_html'] ?? '');
     $initialFooterContent = old('footer_html', array_key_exists('footer_html', $cfg) && $cfg['footer_html'] !== null ? $cfg['footer_html'] : $defaultParafHtml);
     $initialFirstHeaderContent = old('first_page_header_html', $cfg['first_page_header_html'] ?? '');
     $initialFirstFooterContent = old('first_page_footer_html', array_key_exists('first_page_footer_html', $cfg) && $cfg['first_page_footer_html'] !== null ? $cfg['first_page_footer_html'] : $initialFooterContent);
-    $initialEditorJson = old('editor_json', isset($editorJson) && is_array($editorJson) ? json_encode($editorJson) : '');
+    $initialEditorJson = old('editor_json', isset($editorJson) && is_array($editorJson) ? json_encode($editorJson) : (is_string($editorJson ?? null) ? $editorJson : ''));
     $resolvedCompanyLogo = $assets['company_logo'] ?? $assets['company_logo_url'] ?? '/images/mou/seven-inc-logo.png';
     $resolvedInstitutionLogo = $assets['institution_logo'] ?? $assets['institution_logo_url'] ?? '/images/mou/institution-logo-placeholder.png';
+    $resolvedUploadMediaUrl = $uploadMediaUrl ?? (Route::has('admin.mou-templates.upload-media') ? route('admin.mou-templates.upload-media') : '/admin/mou-templates/upload-media');
 @endphp
 
 <style>
     {!! \App\Services\MouDocumentRenderer::getCanonicalDocumentCss($cfg) !!}
+
+    /* Explicit List Styles to override any Tailwind Preflight reset */
+    .mou-doc-canvas ul, .mou-document ul, #mouBodyMount ul, #mouHeaderCanvas ul, #mouFooterCanvas ul {
+        list-style-type: disc !important;
+        padding-left: 24pt !important;
+        margin-top: 0 !important;
+        margin-bottom: 6pt !important;
+    }
+    .mou-doc-canvas ul ul, #mouBodyMount ul ul {
+        list-style-type: circle !important;
+    }
+    .mou-doc-canvas ul ul ul, #mouBodyMount ul ul ul {
+        list-style-type: square !important;
+    }
+    .mou-doc-canvas ol, .mou-document ol, #mouBodyMount ol, #mouHeaderCanvas ol, #mouFooterCanvas ol {
+        list-style-type: decimal !important;
+        padding-left: 24pt !important;
+        margin-top: 0 !important;
+        margin-bottom: 6pt !important;
+    }
+    .mou-doc-canvas ol[type="a"], #mouBodyMount ol[type="a"] {
+        list-style-type: lower-alpha !important;
+    }
+    .mou-doc-canvas ol[type="A"], #mouBodyMount ol[type="A"] {
+        list-style-type: upper-alpha !important;
+    }
+    .mou-doc-canvas ol[type="i"], #mouBodyMount ol[type="i"] {
+        list-style-type: lower-roman !important;
+    }
+    .mou-doc-canvas ol[type="I"], #mouBodyMount ol[type="I"] {
+        list-style-type: upper-roman !important;
+    }
+    .mou-doc-canvas li, #mouBodyMount li, #mouHeaderCanvas li, #mouFooterCanvas li {
+        display: list-item !important;
+        margin-bottom: 2pt !important;
+    }
+    .mou-doc-canvas li > p, #mouBodyMount li > p {
+        display: inline !important;
+        margin-bottom: 0 !important;
+    }
+    .mou-header-zone-wrapper.mou-zone-active,
+    .mou-footer-zone-wrapper.mou-zone-active,
+    .mou-header-zone-wrapper.mou-zone-active *,
+    .mou-footer-zone-wrapper.mou-zone-active * {
+        user-select: text !important;
+    }
 
     /* Tiptap / ProseMirror Word Studio Styles */
     .mou-word-studio-shell {
@@ -316,15 +384,19 @@
         font-style: italic;
     }
 
-    /* ProseMirror Table Resizing & Selection Enhancements */
+    /* ProseMirror Table Resizing & Printable Containment */
     .ProseMirror .tableWrapper {
         margin: 4pt 0;
         overflow-x: visible;
         position: relative;
+        max-width: 100% !important;
+        box-sizing: border-box;
     }
     .ProseMirror table {
         border-collapse: collapse;
         table-layout: fixed;
+        max-width: 100% !important;
+        box-sizing: border-box;
     }
     .ProseMirror td,
     .ProseMirror th {
@@ -370,6 +442,65 @@
     .ProseMirror .tableWrapper:hover .mou-table-width-handle,
     .mou-zone-active .tableWrapper .mou-table-width-handle {
         opacity: 1;
+    }
+
+    /* Interactive Object Sizing Handles (Images & Objects) */
+    .mou-image-wrapper {
+        display: inline-block;
+        position: relative;
+        max-width: 100%;
+        line-height: 0;
+        vertical-align: middle;
+        user-select: none;
+        box-sizing: border-box;
+    }
+    .mou-image-wrapper.is-selected,
+    .mou-image-wrapper:hover {
+        outline: 2px solid #2563eb;
+        outline-offset: 1px;
+    }
+    .mou-image-handle-overlay {
+        position: absolute;
+        inset: -2px;
+        pointer-events: none;
+        z-index: 30;
+    }
+    .mou-image-wrapper.is-selected .mou-image-handle-overlay {
+        display: block !important;
+    }
+    .mou-image-handle {
+        position: absolute;
+        width: 9px;
+        height: 9px;
+        background: #ffffff;
+        border: 2px solid #2563eb;
+        border-radius: 1px;
+        pointer-events: auto;
+        box-sizing: border-box;
+        z-index: 35;
+    }
+    .mou-image-handle.nw { top: -5px; left: -5px; cursor: nwse-resize; }
+    .mou-image-handle.ne { top: -5px; right: -5px; cursor: nesw-resize; }
+    .mou-image-handle.se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+    .mou-image-handle.sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+    .mou-image-handle.n { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .mou-image-handle.s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .mou-image-handle.w { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
+    .mou-image-handle.e { top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize; }
+    .mou-image-size-badge {
+        position: absolute;
+        bottom: -22px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 40;
     }
 
     /* Row Height / Table Width Live Drag Guide */
@@ -558,6 +689,7 @@
 
 <!-- Hidden Inputs for Form Persistence (Canonical HTML + ProseMirror JSON + Page Config V3) -->
 <input type="hidden" name="template_html" id="inputTemplateHtml" value="{{ $initialBodyContent }}">
+<input type="hidden" name="content_html" id="inputContentHtml" value="{{ $initialBodyContent }}">
 <input type="hidden" name="editor_json" id="inputEditorJson" value="{{ $initialEditorJson }}">
 <input type="hidden" name="header_html" id="inputHeaderHtml" value="{{ $initialHeaderContent }}">
 <input type="hidden" name="footer_html" id="inputFooterHtml" value="{{ $initialFooterContent }}">
@@ -582,6 +714,9 @@
 <input type="hidden" name="company_logo" id="inputCompanyLogo" value="{{ $resolvedCompanyLogo }}">
 <input type="hidden" name="institution_logo_url" id="inputInstitutionLogoUrl" value="{{ $resolvedInstitutionLogo }}">
 <input type="hidden" name="company_logo_url" id="inputCompanyLogoUrl" value="{{ $resolvedCompanyLogo }}">
+<input type="hidden" name="show_header_logos" id="inputShowHeaderLogos" value="{{ ($cfg['show_header_logos'] ?? true) ? '1' : '0' }}">
+<input type="hidden" name="show_watermark" id="inputShowWatermark" value="{{ ($cfg['show_watermark'] ?? false) ? '1' : '0' }}">
+<input type="hidden" name="watermark_opacity" id="inputWatermarkOpacity" value="{{ $cfg['watermark_opacity'] ?? 0.05 }}">
 
 <!-- Diagnostic Error Banner (Only visible if JS runtime fails to mount Tiptap) -->
 <div id="mouEditorDiagnosticBanner" class="hidden mb-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs text-rose-900">
@@ -671,6 +806,15 @@
                         </button>
                         <button type="button" id="btnLoadSampleMou" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Muat contoh template MoU standar Seven Inc yang dapat diedit bebas">
                             Contoh MoU
+                        </button>
+                        <label for="btnImportDocxInput" class="mou-ribbon-btn border-indigo-200 bg-indigo-50 text-indigo-700 cursor-pointer" title="Import template dari file Microsoft Word (.docx) yang editable">
+                            <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                            <span>Import DOCX</span>
+                            <input type="file" id="btnImportDocxInput" accept=".docx" class="hidden">
+                        </label>
+                        <button type="button" id="btnExportDocx" class="mou-ribbon-btn border-emerald-200 bg-emerald-50 text-emerald-700" title="Download template ini dalam format Microsoft Word (.docx) yang dapat diedit di Word/LibreOffice">
+                            <svg class="h-3.5 w-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Export DOCX</span>
                         </button>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
@@ -816,6 +960,38 @@
                         <button type="button" id="btnInsertCustomTable" class="mou-ribbon-btn border-blue-300 bg-blue-50 text-blue-700">
                             + Sisipkan Tabel
                         </button>
+
+                        <!-- Menu Dropdown Tabel Kontekstual -->
+                        <div class="relative inline-block text-left">
+                            <button type="button" id="btnTableContextMenuToggle" class="mou-ribbon-btn inline-flex items-center gap-1 border-slate-200 bg-slate-50 text-slate-700 font-semibold px-2 text-xs" title="Menu Pengelolaan Tabel">
+                                <svg class="h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                                <span>Tabel</span>
+                                <svg class="h-3 w-3 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            </button>
+                            <div id="tableContextMenuDropdown" class="hidden absolute left-0 mt-1 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 divide-y divide-slate-100 p-1 text-xs">
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Sisipkan Tabel Baru</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 2 &times; 2</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(3, 3, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel 3 &times; 3</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.insertTable(4, 2, false)" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Tabel Tanda Tangan (4 &times; 2)</button>
+                                </div>
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Baris &amp; Kolom</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.addRowBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Atas</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addRowAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Baris Di Bawah</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addColumnBefore()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kiri</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.addColumnAfter()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">+ Tambah Kolom Di Kanan</button>
+                                </div>
+                                <div class="p-1">
+                                    <span class="block px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase">Manipulasi Sel &amp; Hapus</span>
+                                    <button type="button" onclick="window.MouWordProcessor?.mergeCells()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Gabung Sel (Merge)</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.splitCell()" class="w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-slate-700">Pisah Sel (Split)</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteRow()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Baris</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteColumn()" class="w-full text-left px-2 py-1 hover:bg-rose-50 text-rose-600 rounded">Hapus Kolom</button>
+                                    <button type="button" onclick="window.MouWordProcessor?.deleteTable()" class="w-full text-left px-2 py-1 hover:bg-rose-100 text-rose-700 rounded font-bold">Hapus Seluruh Tabel</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
                         <button type="button" onclick="window.MouWordProcessor?.insertTable(2, 2, false)" class="mou-ribbon-btn border-slate-200 bg-slate-50">Tabel 2&times;2</button>
@@ -828,27 +1004,32 @@
                 <!-- Group: Gambar & Logo -->
                 <div class="mou-ribbon-group">
                     <div class="flex items-center gap-1.5">
-                        <label class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 cursor-pointer">
-                            <span>Unggah Gambar</span>
+                        <label class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 cursor-pointer" title="Unggah gambar bebas ke dalam teks">
+                            <span>+ Gambar</span>
                             <input type="file" id="inputUploadCustomImage" accept="image/png,image/jpeg,image/webp" class="hidden">
                         </label>
-                        <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah &amp; Sisipkan Logo Institusi">
+                        <button type="button" id="btnOpenAssetLibraryModal" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700 font-semibold text-xs px-2" title="Pilih Aset dari Perpustakaan Aset (Logo, Kop, TTD, Stempel)">
+                            <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>+ Aset</span>
+                        </button>
+                        <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah Logo Institusi (Tetap / Watermark Kiri Atas)">
                             <span>Logo Institusi</span>
                             <input type="file" id="inputUploadInstitutionLogo" accept="image/png,image/jpeg,image/webp" class="hidden">
                         </label>
-                        <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Sisipkan Logo Seven Inc">
+                        <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tetapkan Logo Seven Inc (Tetap / Watermark Kanan Atas)">
                             Logo Seven Inc
                         </button>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
-                        <span class="text-xs text-slate-500 font-semibold">Lebar (px):</span>
-                        <input type="number" id="ribbonImageWidthPx" value="95" min="24" max="650" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
-                        <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'left')" class="mou-ribbon-btn" title="Gambar Rata Kiri">Kiri</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'center')" class="mou-ribbon-btn" title="Gambar Rata Tengah">Tengah</button>
-                        <button type="button" onclick="window.MouWordProcessor?.updateSelectedImage(null, 'right')" class="mou-ribbon-btn" title="Gambar Rata Kanan">Kanan</button>
+                        <button type="button" id="btnToggleHeaderLogos" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_header_logos'] ?? true) ? 'mou-ribbon-btn-active' : '' }}" title="Tampilkan / Sembunyikan Logo Tetap di Sudut Atas Kertas">
+                            Logo Tetap (Header)
+                        </button>
+                        <button type="button" id="btnToggleWatermark" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_watermark'] ?? false) ? 'mou-ribbon-btn-active' : '' }}" title="Aktifkan / Nonaktifkan Watermark Latar Tengah Kertas">
+                            Watermark Tengah
+                        </button>
+                        <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan Ukuran</button>
                     </div>
-                    <div class="mou-ribbon-group-label">Gambar &amp; Media</div>
+                    <div class="mou-ribbon-group-label">Logo Tetap &amp; Media</div>
                 </div>
 
                 <!-- Group: Elemen Dokumen, Tautan, Simbol & Variabel -->
@@ -883,10 +1064,12 @@
                             <option value="">-- Pilih Variabel Dinamis (Mail Merge) --</option>
                             @foreach($placeholders as $phKey => $phDesc)
                                 @php
-                                    $phBracket = '[' . $phKey . ']';
-                                    $phMustache = chr(123) . chr(123) . $phKey . chr(125) . chr(125);
+                                    $rawKey = trim($phKey, '{}[]');
+                                    $phBracket = '[' . $rawKey . ']';
+                                    $phMustache = '{{' . $rawKey . '}}';
+                                    $phLabel = is_array($phDesc) ? ($phDesc['label'] ?? $phDesc['canonical'] ?? $rawKey) : (string)$phDesc;
                                 @endphp
-                                <option value="{{ $phBracket }}">{{ $phBracket }} ({{ $phMustache }}) — {{ $phDesc }}</option>
+                                <option value="{{ $phMustache }}">{{ $phMustache }} ({{ $phBracket }}) — {{ $phLabel }}</option>
                             @endforeach
                         </select>
                         <button type="button" id="btnInsertSelectedPlaceholder" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">
@@ -1009,29 +1192,47 @@
                     <div class="mou-ribbon-group-label">Gabung &amp; Tabel</div>
                 </div>
 
-                <!-- Group: Ukuran Tabel, Kolom & Tinggi Baris (TTD / Paraf) -->
+                <!-- Group: Ukuran Tabel, Kolom & Tinggi Baris (Spin-Box Numerik) -->
                 <div class="mou-ribbon-group">
                     <div class="flex items-center gap-1.5">
                         <label class="text-xs font-semibold text-slate-600">Lebar:</label>
-                        <input type="text" id="ribbonTableWidthInput" value="100%" placeholder="100% / 220pt" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs">
+                        <div class="inline-flex items-center rounded-md border border-slate-300 bg-white">
+                            <input type="text" id="ribbonTableWidthInput" value="100%" placeholder="100%" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
+                            <div class="flex flex-col border-l border-slate-200">
+                                <button type="button" id="btnSpinTableWidthUp" onclick="window.MouWordProcessor?.adjustTableWidthSpin(5)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600" title="Lebarkan tabel (+5%)">▲</button>
+                                <button type="button" id="btnSpinTableWidthDown" onclick="window.MouWordProcessor?.adjustTableWidthSpin(-5)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600 border-t border-slate-200" title="Sempitkan tabel (-5%)">▼</button>
+                            </div>
+                        </div>
                         <button type="button" id="btnApplyTableWidth" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentTableWidth('100%')" class="mou-ribbon-btn border-slate-200 bg-slate-50">100%</button>
 
-                        <label class="text-xs font-semibold text-slate-600 ml-1">Kolom (px):</label>
-                        <input type="number" id="ribbonColWidthInput" placeholder="180" min="30" max="700" class="h-[34px] w-18 rounded-md border border-slate-300 px-2 text-xs text-center">
+                        <label class="text-xs font-semibold text-slate-600 ml-1">Kolom:</label>
+                        <div class="inline-flex items-center rounded-md border border-slate-300 bg-white">
+                            <input type="number" id="ribbonColWidthInput" placeholder="180" min="30" max="700" step="5" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
+                            <div class="flex flex-col border-l border-slate-200">
+                                <button type="button" id="btnSpinColWidthUp" onclick="window.MouWordProcessor?.adjustColWidthSpin(5)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600" title="Lebarkan kolom (+5px)">▲</button>
+                                <button type="button" id="btnSpinColWidthDown" onclick="window.MouWordProcessor?.adjustColWidthSpin(-5)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600 border-t border-slate-200" title="Sempitkan kolom (-5px)">▼</button>
+                            </div>
+                        </div>
                         <button type="button" id="btnApplyColWidth" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
                     </div>
 
                     <div class="flex items-center gap-1.5 mt-1.5">
                         <label class="text-xs font-semibold text-slate-600">Tinggi:</label>
-                        <input type="text" id="ribbonRowHeightInput" placeholder="18pt / 26mm" class="h-[34px] w-20 rounded-md border border-slate-300 px-2 text-xs">
+                        <div class="inline-flex items-center rounded-md border border-slate-300 bg-white">
+                            <input type="number" id="ribbonRowHeightInput" placeholder="18" min="12" max="250" step="1" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
+                            <div class="flex flex-col border-l border-slate-200">
+                                <button type="button" id="btnSpinRowHeightUp" onclick="window.MouWordProcessor?.adjustRowHeightSpin(1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600" title="Tambah tinggi baris (+1pt)">▲</button>
+                                <button type="button" id="btnSpinRowHeightDown" onclick="window.MouWordProcessor?.adjustRowHeightSpin(-1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600 border-t border-slate-200" title="Kurangi tinggi baris (-1pt)">▼</button>
+                            </div>
+                        </div>
                         <button type="button" id="btnApplyRowHeight" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Paraf">18pt (Paraf)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf diperbesar">28pt (Paraf+)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('26mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Tanda Tangan">26mm (TTD)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('35mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Tanda Tangan besar">35mm (TTD+)</button>
                     </div>
-                    <div class="mou-ribbon-group-label">Ukuran Tabel, Kolom &amp; Tinggi Baris</div>
+                    <div class="mou-ribbon-group-label">Ukuran Tabel, Kolom &amp; Tinggi Baris (Spin Box)</div>
                 </div>
 
                 <!-- Group: Garis Tepi (Borders), Padding & Perataan -->
@@ -1270,20 +1471,24 @@
                         <div class="mou-token-category-body p-2 bg-white border-t border-slate-100 space-y-1.5">
                             @foreach($groupKeys as $phKey)
                                 @php
-                                    $phDesc = $placeholders[$phKey] ?? $phKey;
-                                    $phBracket = '[' . $phKey . ']';
+                                    $rawKey = trim($phKey, '{}[]');
+                                    $phItem = $metaMap[$phKey] ?? ($placeholders[$phKey] ?? $rawKey);
+                                    $phDesc = is_array($phItem) ? ($phItem['label'] ?? $phItem['canonical'] ?? $rawKey) : (string)$phItem;
+                                    $phMustache = '{{' . $rawKey . '}}';
+                                    $phBracket = '[' . $rawKey . ']';
+                                    $insertToken = $isMou ? $phBracket : $phMustache;
                                 @endphp
-                                <div class="mou-token-item flex items-center justify-between gap-1 p-1 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition" data-token-search="{{ strtolower($phKey . ' ' . $phDesc) }}">
+                                <div class="mou-token-item flex items-center justify-between gap-1 p-1 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition" data-token-search="{{ strtolower($rawKey . ' ' . $phDesc) }}">
                                     <div class="min-w-0 flex-1">
-                                        <div class="text-[11px] font-mono font-bold text-blue-700 truncate" title="{{ $phBracket }}">{{ $phBracket }}</div>
+                                        <div class="text-[11px] font-mono font-bold text-blue-700 truncate" title="{{ $phMustache }}">{{ $phMustache }}</div>
                                         <div class="text-[10px] text-slate-500 truncate" title="{{ $phDesc }}">{{ $phDesc }}</div>
                                     </div>
                                     <button
                                         type="button"
                                         onmousedown="event.preventDefault()"
-                                        onclick="window.MouWordProcessor?.insertPlaceholder('{{ $phBracket }}')"
+                                        onclick="window.MouWordProcessor?.insertPlaceholder('{{ $insertToken }}')"
                                         class="h-6 px-2 text-[10px] font-semibold rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition shrink-0"
-                                        title="Sisipkan {{ $phBracket }} ke posisi kursor aktif"
+                                        title="Sisipkan {{ $insertToken }} ke posisi kursor aktif"
                                     >
                                         + Sisip
                                     </button>
@@ -1476,6 +1681,77 @@
     </div>
 </div>
 
+<!-- Modal Pemilihan Aset Sistem (Perpustakaan Aset) -->
+<div id="mouAssetLibraryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-600 font-bold text-xs text-white shadow-xs">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </span>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Perpustakaan Aset &amp; Dokumen</h3>
+                    <p class="text-[11px] text-slate-400">Pilih logo, kop surat, tanda tangan, stempel, atau background dari penyimpanan terpusat.</p>
+                </div>
+            </div>
+            <button
+                type="button"
+                id="btnCloseAssetLibraryModal"
+                class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
+                title="Tutup (Esc)"
+            >
+                &times;
+            </button>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <!-- Category Tabs -->
+            <div class="flex items-center gap-1 overflow-x-auto text-xs" id="mouAssetCategoryTabs">
+                <button type="button" data-cat="" class="px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white">Semua</button>
+                <button type="button" data-cat="logo" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Logo</button>
+                <button type="button" data-cat="letterhead" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Kop Surat</button>
+                <button type="button" data-cat="signature" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Tanda Tangan</button>
+                <button type="button" data-cat="stamp" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Stempel</button>
+                <button type="button" data-cat="background" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Background</button>
+                <button type="button" data-cat="supporting_image" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200">Gambar Pendukung</button>
+            </div>
+
+            <!-- Search Field -->
+            <div class="relative w-full sm:w-64">
+                <input
+                    type="text"
+                    id="mouAssetSearchInput"
+                    placeholder="Cari aset (nama, kode)..."
+                    class="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                >
+                <svg class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Scrollable Asset Grid -->
+        <div id="mouAssetGridContainer" class="flex-1 overflow-y-auto p-4 min-h-[300px] max-h-[60vh] bg-slate-100">
+            <div id="mouAssetLoadingState" class="hidden flex flex-col items-center justify-center py-12 text-slate-400">
+                <svg class="animate-spin h-6 w-6 text-blue-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-xs">Memuat daftar aset...</span>
+            </div>
+            <div id="mouAssetEmptyState" class="hidden text-center py-12 text-slate-400 text-xs">
+                Tidak ada aset yang sesuai kriteria pencarian.
+            </div>
+            <div id="mouAssetItemsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <!-- Dynamically populated via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Template Data Store for Sample, Default Paraf, Saved Templates & Initial Editor JSON -->
 <script type="application/json" id="mouSampleHtmlJson">{!! json_encode($sampleWordHtml) !!}</script>
 <script type="application/json" id="mouDefaultParafHtmlJson">{!! json_encode($defaultParafHtml) !!}</script>
@@ -1618,7 +1894,7 @@
                 defaultParafHtml: defaultParafHtml,
                 pageConfig: @json($cfg),
                 mediaAssets: @json($assets),
-                uploadMediaUrl: '{{ route('admin.mou-templates.upload-media') }}',
+                uploadMediaUrl: '{{ $resolvedUploadMediaUrl }}',
                 csrfToken: '{{ csrf_token() }}',
             });
         } catch (initErr) {
@@ -1824,6 +2100,15 @@
             }
         });
 
+        // Prevent ribbon buttons and tabs from stealing focus / collapsing ProseMirror text selection
+        document.querySelectorAll('.mou-ribbon-btn, .mou-ribbon-tab-btn').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+                if (btn.tagName !== 'SELECT' && btn.tagName !== 'INPUT') {
+                    e.preventDefault();
+                }
+            });
+        });
+
         // Blank Document, Sample MoU & Saved Template Loader
         document.getElementById('btnNewBlankDoc')?.addEventListener('click', () => {
             if (confirm('Kosongkan area dokumen utama untuk mulai menulis dari kertas kosong?')) {
@@ -1912,6 +2197,139 @@
             }
         });
 
+        // Table Context Menu Dropdown
+        const tableMenuBtn = document.getElementById('btnTableContextMenuToggle');
+        const tableMenuDropdown = document.getElementById('tableContextMenuDropdown');
+        if (tableMenuBtn && tableMenuDropdown && tableMenuBtn.dataset.boundMenu !== '1') {
+            tableMenuBtn.dataset.boundMenu = '1';
+            tableMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const willOpen = tableMenuDropdown.classList.contains('hidden');
+                tableMenuDropdown.classList.toggle('hidden', !willOpen);
+            });
+            tableMenuDropdown.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                    tableMenuDropdown.classList.add('hidden');
+                }
+            });
+            window.addEventListener('click', () => {
+                tableMenuDropdown.classList.add('hidden');
+            });
+        }
+
+        // Asset Library Modal Integration
+        const btnOpenAsset = document.getElementById('btnOpenAssetLibraryModal');
+        const assetModal = document.getElementById('mouAssetLibraryModal');
+        const btnCloseAsset = document.getElementById('btnCloseAssetLibraryModal');
+        const assetGrid = document.getElementById('mouAssetItemsList');
+        const assetLoading = document.getElementById('mouAssetLoadingState');
+        const assetEmpty = document.getElementById('mouAssetEmptyState');
+        const assetSearch = document.getElementById('mouAssetSearchInput');
+        const categoryTabs = document.getElementById('mouAssetCategoryTabs');
+
+        let currentCategory = '';
+        let currentSearch = '';
+
+        async function fetchSystemAssets() {
+            if (!assetGrid) return;
+            assetGrid.innerHTML = '';
+            assetLoading?.classList.remove('hidden');
+            assetEmpty?.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams();
+                if (currentCategory) params.append('category', currentCategory);
+                if (currentSearch) params.append('search', currentSearch);
+
+                const response = await fetch(`{{ route('admin.system-assets.api.index') }}?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const resData = await response.json();
+                assetLoading?.classList.add('hidden');
+
+                const items = resData.data || [];
+                if (items.length === 0) {
+                    assetEmpty?.classList.remove('hidden');
+                    return;
+                }
+
+                items.forEach(asset => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col justify-between hover:shadow-md transition';
+
+                    const previewUrl = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
+                    card.innerHTML = `
+                        <div class="h-24 bg-slate-50 rounded-lg flex items-center justify-center p-2 mb-2 border border-slate-100 overflow-hidden">
+                            <img src="${previewUrl}" alt="${asset.name}" class="max-h-full max-w-full object-contain">
+                        </div>
+                        <div class="mb-2">
+                            <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">${asset.category_label || asset.category}</span>
+                            <div class="text-xs font-semibold text-slate-800 truncate mt-1" title="${asset.name}">${asset.name}</div>
+                            <div class="text-[10px] text-slate-400 font-mono truncate">${asset.code || '-'}</div>
+                        </div>
+                        <button type="button" class="btn-insert-this-asset w-full py-1 text-center text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition">
+                            + Sisipkan
+                        </button>
+                    `;
+
+                    card.querySelector('.btn-insert-this-asset')?.addEventListener('click', () => {
+                        window.MouWordProcessor?.insertSystemAsset(asset);
+                        closeAssetLibraryModal();
+                    });
+
+                    assetGrid.appendChild(card);
+                });
+            } catch (err) {
+                assetLoading?.classList.add('hidden');
+                if (assetEmpty) {
+                    assetEmpty.textContent = 'Gagal memuat aset: ' + err.message;
+                    assetEmpty.classList.remove('hidden');
+                }
+            }
+        }
+
+        function openAssetLibraryModal() {
+            if (assetModal) {
+                assetModal.classList.remove('hidden');
+                fetchSystemAssets();
+            }
+        }
+
+        function closeAssetLibraryModal() {
+            if (assetModal) assetModal.classList.add('hidden');
+        }
+
+        btnOpenAsset?.addEventListener('click', openAssetLibraryModal);
+        btnCloseAsset?.addEventListener('click', closeAssetLibraryModal);
+
+        categoryTabs?.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryTabs.querySelectorAll('button[data-cat]').forEach(b => {
+                    b.className = 'px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-200';
+                });
+                btn.className = 'px-2.5 py-1 rounded-md font-semibold bg-blue-600 text-white';
+                currentCategory = btn.getAttribute('data-cat') || '';
+                fetchSystemAssets();
+            });
+        });
+
+        let searchDebounce;
+        assetSearch?.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                currentSearch = e.target.value.trim();
+                fetchSystemAssets();
+            }, 300);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (assetModal && !assetModal.classList.contains('hidden')) {
+                    closeAssetLibraryModal();
+                }
+            }
+        });
+
         // Media Upload & Logo Insert
         document.getElementById('inputUploadCustomImage')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
@@ -1934,8 +2352,19 @@
             e.target.value = '';
         });
         document.getElementById('btnInsertCompanyLogo')?.addEventListener('click', () => {
-            const url = processor.state.mediaAssets.company_logo || processor.state.mediaAssets.company_logo_url || '/images/mou/seven-inc-logo.png';
-            processor.insertImageFromUrl(url, 88, 'center');
+            processor.state.showHeaderLogos = true;
+            processor.applyPageLayoutToCanvas();
+            processor.syncAllToHiddenInputs();
+            const btn = document.getElementById('btnToggleHeaderLogos');
+            if (btn) btn.classList.add('mou-ribbon-btn-active');
+        });
+        document.getElementById('btnToggleHeaderLogos')?.addEventListener('click', (e) => {
+            const active = processor.toggleHeaderLogos();
+            e.currentTarget.classList.toggle('mou-ribbon-btn-active', active);
+        });
+        document.getElementById('btnToggleWatermark')?.addEventListener('click', (e) => {
+            const active = processor.toggleWatermark();
+            e.currentTarget.classList.toggle('mou-ribbon-btn-active', active);
         });
         document.getElementById('btnApplyImageSize')?.addEventListener('click', () => {
             const w = document.getElementById('ribbonImageWidthPx')?.value || '95';
@@ -1986,20 +2415,80 @@
             processor.setParagraphSpacing(before, after);
         });
 
-        // Table Resize & Styling Controls
+        // Table Resize & Styling Controls (with spin box & keyboard navigation)
         document.getElementById('btnApplyTableWidth')?.addEventListener('click', () => {
             const val = document.getElementById('ribbonTableWidthInput')?.value || '100%';
             processor.setCurrentTableWidth(val.trim());
         });
+        document.getElementById('ribbonTableWidthInput')?.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') { e.preventDefault(); processor.adjustTableWidthSpin(5); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); processor.adjustTableWidthSpin(-5); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = e.target.value.trim();
+                if (val) processor.setCurrentTableWidth(val);
+            }
+        });
+
         document.getElementById('btnApplyColWidth')?.addEventListener('click', () => {
             const val = document.getElementById('ribbonColWidthInput')?.value || '';
             if (val) processor.setCurrentColumnWidth(val);
         });
+        document.getElementById('ribbonColWidthInput')?.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') { e.preventDefault(); processor.adjustColWidthSpin(5); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); processor.adjustColWidthSpin(-5); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = e.target.value.trim();
+                if (val) processor.setCurrentColumnWidth(val);
+            }
+        });
+
         document.getElementById('btnApplyRowHeight')?.addEventListener('click', () => {
             let val = (document.getElementById('ribbonRowHeightInput')?.value || '').trim();
             if (val && /^\d+(\.\d+)?$/.test(val)) val = `${val}pt`;
             processor.setCurrentRowHeight(val);
         });
+        document.getElementById('ribbonRowHeightInput')?.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') { e.preventDefault(); processor.adjustRowHeightSpin(1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); processor.adjustRowHeightSpin(-1); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                let val = e.target.value.trim();
+                if (val && /^\d+(\.\d+)?$/.test(val)) val = `${val}pt`;
+                processor.setCurrentRowHeight(val);
+            }
+        });
+
+        // DOCX Import & Export Listeners
+        document.getElementById('btnImportDocxInput')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                const doReplace = confirm("Import Dokumen Microsoft Word (.docx):\n\nKlik 'OK' untuk MENGGANTI seluruh isi halaman dokumen dengan isi Word,\natau klik 'Batal' untuk MENYISIPKAN isi Word di posisi kursor aktif saat ini.");
+                const mode = doReplace ? 'replace' : 'insert';
+                const res = await processor.importDocx(file, mode);
+                alert(`Dokumen Word berhasil diimpor!\n- Paragraf: ${res.summary.paragraphsCount}\n- Tabel: ${res.summary.tablesCount}\n- Variabel Mail Merge: ${res.summary.placeholdersCount} (${res.summary.placeholders.join(', ') || 'tidak ada'})`);
+            } catch (err) {
+                alert("Gagal mengimpor file Word: " + err.message);
+            }
+            e.target.value = '';
+        });
+
+        document.getElementById('btnExportDocx')?.addEventListener('click', async () => {
+            try {
+                const tplName = (document.getElementById('name')?.value || document.querySelector('input[name="name"]')?.value || 'template-dokumen').replace(/[^a-zA-Z0-9_-]/g, '_');
+                await processor.exportDocx(`${tplName}.docx`);
+            } catch (err) {
+                alert("Gagal mengekspor dokumen Word: " + err.message);
+            }
+        });
+
+        // Status Bar Zoom Listener
+        document.getElementById('statusBarZoomSelect')?.addEventListener('change', (e) => {
+            processor.setZoomPercent(e.target.value);
+        });
+
         document.getElementById('ribbonCellPaddingSelect')?.addEventListener('change', (e) => {
             if (e.target.value) {
                 processor.updateActiveTableCells({ padding: e.target.value }, false);

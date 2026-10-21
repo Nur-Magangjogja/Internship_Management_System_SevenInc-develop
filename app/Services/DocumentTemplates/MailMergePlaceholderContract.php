@@ -3,63 +3,114 @@
 namespace App\Services\DocumentTemplates;
 
 use App\Models\DocumentTemplate;
+use App\Services\MailMerge\VariableRegistry;
 
 class MailMergePlaceholderContract
 {
     /**
-     * Dapatkan daftar seluruh placeholder dan deskripsinya.
+     * Dapatkan daftar seluruh placeholder dan deskripsinya dari VariableRegistry universal.
      */
-    public static function getAvailablePlaceholders(): array
+    public static function getAvailablePlaceholders(?string $documentType = null): array
     {
-        return DocumentTemplate::getDefaultPlaceholders();
+        $tokens = $documentType
+            ? VariableRegistry::getTokensForDocumentType($documentType)
+            : VariableRegistry::getDefinitions();
+
+        $result = [];
+        foreach ($tokens as $key => $def) {
+            $result['{{' . $key . '}}'] = [
+                'label'       => $def['label'],
+                'group'       => $def['category'],
+                'example'     => $def['sample'] ?? '',
+                'description' => "Sumber: {$def['source']}",
+                'canonical'   => $key,
+                'data_type'   => $def['data_type'] ?? 'string',
+                'required'    => ($def['required_policy'] ?? '') === VariableRegistry::POLICY_REQUIRED,
+            ];
+        }
+
+        return $result;
     }
 
     /**
-     * Ambil data mock contoh untuk Live Preview.
+     * Ambil data mock contoh untuk Live Preview terisolasi.
      */
-    public static function getMockData(): array
+    public static function getMockData(?string $documentType = null): array
     {
-        return DocumentTemplate::getDefaultMockData();
+        $tokens = $documentType
+            ? VariableRegistry::getTokensForDocumentType($documentType)
+            : VariableRegistry::getDefinitions();
+
+        $mock = [];
+        foreach ($tokens as $key => $def) {
+            if (isset($def['sample']) && $def['sample'] !== null) {
+                $mock[$key] = $def['sample'];
+            }
+        }
+
+        return $mock;
     }
 
     /**
      * Substitusi variabel Mail Merge dalam string teks / HTML secara aman.
+     * Mendukung pemetaan seluruh alias kanonis tanpa kebocoran data mock pada penerbitan resmi.
      */
-    public static function resolve(string $content, array $data = []): string
+    public static function resolve(string $content, array $data = [], bool $isLiveIssuance = false): string
     {
-        $dataset = !empty($data) ? $data : static::getMockData();
+        // Hanya isi mock jika BUKAN penerbitan resmi dan data eksplisit kosong
+        $dataset = (!empty($data) || $isLiveIssuance) ? $data : static::getMockData();
         $flatValues = static::flattenDataset($dataset);
 
-        // Integrasi adaptif dengan VariableRegistry Antigravity 1 jika terdaftar
-        if (class_exists(\App\Services\MailMerge\VariableRegistry::class)) {
-            $defs = \App\Services\MailMerge\VariableRegistry::getDefinitions();
-            foreach ($defs as $mainKey => $def) {
-                if (isset($flatValues[$mainKey])) {
-                    foreach ($def['aliases'] ?? [] as $alias) {
-                        if (!isset($flatValues[$alias])) {
-                            $flatValues[$alias] = $flatValues[$mainKey];
-                        }
+        // Integrasi adaptif dengan VariableRegistry universal
+        $aliasesMap = VariableRegistry::getAliasesMap();
+        foreach ($flatValues as $k => $v) {
+            $lower = strtolower($k);
+            $canonical = $aliasesMap[$lower] ?? $k;
+            if (!isset($flatValues[$canonical])) {
+                $flatValues[$canonical] = $v;
+            }
+        }
+
+        $defs = VariableRegistry::getDefinitions();
+        foreach ($defs as $mainKey => $def) {
+            if (isset($flatValues[$mainKey])) {
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    if (!isset($flatValues[$alias])) {
+                        $flatValues[$alias] = $flatValues[$mainKey];
                     }
-                } else {
-                    foreach ($def['aliases'] ?? [] as $alias) {
-                        if (isset($flatValues[$alias])) {
-                            $flatValues[$mainKey] = $flatValues[$alias];
-                            break;
-                        }
+                }
+            } else {
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    if (isset($flatValues[$alias])) {
+                        $flatValues[$mainKey] = $flatValues[$alias];
+                        break;
                     }
                 }
             }
         }
 
-        // Nilai aset gambar standar
-        $compLogo   = $flatValues['asset.company.logo'] ?? '/images/mou/seven-inc-logo.png';
-        $instLogo   = $flatValues['asset.institution.logo'] ?? '/images/mou/institution-logo-placeholder.png';
-        $sigImage   = $flatValues['asset.signature'] ?? '/images/mou/signature-sample.png';
-        $stampImage = $flatValues['asset.stamp'] ?? '/images/mou/stamp-sample.png';
+        // Compatibility fallback: if company_mou_number is not set from mou.nomor_perusahaan, fall back to dokumen.nomor
+        if (!isset($flatValues['company_mou_number']) && isset($flatValues['dokumen.nomor'])) {
+            $flatValues['company_mou_number'] = $flatValues['dokumen.nomor'];
+        }
+
+        // Resolusi aset gambar
+        $compLogo   = $flatValues['asset.brand.logo'] ?? ($flatValues['asset.company.logo'] ?? null);
+        $instLogo   = $flatValues['asset.institusi.logo'] ?? ($flatValues['asset.institution.logo'] ?? null);
+        $sigImage   = $flatValues['asset.brand.tanda_tangan'] ?? ($flatValues['asset.signature'] ?? null);
+        $stampImage = $flatValues['asset.brand.stempel'] ?? ($flatValues['asset.stamp'] ?? null);
+
+        // Fallback hanya untuk preview mock (INV-05, INV-06, INV-14)
+        if (!$isLiveIssuance) {
+            $compLogo   = $compLogo ?: '/images/mou/seven-inc-logo.png';
+            $instLogo   = $instLogo ?: '/images/mou/institution-logo-placeholder.png';
+            $sigImage   = $sigImage ?: '/images/mou/signature-sample.png';
+            $stampImage = $stampImage ?: '/images/mou/stamp-sample.png';
+        }
 
         $resolved = $content;
 
-        // 1. Substitusi atribut HTML seperti src="{{asset.company.logo}}" (hanya ganti URL, bukan tag <img> ganda)
+        // 1. Substitusi atribut HTML seperti src="{{asset.company.logo}}" (hanya ganti URL)
         $resolved = preg_replace_callback('/(src=["\'])\{\{\s*([a-zA-Z0-9_\.]+)\s*\}\}(["\'])/i', function ($m) use ($flatValues) {
             $key = $m[2];
             $val = $flatValues[$key] ?? '';
@@ -67,19 +118,31 @@ class MailMergePlaceholderContract
         }, $resolved);
 
         // 2. Substitusi tag aset yang berdiri sendiri di body teks menjadi tag <img>
-        $resolved = preg_replace_callback('/\{\{\s*asset\.company\.logo\s*\}\}|\[asset\.company\.logo\]/i', function () use ($compLogo) {
+        $resolved = preg_replace_callback('/\{\{\s*(asset\.(?:brand|company)\.logo|company_logo|brand_logo)\s*\}\}|\[\s*(asset\.(?:brand|company)\.logo|company_logo|brand_logo)\s*\]/i', function () use ($compLogo) {
+            if (!$compLogo) {
+                return '';
+            }
             return '<img src="' . htmlspecialchars($compLogo, ENT_QUOTES, 'UTF-8') . '" alt="Logo Perusahaan" style="max-height: 90px; width: auto; vertical-align: middle;" />';
         }, $resolved);
 
-        $resolved = preg_replace_callback('/\{\{\s*asset\.institution\.logo\s*\}\}|\[asset\.institution\.logo\]/i', function () use ($instLogo) {
+        $resolved = preg_replace_callback('/\{\{\s*(asset\.(?:institusi|institution)\.logo|institution_logo|logo_institusi)\s*\}\}|\[\s*(asset\.(?:institusi|institution)\.logo|institution_logo|logo_institusi)\s*\]/i', function () use ($instLogo) {
+            if (!$instLogo) {
+                return '';
+            }
             return '<img src="' . htmlspecialchars($instLogo, ENT_QUOTES, 'UTF-8') . '" alt="Logo Institusi" style="max-height: 90px; width: auto; vertical-align: middle;" />';
         }, $resolved);
 
-        $resolved = preg_replace_callback('/\{\{\s*asset\.signature\s*\}\}|\[asset\.signature\]/i', function () use ($sigImage) {
+        $resolved = preg_replace_callback('/\{\{\s*(asset\.(?:brand\.)?tanda_tangan|asset\.signature|signature|tanda_tangan)\s*\}\}|\[\s*(asset\.(?:brand\.)?tanda_tangan|asset\.signature|signature|tanda_tangan)\s*\]/i', function () use ($sigImage) {
+            if (!$sigImage) {
+                return '';
+            }
             return '<img src="' . htmlspecialchars($sigImage, ENT_QUOTES, 'UTF-8') . '" alt="Tanda Tangan" style="height: 65px; width: auto; vertical-align: middle;" />';
         }, $resolved);
 
-        $resolved = preg_replace_callback('/\{\{\s*asset\.stamp\s*\}\}|\[asset\.stamp\]/i', function () use ($stampImage) {
+        $resolved = preg_replace_callback('/\{\{\s*(asset\.(?:brand\.)?stempel|asset\.stamp|stamp|stempel)\s*\}\}|\[\s*(asset\.(?:brand\.)?stempel|asset\.stamp|stamp|stempel)\s*\]/i', function () use ($stampImage) {
+            if (!$stampImage) {
+                return '';
+            }
             return '<img src="' . htmlspecialchars($stampImage, ENT_QUOTES, 'UTF-8') . '" alt="Stempel Resmi" style="height: 70px; width: auto; vertical-align: middle;" />';
         }, $resolved);
 

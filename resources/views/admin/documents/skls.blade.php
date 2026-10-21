@@ -5,13 +5,39 @@
 @section('content')
 <div class="min-h-screen bg-[#F4F8F6] p-4 sm:p-6 lg:p-7">
 
-    <div class="mb-6">
-        <p class="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Dokumen & Sertifikat</p>
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Riwayat Unduhan SKL</h1>
-                <p class="mt-1 text-sm text-[#4B5F5A]">Daftar dokumen Surat Keterangan Lulus (SKL) untuk pemagang yang telah menyelesaikan magang.</p>
-            </div>
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <p class="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Dokumen & Sertifikat</p>
+            <h1 class="text-2xl font-extrabold tracking-tight text-[#1B3A34] sm:text-[28px]">Riwayat Unduhan SKL</h1>
+            <p class="mt-1 text-sm text-[#4B5F5A]">Daftar dokumen Surat Keterangan Lulus (SKL) untuk pemagang yang telah menyelesaikan magang.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.document-templates.index', ['type' => 'skl']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2 text-xs font-semibold text-[#1B3A34] shadow-xs transition hover:bg-[#F4F8F6]">
+                <svg class="h-3.5 w-3.5 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M3 9h18M9 21V9"/>
+                </svg>
+                Kelola Template SKL
+            </a>
+            <a href="{{ route('admin.document-templates.create', ['type' => 'skl']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] bg-[#2D8659] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1F5F3F]">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Buat Template SKL
+            </a>
+            @if(!empty($activeSklTemplate))
+            <a href="{{ route('admin.document-templates.edit', $activeSklTemplate) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 shadow-xs transition hover:bg-blue-100">
+                <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Edit Template Aktif (v{{ $activeSklTemplate->version_number }})
+            </a>
+            @endif
         </div>
     </div>
 
@@ -46,12 +72,16 @@
                             {{ $skl->downloaded_at?->format('d M Y, H:i') ?? '-' }}
                         </td>
                         <td class="px-5 py-4">
-                            @if($skl->status === 'success')
+                            @if($skl->status === 'issued' || ($skl->is_issued ?? false) || ($skl->status === 'success' && !empty($skl->file_path)))
                             <span class="inline-flex items-center gap-1.5 rounded-full bg-[#E8F5E9] px-2.5 py-1 text-[11px] font-semibold text-[#388E3C] border border-[#A5D6A7]">
-                                <span class="h-1.5 w-1.5 rounded-full bg-[#388E3C]"></span>Berhasil
+                                <span class="h-1.5 w-1.5 rounded-full bg-[#388E3C]"></span>Terbit
+                            </span>
+                            @elseif($skl->status === 'eligible')
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 border border-blue-200">
+                                <span class="h-1.5 w-1.5 rounded-full bg-blue-600"></span>Siap Dibuat
                             </span>
                             @else
-                            <span class="text-[13px] text-[#4B5F5A] font-medium">-</span>
+                            <span class="text-[12px] text-[#4B5F5A] font-medium">Belum Memenuhi Syarat</span>
                             @endif
                         </td>
                         <td class="px-5 py-4">
@@ -85,7 +115,7 @@
                             </a>
                             @endif
                             @else
-                            <span class="text-[12.5px] text-[#4B5F5A]">-</span>
+                            <span class="text-[12px] text-slate-400 italic">Belum Diterbitkan</span>
                             @endif
                         </td>
                     </tr>

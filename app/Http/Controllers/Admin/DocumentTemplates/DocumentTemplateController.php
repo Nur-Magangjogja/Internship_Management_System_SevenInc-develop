@@ -7,69 +7,38 @@ use App\Models\DocumentTemplate;
 use App\Models\DocumentTemplateVersion;
 use App\Services\DocumentTemplates\AssetLibraryContract;
 use App\Services\DocumentTemplates\DocumentTemplateRenderer;
+use App\Services\DocumentTemplates\TemplateCatalogService;
+use App\Services\DocumentTemplates\TemplateLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
+use InvalidArgumentException;
 
 class DocumentTemplateController extends Controller
 {
     /**
-     * Tampilkan daftar template dokumen dan sertifikat.
+     * Tampilkan katalog gabungan 6 jenis template dokumen dan sertifikat.
      */
-    public function index(Request $request): View
+    public function index(Request $request, TemplateCatalogService $catalogService): View
     {
-        $query = DocumentTemplate::query()->with(['creator', 'updater']);
-
-        // Filter Tipe Dokumen
-        if ($request->filled('type') && in_array($request->type, array_keys(DocumentTemplate::getDocumentTypes()), true)) {
-            $query->where('type', $request->type);
-        }
-
-        // Filter Status Aktif
-        if ($request->filled('status')) {
-            if ($request->status === 'active') {
-                $query->where('is_active', true);
-            } elseif ($request->status === 'draft') {
-                $query->where('is_active', false);
-            } elseif ($request->status === 'default') {
-                $query->where('is_default', true);
-            }
-        }
-
-        // Pencarian Nama / Deskripsi
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
-            });
-        }
-
-        $templates = $query->orderBy('is_default', 'desc')
-                           ->orderBy('updated_at', 'desc')
-                           ->paginate(12)
-                           ->withQueryString();
-
-        // Ringkasan Jumlah untuk Filter Tab
-        $counts = [
-            'total'          => DocumentTemplate::count(),
-            'active'         => DocumentTemplate::where('is_active', true)->count(),
-            'loa'            => DocumentTemplate::where('type', 'loa')->count(),
-            'skl'            => DocumentTemplate::where('type', 'skl')->count(),
-            'certificate'    => DocumentTemplate::where('type', 'certificate')->count(),
-            'assessment'     => DocumentTemplate::where('type', 'assessment')->count(),
-            'recommendation' => DocumentTemplate::where('type', 'recommendation')->count(),
-        ];
+        $page = (int) $request->input('page', 1);
+        $catalog = $catalogService->getCatalog([
+            'type'   => $request->type ?? 'all',
+            'status' => $request->status ?? 'all',
+            'search' => $request->search ?? '',
+        ], perPage: 12, page: $page);
 
         return view('admin.document-templates.index', [
-            'templates'     => $templates,
-            'counts'        => $counts,
-            'documentTypes' => DocumentTemplate::getDocumentTypes(),
-            'currentType'   => $request->type ?? 'all',
-            'currentStatus' => $request->status ?? 'all',
-            'searchQuery'   => $request->search ?? '',
+            'templates'          => $catalog['paginator'],
+            'counts'             => $catalog['counts'],
+            'documentTypes'      => $catalog['document_types'],
+            'currentType'        => $catalog['current_type'],
+            'currentStatus'      => $catalog['current_status'],
+            'searchQuery'        => $catalog['search_query'],
+            'activeCountsByType' => $catalog['active_counts_by_type'],
+            'zeroActiveTypes'    => $catalog['zero_active_types'],
         ]);
     }
 
@@ -150,7 +119,7 @@ class DocumentTemplateController extends Controller
     {
         $documentTemplate->loadCount('versions');
 
-        $placeholders = DocumentTemplate::getDefaultPlaceholders();
+        $placeholders = DocumentTemplate::getDefaultPlaceholders($documentTemplate->type);
         $mockData = DocumentTemplate::getMockPlaceholderData();
         $assetCatalog = AssetLibraryContract::getAssetCatalog();
 
@@ -180,6 +149,7 @@ class DocumentTemplateController extends Controller
             'name'           => 'required|string|max:255',
             'description'    => 'nullable|string|max:1000',
             'content_html'   => 'nullable|string',
+            'template_html'  => 'nullable|string',
             'editor_json'    => 'nullable',
             'canvas_layout'  => 'nullable',
             'page_config'    => 'nullable',
@@ -204,6 +174,33 @@ class DocumentTemplateController extends Controller
                 $pageConfig = $decoded;
             }
         }
+        if (!is_array($pageConfig)) {
+            $pageConfig = $documentTemplate->page_config ?? [];
+        }
+
+        // Merge any explicit top-level fields from the Word processor studio into $pageConfig
+        $studioPageFields = [
+            'header_html', 'footer_html', 'first_page_header_html', 'first_page_footer_html',
+            'different_first_page', 'show_paraf_box', 'show_page_number',
+            'paper_size', 'orientation',
+            'margin_top_mm', 'margin_right_mm', 'margin_bottom_mm', 'margin_left_mm',
+            'header_distance_mm', 'footer_distance_mm',
+            'font_family', 'font_size_pt', 'line_height'
+        ];
+        foreach ($studioPageFields as $field) {
+            if ($request->has($field)) {
+                $val = $request->input($field);
+                if (in_array($field, ['different_first_page', 'show_paraf_box', 'show_page_number'])) {
+                    $pageConfig[$field] = $request->boolean($field);
+                } elseif (in_array($field, ['margin_top_mm', 'margin_right_mm', 'margin_bottom_mm', 'margin_left_mm', 'header_distance_mm', 'footer_distance_mm', 'line_height'])) {
+                    $pageConfig[$field] = (float) $val;
+                } elseif ($field === 'font_size_pt') {
+                    $pageConfig[$field] = (int) $val;
+                } else {
+                    $pageConfig[$field] = $val;
+                }
+            }
+        }
 
         $editorJson = $request->input('editor_json');
         if (is_string($editorJson)) {
@@ -225,13 +222,18 @@ class DocumentTemplateController extends Controller
             $isActive = $request->boolean('is_active', $documentTemplate->is_active);
         }
 
+        // Content HTML dari field content_html atau template_html
+        $contentHtml = $request->input('content_html') 
+            ?? $request->input('template_html') 
+            ?? $documentTemplate->content_html;
+
         // Tingkatkan nomor versi
         $nextVersion = $documentTemplate->version_number + 1;
 
         $documentTemplate->fill([
             'name'           => $validated['name'],
             'description'    => $validated['description'] ?? null,
-            'content_html'   => $request->has('content_html') ? $request->input('content_html') : $documentTemplate->content_html,
+            'content_html'   => $contentHtml,
             'editor_json'    => $editorJson ?? $documentTemplate->editor_json,
             'canvas_layout'  => $canvasLayout ?? $documentTemplate->canvas_layout,
             'page_config'    => $pageConfig ?? $documentTemplate->page_config,
@@ -264,9 +266,9 @@ class DocumentTemplateController extends Controller
     /**
      * Duplikasi template menjadi draf salinan baru.
      */
-    public function duplicate(DocumentTemplate $documentTemplate): RedirectResponse
+    public function duplicate(DocumentTemplate $documentTemplate, TemplateLifecycleService $lifecycleService): RedirectResponse
     {
-        $clone = $documentTemplate->duplicate(null, auth()->id());
+        $clone = $lifecycleService->duplicate($documentTemplate, null, auth()->id() ?? 1);
 
         return redirect()
             ->route('admin.document-templates.edit', $clone)
@@ -274,60 +276,108 @@ class DocumentTemplateController extends Controller
     }
 
     /**
-     * Jadikan template sebagai default untuk tipe dokumen ini.
+     * Jadikan template sebagai default untuk tipe dokumen ini secara konsisten & atomik (INV-08).
      */
-    public function setDefault(Request $request, DocumentTemplate $documentTemplate): JsonResponse|RedirectResponse
+    public function setDefault(Request $request, DocumentTemplate $documentTemplate, TemplateLifecycleService $lifecycleService): JsonResponse|RedirectResponse
     {
-        DocumentTemplate::where('type', $documentTemplate->type)
-            ->update(['is_default' => false]);
+        try {
+            $lifecycleService->setDefault($documentTemplate, auth()->id() ?? 1);
 
-        $documentTemplate->update([
-            'is_default' => true,
-            'is_active'  => true,
-            'updated_by' => auth()->id(),
-        ]);
+            $msg = "Template '{$documentTemplate->name}' ditetapkan sebagai template default.";
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => true, 'message' => $msg]);
+            }
 
-        if ($request->wantsJson() || $request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'message' => "Template '{$documentTemplate->name}' ditetapkan sebagai template default.",
-            ]);
+            return back()->with('success', "Template '{$documentTemplate->name}' sekarang menjadi template default untuk {$documentTemplate->getTypeLabel($documentTemplate->type)}.");
+        } catch (InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->with('error', $e->getMessage());
         }
-
-        return back()->with('success', "Template '{$documentTemplate->name}' sekarang menjadi template default untuk {$documentTemplate->getTypeLabel($documentTemplate->type)}.");
     }
 
     /**
-     * Toggle status aktif / draf template.
+     * Toggle status aktif / draf template dengan validasi lifecycle (INV-09).
      */
-    public function toggleActive(Request $request, DocumentTemplate $documentTemplate): JsonResponse|RedirectResponse
+    public function toggleActive(Request $request, DocumentTemplate $documentTemplate, TemplateLifecycleService $lifecycleService): JsonResponse|RedirectResponse
     {
-        if ($documentTemplate->is_default && $documentTemplate->is_active) {
-            $msg = 'Template default tidak dapat dinonaktifkan secara langsung. Tetapkan template lain sebagai default terlebih dahulu.';
-            if ($request->wantsJson() || $request->ajax()) {
-                return response()->json(['success' => false, 'message' => $msg], 422);
+        try {
+            if ($documentTemplate->is_active) {
+                $lifecycleService->deactivate($documentTemplate, auth()->id() ?? 1);
+                $newState = false;
+                $statusLabel = 'dinonaktifkan (draf)';
+            } else {
+                $lifecycleService->activate($documentTemplate, auth()->id() ?? 1);
+                $newState = true;
+                $statusLabel = 'diaktifkan';
             }
-            return back()->with('error', $msg);
+
+            $msg = "Template '{$documentTemplate->name}' berhasil {$statusLabel}.";
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success'   => true,
+                    'message'   => $msg,
+                    'is_active' => $newState,
+                ]);
+            }
+
+            return back()->with('success', $msg);
+        } catch (InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->with('error', $e->getMessage());
         }
+    }
 
-        $newState = !$documentTemplate->is_active;
-        $documentTemplate->update([
-            'is_active'  => $newState,
-            'updated_by' => auth()->id(),
-        ]);
+    /**
+     * Publikasikan draf menjadi snapshot versi kanonikal (Published Revision).
+     */
+    public function publish(Request $request, DocumentTemplate $documentTemplate, TemplateLifecycleService $lifecycleService): JsonResponse|RedirectResponse
+    {
+        try {
+            $summary = $request->input('change_summary', 'Publikasi revisi resmi');
+            $version = $lifecycleService->publishRevision($documentTemplate, $summary, auth()->id() ?? 1);
 
-        $statusLabel = $newState ? 'diaktifkan' : 'dinonaktifkan (draf)';
-        $msg = "Template '{$documentTemplate->name}' berhasil {$statusLabel}.";
+            $msg = "Revisi template '{$documentTemplate->name}' berhasil dipublikasikan (Versi {$version->version_number}).";
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $msg,
+                    'version' => $version->version_number,
+                ]);
+            }
 
-        if ($request->wantsJson() || $request->ajax()) {
-            return response()->json([
-                'success'   => true,
-                'message'   => $msg,
-                'is_active' => $newState,
-            ]);
+            return back()->with('success', $msg);
+        } catch (InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->with('error', $e->getMessage());
         }
+    }
 
-        return back()->with('success', $msg);
+    /**
+     * Arsipkan template (Archived).
+     */
+    public function archive(Request $request, DocumentTemplate $documentTemplate, TemplateLifecycleService $lifecycleService): JsonResponse|RedirectResponse
+    {
+        try {
+            $lifecycleService->archive($documentTemplate, auth()->id() ?? 1);
+            $msg = "Template '{$documentTemplate->name}' berhasil diarsipkan.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => true, 'message' => $msg]);
+            }
+
+            return back()->with('success', $msg);
+        } catch (InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     /**

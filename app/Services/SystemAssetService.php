@@ -227,66 +227,96 @@ class SystemAssetService
     }
 
     /**
-     * Resolusi aset aktif berdasarkan hierarki prioritas (Dokumen Override > Brand/Institusi > Global Default > Global).
+     * Resolusi aset aktif dengan isolasi kepemilikan ketat (Owner-Safe):
+     * 1. Jika institutionId diberikan (atau kategori/token untuk institusi), HANYA cari aset ber-scope institution milik institution_id tersebut.
+     *    TIDAK PERNAH fallback ke aset institusi lain atau ke aset global/perusahaan (INV-05).
+     * 2. Jika brandId diberikan, HANYA cari aset ber-scope brand milik brand_id tersebut.
+     *    Fallback ke global hanya diizinkan untuk logo umum, kop surat, atau background, dan TIDAK PERNAH untuk tanda tangan atau stempel!
+     * 3. Jika kode aset diberikan, pencarian tetap wajib dibatasi oleh kepemilikan pemilik terkait.
      */
     public function resolveAsset(
         string $category,
         ?string $assetCode = null,
         ?int $brandId = null,
-        ?int $institutionId = null
+        ?int $institutionId = null,
+        bool $allowGlobalFallback = true
     ): ?SystemAsset {
-        // 1. Cari berdasarkan kode aset spesifik jika ada
-        if (!empty($assetCode)) {
-            $asset = SystemAsset::active()->where('asset_code', $assetCode)->first();
-            if ($asset) {
-                return $asset;
+        $isInstitutionTarget = !empty($institutionId) || (
+            $assetCode && (
+                str_contains($assetCode, 'institution') ||
+                str_contains($assetCode, 'institusi')
+            )
+        );
+
+        // KASUS A: Resolusi Aset Institusi Mitra
+        if ($isInstitutionTarget) {
+            if (!$institutionId) {
+                // Tidak ada ID institusi target, tolak fallback agar tidak bocor lintas owner
+                return null;
             }
+
+            $query = SystemAsset::active()
+                ->where('category', $category)
+                ->where('scope', SystemAsset::SCOPE_INSTITUTION)
+                ->where('institution_id', $institutionId);
+
+            if (!empty($assetCode)) {
+                $specificAsset = (clone $query)->where('asset_code', $assetCode)->first();
+                if ($specificAsset) {
+                    return $specificAsset;
+                }
+            }
+
+            return $query->latest('is_default')->latest('id')->first();
         }
 
-        // 2. Cari aset Brand spesifik jika ada
+        // KASUS B: Resolusi Aset Brand / Perusahaan
         if ($brandId) {
-            $brandAsset = SystemAsset::active()
+            $brandQuery = SystemAsset::active()
                 ->where('category', $category)
                 ->where('scope', SystemAsset::SCOPE_BRAND)
-                ->where('brand_id', $brandId)
-                ->latest('is_default')
-                ->latest('id')
-                ->first();
+                ->where('brand_id', $brandId);
+
+            if (!empty($assetCode)) {
+                $specificAsset = (clone $brandQuery)->where('asset_code', $assetCode)->first();
+                if ($specificAsset) {
+                    return $specificAsset;
+                }
+            }
+
+            $brandAsset = $brandQuery->latest('is_default')->latest('id')->first();
             if ($brandAsset) {
                 return $brandAsset;
             }
-        }
 
-        // 3. Cari aset Institusi spesifik jika ada
-        if ($institutionId) {
-            $instAsset = SystemAsset::active()
-                ->where('category', $category)
-                ->where('scope', SystemAsset::SCOPE_INSTITUTION)
-                ->where('institution_id', $institutionId)
-                ->latest('is_default')
-                ->latest('id')
-                ->first();
-            if ($instAsset) {
-                return $instAsset;
+            // Larangan keras: tanda tangan dan stempel TIDAK BOLEH fallback ke aset global tanpa otorisasi
+            if (in_array($category, [SystemAsset::CATEGORY_SIGNATURE, SystemAsset::CATEGORY_STAMP], true)) {
+                return null;
             }
         }
 
-        // 4. Cari aset Global Default
-        $globalDefault = SystemAsset::active()
-            ->where('category', $category)
-            ->where('scope', SystemAsset::SCOPE_GLOBAL)
-            ->where('is_default', true)
-            ->first();
-        if ($globalDefault) {
-            return $globalDefault;
+        // KASUS C: Aset Global (Logo umum, Kop Surat, Latar Belakang)
+        if ($allowGlobalFallback && !in_array($category, [SystemAsset::CATEGORY_SIGNATURE, SystemAsset::CATEGORY_STAMP], true)) {
+            $globalQuery = SystemAsset::active()
+                ->where('category', $category)
+                ->where('scope', SystemAsset::SCOPE_GLOBAL);
+
+            if (!empty($assetCode)) {
+                $specificGlobal = (clone $globalQuery)->where('asset_code', $assetCode)->first();
+                if ($specificGlobal) {
+                    return $specificGlobal;
+                }
+            }
+
+            $globalDefault = (clone $globalQuery)->where('is_default', true)->first();
+            if ($globalDefault) {
+                return $globalDefault;
+            }
+
+            return $globalQuery->latest('id')->first();
         }
 
-        // 5. Fallback ke aset Global manapun yang aktif
-        return SystemAsset::active()
-            ->where('category', $category)
-            ->where('scope', SystemAsset::SCOPE_GLOBAL)
-            ->latest('id')
-            ->first();
+        return null;
     }
 
     /**

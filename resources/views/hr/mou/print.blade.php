@@ -22,6 +22,16 @@
         $firstPageFooterHtml = array_key_exists('first_page_footer_html', $pageCfg) && $pageCfg['first_page_footer_html'] !== null
             ? (string) $pageCfg['first_page_footer_html']
             : $footerHtml;
+        $showHeaderLogos = (bool) ($pageCfg['show_header_logos'] ?? true);
+        $showWatermark   = (bool) ($pageCfg['show_watermark'] ?? false);
+        $rawInstLogo = $mou->render_data_snapshot['institution_logo_path']
+            ?? ($mou->institution?->logo_url ?: ($mou->institution?->logo ? ('/storage/' . $mou->institution->logo) : '/images/mou/institution-logo-placeholder.png'));
+        $resolvedInstitutionLogo = \App\Services\MouDocumentRenderer::convertLocalPathToBase64($rawInstLogo) ?? $rawInstLogo;
+        $rawCompanyLogo = $mou->render_data_snapshot['company_logo_path']
+            ?? ($mou->render_data_snapshot['company_logo']
+            ?? ($mou->render_data_snapshot['_media_assets']['company_logo']
+            ?? '/images/mou/seven-inc-logo.png'));
+        $resolvedCompanyLogo = \App\Services\MouDocumentRenderer::convertLocalPathToBase64($rawCompanyLogo) ?? $rawCompanyLogo;
         $isHr = request()->routeIs('hr.*');
         $routePrefix = $isHr ? 'hr.mous' : 'admin.mous';
     @endphp
@@ -89,27 +99,45 @@
                 size: A4 portrait;
                 margin: 0;
             }
+            *, *::before, *::after {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             .no-print {
                 display: none !important;
             }
-            body {
-                background: white !important;
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+            .mou-print-pages-stage {
+                display: block !important;
+                width: 100% !important;
+                gap: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            .mou-print-pages-stage {
-                gap: 0 !important;
-            }
             .mou-a4-page {
+                width: 210mm !important;
+                min-height: 296.5mm !important;
+                max-height: 297mm !important;
                 border: none !important;
                 box-shadow: none !important;
-                margin: 0 !important;
-                page-break-after: always;
-                break-after: page;
+                margin: 0 auto !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
             }
             .mou-a4-page:last-child {
-                page-break-after: auto;
-                break-after: auto;
+                page-break-after: auto !important;
+                break-after: auto !important;
             }
         }
     </style>
@@ -188,12 +216,35 @@
         const firstPageHeaderHtml = @json($firstPageHeaderHtml);
         const footerHtml = @json($footerHtml);
         const firstPageFooterHtml = @json($firstPageFooterHtml);
+        const showHeaderLogos = @json($showHeaderLogos);
+        const showWatermark = @json($showWatermark);
+        const resolvedInstitutionLogo = @json($resolvedInstitutionLogo);
+        const resolvedCompanyLogo = @json($resolvedCompanyLogo);
 
         if (!sourceEl || !stageEl) return;
 
         function createSheet(index) {
             const page = document.createElement('div');
             page.className = 'mou-a4-page a4-container';
+            page.style.position = 'relative';
+
+            if (index === 1 && showHeaderLogos) {
+                const wmLayer = document.createElement('div');
+                wmLayer.className = 'mou-watermark-layer';
+                wmLayer.innerHTML = `
+                    <div class="mou-watermark-fixed-header">
+                        <img src="${resolvedInstitutionLogo}" class="mou-watermark-logo-left" alt="Logo Institusi" />
+                        <img src="${resolvedCompanyLogo}" class="mou-watermark-logo-right" alt="Logo Seven Inc" />
+                    </div>
+                    ${showWatermark ? `<img src="${resolvedCompanyLogo}" class="mou-watermark-center" alt="Watermark" />` : ''}
+                `;
+                page.appendChild(wmLayer);
+            } else if (showWatermark) {
+                const wmLayer = document.createElement('div');
+                wmLayer.className = 'mou-watermark-layer';
+                wmLayer.innerHTML = `<img src="${resolvedCompanyLogo}" class="mou-watermark-center" alt="Watermark" />`;
+                page.appendChild(wmLayer);
+            }
 
             const activeHeaderHtml = (diffFirstPage && index === 1) ? firstPageHeaderHtml : headerHtml;
             const activeFooterHtml = (diffFirstPage && index === 1) ? firstPageFooterHtml : footerHtml;
@@ -239,9 +290,62 @@
             return Math.max(bodyEl.offsetHeight, last.offsetTop + last.offsetHeight + mb);
         }
 
+        function splitAndAppendTable(tableNode, curSheet, openPageFn, getMaxBodyHeightFn, getUsedHeightFn) {
+            const trs = Array.from(tableNode.querySelectorAll('tr'));
+            if (trs.length <= 1) {
+                curSheet.body.appendChild(tableNode);
+                return curSheet;
+            }
+
+            const colgroup = tableNode.querySelector('colgroup')?.cloneNode(true);
+            const thead = tableNode.querySelector('thead')?.cloneNode(true);
+
+            function createSubTable() {
+                const t = document.createElement('table');
+                t.className = tableNode.className;
+                if (tableNode.getAttribute('style')) t.setAttribute('style', tableNode.getAttribute('style'));
+                if (tableNode.getAttribute('data-table-style')) t.setAttribute('data-table-style', tableNode.getAttribute('data-table-style'));
+                if (tableNode.getAttribute('data-table-width')) t.setAttribute('data-table-width', tableNode.getAttribute('data-table-width'));
+                if (colgroup) t.appendChild(colgroup.cloneNode(true));
+                if (thead) t.appendChild(thead.cloneNode(true));
+                const tb = document.createElement('tbody');
+                t.appendChild(tb);
+                return { table: t, tbody: tb };
+            }
+
+            let sheet = curSheet;
+            let sub = createSubTable();
+            sheet.body.appendChild(sub.table);
+
+            trs.forEach(tr => {
+                const trClone = tr.cloneNode(true);
+                sub.tbody.appendChild(trClone);
+                const maxH = getMaxBodyHeightFn(sheet);
+                const usedH = getUsedHeightFn(sheet.body);
+
+                if (usedH > maxH && sub.tbody.children.length > 1) {
+                    sub.tbody.removeChild(trClone);
+                    sheet = openPageFn();
+                    sub = createSubTable();
+                    sheet.body.appendChild(sub.table);
+                    sub.tbody.appendChild(trClone);
+                }
+            });
+
+            return sheet;
+        }
+
         function paginatePrint() {
-            const innerRoot = sourceEl.querySelector('.mou-document, .mou-doc-canvas') || sourceEl;
-            const blocks = Array.from(innerRoot.children).filter(el => el.tagName !== 'STYLE');
+            let innerRoot = sourceEl.querySelector('.mou-document');
+            if (!innerRoot) {
+                const canvases = sourceEl.querySelectorAll('.mou-doc-canvas');
+                if (canvases.length > 0) {
+                    innerRoot = canvases[canvases.length - 1];
+                } else {
+                    innerRoot = sourceEl.querySelector('.mou-published-snapshot') || sourceEl;
+                }
+            }
+
             stageEl.innerHTML = '';
 
             const pages = [];
@@ -252,18 +356,89 @@
                 return p;
             }
 
+            // PRIORITAS 1: Jika source HTML memiliki kontainer halaman terstruktur (.mou-a4-page-node atau [data-mou-page="true"])
+            const structuredPageNodes = Array.from(innerRoot.querySelectorAll('.mou-a4-page-node, [data-mou-page="true"]'));
+            if (structuredPageNodes.length > 0) {
+                structuredPageNodes.forEach(pNode => {
+                    const sheet = openPage();
+                    const contentEl = pNode.querySelector('.mou-page-body-content') || pNode;
+                    Array.from(contentEl.children).forEach(ch => {
+                        if (ch.classList.contains('mou-a4-page-header') || ch.classList.contains('mou-a4-page-footer') || ch.hasAttribute('data-pagination-artifact')) {
+                            return;
+                        }
+                        sheet.body.appendChild(ch.cloneNode(true));
+                    });
+                });
+
+                const total = pages.length || 1;
+                pages.forEach((p, i) => {
+                    const lbl = p.page.querySelector('.mou-print-pagenum');
+                    if (lbl) lbl.textContent = `Halaman ${i + 1} dari ${total}`;
+                });
+                if (badgeEl) badgeEl.textContent = `${total} Halaman A4`;
+                return;
+            }
+
+            // PRIORITAS 2: Pagination cerdas berbasis aliran naskah alami & pemisah halaman manual (Page Break)
+            const cloneRoot = innerRoot.cloneNode(true);
+            cloneRoot.querySelectorAll('style, .mou-watermark-layer').forEach(el => el.remove());
+
+            const blocks = Array.from(cloneRoot.children).filter(el => {
+                return !el.classList.contains('mou-a4-page-header') &&
+                       !el.classList.contains('mou-a4-page-footer') &&
+                       !el.hasAttribute('data-pagination-artifact');
+            });
+
+            function isHeadingElement(el) {
+                if (!el) return false;
+                if (el.classList?.contains('mou-pasal-heading') || el.classList?.contains('mou-header-block')) return true;
+                const text = (el.textContent || '').trim();
+                if (/^Pasal\s+\d+/i.test(text)) return true;
+                if (el.tagName === 'P' && (el.querySelector('strong') || el.querySelector('b'))) {
+                    const upper = text.toUpperCase();
+                    if (upper === text && text.length >= 3 && text.length <= 60 && !text.includes(':')) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             let cur = openPage();
             let maxH = getMaxBodyHeight(cur);
 
-            blocks.forEach((rawBlock, idx) => {
-                const block = rawBlock.cloneNode(true);
+            for (let idx = 0; idx < blocks.length; idx++) {
+                const block = blocks[idx].cloneNode(true);
                 if (block.classList.contains('mou-page-break') || block.getAttribute('data-page-break') === 'true') {
-                    if (idx < blocks.length - 1) cur = openPage();
-                    return;
+                    if (cur.body.children.length > 0 && idx < blocks.length - 1) {
+                        cur = openPage();
+                        maxH = getMaxBodyHeight(cur);
+                    }
+                    continue;
+                }
+
+                // Proteksi Orphan Heading
+                if (isHeadingElement(blocks[idx]) && cur.body.children.length > 0) {
+                    let hEnd = idx;
+                    while (hEnd < blocks.length && isHeadingElement(blocks[hEnd])) {
+                        hEnd++;
+                    }
+                    const testClones = [];
+                    for (let k = idx; k <= Math.min(hEnd, blocks.length - 1); k++) {
+                        const cl = blocks[k].cloneNode(true);
+                        testClones.push(cl);
+                        cur.body.appendChild(cl);
+                    }
+                    const testUsedH = getUsedHeight(cur.body);
+                    testClones.forEach(cl => cur.body.removeChild(cl));
+
+                    if (testUsedH > maxH) {
+                        cur = openPage();
+                        maxH = getMaxBodyHeight(cur);
+                    }
                 }
 
                 cur.body.appendChild(block);
-                if (getUsedHeight(cur.body) <= maxH) return;
+                if (getUsedHeight(cur.body) <= maxH) continue;
                 cur.body.removeChild(block);
 
                 if (block.classList.contains('mou-pasal') || block.getAttribute('data-pasal') === 'true') {
@@ -330,8 +505,18 @@
                             appendUnit(activeBody, units[i]);
                         }
                     }
+                } else if (block.tagName === 'TABLE') {
+                    if (cur.body.children.length > 0) {
+                        cur = openPage();
+                        maxH = getMaxBodyHeight(cur);
+                    }
+                    cur = splitAndAppendTable(block, cur, openPage, getMaxBodyHeight, getUsedHeight);
+                    maxH = getMaxBodyHeight(cur);
                 } else {
-                    if (cur.body.children.length > 0) cur = openPage();
+                    if (cur.body.children.length > 0) {
+                        cur = openPage();
+                        maxH = getMaxBodyHeight(cur);
+                    }
                     cur.body.appendChild(block);
                 }
             });

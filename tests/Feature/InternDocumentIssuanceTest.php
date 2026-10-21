@@ -100,6 +100,9 @@ class InternDocumentIssuanceTest extends TestCase
             ['name' => 'Informatika ' . substr($this->unique, 0, 6)],
             ['faculty_id' => $this->faculty->id]
         );
+
+        // Inisialisasi template standar sistem pada database agar penerbitan resmi menggunakan template nyata dari DB
+        DocumentTemplate::seedStandardDefaultTemplates($this->admin->id);
     }
 
     private function createIntern(string $status = IR::STATUS_ACCEPTED): IR

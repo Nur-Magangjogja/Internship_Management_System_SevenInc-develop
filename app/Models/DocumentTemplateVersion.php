@@ -20,6 +20,8 @@ class DocumentTemplateVersion extends Model
         'canvas_layout',
         'page_config',
         'change_summary',
+        'content_sha256',
+        'state',
         'created_by',
     ];
 

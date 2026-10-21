@@ -12,12 +12,54 @@ use DOMXPath;
 class DocumentTemplateRenderer
 {
     /**
+     * Ekstraksi seluruh token variabel ({{token}} dan [token]) yang terdapat pada template.
+     */
+    public static function extractTokens(DocumentTemplate $template): array
+    {
+        $tokens = [];
+
+        // 1. Ekstraksi dari content_html (Dokumen Surat A4)
+        if (!empty($template->content_html)) {
+            if (preg_match_all('/\{\{\s*([a-zA-Z0-9_\.]+)\s*\}\}|\[\s*([a-zA-Z0-9_\.]+)\s*\]/', $template->content_html, $matches)) {
+                foreach ($matches[1] as $idx => $m1) {
+                    $token = $m1 !== '' ? $m1 : ($matches[2][$idx] ?? '');
+                    if ($token !== '') {
+                        $tokens[] = $token;
+                    }
+                }
+            }
+        }
+
+        // 2. Ekstraksi dari canvas_layout (Sertifikat Visual Canvas)
+        if (!empty($template->canvas_layout) && is_array($template->canvas_layout)) {
+            $elements = $template->canvas_layout['elements'] ?? [];
+            foreach ($elements as $elem) {
+                $fieldsToCheck = ['content', 'date_text', 'role_text', 'name_text', 'sig_image', 'stamp_image', 'src'];
+                foreach ($fieldsToCheck as $f) {
+                    if (!empty($elem[$f]) && is_string($elem[$f])) {
+                        if (preg_match_all('/\{\{\s*([a-zA-Z0-9_\.]+)\s*\}\}|\[\s*([a-zA-Z0-9_\.]+)\s*\]/', $elem[$f], $elemMatches)) {
+                            foreach ($elemMatches[1] as $idx => $m1) {
+                                $token = $m1 !== '' ? $m1 : ($elemMatches[2][$idx] ?? '');
+                                if ($token !== '') {
+                                    $tokens[] = $token;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($tokens));
+    }
+
+    /**
      * Render HTML lengkap untuk dokumen surat A4 (LOA, SKL, Penilaian, Rekomendasi).
      */
-    public static function renderLetterHtml(DocumentTemplate $template, array $data = []): string
+    public static function renderLetterHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
     {
         $rawContent = $template->content_html ?? '';
-        $resolvedHtml = MailMergePlaceholderContract::resolve($rawContent, $data);
+        $resolvedHtml = MailMergePlaceholderContract::resolve($rawContent, $data, $isLiveIssuance);
         $sanitizedHtml = static::sanitizeHtml($resolvedHtml);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig($template->type), $template->page_config ?? []);
 
@@ -27,12 +69,12 @@ class DocumentTemplateRenderer
     /**
      * Render HTML lengkap untuk sertifikat berbasis Canvas Layout.
      */
-    public static function renderCertificateHtml(DocumentTemplate $template, array $data = []): string
+    public static function renderCertificateHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
     {
         $layout = array_merge(DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? []);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig('certificate'), $template->page_config ?? []);
         
-        $renderedElementsHtml = static::renderCanvasElementsHtml($layout, $data);
+        $renderedElementsHtml = static::renderCanvasElementsHtml($layout, $data, $isLiveIssuance);
         $rawBg = $layout['canvas']['background_image'] ?? ($pageConfig['background_image'] ?? '/images/certificate/certificate-bg.png');
         $bgImage = static::resolveImageToBase64($rawBg) ?? $rawBg;
         $bgColor = $layout['canvas']['background_color'] ?? '#ffffff';
@@ -44,14 +86,14 @@ class DocumentTemplateRenderer
     /**
      * Generate Binary PDF menggunakan DomPDF.
      */
-    public static function renderPdfBinary(DocumentTemplate $template, array $data = []): string
+    public static function renderPdfBinary(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
     {
         if ($template->type === 'certificate' || $template->editor_type === 'visual_canvas') {
-            $html = static::renderCertificateHtml($template, $data);
+            $html = static::renderCertificateHtml($template, $data, $isLiveIssuance);
             $paperSize = 'a4';
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'landscape'));
         } else {
-            $html = static::renderLetterHtml($template, $data);
+            $html = static::renderLetterHtml($template, $data, $isLiveIssuance);
             $paperSize = strtolower((string) ($template->page_config['paper_size'] ?? 'a4'));
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'portrait'));
         }
@@ -72,7 +114,7 @@ class DocumentTemplateRenderer
     /**
      * Render elemen-elemen visual canvas sertifikat menjadi layer CSS absolut.
      */
-    public static function renderCanvasElementsHtml(array $layout, array $data = []): string
+    public static function renderCanvasElementsHtml(array $layout, array $data = [], bool $isLiveIssuance = false): string
     {
         $elements = $layout['elements'] ?? [];
         $out = '';
@@ -83,17 +125,26 @@ class DocumentTemplateRenderer
             $y = (float) ($elem['y_percent'] ?? 50.0);
             $zIndex = (int) ($elem['z_index'] ?? 10);
             $align = $elem['align'] ?? 'center';
+            $rotation = (float) ($elem['rotation'] ?? 0.0);
+            $opacity = isset($elem['opacity']) ? (float) $elem['opacity'] : 1.0;
 
-            $transform = 'translate(-50%, -50%)';
+            $baseTransform = 'translate(-50%, -50%)';
             if ($align === 'left') {
-                $transform = 'translate(0, -50%)';
+                $baseTransform = 'translate(0, -50%)';
             } elseif ($align === 'right') {
-                $transform = 'translate(-100%, -50%)';
+                $baseTransform = 'translate(-100%, -50%)';
             }
+
+            $transform = $baseTransform;
+            if ($rotation !== 0.0) {
+                $transform .= " rotate({$rotation}deg)";
+            }
+
+            $opacityStyle = $opacity < 1.0 ? "opacity: {$opacity};" : '';
 
             if ($type === 'text') {
                 $rawContent = $elem['content'] ?? '';
-                $resolved = MailMergePlaceholderContract::resolve($rawContent, $data);
+                $resolved = MailMergePlaceholderContract::resolve($rawContent, $data, $isLiveIssuance);
                 $fontFamily = htmlspecialchars($elem['font_family'] ?? 'Times New Roman', ENT_QUOTES, 'UTF-8');
                 $fontSize = (int) ($elem['font_size_pt'] ?? 14);
                 $fontWeight = htmlspecialchars($elem['font_weight'] ?? 'normal', ENT_QUOTES, 'UTF-8');
@@ -104,34 +155,63 @@ class DocumentTemplateRenderer
                 $lineHeight = isset($elem['line_height']) ? "line-height: {$elem['line_height']};" : 'line-height: 1.3;';
                 $letterSpacing = isset($elem['letter_spacing_px']) ? "letter-spacing: {$elem['letter_spacing_px']}px;" : '';
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; text-align: {$align}; font-family: '{$fontFamily}', serif; font-size: {$fontSize}pt; font-weight: {$fontWeight}; font-style: {$fontStyle}; color: {$color}; z-index: {$zIndex}; {$width} {$underline} {$lineHeight} {$letterSpacing} word-wrap: break-word;\">\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; text-align: {$align}; font-family: '{$fontFamily}', serif; font-size: {$fontSize}pt; font-weight: {$fontWeight}; font-style: {$fontStyle}; color: {$color}; z-index: {$zIndex}; {$width} {$underline} {$lineHeight} {$letterSpacing} {$opacityStyle} word-wrap: break-word;\">\n";
                 $out .= $resolved . "\n";
                 $out .= "</div>\n";
             } elseif ($type === 'image') {
-                $src = MailMergePlaceholderContract::resolve($elem['src'] ?? '', $data);
+                $src = MailMergePlaceholderContract::resolve($elem['src'] ?? '', $data, $isLiveIssuance);
                 // Strip tags if img tag was generated by contract
                 if (preg_match('/src="([^"]+)"/i', $src, $m)) {
                     $src = $m[1];
                 }
                 $src = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
-                $w = (int) ($elem['width_px'] ?? 120);
-                $h = isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : 'auto';
+                $w = isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : (isset($elem['width_percent']) ? "{$elem['width_percent']}%" : '120px');
+                $h = isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : (isset($elem['height_percent']) ? "{$elem['height_percent']}%" : 'auto');
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align};\">\n";
-                $out .= "<img src=\"{$src}\" style=\"width: {$w}px; height: {$h}; max-width: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle}\">\n";
+                $out .= "<img src=\"{$src}\" style=\"width: {$w}; height: {$h}; max-width: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                $out .= "</div>\n";
+            } elseif ($type === 'shape') {
+                $bgColor = htmlspecialchars($elem['bg_color'] ?? '#f1f5f9', ENT_QUOTES, 'UTF-8');
+                $borderColor = htmlspecialchars($elem['border_color'] ?? '#cbd5e1', ENT_QUOTES, 'UTF-8');
+                $borderWidth = (int) ($elem['border_width_px'] ?? 1);
+                $borderStyle = htmlspecialchars($elem['border_style'] ?? 'solid', ENT_QUOTES, 'UTF-8');
+                $borderRadius = (int) ($elem['border_radius_px'] ?? 4);
+                $w = isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : (isset($elem['width_percent']) ? "{$elem['width_percent']}%" : '200px');
+                $h = isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : (isset($elem['height_percent']) ? "{$elem['height_percent']}%" : '80px');
+
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; background-color: {$bgColor}; border: {$borderWidth}px {$borderStyle} {$borderColor}; border-radius: {$borderRadius}px; z-index: {$zIndex}; {$opacityStyle} box-sizing: border-box;\"></div>\n";
+            } elseif ($type === 'line') {
+                $lineColor = htmlspecialchars($elem['line_color'] ?? '#94a3b8', ENT_QUOTES, 'UTF-8');
+                $thickness = (int) ($elem['thickness_px'] ?? 2);
+                $lineStyle = htmlspecialchars($elem['line_style'] ?? 'solid', ENT_QUOTES, 'UTF-8');
+                $w = isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : (isset($elem['width_percent']) ? "{$elem['width_percent']}%" : '60%');
+
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: 0px; transform: {$transform}; border-top: {$thickness}px {$lineStyle} {$lineColor}; z-index: {$zIndex}; {$opacityStyle}\"></div>\n";
+            } elseif ($type === 'qr_code') {
+                $rawQrData = $elem['qr_data'] ?? ($elem['content'] ?? '{{dokumen.nomor}}');
+                $resolvedQrData = MailMergePlaceholderContract::resolve($rawQrData, $data, $isLiveIssuance);
+                $sizePx = (int) ($elem['size_px'] ?? 90);
+                $fgColor = $elem['fg_color'] ?? '#000000';
+                $bgColor = $elem['bg_color'] ?? '#ffffff';
+
+                $qrDataUri = OfflineQrCodeGenerator::renderDataUri($resolvedQrData, $sizePx, $fgColor, $bgColor);
+
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle}\">\n";
+                $out .= "<img src=\"{$qrDataUri}\" style=\"width: {$sizePx}px; height: {$sizePx}px; display: block; margin: 0 auto;\" alt=\"QR Code Verifikasi\" />\n";
                 $out .= "</div>\n";
             } elseif ($type === 'signature_group') {
-                $dateText = MailMergePlaceholderContract::resolve($elem['date_text'] ?? '', $data);
-                $roleText = MailMergePlaceholderContract::resolve($elem['role_text'] ?? '', $data);
-                $nameText = MailMergePlaceholderContract::resolve($elem['name_text'] ?? '', $data);
-                $sigImg = MailMergePlaceholderContract::resolve($elem['sig_image'] ?? '', $data);
+                $dateText = MailMergePlaceholderContract::resolve($elem['date_text'] ?? '', $data, $isLiveIssuance);
+                $roleText = MailMergePlaceholderContract::resolve($elem['role_text'] ?? '', $data, $isLiveIssuance);
+                $nameText = MailMergePlaceholderContract::resolve($elem['name_text'] ?? '', $data, $isLiveIssuance);
+                $sigImg = MailMergePlaceholderContract::resolve($elem['sig_image'] ?? '', $data, $isLiveIssuance);
                 if (preg_match('/src="([^"]+)"/i', $sigImg, $m)) $sigImg = $m[1];
-                $stampImg = MailMergePlaceholderContract::resolve($elem['stamp_image'] ?? '', $data);
+                $stampImg = MailMergePlaceholderContract::resolve($elem['stamp_image'] ?? '', $data, $isLiveIssuance);
                 if (preg_match('/src="([^"]+)"/i', $stampImg, $m)) $stampImg = $m[1];
 
                 $width = isset($elem['width_percent']) ? "width: {$elem['width_percent']}%;" : 'width: 45%;';
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: 'Times New Roman', serif; {$width}\">\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: 'Times New Roman', serif; {$width} {$opacityStyle}\">\n";
                 if ($dateText) $out .= "<p style=\"margin: 0; font-size: 11pt;\">{$dateText}</p>\n";
                 if ($roleText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 11pt;\">{$roleText}</p>\n";
                 $out .= "<div style=\"height: 70px; margin: 6px auto; position: relative; width: 220px;\">\n";
@@ -160,6 +240,18 @@ class DocumentTemplateRenderer
         $fontFamily = htmlspecialchars($pageConfig['font_family'] ?? 'Times New Roman', ENT_QUOTES, 'UTF-8');
         $fontSize = (int) ($pageConfig['font_size_pt'] ?? 11);
         $lineHeight = (float) ($pageConfig['line_height'] ?? 1.3);
+
+        $headerHtml = !empty($pageConfig['header_html']) ? static::sanitizeHtml((string)$pageConfig['header_html']) : '';
+        $footerHtml = !empty($pageConfig['footer_html']) ? static::sanitizeHtml((string)$pageConfig['footer_html']) : '';
+
+        $headerBlock = '';
+        if ($headerHtml !== '') {
+            $headerBlock = '<div class="letter-running-header" style="position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;">' . $headerHtml . '</div>';
+        }
+        $footerBlock = '';
+        if ($footerHtml !== '') {
+            $footerBlock = '<div class="letter-running-footer" style="position: fixed; bottom: -' . max(2, $mBtm - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mBtm - 4) . 'mm; overflow: hidden;">' . $footerHtml . '</div>';
+        }
 
         return <<<HTML
 <!DOCTYPE html>
@@ -197,10 +289,50 @@ class DocumentTemplateRenderer
             page-break-after: always;
             break-after: page;
         }
+        /* Canonical Word Lists Styling in DomPDF */
+        ol, ul {
+            padding-left: 24pt !important;
+            margin-top: 0 !important;
+            margin-bottom: 6pt !important;
+        }
+        ol {
+            list-style-type: decimal !important;
+        }
+        ol[type="a"] {
+            list-style-type: lower-alpha !important;
+        }
+        ol[type="A"] {
+            list-style-type: upper-alpha !important;
+        }
+        ol[type="i"] {
+            list-style-type: lower-roman !important;
+        }
+        ol[type="I"] {
+            list-style-type: upper-roman !important;
+        }
+        ul {
+            list-style-type: disc !important;
+        }
+        ul ul {
+            list-style-type: circle !important;
+        }
+        ul ul ul {
+            list-style-type: square !important;
+        }
+        li {
+            display: list-item !important;
+            margin-bottom: 2pt !important;
+        }
+        li > p {
+            display: inline !important;
+            margin-bottom: 0 !important;
+        }
     </style>
 </head>
 <body>
+    {$headerBlock}
     {$bodyHtml}
+    {$footerBlock}
 </body>
 </html>
 HTML;

@@ -13,6 +13,10 @@ class DocumentTemplate extends Model
 
     protected $table = 'document_templates';
 
+    public const STATE_DRAFT     = 'draft';
+    public const STATE_PUBLISHED = 'published';
+    public const STATE_ARCHIVED  = 'archived';
+
     protected $fillable = [
         'uuid',
         'type',
@@ -25,18 +29,26 @@ class DocumentTemplate extends Model
         'page_config',
         'is_active',
         'is_default',
+        'state',
         'version_number',
+        'published_version',
+        'published_at',
+        'content_sha256',
+        'lock_version',
         'created_by',
         'updated_by',
     ];
 
     protected $casts = [
-        'editor_json'    => 'array',
-        'canvas_layout'  => 'array',
-        'page_config'    => 'array',
-        'is_active'      => 'boolean',
-        'is_default'     => 'boolean',
-        'version_number' => 'integer',
+        'editor_json'        => 'array',
+        'canvas_layout'      => 'array',
+        'page_config'        => 'array',
+        'is_active'          => 'boolean',
+        'is_default'         => 'boolean',
+        'version_number'     => 'integer',
+        'published_version'  => 'integer',
+        'published_at'       => 'datetime',
+        'lock_version'       => 'integer',
     ];
 
     protected static function boot()
@@ -60,9 +72,11 @@ class DocumentTemplate extends Model
 
     public function resolveRouteBinding($value, $field = null)
     {
-        return $this->where('uuid', $value)
-            ->orWhere('id', $value)
-            ->firstOrFail();
+        if (is_numeric($value)) {
+            return $this->where('id', (int) $value)->firstOrFail();
+        }
+
+        return $this->where('uuid', (string) $value)->firstOrFail();
     }
 
     // Relations
@@ -97,15 +111,64 @@ class DocumentTemplate extends Model
         return $query->where('is_default', true);
     }
 
+    public function scopeDraft($query)
+    {
+        return $query->where('state', self::STATE_DRAFT);
+    }
+
+    public function scopePublished($query)
+    {
+        return $query->where('state', self::STATE_PUBLISHED);
+    }
+
+    public function scopeArchived($query)
+    {
+        return $query->where('state', self::STATE_ARCHIVED);
+    }
+
+    public function isDraft(): bool
+    {
+        return ($this->state ?? '') === self::STATE_DRAFT;
+    }
+
+    public function isPublished(): bool
+    {
+        return ($this->state ?? '') === self::STATE_PUBLISHED;
+    }
+
+    public function isArchived(): bool
+    {
+        return ($this->state ?? '') === self::STATE_ARCHIVED;
+    }
+
+    public static function normalizeType(string $type): string
+    {
+        $t = strtolower(trim($type));
+        return match ($t) {
+            'sertifikat'  => self::TYPE_CERTIFICATE,
+            'penilaian'   => self::TYPE_ASSESSMENT,
+            'rekomendasi' => self::TYPE_RECOMMENDATION,
+            default       => $t,
+        };
+    }
+
+    public const TYPE_MOU            = 'mou';
+    public const TYPE_LOA            = 'loa';
+    public const TYPE_SKL            = 'skl';
+    public const TYPE_CERTIFICATE    = 'certificate';
+    public const TYPE_ASSESSMENT     = 'assessment';
+    public const TYPE_RECOMMENDATION = 'recommendation';
+
     // Helpers & Metas
     public static function getDocumentTypes(): array
     {
         return [
-            'loa'            => 'Letter of Acceptance (LOA)',
-            'skl'            => 'Surat Keterangan Selesai Magang (SKL)',
-            'certificate'    => 'Sertifikat Magang',
-            'assessment'     => 'Surat Penilaian Magang',
-            'recommendation' => 'Surat Rekomendasi Magang',
+            self::TYPE_MOU            => 'Nota Kesepahaman (MOU)',
+            self::TYPE_LOA            => 'Letter of Acceptance (LOA)',
+            self::TYPE_SKL            => 'Surat Keterangan Selesai Magang (SKL)',
+            self::TYPE_CERTIFICATE    => 'Sertifikat Magang',
+            self::TYPE_ASSESSMENT     => 'Surat Penilaian Magang',
+            self::TYPE_RECOMMENDATION => 'Surat Rekomendasi Magang',
         ];
     }
 
@@ -118,6 +181,7 @@ class DocumentTemplate extends Model
     public static function getTypeBadgeClass(string $type): string
     {
         return match ($type) {
+            'mou'            => 'bg-cyan-100 text-cyan-800 border-cyan-200',
             'loa'            => 'bg-blue-100 text-blue-800 border-blue-200',
             'skl'            => 'bg-emerald-100 text-emerald-800 border-emerald-200',
             'certificate'    => 'bg-amber-100 text-amber-800 border-amber-200',
@@ -161,124 +225,9 @@ class DocumentTemplate extends Model
         ];
     }
 
-    public static function getDefaultPlaceholders(): array
+    public static function getDefaultPlaceholders(?string $type = null): array
     {
-        return [
-            '{{pemagang.nama}}' => [
-                'label'       => 'Nama Lengkap Pemagang',
-                'group'       => 'Data Pemagang',
-                'example'     => 'Ananda Pratama, S.Kom.',
-                'description' => 'Nama lengkap peserta magang sesuai kartu identitas / pendaftaran.',
-            ],
-            '{{pemagang.nim}}' => [
-                'label'       => 'NIM / NIS Pemagang',
-                'group'       => 'Data Pemagang',
-                'example'     => '2101020045',
-                'description' => 'Nomor induk mahasiswa atau nomor induk siswa.',
-            ],
-            '{{pemagang.institusi}}' => [
-                'label'       => 'Institusi / Kampus / Sekolah',
-                'group'       => 'Data Pemagang',
-                'example'     => 'Universitas Gadjah Mada',
-                'description' => 'Nama perguruan tinggi atau SMK asal peserta magang.',
-            ],
-            '{{magang.divisi}}' => [
-                'label'       => 'Divisi / Posisi Magang',
-                'group'       => 'Detail Magang',
-                'example'     => 'Web Development & Software Engineering',
-                'description' => 'Divisi atau spesialisasi pemagang di Seven Inc.',
-            ],
-            '{{magang.tanggal_mulai}}' => [
-                'label'       => 'Tanggal Mulai Magang',
-                'group'       => 'Detail Magang',
-                'example'     => '1 Februari 2026',
-                'description' => 'Tanggal awal pelaksanaan program magang.',
-            ],
-            '{{magang.tanggal_selesai}}' => [
-                'label'       => 'Tanggal Selesai Magang',
-                'group'       => 'Detail Magang',
-                'example'     => '31 Juli 2026',
-                'description' => 'Tanggal akhir pelaksanaan program magang.',
-            ],
-            '{{magang.durasi}}' => [
-                'label'       => 'Durasi Magang',
-                'group'       => 'Detail Magang',
-                'example'     => '6 (enam) bulan',
-                'description' => 'Lama durasi magang yang ditempuh.',
-            ],
-            '{{dokumen.nomor}}' => [
-                'label'       => 'Nomor Dokumen / Sertifikat',
-                'group'       => 'Informasi Dokumen',
-                'example'     => '042/LOA/HRD-SEVEN/II/2026',
-                'description' => 'Nomor surat keluar atau nomor serial sertifikat.',
-            ],
-            '{{dokumen.tanggal}}' => [
-                'label'       => 'Tanggal Penerbitan Dokumen',
-                'group'       => 'Informasi Dokumen',
-                'example'     => '1 Februari 2026',
-                'description' => 'Tanggal pengesahan / penerbitan surat/sertifikat.',
-            ],
-            '{{dokumen.tempat}}' => [
-                'label'       => 'Tempat Penerbitan Dokumen',
-                'group'       => 'Informasi Dokumen',
-                'example'     => 'Yogyakarta',
-                'description' => 'Kota penandatanganan dokumen resmi.',
-            ],
-            '{{perusahaan.nama}}' => [
-                'label'       => 'Nama Perusahaan',
-                'group'       => 'Data Perusahaan',
-                'example'     => 'SEVEN INC (PT Tujuh Kreasi Persada)',
-                'description' => 'Nama resmi badan usaha / entitas penyelenggara.',
-            ],
-            '{{perusahaan.alamat}}' => [
-                'label'       => 'Alamat Perusahaan',
-                'group'       => 'Data Perusahaan',
-                'example'     => 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198',
-                'description' => 'Alamat kantor operasional / korespondensi.',
-            ],
-            '{{perusahaan.pimpinan}}' => [
-                'label'       => 'Nama Pimpinan Perusahaan',
-                'group'       => 'Data Perusahaan',
-                'example'     => 'Rekario Danny Sanjaya, S.Kom.',
-                'description' => 'Nama lengkap pimpinan / direktur penandatangan surat.',
-            ],
-            '{{perusahaan.jabatan}}' => [
-                'label'       => 'Jabatan Pimpinan',
-                'group'       => 'Data Perusahaan',
-                'example'     => 'Direktur Utama',
-                'description' => 'Jabatan struktural penandatangan resmi.',
-            ],
-            '{{asset.company.logo}}' => [
-                'label'       => 'Logo Resmi Perusahaan',
-                'group'       => 'Perpustakaan Aset',
-                'example'     => '/images/mou/seven-inc-logo.png',
-                'description' => 'Aset grafis logo Seven Inc.',
-            ],
-            '{{asset.institution.logo}}' => [
-                'label'       => 'Logo Institusi Pemagang',
-                'group'       => 'Perpustakaan Aset',
-                'example'     => '/images/mou/institution-logo-placeholder.png',
-                'description' => 'Logo kampus atau sekolah asal pemagang.',
-            ],
-            '{{asset.signature}}' => [
-                'label'       => 'Tanda Tangan Pimpinan',
-                'group'       => 'Perpustakaan Aset',
-                'example'     => '/images/mou/signature-sample.png',
-                'description' => 'Tanda tangan digital pimpinan berlatar transparan.',
-            ],
-            '{{asset.stamp}}' => [
-                'label'       => 'Stempel Resmi Perusahaan',
-                'group'       => 'Perpustakaan Aset',
-                'example'     => '/images/mou/stamp-sample.png',
-                'description' => 'Cap / stempel basah Seven Inc resmi transparan.',
-            ],
-            '{{asset.background}}' => [
-                'label'       => 'Background Template Sertifikat',
-                'group'       => 'Perpustakaan Aset',
-                'example'     => '/images/certificate/certificate-bg.png',
-                'description' => 'Gambar bingkai / latar belakang visual sertifikat.',
-            ],
-        ];
+        return \App\Services\DocumentTemplates\MailMergePlaceholderContract::getAvailablePlaceholders($type);
     }
 
     public static function getMockPlaceholderData(): array
@@ -324,6 +273,75 @@ class DocumentTemplate extends Model
                 'background' => '/images/certificate/certificate-bg.png',
             ],
         ];
+    }
+
+    /**
+     * Alias untuk inisialisasi template default resmi sistem pada database.
+     */
+    public static function ensureDefaultTemplatesExist(?int $userId = null): void
+    {
+        static::seedStandardDefaultTemplates($userId);
+    }
+
+    /**
+     * Inisialisasi template default resmi sistem pada database.
+     */
+    public static function seedStandardDefaultTemplates(?int $userId = null): void
+    {
+        $types = [self::TYPE_LOA, self::TYPE_SKL, self::TYPE_CERTIFICATE, self::TYPE_ASSESSMENT, self::TYPE_RECOMMENDATION];
+        foreach ($types as $type) {
+            $existing = static::where('type', $type)->where('is_active', true)->first();
+            if ($existing) {
+                $existing->update([
+                    'state'             => self::STATE_PUBLISHED,
+                    'is_active'         => true,
+                    'is_default'        => true,
+                    'version_number'    => 1,
+                    'published_version' => 1,
+                ]);
+            } else {
+                $any = static::where('type', $type)->first();
+                if ($any) {
+                    $any->update([
+                        'state'             => self::STATE_PUBLISHED,
+                        'is_active'         => true,
+                        'is_default'        => true,
+                        'version_number'    => 1,
+                        'published_version' => 1,
+                        'published_at'      => $any->published_at ?: now(),
+                    ]);
+                    continue;
+                }
+
+                $isCanvas = ($type === self::TYPE_CERTIFICATE);
+                $contentHtml = $isCanvas ? null : static::getDefaultStandardContent($type);
+                $canvasLayout = $isCanvas ? static::getDefaultCertificateCanvasLayout() : null;
+                $pageConfig = static::getDefaultPageConfig($type);
+
+                $template = static::create([
+                    'uuid'              => (string) Str::uuid(),
+                    'type'              => $type,
+                    'name'              => 'Template Standar ' . strtoupper($type),
+                    'description'       => 'Template standar sistem untuk ' . static::getTypeLabel($type),
+                    'editor_type'       => $isCanvas ? 'visual_canvas' : 'visual_doc',
+                    'content_html'      => $contentHtml,
+                    'editor_json'       => null,
+                    'canvas_layout'     => $canvasLayout,
+                    'page_config'       => $pageConfig,
+                    'state'             => self::STATE_PUBLISHED,
+                    'is_active'         => true,
+                    'is_default'        => true,
+                    'version_number'    => 1,
+                    'published_version' => 1,
+                    'published_at'      => now(),
+                    'content_sha256'    => hash('sha256', $contentHtml ?: json_encode($canvasLayout)),
+                    'created_by'        => $userId,
+                    'updated_by'        => $userId,
+                ]);
+
+                $template->createVersionSnapshot('Inisialisasi template standar sistem', $userId);
+            }
+        }
     }
 
     /**
@@ -785,6 +803,22 @@ HTML,
                     'stamp_image' => '{{asset.stamp}}',
                     'align'       => 'center',
                     'z_index'     => 20,
+                ],
+                [
+                    'id'          => 'elem_qr_verify',
+                    'type'        => 'qr_code',
+                    'qr_data'     => '{{dokumen.nomor}}',
+                    'x_percent'   => 88.0,
+                    'y_percent'   => 82.0,
+                    'width_percent' => 12.0,
+                    'height_percent' => 15.0,
+                    'size_px'     => 85,
+                    'fg_color'    => '#000000',
+                    'bg_color'    => '#ffffff',
+                    'align'       => 'center',
+                    'rotation'    => 0,
+                    'aspect_locked' => true,
+                    'z_index'     => 25,
                 ],
             ],
         ];

@@ -29,7 +29,9 @@
         "@tiptap/pm": "^3.32.0",
         "@tiptap/starter-kit": "^3.32.0",
         "apexcharts": "^3.54.0",
+        "docx": "^9.13.0",
         "flowbite-typography": "^1.0.4",
+        "mammoth": "^1.13.0",
         "puppeteer": "^25.11.0",
         "three": "^0.185.1"
     },

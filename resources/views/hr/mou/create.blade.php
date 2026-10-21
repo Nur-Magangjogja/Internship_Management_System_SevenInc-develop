@@ -76,7 +76,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route($routePrefix . '.store') }}" class="space-y-6">
+    <form method="POST" action="{{ route($routePrefix . '.store') }}" enctype="multipart/form-data" class="space-y-6">
         @csrf
 
         @if($activeMou)
@@ -223,6 +223,44 @@
             </h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Logo Institusi Mitra -->
+                <div class="md:col-span-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <label class="block text-xs font-bold text-slate-800 mb-1.5">
+                        Logo Resmi Institusi Mitra (Pihak Kesatu)
+                    </label>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div class="relative flex items-center justify-center h-20 w-24 rounded-lg border-2 border-dashed border-slate-300 bg-white p-2 shrink-0 overflow-hidden shadow-2xs">
+                            @php
+                                $existingLogo = $selectedInstitution?->logo_url;
+                            @endphp
+                            <img
+                                id="institutionLogoPreviewImg"
+                                src="{{ $existingLogo ?: '/images/mou/institution-logo-placeholder.png' }}"
+                                alt="Preview Logo Institusi"
+                                class="max-h-full max-w-full object-contain {{ $existingLogo ? '' : 'opacity-60' }}"
+                            >
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <input
+                                type="file"
+                                name="institution_logo"
+                                id="institutionLogoInput"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                class="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                onchange="previewInstitutionLogoFile(this)"
+                            >
+                            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                                Format: PNG, JPG, atau WEBP (Maksimal 2MB, latar transparan direkomendasikan). Logo ini akan tersimpan ke data institusi dan disematkan secara tetap (posisi tetap / watermark) pada header naskah MOU.
+                            </p>
+                            @if($existingLogo)
+                                <p class="text-[11px] text-emerald-600 font-medium mt-0.5">
+                                    &bull; Institusi ini telah memiliki logo tersimpan. Unggah berkas baru hanya jika ingin menggantinya.
+                                </p>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">
                         Nama Resmi Institusi <span class="text-rose-500">*</span>
@@ -358,9 +396,84 @@
 
             @php
                 $tplDefaults = $currentTemplate ? $currentTemplate->getCompanyDefaultValues() : \App\Models\MouTemplate::getDefaultCompanyValues();
+                $brandsCollection = $brands ?? \App\Models\Brand::orderBy('name')->get();
+                $brandsMap = $brandsCollection->mapWithKeys(function ($b) {
+                    return [
+                        $b->id => [
+                            'id' => $b->id,
+                            'code' => $b->code,
+                            'name' => $b->name,
+                            'logo_url' => $b->logo_url ?: '/images/mou/seven-inc-logo.png',
+                            'company_address' => $b->company_address,
+                            'signatory_name' => $b->signatory_name,
+                            'signatory_position' => $b->signatory_position,
+                            'signatory_email' => $b->signatory_email,
+                        ]
+                    ];
+                })->all();
             @endphp
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Pemilihan Brand Perusahaan -->
+                <div class="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                    <label for="brandSelect" class="block text-xs font-semibold text-slate-800 mb-1">
+                        Pilih Brand Perusahaan <span class="text-blue-600 font-normal">(Nama dan logo perusahaan akan otomatis mengikuti brand terpilih)</span>
+                    </label>
+                    <select
+                        name="brand_id"
+                        id="brandSelect"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
+                        onchange="handleBrandSelectionChange(this.value)"
+                    >
+                        <option value="">-- Gunakan Default Template / Seven Inc --</option>
+                        @foreach($brandsCollection as $brandOption)
+                            <option
+                                value="{{ $brandOption->id }}"
+                                {{ (int) old('brand_id') === (int) $brandOption->id ? 'selected' : '' }}
+                            >
+                                {{ $brandOption->name }} ({{ $brandOption->code }})
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1.5">
+                        Memilih brand akan mengisi otomatis <strong>Nama Perusahaan</strong>, <strong>Logo Resmi</strong>, alamat, dan pejabat penandatangan sesuai profil brand.
+                    </p>
+                </div>
+
+                <!-- Logo Perusahaan (Pihak Kedua) -->
+                <div class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <label class="block text-xs font-semibold text-slate-700 mb-2">
+                        Logo Resmi Perusahaan (Pihak Kedua)
+                    </label>
+                    <input type="hidden" name="company_logo_path" id="companyLogoPathInput" value="{{ old('company_logo_path', $tplDefaults['company_logo'] ?? '/images/mou/seven-inc-logo.png') }}">
+                    <div class="flex flex-col sm:flex-row items-center gap-4">
+                        <div class="h-16 w-28 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 shadow-2xs">
+                            @php
+                                $initialCompanyLogo = old('company_logo_path', $tplDefaults['company_logo'] ?? '/images/mou/seven-inc-logo.png');
+                            @endphp
+                            <img
+                                id="companyLogoPreviewImg"
+                                src="{{ $initialCompanyLogo }}"
+                                alt="Preview Logo Perusahaan"
+                                class="max-h-full max-w-full object-contain"
+                            >
+                        </div>
+                        <div class="flex-1 w-full">
+                            <input
+                                type="file"
+                                name="company_logo"
+                                id="companyLogoInput"
+                                accept="image/png,image/jpeg,image/webp"
+                                class="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                onchange="previewCompanyLogoFile(this)"
+                            >
+                            <p class="text-[11px] text-slate-500 mt-1">
+                                Logo ini otomatis terisi saat Anda memilih brand. Anda juga dapat mengunggah berkas logo pengganti (PNG/JPG/WEBP, maks 2MB, latar transparan direkomendasikan). Logo ini akan disematkan di posisi kanan atas header naskah dan watermark lembar MOU.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">
                         Nama Perusahaan <span class="text-rose-500">*</span>
@@ -595,10 +708,87 @@
 </div>
 
 <script type="application/json" id="mouTemplatesDefaultsMapJson">{!! json_encode($templatesDefaultsMap) !!}</script>
+<script type="application/json" id="brandsMapJson">{!! json_encode($brandsMap) !!}</script>
 <script>
 const mouTemplatesDefaultsMap = JSON.parse(document.getElementById('mouTemplatesDefaultsMapJson')?.textContent || '{}');
+const brandsMap = JSON.parse(document.getElementById('brandsMapJson')?.textContent || '{}');
 
-function handleTemplateSelectionChange(templateId) {
+function handleBrandSelectionChange(brandId) {
+    if (!brandId || !brandsMap[brandId]) {
+        // Reset kembali ke template default aktif saat ini
+        const tplSelect = document.getElementById('mouTemplateSelect');
+        if (tplSelect && tplSelect.value) {
+            handleTemplateSelectionChange(tplSelect.value, true);
+        }
+        const compLogoInput = document.getElementById('companyLogoPathInput');
+        if (compLogoInput) compLogoInput.value = '/images/mou/seven-inc-logo.png';
+        const previewImg = document.getElementById('companyLogoPreviewImg');
+        if (previewImg) previewImg.src = '/images/mou/seven-inc-logo.png';
+        return;
+    }
+
+    const brand = brandsMap[brandId];
+
+    // 1. Nama Perusahaan mengikuti brand terpilih
+    const compNameInput = document.querySelector('input[name="second_party_company_name"]');
+    if (compNameInput && brand.name) {
+        compNameInput.value = brand.name;
+    }
+
+    // 2. Logo Perusahaan mengikuti brand terpilih
+    const logoUrl = brand.logo_url || '/images/mou/seven-inc-logo.png';
+    const compLogoInput = document.getElementById('companyLogoPathInput');
+    if (compLogoInput) {
+        compLogoInput.value = logoUrl;
+    }
+    const previewImg = document.getElementById('companyLogoPreviewImg');
+    if (previewImg) {
+        previewImg.src = logoUrl;
+    }
+
+    // 3. Profil opsional (alamat, pimpinan, jabatan, email) bila terisi pada data brand
+    if (brand.company_address) {
+        const addrInput = document.querySelector('input[name="second_party_address"]');
+        if (addrInput) addrInput.value = brand.company_address;
+    }
+    if (brand.signatory_name) {
+        const sigInput = document.querySelector('input[name="second_party_signatory_name"]');
+        if (sigInput) sigInput.value = brand.signatory_name;
+    }
+    if (brand.signatory_position) {
+        const titleInput = document.querySelector('input[name="second_party_signatory_title"]');
+        if (titleInput) titleInput.value = brand.signatory_position;
+    }
+    if (brand.signatory_email) {
+        const emailInput = document.querySelector('input[name="second_party_email"]');
+        if (emailInput) emailInput.value = brand.signatory_email;
+    }
+}
+
+function previewCompanyLogoFile(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            alert('Ukuran berkas logo melebihi 2MB. Silakan pilih berkas yang lebih kecil.');
+            input.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const previewImg = document.getElementById('companyLogoPreviewImg');
+            if (previewImg) {
+                previewImg.src = e.target.result;
+            }
+            const compLogoInput = document.getElementById('companyLogoPathInput');
+            if (compLogoInput) {
+                compLogoInput.value = ''; // Menggunakan berkas yang diunggah
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleTemplateSelectionChange(templateId, isResetFromBrand = false) {
     if (!templateId || !mouTemplatesDefaultsMap[templateId]) return;
     const tpl = mouTemplatesDefaultsMap[templateId];
 
@@ -606,6 +796,9 @@ function handleTemplateSelectionChange(templateId) {
     if (headerLabel && tpl.name) {
         headerLabel.textContent = `${tpl.name} (v${tpl.version_number})`;
     }
+
+    const brandSelect = document.getElementById('brandSelect');
+    const hasBrandSelected = brandSelect && brandSelect.value !== '';
 
     const fieldMap = {
         second_party_company_name: 'company_name',
@@ -621,11 +814,24 @@ function handleTemplateSelectionChange(templateId) {
     };
 
     Object.entries(fieldMap).forEach(([inputName, tplKey]) => {
+        // Jika brand sedang dipilih dan bukan reset dari brand, pertahankan nama perusahaan dan profil brand
+        if (hasBrandSelected && !isResetFromBrand && ['second_party_company_name', 'second_party_address'].includes(inputName)) {
+            return;
+        }
+
         const inputEl = document.querySelector(`[name="${inputName}"]`);
         if (inputEl && typeof tpl[tplKey] === 'string' && tpl[tplKey] !== '') {
             inputEl.value = tpl[tplKey];
         }
     });
+
+    if (!hasBrandSelected || isResetFromBrand) {
+        const defaultLogo = tpl.company_logo || '/images/mou/seven-inc-logo.png';
+        const compLogoInput = document.getElementById('companyLogoPathInput');
+        if (compLogoInput) compLogoInput.value = defaultLogo;
+        const previewImg = document.getElementById('companyLogoPreviewImg');
+        if (previewImg) previewImg.src = defaultLogo;
+    }
 }
 
 function handleInstitutionChange(institutionId) {
@@ -649,6 +855,26 @@ function fillSignatory(name, title, phone, email) {
     if (titleEl && title) titleEl.value = title;
     if (phoneEl && phone && !phoneEl.value) phoneEl.value = phone;
     if (emailEl && email && !emailEl.value) emailEl.value = email;
+}
+
+function previewInstitutionLogoFile(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            alert('Ukuran berkas logo melebihi 2MB. Silakan pilih berkas yang lebih kecil.');
+            input.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const previewImg = document.getElementById('institutionLogoPreviewImg');
+            if (previewImg) {
+                previewImg.src = e.target.result;
+                previewImg.classList.remove('opacity-60');
+            }
+        };
+        reader.readAsDataURL(file);
+    }
 }
 </script>
 @endsection

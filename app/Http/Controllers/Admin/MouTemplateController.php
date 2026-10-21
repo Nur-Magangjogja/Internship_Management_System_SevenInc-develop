@@ -200,6 +200,7 @@ class MouTemplateController extends Controller
         $mockData = $this->buildPreviewMockData($mouTemplate, $selectedInstitution);
         $renderedHtml = $mouTemplate->renderContent($mockData, false);
         $pageConfig = MouDocumentRenderer::renderPageConfig($mouTemplate, $mockData, false);
+        $pageConfig['institution_logo'] = $mockData['institution_logo'] ?? null;
         $canonicalCss = MouDocumentRenderer::getCanonicalDocumentCss($pageConfig);
         $editorJson = $mouTemplate->getEditorJson();
 
@@ -227,6 +228,7 @@ class MouTemplateController extends Controller
         $mockData = $this->buildPreviewMockData($mouTemplate, $selectedInstitution);
         $renderedHtml = $mouTemplate->renderContent($mockData, false);
         $pageConfig = MouDocumentRenderer::renderPageConfig($mouTemplate, $mockData, false);
+        $pageConfig['institution_logo'] = $mockData['institution_logo'] ?? null;
 
         $pdfBinary = MouDocumentRenderer::renderPdfBinary(
             $renderedHtml,
@@ -327,6 +329,59 @@ class MouTemplateController extends Controller
     }
 
     /**
+     * Tetapkan template MOU sebagai default secara konsisten & atomik (INV-08).
+     */
+    public function setDefault(MouTemplate $mouTemplate, \App\Services\DocumentTemplates\TemplateLifecycleService $lifecycleService)
+    {
+        $lifecycleService->setMouDefault($mouTemplate, auth()->id() ?? 1);
+
+        ActivityLogger::log(
+            action: 'mou_template_set_default',
+            description: "Menetapkan template MOU default: {$mouTemplate->name}",
+            subject: $mouTemplate,
+            actor: auth()->user()
+        );
+
+        return back()->with('success', "Template MOU '{$mouTemplate->name}' berhasil ditetapkan sebagai template default.");
+    }
+
+    /**
+     * Gandakan template MOU menjadi draf baru.
+     */
+    public function duplicate(MouTemplate $mouTemplate, \App\Services\DocumentTemplates\TemplateLifecycleService $lifecycleService)
+    {
+        $clone = $lifecycleService->duplicateMou($mouTemplate, null, auth()->id() ?? 1);
+
+        ActivityLogger::log(
+            action: 'mou_template_duplicated',
+            description: "Menduplikasi template MOU: {$mouTemplate->name} menjadi {$clone->name}",
+            subject: $clone,
+            actor: auth()->user()
+        );
+
+        return redirect()
+            ->route('admin.mou-templates.edit', $clone)
+            ->with('success', "Template MOU '{$clone->name}' berhasil dibuat dari salinan. Status: Draf.");
+    }
+
+    /**
+     * Arsipkan template MOU.
+     */
+    public function archive(MouTemplate $mouTemplate, \App\Services\DocumentTemplates\TemplateLifecycleService $lifecycleService)
+    {
+        $lifecycleService->archiveMou($mouTemplate, auth()->id() ?? 1);
+
+        ActivityLogger::log(
+            action: 'mou_template_archived',
+            description: "Mengarsipkan template MOU: {$mouTemplate->name}",
+            subject: $mouTemplate,
+            actor: auth()->user()
+        );
+
+        return back()->with('success', "Template MOU '{$mouTemplate->name}' berhasil diarsipkan.");
+    }
+
+    /**
      * Soft delete template MOU.
      */
     public function destroy(MouTemplate $mouTemplate)
@@ -419,6 +474,16 @@ class MouTemplateController extends Controller
         $parafFirstLabel  = (string) $request->input('paraf_first_party_label', $basePage['paraf_first_party_label'] ?? 'Paraf PIHAK KESATU');
         $parafSecondLabel = (string) $request->input('paraf_second_party_label', $basePage['paraf_second_party_label'] ?? 'Paraf PIHAK KEDUA');
 
+        $showHeaderLogos = $request->has('show_header_logos')
+            ? $request->boolean('show_header_logos')
+            : (bool) ($basePage['show_header_logos'] ?? true);
+
+        $showWatermark = $request->has('show_watermark')
+            ? $request->boolean('show_watermark')
+            : (bool) ($basePage['show_watermark'] ?? false);
+
+        $watermarkOpacity = (float) $request->input('watermark_opacity', $basePage['watermark_opacity'] ?? 0.05);
+
         $headerHtml = $request->has('header_html')
             ? MouDocumentRenderer::sanitizeHeaderFooterHtml((string) $request->input('header_html', ''))
             : (string) ($basePage['header_html'] ?? '');
@@ -463,6 +528,9 @@ class MouTemplateController extends Controller
             'paraf_second_party_label' => $parafSecondLabel,
             'show_page_number'         => $showPageNum,
             'show_page_numbers'        => $showPageNum,
+            'show_header_logos'        => $showHeaderLogos,
+            'show_watermark'           => $showWatermark,
+            'watermark_opacity'        => $watermarkOpacity,
         ];
 
         $mediaAssets = [
@@ -548,8 +616,13 @@ class MouTemplateController extends Controller
             $companyDefaults['agreement_duration'] ?? '5 (lima) tahun'
         );
 
+        $institutionLogo = $selectedInstitution?->logo_url
+            ?? ($selectedInstitution?->logo ? ('/storage/' . $selectedInstitution->logo) : '/images/mou/institution-logo-placeholder.png');
+
         return array_merge($companyDefaults, $dateTokens, [
             'institution_name'                => $selectedInstitution?->name ?? 'UNIVERSITAS CONTOH INDONESIA',
+            'institution_logo'                => $institutionLogo,
+            'institution_logo_path'           => $institutionLogo,
             'institution_mou_number'          => '045/UNIV-CI/MOU/XI/' . date('Y'),
             'institution_address'             => $selectedInstitution?->address ?? 'Jl. Budi Utomo No.10, Ronowijayan, Kec. Ponorogo, Kabupaten Ponorogo, Jawa Timur 63471',
             'institution_correspondence_unit' => $selectedInstitution?->correspondence_unit ?? 'Kepala Bidang Kerjasama Dalam Negeri',

@@ -95,24 +95,33 @@ class RegistrationController extends Controller
             }
             if ($activeSchema) {
                 $activeFields  = $activeSchema->activeFields;
-                $mainFields    = $activeFields->whereNull('group_name')->where('is_system', true);
-                $extraFields   = $activeFields->where('group_name', 'informasi_tambahan')->where('is_system', true);
-                $customFields  = $activeFields->where('is_system', false)->whereNotIn('field_key', \App\Services\FormBuilderService::CORE_FIELD_KEYS);
-                $useFormFields = $mainFields->isNotEmpty() || $customFields->isNotEmpty();
+                $groupedFields = [
+                    \App\Models\FormField::GROUP_DATA_DIRI          => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_DATA_DIRI)->values(),
+                    \App\Models\FormField::GROUP_PILIHAN_DURASI     => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
+                    \App\Models\FormField::GROUP_BERKAS             => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
+                    \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                ];
+                $mainFields    = $activeFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN && $f->is_system)->values();
+                $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
+                $customFields  = $activeFields->where('is_system', false)->whereNotIn('field_key', \App\Services\FormBuilderService::CORE_FIELD_KEYS)->values();
+                $useFormFields = $activeFields->isNotEmpty();
             } else {
                 // Fallback jika belum ada FormSchema aktif namun form_fields lama ada
                 try {
                     $legacyFields  = \App\Models\FormField::active()->whereNull('form_schema_id')->get();
-                    $mainFields    = $legacyFields->whereNull('group_name');
-                    $extraFields   = $legacyFields->where('group_name', 'informasi_tambahan');
-                    $useFormFields = $mainFields->isNotEmpty();
                 } catch (\Illuminate\Database\QueryException) {
-                    // Kolom form_schema_id belum ada pada form_fields versi unmigrated
                     $legacyFields  = \App\Models\FormField::active()->get();
-                    $mainFields    = $legacyFields->whereNull('group_name');
-                    $extraFields   = $legacyFields->where('group_name', 'informasi_tambahan');
-                    $useFormFields = $mainFields->isNotEmpty();
                 }
+                $groupedFields = [
+                    \App\Models\FormField::GROUP_DATA_DIRI          => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_DATA_DIRI)->values(),
+                    \App\Models\FormField::GROUP_PILIHAN_DURASI     => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
+                    \App\Models\FormField::GROUP_BERKAS             => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
+                    \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                ];
+                $mainFields    = $legacyFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values();
+                $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
+                $customFields  = collect();
+                $useFormFields = $legacyFields->isNotEmpty();
             }
 
             if ($registration) {
@@ -127,10 +136,18 @@ class RegistrationController extends Controller
             // Tabel form_schemas belum termigrasi → fallback ke form_fields legacy atau form statis
             try {
                 $legacyFields  = \App\Models\FormField::active()->get();
-                $mainFields    = $legacyFields->whereNull('group_name');
-                $extraFields   = $legacyFields->where('group_name', 'informasi_tambahan');
-                $useFormFields = $mainFields->isNotEmpty();
+                $groupedFields = [
+                    \App\Models\FormField::GROUP_DATA_DIRI          => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_DATA_DIRI)->values(),
+                    \App\Models\FormField::GROUP_PILIHAN_DURASI     => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
+                    \App\Models\FormField::GROUP_BERKAS             => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
+                    \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                ];
+                $mainFields    = $legacyFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values();
+                $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
+                $customFields  = collect();
+                $useFormFields = $legacyFields->isNotEmpty();
             } catch (\Illuminate\Database\QueryException) {
+                $groupedFields = [];
                 $useFormFields = false;
             }
         }
@@ -147,7 +164,7 @@ class RegistrationController extends Controller
         $studyPrograms = \App\Models\StudyProgram::select('id', 'name')->orderBy('name')->get();
 
         return view('pemagang.registration.form', compact(
-            'registration', 'divisions', 'mainFields', 'extraFields', 'customFields',
+            'registration', 'divisions', 'groupedFields', 'mainFields', 'extraFields', 'customFields',
             'customAnswers', 'activeSchema', 'useFormFields',
             'cities', 'institutions', 'faculties', 'studyPrograms',
             'effectiveStartDate', 'validatedQueryDate', 'isQueryDateInvalid', 'queryDateYear'

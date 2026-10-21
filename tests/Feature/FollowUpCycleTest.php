@@ -30,6 +30,8 @@ class FollowUpCycleTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+
         $this->unique = uniqid('flw_', true);
 
         $this->admin = User::create([

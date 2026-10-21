@@ -79,8 +79,9 @@ class InternDocumentIssuanceService
 
     /**
      * Resolusi template aktif yang dipilih Admin untuk jenis dokumen terkait.
+     * Jika failClosed = true, larang keras pembuatan preset transien/tersembunyi.
      */
-    public function resolveActiveTemplate(string $documentType): DocumentTemplate
+    public function resolveActiveTemplate(string $documentType, bool $failClosed = false): ?DocumentTemplate
     {
         $canonical = self::normalizeType($documentType);
 
@@ -98,19 +99,24 @@ class InternDocumentIssuanceService
                 ->first();
         }
 
-        // 3. Fallback jika template belum ada di DB (membuat instance preset tanpa error)
+        // 3. Fallback: Fail-Closed pada penerbitan resmi atau simulasi non-resmi pada preview
         if (!$template) {
+            if ($failClosed) {
+                return null;
+            }
+
+            // Fallback HANYA untuk isolasi preview non-resmi saat draf belum dibuat
             $isCanvas = ($canonical === self::TYPE_CERTIFICATE);
             $template = new DocumentTemplate([
                 'uuid'           => (string) Str::uuid(),
                 'type'           => $canonical,
-                'name'           => 'Template Standar ' . strtoupper($canonical),
+                'name'           => 'Simulasi Template ' . strtoupper($canonical),
                 'editor_type'    => $isCanvas ? 'visual_canvas' : 'visual_html',
                 'content_html'   => $isCanvas ? null : DocumentTemplate::getDefaultStandardContent($canonical),
                 'canvas_layout'  => $isCanvas ? DocumentTemplate::getDefaultCertificateCanvasLayout() : null,
                 'page_config'    => DocumentTemplate::getDefaultPageConfig($canonical),
-                'is_active'      => true,
-                'is_default'     => true,
+                'is_active'      => false, // Simulasi non-aktif
+                'is_default'     => false,
                 'version_number' => 1,
             ]);
         }
@@ -153,10 +159,11 @@ class InternDocumentIssuanceService
     public function buildContext(
         InternshipRegistration $intern,
         string $documentType,
-        array $options = []
+        array $options = [],
+        bool $isLiveIssuance = false
     ): array {
         $canonical = self::normalizeType($documentType);
-        $intern->loadMissing(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
+        $intern->load(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
 
         $brandModel = $intern->brandRel;
         $instModel  = $intern->institution;
@@ -180,30 +187,50 @@ class InternDocumentIssuanceService
             institution: $instModel,
             brand: $brandModel,
             overrides: $options['variables'] ?? [],
-            assetOverrides: $options['asset_overrides'] ?? []
+            assetOverrides: $options['asset_overrides'] ?? [],
+            isLiveIssuance: $isLiveIssuance,
+            isPreviewMock: !$isLiveIssuance,
+            documentType: $canonical
         );
 
         $variables = $baseContext['variables'];
         $assetReferences = $baseContext['asset_references'];
 
         // 3. Tambahkan variabel-variabel detail spesifik dokumen
-        $companyName = $brandModel?->name ?? ($intern->brand ?: 'Seven Inc');
-        $companyAddress = $brandModel?->company_address ?? 'Jl. Raya Janti, Gang Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta';
-        $signatoryName = $brandModel?->signatory_name ?? 'Ari Setia Husbana';
-        $signatoryPosition = $brandModel?->signatory_position ?? 'HRD';
+        $companyName = $brandModel?->name ?? ($intern->brand ?: ($isLiveIssuance ? '' : 'Seven Inc'));
+        $companyAddress = $brandModel?->address ?? ($brandModel?->company_address ?? 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
+        
+        // Signatory: Pada live issuance DILARANG KERAS fallback ke nama contoh palsu! (V03)
+        $signatoryName = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Ari Setia Husbana');
+        $signatoryPosition = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'HRD');
 
         if ($canonical === self::TYPE_RECOMMENDATION) {
-            $signatoryName = $brandModel?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
-            $signatoryPosition = $brandModel?->signatory_position ?? 'CEO';
+            $signatoryName = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.');
+            $signatoryPosition = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'CEO');
         }
 
-        $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->translatedFormat('d F Y') : '-';
-        $endDateStr   = $intern->end_date ? Carbon::parse($intern->end_date)->translatedFormat('d F Y') : '-';
+        $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->locale('id')->translatedFormat('d F Y') : ($isLiveIssuance ? '' : '-');
+        $endDateStr   = $intern->end_date ? Carbon::parse($intern->end_date)->locale('id')->translatedFormat('d F Y') : ($isLiveIssuance ? '' : '-');
 
-        $durationStr = 'beberapa bulan';
+        $durationStr = $isLiveIssuance ? '' : 'beberapa bulan';
         if ($intern->start_date && $intern->end_date) {
             $months = (int) round(Carbon::parse($intern->start_date)->diffInDays(Carbon::parse($intern->end_date)) / 30);
             $durationStr = max(1, $months) . ' bulan';
+        }
+
+        // Resolusi Nilai Asli dari InternAssessment (bukan hardcoded 85.0 / Sangat Baik)
+        $assessment = InternAssessment::where('intern_id', $intern->id)->first();
+        if ($assessment && $assessment->rata_rata !== null) {
+            $rataRata = (string) $assessment->rata_rata;
+            $predikat = ($assessment->rata_rata >= 85) ? 'Sangat Baik (A)' : (($assessment->rata_rata >= 75) ? 'Baik (B)' : 'Cukup (C)');
+        } else {
+            if ($isLiveIssuance) {
+                $rataRata = $options['rata_rata'] ?? null;
+                $predikat = $options['predikat'] ?? null;
+            } else {
+                $rataRata = $options['rata_rata'] ?? '85.0';
+                $predikat = $options['predikat'] ?? 'Sangat Baik (A)';
+            }
         }
 
         // Variabel tambahan
@@ -215,25 +242,27 @@ class InternDocumentIssuanceService
             'perusahaan.nama'               => $companyName,
             'perusahaan.alamat'             => $companyAddress,
             'perusahaan.kota'               => 'Yogyakarta',
-            'perusahaan.telepon'            => $brandModel?->phone ?? '0274-4534571',
+            'perusahaan.telepon'            => $brandModel?->phone ?? ($isLiveIssuance ? '' : '0274-4534571'),
             'perusahaan.kodepos'            => '55198',
-            'pemagang.nama'                 => $intern->fullname ?? 'Nama Pemagang',
+            'pemagang.nama'                 => $intern->fullname ?? ($isLiveIssuance ? '' : 'Nama Pemagang'),
             'pemagang.nim'                  => ($intern->student_id ?? $intern->nim_nis ?? $intern->nim ?? '-') ?: '-',
-            'pemagang.institusi'            => $intern->institution_name ?? ($instModel?->name ?? '-'),
+            'pemagang.institusi'            => $intern->institution_name ?? ($instModel?->name ?? ($isLiveIssuance ? '' : '-')),
             'pemagang.prodi'                => $intern->study_program ?? ($intern->major ?? '-'),
-            'pemagang.divisi'               => $intern->division?->name ?? ($intern->internship_interest ?? 'Umum'),
+            'pemagang.divisi'               => $intern->division?->name ?? ($intern->internship_interest ?? ($isLiveIssuance ? '' : 'Umum')),
             'pemagang.brand'                => $companyName,
             'pemagang.tanggal_mulai'        => $startDateStr,
             'pemagang.tanggal_selesai'      => $endDateStr,
-            'pemagang.periode'              => "{$startDateStr} - {$endDateStr}",
+            'pemagang.periode'              => ($startDateStr && $endDateStr) ? "{$startDateStr} - {$endDateStr}" : '-',
             'pemagang.durasi'               => $durationStr,
-            'nilai.rata_rata'               => $options['rata_rata'] ?? '85.0',
-            'nilai.predikat'                => $options['predikat'] ?? 'Sangat Baik (A)',
+            'penilaian.nilai_akhir'         => $rataRata,
+            'penilaian.predikat'            => $predikat,
+            'nilai.rata_rata'               => $rataRata,
+            'nilai.predikat'                => $predikat,
             'rekomendasi.isi'               => $options['body_text'] ?? $this->getDefaultRecommendationBody($intern, $companyName, $durationStr),
         ];
 
         foreach ($additionalVars as $k => $v) {
-            if (!isset($variables[$k]) || empty($variables[$k])) {
+            if (!isset($variables[$k]) || ($variables[$k] === '' && $v !== null && $v !== '')) {
                 $variables[$k] = $v;
             }
         }
@@ -362,19 +391,60 @@ class InternDocumentIssuanceService
                 }
             }
 
-            // 2. Resolve template aktif
+            // 2. Resolve template aktif (Fail-Closed: larangan hidden preset pada penerbitan resmi)
             $template = !empty($options['template_id'])
                 ? DocumentTemplate::findOrFail($options['template_id'])
-                : $this->resolveActiveTemplate($canonical);
+                : $this->resolveActiveTemplate($canonical, failClosed: true);
 
-            // 3. Bangun konteks variabel dan aset (dengan resolusi nomor dokumen yang stabil)
-            $context = $this->buildContext($intern, $canonical, $options);
+            if (!$template || !$template->exists) {
+                throw new InvalidArgumentException(
+                    "Belum ada template aktif untuk jenis dokumen '{$canonical}'. Penerbitan resmi ditolak hingga template diaktifkan."
+                );
+            }
+
+            // Validasi kesesuaian tipe template & status aktif untuk penerbitan resmi
+            if ($template->type !== $canonical && !($canonical === self::TYPE_CERTIFICATE && $template->type === 'certificate')) {
+                throw new InvalidArgumentException("Tipe template '{$template->type}' tidak sesuai dengan jenis dokumen '{$canonical}'.");
+            }
+            if (!$template->is_active) {
+                throw new InvalidArgumentException("Template '{$template->name}' sedang tidak aktif.");
+            }
+
+            // 3. Bangun konteks variabel dan aset resmi (tanpa nilai tiruan/mock)
+            $context = $this->buildContext($intern, $canonical, $options, isLiveIssuance: true);
             $variables = $context['variables'];
             $assetReferences = $context['asset_references'];
             $docNumber = $context['document_number'];
 
-            // 4. Render binary PDF
-            $pdfBinary = DocumentTemplateRenderer::renderPdfBinary($template, $variables);
+            // 4. Diagnostik Variabel Wajib (V04 & Gate Fail-Closed)
+            $usedTokens = DocumentTemplateRenderer::extractTokens($template);
+            $diagnostics = $this->resolverService->diagnoseMissingVariables(
+                usedTokens: $usedTokens,
+                resolvedVariables: $variables,
+                documentType: $canonical
+            );
+
+            if (!$diagnostics['valid']) {
+                $errorMessages = [];
+                if (!empty($diagnostics['unknown_tokens'])) {
+                    $errorMessages[] = "Ditemukan placeholder tidak dikenal atau salah ketik: " . implode(', ', $diagnostics['unknown_tokens']);
+                }
+                if (!empty($diagnostics['missing_required'])) {
+                    $missingFields = array_map(
+                        fn($item) => "{$item['label']} ({$item['token']})",
+                        $diagnostics['missing_required']
+                    );
+                    $errorMessages[] = "Variabel wajib belum lengkap: " . implode(', ', $missingFields);
+                }
+
+                $detailStr = implode('; ', $errorMessages);
+                throw new InvalidArgumentException(
+                    "Penerbitan dokumen {$canonical} ditolak: {$detailStr}."
+                );
+            }
+
+            // 5. Render binary PDF resmi
+            $pdfBinary = DocumentTemplateRenderer::renderPdfBinary($template, $variables, isLiveIssuance: true);
 
             // 5. Publikasikan berkas fisik, catat immutable snapshot, dan sinkronkan ke Google Drive
             $generatedDoc = $this->publishingService->publishInternDocument(

@@ -1,14 +1,14 @@
 @extends('layouts.dashboard', ['title' => 'Editor Sertifikat Visual: ' . $template->name])
 
 @section('content')
-<div class="px-6 py-6" x-data="certificateCanvasApp()">
-    <!-- Top Action Bar -->
-    <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
+<div class="px-6 py-6" x-data="certificateCanvasApp()" @keydown.window="handleKeyboard($event)">
+    <!-- Top Action & Navigation Bar -->
+    <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
         <div class="flex items-center gap-3">
             <a
                 href="{{ route('admin.document-templates.index') }}"
-                class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
-                title="Kembali ke Daftar"
+                class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm"
+                title="Kembali ke Daftar Template"
             >
                 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -17,9 +17,9 @@
             <div>
                 <div class="flex items-center gap-2">
                     <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 border-amber-200">
-                        Sertifikat Magang (Visual Canvas)
+                        Kanvas Desain Sertifikat (Visual Studio)
                     </span>
-                    <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                    <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
                         Versi {{ $template->version_number }}
                     </span>
                     @if ($template->is_default)
@@ -35,24 +35,60 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            <!-- Undo / Redo Toolbar -->
+            <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
+                <button
+                    type="button"
+                    @click="undo()"
+                    :disabled="!canUndo"
+                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                    title="Urungkan Perubahan (Ctrl+Z)"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v6h6"/>
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    @click="redo()"
+                    :disabled="!canRedo"
+                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                    title="Ulangi Perubahan (Ctrl+Y)"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 7v6h-6"/>
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Zoom Controls -->
+            <div class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm text-xs font-semibold text-slate-600 gap-1">
+                <span class="text-slate-400 text-[10px] mr-1">ZOOM:</span>
+                <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 0.75 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">75%</button>
+                <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.0 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">100%</button>
+                <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.25 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">125%</button>
+            </div>
+
             <!-- Toggle Sample / Placeholder -->
             <button
                 type="button"
                 @click="showMockData = !showMockData"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-semibold transition"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition shadow-sm"
                 :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'"
             >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>
                 </svg>
-                <span x-text="showMockData ? 'Mode: Data Contoh Aktif' : 'Mode: Variabel Raw'"></span>
+                <span x-text="showMockData ? 'Data Simulasi' : 'Token Mentah'"></span>
             </button>
 
             <!-- Histori Versi -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 shadow-sm"
             >
                 <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
@@ -65,13 +101,13 @@
             <a
                 href="{{ route('admin.document-templates.preview-pdf', $template) }}"
                 target="_blank"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 shadow-sm"
             >
                 <svg class="h-4 w-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                 </svg>
-                <span>Preview PDF Asli</span>
+                <span>Preview PDF</span>
             </a>
 
             <!-- Save Changes Button -->
@@ -79,7 +115,7 @@
                 type="button"
                 @click="saveTemplate()"
                 :disabled="isSaving"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
             >
                 <svg x-show="!isSaving" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -93,106 +129,290 @@
     </div>
 
     <!-- Status Alerts -->
-    <div x-show="saveAlert.message" x-cloak class="mb-4 rounded-lg p-3 text-xs font-medium" :class="saveAlert.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'">
-        <span x-text="saveAlert.message"></span>
+    <div x-show="saveAlert.message" x-cloak class="mb-4 rounded-lg p-3 text-xs font-medium shadow-sm transition-all" :class="saveAlert.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'">
+        <div class="flex items-center justify-between">
+            <span x-text="saveAlert.message"></span>
+            <button type="button" @click="saveAlert.message = ''" class="text-slate-400 hover:text-slate-600 font-bold ml-2">&times;</button>
+        </div>
     </div>
 
-    <!-- Workspace Grid: Canvas Area (8 cols) + Element Inspector (4 cols) -->
+    <!-- Main Workspace Grid: Interactive Canvas (8 cols) + Inspector Controls (4 cols) -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         <!-- Left: Interactive Visual Canvas (8 Cols) -->
-        <div class="lg:col-span-8 space-y-4">
-            <!-- Canvas Controls Bar -->
-            <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex items-center justify-between text-xs">
-                <div class="flex items-center gap-4 text-slate-600">
-                    <span class="font-semibold text-slate-800">Kanvas Desain Sertifikat:</span>
-                    <span x-text="`${layout.canvas.orientation === 'portrait' ? 'A4 Portrait (210 x 297 mm)' : 'A4 Landscape (297 x 210 mm)'}`"></span>
-                </div>
-                <div class="flex items-center gap-2">
+        <div class="lg:col-span-8 space-y-3">
+            
+            <!-- Canvas Object Creation & Quick Action Toolbar -->
+            <div class="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs">
+                <!-- Add Element Buttons -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-slate-500 uppercase mr-1">Tambah:</span>
                     <button
                         type="button"
                         @click="addTextElement()"
-                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 font-semibold"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
                     >
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                        <span>Tambah Teks</span>
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+                        <span>Teks</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="addImageElement()"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span>Gambar / Logo</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="addShapeElement()"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                        <span>Bentuk / Box</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="addLineElement()"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <span>Garis</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="addQrElement()"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        <span>QR Code</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="addSignatureGroup()"
+                        class="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 px-2.5 py-1 font-semibold transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 19v-4a2 2 0 0 0-2-2h-4"/><path d="M4 19v-4a2 2 0 0 1 2-2h4"/><line x1="12" y1="15" x2="12" y2="3"/><polyline points="8 7 12 3 16 7"/></svg>
+                        <span>Tanda Tangan</span>
+                    </button>
+                </div>
+
+                <!-- Layer Quick Actions for Selected Element -->
+                <div class="flex items-center gap-1 border-l border-slate-200 pl-2">
+                    <button
+                        type="button"
+                        @click="duplicateSelected()"
+                        :disabled="!selectedElement"
+                        title="Duplikat Elemen (Ctrl+D)"
+                        class="p-1 rounded text-slate-600 hover:text-blue-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                    <button
+                        type="button"
+                        @click="bringToFront()"
+                        :disabled="!selectedElement"
+                        title="Bawa ke Paling Depan"
+                        class="p-1 rounded text-slate-600 hover:text-blue-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg>
+                    </button>
+                    <button
+                        type="button"
+                        @click="sendToBack()"
+                        :disabled="!selectedElement"
+                        title="Kirim ke Paling Belakang"
+                        class="p-1 rounded text-slate-600 hover:text-blue-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 12 2 17 12 22 22 17 12 12"/><polyline points="2 7 12 2 22 7"/></svg>
+                    </button>
+                    <button
+                        type="button"
+                        @click="deleteSelected()"
+                        :disabled="!selectedElement"
+                        title="Hapus Elemen Terpilih (Del)"
+                        class="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                 </div>
             </div>
 
-            <!-- Canvas Container -->
-            <div class="flex justify-center bg-slate-800/90 p-6 rounded-2xl overflow-x-auto shadow-inner min-h-[600px] items-center">
-                <div
-                    id="certificate-viewport"
-                    class="relative bg-white shadow-2xl transition-all select-none overflow-hidden"
-                    :style="canvasStyle()"
-                    @click.self="selectedElementId = null"
-                >
-                    <!-- Background Image Layer -->
-                    <template x-if="layout.canvas.background_image">
-                        <img
-                            :src="layout.canvas.background_image"
-                            alt="Background Sertifikat"
-                            class="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                            :style="`opacity: ${layout.canvas.background_opacity || 1.0};`"
-                        />
-                    </template>
+            <!-- Canvas Viewport Outer Scroller -->
+            <div class="flex justify-center bg-slate-900/90 p-6 rounded-2xl overflow-auto shadow-inner min-h-[640px] items-center relative">
+                
+                <!-- Scaled Canvas Container -->
+                <div :style="`transform: scale(${zoomLevel}); transform-origin: center center; transition: transform 0.15s ease-out;`">
+                    
+                    <div
+                        id="certificate-viewport"
+                        class="relative bg-white shadow-2xl select-none overflow-hidden"
+                        :style="canvasStyle()"
+                        @click.self="selectedElementId = null"
+                    >
+                        <!-- Background Image Layer -->
+                        <template x-if="layout.canvas.background_image">
+                            <img
+                                :src="layout.canvas.background_image"
+                                alt="Background Sertifikat"
+                                class="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                                :style="`opacity: ${layout.canvas.background_opacity || 1.0};`"
+                            />
+                        </template>
 
-                    <!-- Render Canvas Elements -->
-                    <template x-for="(elem, index) in layout.elements" :key="elem.id">
-                        <!-- Text Layer -->
-                        <div
-                            x-if="elem.type === 'text'"
-                            class="absolute cursor-move transition-shadow"
-                            :class="selectedElementId === elem.id ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg bg-blue-50/20' : 'hover:ring-1 hover:ring-blue-300'"
-                            :style="elementStyle(elem)"
-                            @mousedown="startDrag($event, elem)"
-                            @click.stop="selectedElementId = elem.id"
-                        >
-                            <span x-html="resolveText(elem.content)"></span>
-                        </div>
-                    </template>
+                        <!-- Elements Loop -->
+                        <template x-for="(elem, index) in layout.elements" :key="elem.id">
+                            <div
+                                :id="'canvas-element-' + elem.id"
+                                class="absolute cursor-move transition-shadow"
+                                :class="selectedElementId === elem.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-xl bg-blue-50/10' : 'hover:ring-1 hover:ring-blue-300'"
+                                :style="elementOuterStyle(elem)"
+                                @mousedown="startDrag($event, elem)"
+                                @click.stop="selectElement(elem.id)"
+                            >
+                                <!-- Inner Content per Type -->
+                                
+                                <!-- 1. Text Type -->
+                                <template x-if="elem.type === 'text'">
+                                    <div
+                                        class="w-full h-full"
+                                        :style="elementTextStyle(elem)"
+                                        x-html="resolveText(elem.content)"
+                                    ></div>
+                                </template>
 
-                    <!-- Signature Group Layer -->
-                    <template x-for="(elem, index) in layout.elements" :key="elem.id + '_sig'">
-                        <div
-                            x-if="elem.type === 'signature_group'"
-                            class="absolute cursor-move transition-shadow p-2 text-center"
-                            :class="selectedElementId === elem.id ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg bg-blue-50/20' : 'hover:ring-1 hover:ring-blue-300'"
-                            :style="elementStyle(elem)"
-                            @mousedown="startDrag($event, elem)"
-                            @click.stop="selectedElementId = elem.id"
-                        >
-                            <div class="text-[12px] text-slate-700 font-medium" x-html="resolveText(elem.date_text)"></div>
-                            <div class="text-[11px] text-slate-500 mt-0.5" x-html="resolveText(elem.role_text)"></div>
-                            
-                            <!-- Sig & Stamp Stack -->
-                            <div class="relative inline-block my-2 h-16 w-44">
-                                <template x-if="elem.sig_image">
-                                    <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" />
+                                <!-- 2. Image Type -->
+                                <template x-if="elem.type === 'image'">
+                                    <div class="w-full h-full flex items-center justify-center pointer-events-none">
+                                        <img
+                                            :src="resolveImage(elem.src)"
+                                            class="max-w-full max-h-full object-contain"
+                                            :style="`opacity: ${elem.opacity ?? 1.0};`"
+                                            alt="Gambar Sertifikat"
+                                        />
+                                    </div>
                                 </template>
-                                <template x-if="elem.stamp_image">
-                                    <img :src="resolveImage(elem.stamp_image)" class="absolute -right-2 -top-2 h-16 w-16 object-contain opacity-85 z-20 pointer-events-none" />
+
+                                <!-- 3. Shape Type -->
+                                <template x-if="elem.type === 'shape'">
+                                    <div
+                                        class="w-full h-full pointer-events-none box-border"
+                                        :style="elementShapeStyle(elem)"
+                                    ></div>
                                 </template>
+
+                                <!-- 4. Line Type -->
+                                <template x-if="elem.type === 'line'">
+                                    <div
+                                        class="w-full pointer-events-none"
+                                        :style="elementLineStyle(elem)"
+                                    ></div>
+                                </template>
+
+                                <!-- 5. QR Code Type -->
+                                <template x-if="elem.type === 'qr_code'">
+                                    <div class="w-full h-full flex flex-col items-center justify-center pointer-events-none bg-white p-1 rounded border border-slate-200">
+                                        <svg viewBox="0 0 29 29" class="w-full h-full" shape-rendering="crispEdges">
+                                            <!-- Finder Top-Left -->
+                                            <rect x="2" y="2" width="7" height="7" fill="#000"/>
+                                            <rect x="3" y="3" width="5" height="5" fill="#fff"/>
+                                            <rect x="4" y="4" width="3" height="3" fill="#000"/>
+                                            <!-- Finder Top-Right -->
+                                            <rect x="20" y="2" width="7" height="7" fill="#000"/>
+                                            <rect x="21" y="3" width="5" height="5" fill="#fff"/>
+                                            <rect x="22" y="4" width="3" height="3" fill="#000"/>
+                                            <!-- Finder Bottom-Left -->
+                                            <rect x="2" y="20" width="7" height="7" fill="#000"/>
+                                            <rect x="3" y="21" width="5" height="5" fill="#fff"/>
+                                            <rect x="4" y="22" width="3" height="3" fill="#000"/>
+                                            <!-- Data simulation bits -->
+                                            <rect x="11" y="4" width="2" height="2" fill="#000"/>
+                                            <rect x="15" y="4" width="2" height="2" fill="#000"/>
+                                            <rect x="11" y="8" width="2" height="2" fill="#000"/>
+                                            <rect x="15" y="8" width="2" height="2" fill="#000"/>
+                                            <rect x="11" y="14" width="7" height="2" fill="#000"/>
+                                            <rect x="11" y="20" width="3" height="3" fill="#000"/>
+                                            <rect x="16" y="22" width="4" height="2" fill="#000"/>
+                                            <rect x="22" y="14" width="3" height="3" fill="#000"/>
+                                        </svg>
+                                        <span class="text-[8px] font-mono text-slate-500 mt-0.5 truncate max-w-full" x-text="resolveText(elem.qr_data || '@{{dokumen.nomor}}')"></span>
+                                    </div>
+                                </template>
+
+                                <!-- 6. Signature Group Type -->
+                                <template x-if="elem.type === 'signature_group'">
+                                    <div class="w-full text-center p-1 pointer-events-none" :style="`opacity: ${elem.opacity ?? 1.0};`">
+                                        <div class="text-[12px] text-slate-700 font-medium" x-html="resolveText(elem.date_text)"></div>
+                                        <div class="text-[11px] text-slate-500 mt-0.5" x-html="resolveText(elem.role_text)"></div>
+                                        
+                                        <!-- Sig & Stamp Stack -->
+                                        <div class="relative inline-block my-1.5 h-14 w-40">
+                                            <template x-if="elem.sig_image">
+                                                <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" />
+                                            </template>
+                                            <template x-if="elem.stamp_image">
+                                                <img :src="resolveImage(elem.stamp_image)" class="absolute -right-2 -top-2 h-14 w-14 object-contain opacity-85 z-20" />
+                                            </template>
+                                        </div>
+
+                                        <div class="text-[12px] font-bold text-slate-800 underline" x-html="resolveText(elem.name_text)"></div>
+                                    </div>
+                                </template>
+
+                                <!-- 8 Sizing Handles & Rotation Handle Overlay (Rendered Only for Selected Element) -->
+                                <template x-if="selectedElementId === elem.id">
+                                    <div class="absolute inset-0 pointer-events-auto">
+                                        
+                                        <!-- Rotation Stem & Handle -->
+                                        <div class="absolute -top-7 left-1/2 -translate-x-1/2 flex flex-col items-center cursor-grab" @mousedown.stop="startRotate($event)">
+                                            <div class="w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow flex items-center justify-center hover:scale-125 transition-transform" title="Putar Elemen (Drag untuk Rotasi)">
+                                                <svg class="h-2 w-2 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                            </div>
+                                            <div class="w-0.5 h-3.5 bg-blue-500"></div>
+                                        </div>
+
+                                        <!-- 8 Sizing Handles -->
+                                        <!-- Top-Left (NW) -->
+                                        <div class="canvas-handle absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-nwse-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'nw')"></div>
+                                        <!-- Top-Center (N) -->
+                                        <div class="canvas-handle absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-ns-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'n')"></div>
+                                        <!-- Top-Right (NE) -->
+                                        <div class="canvas-handle absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-nesw-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'ne')"></div>
+                                        <!-- Middle-Right (E) -->
+                                        <div class="canvas-handle absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-ew-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'e')"></div>
+                                        <!-- Bottom-Right (SE) -->
+                                        <div class="canvas-handle absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-nwse-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'se')"></div>
+                                        <!-- Bottom-Center (S) -->
+                                        <div class="canvas-handle absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-ns-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 's')"></div>
+                                        <!-- Bottom-Left (SW) -->
+                                        <div class="canvas-handle absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-nesw-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'sw')"></div>
+                                        <!-- Middle-Left (W) -->
+                                        <div class="canvas-handle absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-white border-2 border-blue-600 rounded-sm cursor-ew-resize shadow hover:bg-blue-100" @mousedown.stop="startResize($event, 'w')"></div>
+
+                                    </div>
+                                </template>
+
                             </div>
+                        </template>
 
-                            <div class="text-[12px] font-bold text-slate-800 underline" x-html="resolveText(elem.name_text)"></div>
-                        </div>
-                    </template>
+                    </div>
+
                 </div>
+
             </div>
 
-            <!-- Canvas Info Helper -->
-            <div class="flex items-center justify-between text-xs text-slate-500 px-2">
-                <span>Tips: <strong>Klik dan seret (drag)</strong> elemen langsung pada kanvas untuk menggeser posisi koordinat.</span>
-                <span x-text="`Total Layer: ${layout.elements.length} Elemen`"></span>
+            <!-- Canvas Info Helper Bar -->
+            <div class="flex items-center justify-between text-xs text-slate-500 px-2 py-1">
+                <span>Panduan: Klik elemen untuk menampilkan <strong>8 Titik Ukuran & Rotasi</strong>. Seret mouse untuk menggeser / mengubah ukuran.</span>
+                <span class="font-mono text-[11px]" x-text="`Total Layer: ${layout.elements.length} | Terpilih: ${selectedElementId || 'None'}`"></span>
             </div>
+
         </div>
 
         <!-- Right: Inspector Drawer & Controls (4 Cols) -->
         <div class="lg:col-span-4 space-y-4">
             
-            <!-- Inspector Tabs: Element Properties vs Canvas Setup -->
+            <!-- Inspector Tabs -->
             <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div class="flex border-b border-slate-200 bg-slate-50">
                     <button
@@ -209,7 +429,7 @@
                         class="flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition"
                         :class="activeDrawerTab === 'layers' ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-800'"
                     >
-                        Daftar Layer
+                        Susunan Layer
                     </button>
                     <button
                         type="button"
@@ -217,177 +437,436 @@
                         class="flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition"
                         :class="activeDrawerTab === 'canvas' ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-800'"
                     >
-                        Kanvas & Bg
+                        Kertas & Desain
                     </button>
                 </div>
 
-                <!-- Tab 1: Element Properties -->
-                <div x-show="activeDrawerTab === 'element'" class="p-4 space-y-4">
+                <!-- Tab 1: Element Properties Inspector -->
+                <div x-show="activeDrawerTab === 'element'" class="p-4 space-y-4 max-h-[750px] overflow-y-auto">
                     <template x-if="selectedElement">
                         <div class="space-y-4">
+                            
+                            <!-- Header & Type Badge -->
                             <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                                <span class="text-xs font-bold text-slate-800 uppercase" x-text="`Edit: ${selectedElement.id}`"></span>
-                                <button
-                                    type="button"
-                                    @click="deleteElement(selectedElement.id)"
-                                    class="text-xs text-rose-600 hover:text-rose-800 font-semibold"
-                                >
-                                    Hapus Elemen
-                                </button>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 uppercase" x-text="selectedElement.type"></span>
+                                    <span class="text-xs font-bold text-slate-800 truncate max-w-[130px]" x-text="selectedElement.id"></span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        @click="duplicateSelected()"
+                                        class="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                                    >
+                                        Duplikat
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="deleteElement(selectedElement.id)"
+                                        class="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                                    >
+                                        Hapus
+                                    </button>
+                                </div>
                             </div>
 
-                            <!-- Text Content (If text element) -->
-                            <template x-if="selectedElement.type === 'text'">
-                                <div>
-                                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks / Variabel</label>
-                                    <textarea
-                                        x-model="selectedElement.content"
-                                        rows="2"
-                                        class="w-full rounded border border-slate-300 p-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500"
-                                    ></textarea>
+                            <!-- Geometry & Position Spinners (X, Y, W, H, Rotation, Z-Index) -->
+                            <div class="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Geometri & Koordinat</span>
+                                    <button
+                                        type="button"
+                                        @click="selectedElement.aspect_locked = !selectedElement.aspect_locked"
+                                        class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition"
+                                        :class="selectedElement.aspect_locked ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-slate-600 border-slate-200'"
+                                        title="Kunci Proporsi Aspek Rasio saat Resize"
+                                    >
+                                        <span x-text="selectedElement.aspect_locked ? '🔒 Terkunci' : '🔓 Bebas'"></span>
+                                    </button>
+                                </div>
 
-                                    <!-- Quick Tags helper -->
-                                    <div class="mt-1 flex flex-wrap gap-1">
-                                        <button type="button" @click="insertTagToSelected('@{{pemagang.nama}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">+ Nama</button>
-                                        <button type="button" @click="insertTagToSelected('@{{dokumen.nomor}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">+ No. Surat</button>
-                                        <button type="button" @click="insertTagToSelected('@{{magang.divisi}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">+ Divisi</button>
-                                        <button type="button" @click="insertTagToSelected('@{{magang.tanggal_mulai}} s/d @{{magang.tanggal_selesai}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">+ Periode</button>
+                                <!-- Grid X & Y Spinners -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Posisi X (%)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="0.5" min="0" max="100" x-model.number="selectedElement.x_percent" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('x_percent', 0.5, 0, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('x_percent', -0.5, 0, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Posisi Y (%)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="0.5" min="0" max="100" x-model.number="selectedElement.y_percent" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('y_percent', 0.5, 0, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('y_percent', -0.5, 0, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </template>
 
-                            <!-- Signature Group Properties -->
-                            <template x-if="selectedElement.type === 'signature_group'">
+                                <!-- Grid Width & Height Spinners -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Lebar (%)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="1" min="5" max="100" x-model.number="selectedElement.width_percent" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('width_percent', 1, 5, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('width_percent', -1, 5, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tinggi (% / px)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="1" min="2" max="100" x-model.number="selectedElement.height_percent" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('height_percent', 1, 2, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('height_percent', -1, 2, 100)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Rotation & Z-Index Spinners -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Rotasi (Derajat °)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="1" min="-180" max="180" x-model.number="selectedElement.rotation" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('rotation', 5, -180, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('rotation', -5, -180, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tingkat Layer (Z-Index)</label>
+                                        <div class="flex rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+                                            <input type="number" step="1" min="1" max="99" x-model.number="selectedElement.z_index" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                            <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                <button type="button" @click="stepProp('z_index', 1, 1, 99)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                <button type="button" @click="stepProp('z_index', -1, 1, 99)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Type Specific Property Controls -->
+
+                            <!-- 1. Text Properties -->
+                            <template x-if="selectedElement.type === 'text'">
                                 <div class="space-y-3">
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
-                                        <input type="text" x-model="selectedElement.date_text" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
-                                        <input type="text" x-model="selectedElement.role_text" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
-                                        <input type="text" x-model="selectedElement.name_text" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                </div>
-                            </template>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Konten Teks / Variabel</label>
+                                        <textarea
+                                            x-model="selectedElement.content"
+                                            rows="3"
+                                            @change="pushHistory()"
+                                            class="w-full rounded border border-slate-300 p-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500"
+                                        ></textarea>
 
-                            <!-- Coordinates X and Y -->
-                            <div class="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
-                                <div>
-                                    <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Posisi X: ${selectedElement.x_percent}%`"></label>
-                                    <input type="range" min="0" max="100" step="0.5" x-model.number="selectedElement.x_percent" class="w-full" />
-                                </div>
-                                <div>
-                                    <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Posisi Y: ${selectedElement.y_percent}%`"></label>
-                                    <input type="range" min="0" max="100" step="0.5" x-model.number="selectedElement.y_percent" class="w-full" />
-                                </div>
-                            </div>
+                                        <!-- Quick Variable Tags -->
+                                        <div class="mt-1 flex flex-wrap gap-1">
+                                            <button type="button" @click="insertTagToSelected('@{{pemagang.nama}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100">+ Nama</button>
+                                            <button type="button" @click="insertTagToSelected('@{{dokumen.nomor}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100">+ No. Surat</button>
+                                            <button type="button" @click="insertTagToSelected('@{{magang.divisi}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100">+ Divisi</button>
+                                            <button type="button" @click="insertTagToSelected('@{{magang.tanggal_mulai}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100">+ Mulai</button>
+                                            <button type="button" @click="insertTagToSelected('@{{magang.tanggal_selesai}}')" class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100">+ Selesai</button>
+                                        </div>
+                                    </div>
 
-                            <!-- Typography (for text elements) -->
-                            <template x-if="selectedElement.type === 'text'">
-                                <div class="space-y-3 border-t border-slate-100 pt-3">
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jenis Font</label>
-                                        <select x-model="selectedElement.font_family" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                        <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
                                             <option value="Times New Roman">Times New Roman (Klasik Resmi)</option>
                                             <option value="'Great Vibes', cursive">Great Vibes (Kaligrafi / Script)</option>
                                             <option value="'Playfair Display', serif">Playfair Display (Elegan Modern)</option>
                                             <option value="'Cinzel', serif">Cinzel (Roman Formal)</option>
                                             <option value="'Montserrat', sans-serif">Montserrat (Modern Sans)</option>
+                                            <option value="Arial">Arial (Sans Serif)</option>
                                             <option value="Courier New">Courier New (Monospace)</option>
                                         </select>
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Ukuran: ${selectedElement.font_size_pt}pt`"></label>
-                                            <input type="number" min="8" max="72" x-model.number="selectedElement.font_size_pt" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ukuran Font (pt)</label>
+                                            <div class="flex rounded border border-slate-300 bg-white overflow-hidden">
+                                                <input type="number" min="8" max="96" x-model.number="selectedElement.font_size_pt" @change="pushHistory()" class="w-full border-none p-1 text-xs" />
+                                                <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                    <button type="button" @click="stepProp('font_size_pt', 1, 8, 96)" class="px-1 text-[9px] hover:bg-slate-200">▲</button>
+                                                    <button type="button" @click="stepProp('font_size_pt', -1, 8, 96)" class="px-1 text-[9px] hover:bg-slate-200">▼</button>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div>
                                             <label class="block text-[11px] font-semibold text-slate-600 mb-1">Warna Teks</label>
                                             <div class="flex items-center gap-1.5">
-                                                <input type="color" x-model="selectedElement.color" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
-                                                <input type="text" x-model="selectedElement.color" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                                <input type="color" x-model="selectedElement.color" @change="pushHistory()" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
+                                                <input type="text" x-model="selectedElement.color" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
                                             </div>
                                         </div>
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ketebalan</label>
-                                            <select x-model="selectedElement.font_weight" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Gaya Huruf</label>
+                                            <select x-model="selectedElement.font_weight" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs mb-1">
                                                 <option value="normal">Normal</option>
                                                 <option value="600">Semi Bold (600)</option>
                                                 <option value="bold">Bold (Tebal)</option>
                                             </select>
+                                            <div class="flex gap-2">
+                                                <label class="inline-flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
+                                                    <input type="checkbox" :checked="selectedElement.font_style === 'italic'" @change="selectedElement.font_style = $event.target.checked ? 'italic' : 'normal'; pushHistory()" class="rounded" />
+                                                    <span>Italic</span>
+                                                </label>
+                                                <label class="inline-flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
+                                                    <input type="checkbox" x-model="selectedElement.underline" @change="pushHistory()" class="rounded" />
+                                                    <span>Underline</span>
+                                                </label>
+                                            </div>
                                         </div>
                                         <div>
                                             <label class="block text-[11px] font-semibold text-slate-600 mb-1">Perataan</label>
-                                            <select x-model="selectedElement.align" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                            <select x-model="selectedElement.align" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
                                                 <option value="center">Tengah (Center)</option>
                                                 <option value="left">Rata Kiri (Left)</option>
                                                 <option value="right">Rata Kanan (Right)</option>
                                             </select>
                                         </div>
                                     </div>
+                                </div>
+                            </template>
+
+                            <!-- 2. Image Properties -->
+                            <template x-if="selectedElement.type === 'image'">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sumber Gambar / Aset</label>
+                                        <input type="text" x-model="selectedElement.src" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{asset.company.logo}} atau URL" />
+                                        
+                                        <!-- Quick Asset Presets -->
+                                        <div class="mt-1.5 flex flex-wrap gap-1">
+                                            <button type="button" @click="selectedElement.src = '@{{asset.company.logo}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Logo Perusahaan</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Stempel</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Tanda Tangan</button>
+                                        </div>
+                                    </div>
 
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Lebar Maksimal: ${selectedElement.width_percent}%`"></label>
-                                        <input type="range" min="10" max="100" step="1" x-model.number="selectedElement.width_percent" class="w-full" />
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Opasitas / Transparansi: ${Math.round((selectedElement.opacity ?? 1.0) * 100)}%`"></label>
+                                        <input type="range" min="0.1" max="1" step="0.05" x-model.number="selectedElement.opacity" @change="pushHistory()" class="w-full" />
                                     </div>
                                 </div>
                             </template>
+
+                            <!-- 3. Shape Properties -->
+                            <template x-if="selectedElement.type === 'shape'">
+                                <div class="space-y-3">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Warna Isi (Fill)</label>
+                                            <div class="flex items-center gap-1.5">
+                                                <input type="color" x-model="selectedElement.bg_color" @change="pushHistory()" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
+                                                <input type="text" x-model="selectedElement.bg_color" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Warna Garis Tepi</label>
+                                            <div class="flex items-center gap-1.5">
+                                                <input type="color" x-model="selectedElement.border_color" @change="pushHistory()" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
+                                                <input type="text" x-model="selectedElement.border_color" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ketebalan Garis (px)</label>
+                                            <div class="flex rounded border border-slate-300 bg-white overflow-hidden">
+                                                <input type="number" min="0" max="20" x-model.number="selectedElement.border_width_px" @change="pushHistory()" class="w-full border-none p-1 text-xs" />
+                                                <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                    <button type="button" @click="stepProp('border_width_px', 1, 0, 20)" class="px-1 text-[9px] hover:bg-slate-200">▲</button>
+                                                    <button type="button" @click="stepProp('border_width_px', -1, 0, 20)" class="px-1 text-[9px] hover:bg-slate-200">▼</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sudut Melengkung (px)</label>
+                                            <div class="flex rounded border border-slate-300 bg-white overflow-hidden">
+                                                <input type="number" min="0" max="50" x-model.number="selectedElement.border_radius_px" @change="pushHistory()" class="w-full border-none p-1 text-xs" />
+                                                <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                    <button type="button" @click="stepProp('border_radius_px', 2, 0, 50)" class="px-1 text-[9px] hover:bg-slate-200">▲</button>
+                                                    <button type="button" @click="stepProp('border_radius_px', -2, 0, 50)" class="px-1 text-[9px] hover:bg-slate-200">▼</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Gaya Garis Tepi</label>
+                                        <select x-model="selectedElement.border_style" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                            <option value="solid">Solid (Garis Penuh)</option>
+                                            <option value="dashed">Dashed (Putus-putus)</option>
+                                            <option value="dotted">Dotted (Titik-titik)</option>
+                                            <option value="double">Double (Ganda)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- 4. Line Properties -->
+                            <template x-if="selectedElement.type === 'line'">
+                                <div class="space-y-3">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Warna Garis</label>
+                                            <div class="flex items-center gap-1.5">
+                                                <input type="color" x-model="selectedElement.line_color" @change="pushHistory()" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
+                                                <input type="text" x-model="selectedElement.line_color" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ketebalan (px)</label>
+                                            <div class="flex rounded border border-slate-300 bg-white overflow-hidden">
+                                                <input type="number" min="1" max="20" x-model.number="selectedElement.thickness_px" @change="pushHistory()" class="w-full border-none p-1 text-xs" />
+                                                <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                    <button type="button" @click="stepProp('thickness_px', 1, 1, 20)" class="px-1 text-[9px] hover:bg-slate-200">▲</button>
+                                                    <button type="button" @click="stepProp('thickness_px', -1, 1, 20)" class="px-1 text-[9px] hover:bg-slate-200">▼</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Gaya Garis</label>
+                                        <select x-model="selectedElement.line_style" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                            <option value="solid">Solid (Garis Lurus)</option>
+                                            <option value="dashed">Dashed (Putus-putus)</option>
+                                            <option value="dotted">Dotted (Titik-titik)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- 5. QR Code Properties -->
+                            <template x-if="selectedElement.type === 'qr_code'">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Token Data / URL Verifikasi</label>
+                                        <input type="text" x-model="selectedElement.qr_data" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{dokumen.nomor}}" />
+                                        <p class="text-[10px] text-slate-500 mt-1">Sistem secara otomatis meng-encode nomor sertifikat atau link verifikasi resmi ke matriks QR Code.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ukuran QR (px)</label>
+                                            <div class="flex rounded border border-slate-300 bg-white overflow-hidden">
+                                                <input type="number" min="40" max="250" step="5" x-model.number="selectedElement.size_px" @change="pushHistory()" class="w-full border-none p-1 text-xs" />
+                                                <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                    <button type="button" @click="stepProp('size_px', 5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200">▲</button>
+                                                    <button type="button" @click="stepProp('size_px', -5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200">▼</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Warna Kode</label>
+                                            <div class="flex items-center gap-1.5">
+                                                <input type="color" x-model="selectedElement.fg_color" @change="pushHistory()" class="h-7 w-8 rounded border p-0.5 cursor-pointer" />
+                                                <input type="text" x-model="selectedElement.fg_color" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- 6. Signature Group Properties -->
+                            <template x-if="selectedElement.type === 'signature_group'">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
+                                        <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
+                                        <input type="text" x-model="selectedElement.role_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
+                                        <input type="text" x-model="selectedElement.name_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Tanda Tangan</label>
+                                            <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Stempel</label>
+                                            <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
                         </div>
                     </template>
 
                     <template x-if="!selectedElement">
-                        <div class="p-6 text-center text-slate-400 text-xs">
-                            <p>Klik salah satu elemen teks atau tanda tangan pada kanvas untuk mengedit propertinya.</p>
+                        <div class="p-8 text-center text-slate-400 text-xs">
+                            <svg class="h-8 w-8 mx-auto text-slate-300 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                            <p class="font-medium text-slate-600">Belum Ada Elemen Terpilih</p>
+                            <p class="mt-1 text-slate-400">Klik salah satu objek pada kanvas atau pilih dari tab <strong>Susunan Layer</strong> untuk mengedit koordinat dan gayanya.</p>
                         </div>
                     </template>
                 </div>
 
-                <!-- Tab 2: Layer List -->
-                <div x-show="activeDrawerTab === 'layers'" class="p-4 space-y-2">
-                    <div class="flex items-center justify-between mb-2">
+                <!-- Tab 2: Layer Stack Reorder & Management -->
+                <div x-show="activeDrawerTab === 'layers'" class="p-4 space-y-3">
+                    <div class="flex items-center justify-between mb-1">
                         <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Susunan Layer</span>
-                        <button type="button" @click="addTextElement()" class="text-xs text-blue-600 font-semibold hover:underline">+ Teks Baru</button>
+                        <span class="text-xs text-slate-500 font-mono" x-text="`${layout.elements.length} Elemen`"></span>
                     </div>
 
-                    <div class="space-y-1 max-h-[400px] overflow-y-auto">
+                    <div class="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
                         <template x-for="(elem, idx) in layout.elements" :key="elem.id">
                             <div
-                                class="flex items-center justify-between p-2 rounded border transition cursor-pointer text-xs"
-                                :class="selectedElementId === elem.id ? 'border-blue-500 bg-blue-50/50 font-bold text-blue-900' : 'border-slate-100 hover:bg-slate-50 text-slate-700'"
-                                @click="selectedElementId = elem.id"
+                                class="flex items-center justify-between p-2 rounded-lg border transition cursor-pointer text-xs"
+                                :class="selectedElementId === elem.id ? 'border-blue-500 bg-blue-50/70 font-semibold text-blue-900 shadow-sm' : 'border-slate-200 hover:bg-slate-50 text-slate-700'"
+                                @click="selectElement(elem.id)"
                             >
-                                <div class="truncate max-w-[170px]">
+                                <div class="flex items-center gap-2 truncate max-w-[180px]">
                                     <span class="font-mono text-[10px] text-slate-400" x-text="`#${idx+1}`"></span>
-                                    <span x-text="elem.id"></span>
+                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600" x-text="elem.type"></span>
+                                    <span class="truncate" x-text="elem.id"></span>
                                 </div>
                                 <div class="flex items-center gap-1">
                                     <button
                                         type="button"
                                         @click.stop="moveLayer(idx, -1)"
                                         title="Naikkan Layer"
-                                        class="p-1 hover:text-blue-600"
+                                        class="p-1 rounded hover:bg-slate-200 text-slate-600"
                                         :disabled="idx === 0"
                                     >&uarr;</button>
                                     <button
                                         type="button"
                                         @click.stop="moveLayer(idx, 1)"
                                         title="Turunkan Layer"
-                                        class="p-1 hover:text-blue-600"
+                                        class="p-1 rounded hover:bg-slate-200 text-slate-600"
                                         :disabled="idx === layout.elements.length - 1"
                                     >&darr;</button>
                                     <button
                                         type="button"
                                         @click.stop="deleteElement(elem.id)"
                                         title="Hapus Layer"
-                                        class="p-1 text-rose-500 hover:text-rose-700"
+                                        class="p-1 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700"
                                     >&times;</button>
                                 </div>
                             </div>
@@ -395,31 +874,31 @@
                     </div>
                 </div>
 
-                <!-- Tab 3: Canvas Setup -->
+                <!-- Tab 3: Paper Setup & Canvas Background -->
                 <div x-show="activeDrawerTab === 'canvas'" class="p-4 space-y-4">
-                    <div class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Orientasi & Latar Belakang</div>
+                    <div class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Orientasi Kertas & Latar Belakang</div>
 
                     <div>
-                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Orientasi Kertas</label>
-                        <select x-model="layout.canvas.orientation" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                            <option value="landscape">Landscape (297 x 210 mm)</option>
-                            <option value="portrait">Portrait (210 x 297 mm)</option>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Orientasi Kertas Cetak</label>
+                        <select x-model="layout.canvas.orientation" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                            <option value="landscape">A4 Landscape (297 x 210 mm) — Standar Sertifikat</option>
+                            <option value="portrait">A4 Portrait (210 x 297 mm)</option>
                         </select>
                     </div>
 
                     <div>
-                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Background Sertifikat</label>
-                        <div class="space-y-2">
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Gambar Background</label>
+                        <div class="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                             @foreach ($assetCatalog['backgrounds'] ?? [] as $bg)
-                                <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50">
-                                    <input type="radio" name="bg_select" :checked="layout.canvas.background_image === '{{ $bg['url'] }}'" @change="layout.canvas.background_image = '{{ $bg['url'] }}'" />
+                                <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
+                                    <input type="radio" name="bg_select" :checked="layout.canvas.background_image === '{{ $bg['url'] }}'" @change="layout.canvas.background_image = '{{ $bg['url'] }}'; pushHistory()" />
                                     <img src="{{ $bg['thumb'] }}" class="h-8 w-12 object-cover rounded border" />
                                     <span class="text-xs text-slate-700 truncate">{{ $bg['name'] }}</span>
                                 </label>
                             @endforeach
-                            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50">
-                                <input type="radio" name="bg_select" :checked="!layout.canvas.background_image" @change="layout.canvas.background_image = ''" />
-                                <span class="text-xs text-slate-500">Tanpa Gambar Background (Polos)</span>
+                            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
+                                <input type="radio" name="bg_select" :checked="!layout.canvas.background_image" @change="layout.canvas.background_image = ''; pushHistory()" />
+                                <span class="text-xs text-slate-500">Tanpa Gambar Background (Latar Polos)</span>
                             </label>
                         </div>
                     </div>
@@ -431,7 +910,7 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-semibold text-slate-600 mb-1">Catatan Revisi</label>
-                            <input type="text" x-model="changeSummary" placeholder="Contoh: Mengubah posisi tanda tangan pimpinan..." class="w-full rounded border border-slate-300 p-1.5 text-xs" />
+                            <input type="text" x-model="changeSummary" placeholder="Contoh: Mengatur ulang posisi tanda tangan dan QR code..." class="w-full rounded border border-slate-300 p-1.5 text-xs" />
                         </div>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" x-model="isActive" class="rounded text-blue-600" />
@@ -464,14 +943,77 @@ function certificateCanvasApp() {
         showMockData: true,
         selectedElementId: 'elem_intern_name',
         isSaving: false,
+        zoomLevel: 1.0,
         saveAlert: { message: '', type: 'success' },
-        draggingElement: null,
 
         layout: @json(array_merge(\App\Models\DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? [])),
         mockData: @json($mockData),
 
+        // Undo / Redo history state stack
+        historyStack: [],
+        historyIndex: -1,
+
+        init() {
+            // Ensure every element has normalized default fields
+            this.layout.elements.forEach(elem => {
+                if (elem.rotation === undefined) elem.rotation = 0;
+                if (elem.aspect_locked === undefined) elem.aspect_locked = (elem.type === 'image' || elem.type === 'qr_code');
+                if (elem.opacity === undefined) elem.opacity = 1.0;
+            });
+            this.pushHistory();
+        },
+
         get selectedElement() {
             return this.layout.elements.find(e => e.id === this.selectedElementId);
+        },
+
+        get canUndo() {
+            return this.historyIndex > 0;
+        },
+
+        get canRedo() {
+            return this.historyIndex < this.historyStack.length - 1;
+        },
+
+        pushHistory() {
+            const snap = JSON.stringify(this.layout);
+            // Drop forward history if we mutated after undo
+            if (this.historyIndex < this.historyStack.length - 1) {
+                this.historyStack = this.historyStack.slice(0, this.historyIndex + 1);
+            }
+            this.historyStack.push(snap);
+            if (this.historyStack.length > 30) {
+                this.historyStack.shift();
+            } else {
+                this.historyIndex++;
+            }
+        },
+
+        undo() {
+            if (!this.canUndo) return;
+            this.historyIndex--;
+            this.layout = JSON.parse(this.historyStack[this.historyIndex]);
+        },
+
+        redo() {
+            if (!this.canRedo) return;
+            this.historyIndex++;
+            this.layout = JSON.parse(this.historyStack[this.historyIndex]);
+        },
+
+        selectElement(id) {
+            this.selectedElementId = id;
+            this.activeDrawerTab = 'element';
+        },
+
+        stepProp(prop, delta, minVal, maxVal) {
+            if (!this.selectedElement) return;
+            let current = parseFloat(this.selectedElement[prop] ?? 0);
+            let next = Math.round((current + delta) * 10) / 10;
+            if (minVal !== undefined && next < minVal) next = minVal;
+            if (maxVal !== undefined && next > maxVal) next = maxVal;
+            this.selectedElement[prop] = next;
+            this.pushHistory();
         },
 
         canvasStyle() {
@@ -481,28 +1023,63 @@ function certificateCanvasApp() {
             return `width: ${width}px; height: ${height}px; background-color: ${this.layout.canvas.background_color || '#ffffff'};`;
         },
 
-        elementStyle(elem) {
+        elementOuterStyle(elem) {
             const x = elem.x_percent ?? 50;
             const y = elem.y_percent ?? 50;
             const width = elem.width_percent ?? 50;
+            const height = elem.height_percent ? `${elem.height_percent}%` : 'auto';
             const align = elem.align ?? 'center';
+            const rot = elem.rotation ?? 0;
 
-            let transform = 'translate(-50%, -50%)';
-            if (align === 'left') transform = 'translate(0, -50%)';
-            if (align === 'right') transform = 'translate(-100%, -50%)';
+            let alignTranslate = 'translate(-50%, -50%)';
+            if (align === 'left') alignTranslate = 'translate(0, -50%)';
+            if (align === 'right') alignTranslate = 'translate(-100%, -50%)';
+
+            const transform = `${alignTranslate} rotate(${rot}deg)`;
 
             return `
                 left: ${x}%;
                 top: ${y}%;
                 width: ${width}%;
+                height: ${height};
                 transform: ${transform};
+                z-index: ${elem.z_index || 10};
+                box-sizing: border-box;
+            `;
+        },
+
+        elementTextStyle(elem) {
+            const align = elem.align ?? 'center';
+            const underline = elem.underline ? 'text-decoration: underline;' : '';
+            return `
                 text-align: ${align};
                 font-family: ${elem.font_family || 'Times New Roman'}, serif;
                 font-size: ${elem.font_size_pt || 14}pt;
                 font-weight: ${elem.font_weight || 'normal'};
                 font-style: ${elem.font_style || 'normal'};
                 color: ${elem.color || '#000000'};
-                z-index: ${elem.z_index || 10};
+                line-height: ${elem.line_height || 1.3};
+                letter-spacing: ${elem.letter_spacing_px ? elem.letter_spacing_px + 'px' : 'normal'};
+                opacity: ${elem.opacity ?? 1.0};
+                ${underline}
+                word-wrap: break-word;
+            `;
+        },
+
+        elementShapeStyle(elem) {
+            return `
+                background-color: ${elem.bg_color || '#f1f5f9'};
+                border: ${elem.border_width_px || 1}px ${elem.border_style || 'solid'} ${elem.border_color || '#cbd5e1'};
+                border-radius: ${elem.border_radius_px || 4}px;
+                opacity: ${elem.opacity ?? 1.0};
+            `;
+        },
+
+        elementLineStyle(elem) {
+            return `
+                border-top: ${elem.thickness_px || 2}px ${elem.line_style || 'solid'} ${elem.line_color || '#94a3b8'};
+                opacity: ${elem.opacity ?? 1.0};
+                margin-top: 5px;
             `;
         },
 
@@ -529,44 +1106,181 @@ function certificateCanvasApp() {
 
         resolveImage(tagOrUrl) {
             if (!tagOrUrl) return '';
-            if (tagOrUrl === '@{{asset.signature}}') return this.mockData.asset.signature;
-            if (tagOrUrl === '@{{asset.stamp}}') return this.mockData.asset.stamp;
-            if (tagOrUrl === '@{{asset.company.logo}}') return this.mockData.asset.company.logo;
+            if (tagOrUrl.includes('asset.signature')) return this.mockData.asset.signature;
+            if (tagOrUrl.includes('asset.stamp')) return this.mockData.asset.stamp;
+            if (tagOrUrl.includes('asset.company.logo')) return this.mockData.asset.company.logo;
             return tagOrUrl;
         },
 
         insertTagToSelected(tag) {
             if (this.selectedElement && this.selectedElement.type === 'text') {
                 this.selectedElement.content += ' ' + tag;
+                this.pushHistory();
             }
         },
 
+        // --- Element Creation Helpers ---
         addTextElement() {
-            const newId = 'elem_custom_' + Date.now().toString().slice(-4);
+            const newId = 'elem_text_' + Date.now().toString().slice(-4);
             const newElem = {
                 id: newId,
                 type: 'text',
                 content: 'Teks Baru @{{pemagang.nama}}',
                 x_percent: 50.0,
                 y_percent: 50.0,
-                width_percent: 50.0,
+                width_percent: 45.0,
+                height_percent: null,
                 font_family: 'Times New Roman',
-                font_size_pt: 14,
+                font_size_pt: 16,
                 font_weight: 'normal',
                 font_style: 'normal',
                 color: '#1e293b',
                 align: 'center',
+                rotation: 0,
                 z_index: 10 + this.layout.elements.length,
+                opacity: 1.0,
             };
             this.layout.elements.push(newElem);
-            this.selectedElementId = newId;
-            this.activeDrawerTab = 'element';
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        addImageElement() {
+            const newId = 'elem_img_' + Date.now().toString().slice(-4);
+            const newElem = {
+                id: newId,
+                type: 'image',
+                src: '@{{asset.company.logo}}',
+                x_percent: 50.0,
+                y_percent: 20.0,
+                width_percent: 20.0,
+                height_percent: 12.0,
+                align: 'center',
+                rotation: 0,
+                aspect_locked: true,
+                z_index: 10 + this.layout.elements.length,
+                opacity: 1.0,
+            };
+            this.layout.elements.push(newElem);
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        addShapeElement() {
+            const newId = 'elem_box_' + Date.now().toString().slice(-4);
+            const newElem = {
+                id: newId,
+                type: 'shape',
+                x_percent: 50.0,
+                y_percent: 50.0,
+                width_percent: 30.0,
+                height_percent: 15.0,
+                bg_color: '#f8fafc',
+                border_color: '#cbd5e1',
+                border_width_px: 2,
+                border_radius_px: 6,
+                border_style: 'solid',
+                align: 'center',
+                rotation: 0,
+                z_index: 5,
+                opacity: 0.9,
+            };
+            this.layout.elements.push(newElem);
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        addLineElement() {
+            const newId = 'elem_line_' + Date.now().toString().slice(-4);
+            const newElem = {
+                id: newId,
+                type: 'line',
+                x_percent: 50.0,
+                y_percent: 45.0,
+                width_percent: 60.0,
+                height_percent: null,
+                line_color: '#94a3b8',
+                thickness_px: 2,
+                line_style: 'solid',
+                align: 'center',
+                rotation: 0,
+                z_index: 8,
+                opacity: 1.0,
+            };
+            this.layout.elements.push(newElem);
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        addQrElement() {
+            const newId = 'elem_qr_' + Date.now().toString().slice(-4);
+            const newElem = {
+                id: newId,
+                type: 'qr_code',
+                qr_data: '@{{dokumen.nomor}}',
+                x_percent: 85.0,
+                y_percent: 80.0,
+                width_percent: 14.0,
+                height_percent: 16.0,
+                size_px: 90,
+                fg_color: '#000000',
+                bg_color: '#ffffff',
+                align: 'center',
+                rotation: 0,
+                aspect_locked: true,
+                z_index: 15,
+                opacity: 1.0,
+            };
+            this.layout.elements.push(newElem);
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        addSignatureGroup() {
+            const newId = 'elem_sig_' + Date.now().toString().slice(-4);
+            const newElem = {
+                id: newId,
+                type: 'signature_group',
+                date_text: '@{{dokumen.tempat}}, @{{dokumen.tanggal}}',
+                role_text: '@{{perusahaan.jabatan}} @{{perusahaan.nama}}',
+                name_text: '@{{perusahaan.pimpinan}}',
+                sig_image: '@{{asset.signature}}',
+                stamp_image: '@{{asset.stamp}}',
+                x_percent: 50.0,
+                y_percent: 78.0,
+                width_percent: 40.0,
+                height_percent: null,
+                align: 'center',
+                rotation: 0,
+                z_index: 20,
+                opacity: 1.0,
+            };
+            this.layout.elements.push(newElem);
+            this.selectElement(newId);
+            this.pushHistory();
+        },
+
+        duplicateSelected() {
+            if (!this.selectedElement) return;
+            const clone = JSON.parse(JSON.stringify(this.selectedElement));
+            clone.id = 'elem_copy_' + Date.now().toString().slice(-4);
+            clone.x_percent = Math.min(95, (clone.x_percent || 50) + 2);
+            clone.y_percent = Math.min(95, (clone.y_percent || 50) + 2);
+            clone.z_index = (clone.z_index || 10) + 1;
+            this.layout.elements.push(clone);
+            this.selectElement(clone.id);
+            this.pushHistory();
         },
 
         deleteElement(id) {
-            if (confirm('Apakah Anda yakin ingin menghapus layer ini?')) {
-                this.layout.elements = this.layout.elements.filter(e => e.id !== id);
-                this.selectedElementId = this.layout.elements[0]?.id || null;
+            this.layout.elements = this.layout.elements.filter(e => e.id !== id);
+            this.selectedElementId = this.layout.elements[0]?.id || null;
+            this.pushHistory();
+        },
+
+        deleteSelected() {
+            if (this.selectedElementId) {
+                this.deleteElement(this.selectedElementId);
             }
         },
 
@@ -575,35 +1289,198 @@ function certificateCanvasApp() {
             if (newIndex < 0 || newIndex >= this.layout.elements.length) return;
             const item = this.layout.elements.splice(index, 1)[0];
             this.layout.elements.splice(newIndex, 0, item);
+            this.pushHistory();
         },
 
+        bringToFront() {
+            if (!this.selectedElement) return;
+            const maxZ = Math.max(...this.layout.elements.map(e => e.z_index || 10), 10);
+            this.selectedElement.z_index = maxZ + 1;
+            this.pushHistory();
+        },
+
+        sendToBack() {
+            if (!this.selectedElement) return;
+            const minZ = Math.min(...this.layout.elements.map(e => e.z_index || 10), 10);
+            this.selectedElement.z_index = Math.max(1, minZ - 1);
+            this.pushHistory();
+        },
+
+        handleKeyboard(e) {
+            // Ignore if active input or textarea
+            const targetTag = (e.target.tagName || '').toLowerCase();
+            if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') return;
+
+            // Undo: Ctrl+Z
+            if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+                return;
+            }
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) {
+                e.preventDefault();
+                this.redo();
+                return;
+            }
+            // Duplicate: Ctrl+D
+            if (e.ctrlKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                this.duplicateSelected();
+                return;
+            }
+            // Delete: Delete or Backspace
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                this.deleteSelected();
+                return;
+            }
+        },
+
+        // --- Pointer Drag & Interaction ---
         startDrag(event, elem) {
-            this.selectedElementId = elem.id;
+            this.selectElement(elem.id);
             const viewport = document.getElementById('certificate-viewport');
             const rect = viewport.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const initX = elem.x_percent ?? 50;
+            const initY = elem.y_percent ?? 50;
+            const zoom = this.zoomLevel || 1.0;
 
             const onMouseMove = (e) => {
-                const clientX = e.clientX;
-                const clientY = e.clientY;
-                let xPercent = ((clientX - rect.left) / rect.width) * 100;
-                let yPercent = ((clientY - rect.top) / rect.height) * 100;
+                const dxPx = (e.clientX - startX) / zoom;
+                const dyPx = (e.clientY - startY) / zoom;
+                const dxPercent = (dxPx / (rect.width / zoom)) * 100;
+                const dyPercent = (dyPx / (rect.height / zoom)) * 100;
 
-                xPercent = Math.max(0, Math.min(100, Math.round(xPercent * 10) / 10));
-                yPercent = Math.max(0, Math.min(100, Math.round(yPercent * 10) / 10));
+                let nextX = initX + dxPercent;
+                let nextY = initY + dyPercent;
 
-                elem.x_percent = xPercent;
-                elem.y_percent = yPercent;
+                nextX = Math.max(0, Math.min(100, Math.round(nextX * 10) / 10));
+                nextY = Math.max(0, Math.min(100, Math.round(nextY * 10) / 10));
+
+                elem.x_percent = nextX;
+                elem.y_percent = nextY;
             };
 
             const onMouseUp = () => {
                 window.removeEventListener('mousemove', onMouseMove);
                 window.removeEventListener('mouseup', onMouseUp);
+                this.pushHistory();
             };
 
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
         },
 
+        // --- 8 Sizing Handles Interaction ---
+        startResize(event, handle) {
+            event.stopPropagation();
+            const elem = this.selectedElement;
+            if (!elem) return;
+            const viewport = document.getElementById('certificate-viewport');
+            const rect = viewport.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const zoom = this.zoomLevel || 1.0;
+
+            const initW = elem.width_percent ?? 40;
+            const initH = elem.height_percent ?? 20;
+            const initX = elem.x_percent ?? 50;
+            const initY = elem.y_percent ?? 50;
+            const initFontSize = elem.font_size_pt ?? 16;
+            const isAspectLocked = elem.aspect_locked || event.shiftKey;
+            const aspectRatio = initW / Math.max(1, initH);
+
+            const onMouseMove = (e) => {
+                const dxPx = (e.clientX - startX) / zoom;
+                const dyPx = (e.clientY - startY) / zoom;
+                const dxPercent = (dxPx / (rect.width / zoom)) * 100;
+                const dyPercent = (dyPx / (rect.height / zoom)) * 100;
+
+                let nextW = initW;
+                let nextH = initH;
+                let nextX = initX;
+                let nextY = initY;
+
+                if (handle.includes('e')) {
+                    nextW = Math.max(5, initW + dxPercent);
+                } else if (handle.includes('w')) {
+                    nextW = Math.max(5, initW - dxPercent);
+                    nextX = initX + (dxPercent / 2);
+                }
+
+                if (handle.includes('s')) {
+                    nextH = Math.max(2, initH + dyPercent);
+                } else if (handle.includes('n')) {
+                    nextH = Math.max(2, initH - dyPercent);
+                    nextY = initY + (dyPercent / 2);
+                }
+
+                if (isAspectLocked && (handle === 'nw' || handle === 'ne' || handle === 'se' || handle === 'sw')) {
+                    nextH = nextW / aspectRatio;
+                }
+
+                elem.width_percent = Math.round(nextW * 10) / 10;
+                if (elem.type !== 'text') {
+                    elem.height_percent = Math.round(nextH * 10) / 10;
+                } else {
+                    // Scale font size proportionally on diagonal drag for text
+                    const fontRatio = nextW / initW;
+                    elem.font_size_pt = Math.max(8, Math.min(96, Math.round(initFontSize * fontRatio)));
+                }
+
+                elem.x_percent = Math.max(0, Math.min(100, Math.round(nextX * 10) / 10));
+                elem.y_percent = Math.max(0, Math.min(100, Math.round(nextY * 10) / 10));
+            };
+
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+                this.pushHistory();
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        },
+
+        // --- Rotation Handle Interaction ---
+        startRotate(event) {
+            event.stopPropagation();
+            const elem = this.selectedElement;
+            if (!elem) return;
+            const elemNode = document.getElementById('canvas-element-' + elem.id);
+            if (!elemNode) return;
+            const nodeRect = elemNode.getBoundingClientRect();
+            const centerX = nodeRect.left + (nodeRect.width / 2);
+            const centerY = nodeRect.top + (nodeRect.height / 2);
+
+            const onMouseMove = (e) => {
+                const rad = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+                let deg = Math.round((rad * (180 / Math.PI)) + 90);
+                if (deg > 180) deg -= 360;
+                if (deg < -180) deg += 360;
+
+                // Snap to 0, 90, 180, -90 if close
+                if (Math.abs(deg) <= 3) deg = 0;
+                if (Math.abs(deg - 90) <= 3) deg = 90;
+                if (Math.abs(deg + 90) <= 3) deg = -90;
+
+                elem.rotation = deg;
+            };
+
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+                this.pushHistory();
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        },
+
+        // --- Persistence / Save ---
         async saveTemplate() {
             this.isSaving = true;
             this.saveAlert.message = '';
@@ -619,7 +1496,7 @@ function certificateCanvasApp() {
                     paper_size: 'A4',
                     background_image: this.layout.canvas.background_image,
                 },
-                change_summary: this.changeSummary || 'Pembaruan tata letak kanvas sertifikat',
+                change_summary: this.changeSummary || 'Pembaruan tata letak visual canvas sertifikat',
                 is_active: this.isActive ? 1 : 0,
                 is_default: this.isDefault ? 1 : 0,
             };

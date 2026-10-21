@@ -73,7 +73,7 @@ class MouTemplateManagementTest extends TestCase
         $response->assertSee('mouHeaderCanvas', false);
         $response->assertSee('mouFooterCanvas', false);
         $response->assertSee('initMouWordProcessor', false);
-        $response->assertSee('btnTableContextMenuToggle', false);
+        $response->assertSee('data-ribbon-tab="table"', false);
         $response->assertSee('Header & Footer', false);
         $response->assertSee('NOTA KESEPAHAMAN');
         $response->assertSee('PELAKSANAAN TRI DHARMA PERGURUAN TINGGI');

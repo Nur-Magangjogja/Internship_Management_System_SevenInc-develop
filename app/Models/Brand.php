@@ -25,6 +25,23 @@ class Brand extends Model
         'signature',
     ];
 
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (!$this->logo) {
+            return null;
+        }
+
+        if (str_starts_with($this->logo, 'http://') || str_starts_with($this->logo, 'https://') || str_starts_with($this->logo, '/')) {
+            return $this->logo;
+        }
+
+        if (str_starts_with($this->logo, 'images/')) {
+            return '/' . $this->logo;
+        }
+
+        return \Illuminate\Support\Facades\Storage::url($this->logo);
+    }
+
     public function getMembercardBgUrlAttribute(): ?string
     {
         if ($this->membercard_bg) {

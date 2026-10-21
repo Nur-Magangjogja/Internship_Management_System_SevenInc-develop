@@ -53,39 +53,63 @@
         </div>
     @endif
 
-    <!-- Stat Cards Overview -->
-    <div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+    <!-- Stat Cards Overview (6 Jenis Dokumen Kanonikal + Tab Semua) -->
+    <div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
         <a href="{{ route('admin.document-templates.index') }}" class="group block rounded-xl border {{ $currentType === 'all' ? 'border-blue-500 ring-2 ring-blue-100 bg-blue-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-blue-300">
             <div class="text-xs font-semibold text-slate-500">Semua Template</div>
             <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-blue-600">{{ $counts['total'] }}</div>
             <div class="mt-1 text-xs text-slate-400">{{ $counts['active'] }} template aktif</div>
         </a>
+        <a href="{{ route('admin.document-templates.index', ['type' => 'mou']) }}" class="group block rounded-xl border {{ $currentType === 'mou' ? 'border-cyan-500 ring-2 ring-cyan-100 bg-cyan-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-cyan-300">
+            <div class="text-xs font-semibold text-cyan-700">MOU</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-cyan-600">{{ $counts['by_type']['mou'] ?? ($counts['mou'] ?? 0) }}</div>
+            <div class="mt-1 text-xs text-slate-400">Nota Kesepahaman</div>
+        </a>
         <a href="{{ route('admin.document-templates.index', ['type' => 'loa']) }}" class="group block rounded-xl border {{ $currentType === 'loa' ? 'border-blue-500 ring-2 ring-blue-100 bg-blue-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-blue-300">
             <div class="text-xs font-semibold text-blue-700">LOA</div>
-            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-blue-600">{{ $counts['loa'] }}</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-blue-600">{{ $counts['by_type']['loa'] ?? ($counts['loa'] ?? 0) }}</div>
             <div class="mt-1 text-xs text-slate-400">Surat Penerimaan</div>
         </a>
         <a href="{{ route('admin.document-templates.index', ['type' => 'skl']) }}" class="group block rounded-xl border {{ $currentType === 'skl' ? 'border-emerald-500 ring-2 ring-emerald-100 bg-emerald-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-emerald-300">
             <div class="text-xs font-semibold text-emerald-700">SKL</div>
-            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-emerald-600">{{ $counts['skl'] }}</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-emerald-600">{{ $counts['by_type']['skl'] ?? ($counts['skl'] ?? 0) }}</div>
             <div class="mt-1 text-xs text-slate-400">Ket. Lulus/Selesai</div>
         </a>
         <a href="{{ route('admin.document-templates.index', ['type' => 'certificate']) }}" class="group block rounded-xl border {{ $currentType === 'certificate' ? 'border-amber-500 ring-2 ring-amber-100 bg-amber-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-amber-300">
             <div class="text-xs font-semibold text-amber-700">Sertifikat</div>
-            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-amber-600">{{ $counts['certificate'] }}</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-amber-600">{{ $counts['by_type']['certificate'] ?? ($counts['certificate'] ?? 0) }}</div>
             <div class="mt-1 text-xs text-slate-400">Visual Canvas</div>
         </a>
         <a href="{{ route('admin.document-templates.index', ['type' => 'assessment']) }}" class="group block rounded-xl border {{ $currentType === 'assessment' ? 'border-purple-500 ring-2 ring-purple-100 bg-purple-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-purple-300">
             <div class="text-xs font-semibold text-purple-700">Penilaian</div>
-            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-purple-600">{{ $counts['assessment'] }}</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-purple-600">{{ $counts['by_type']['assessment'] ?? ($counts['assessment'] ?? 0) }}</div>
             <div class="mt-1 text-xs text-slate-400">Transkrip Evaluasi</div>
         </a>
         <a href="{{ route('admin.document-templates.index', ['type' => 'recommendation']) }}" class="group block rounded-xl border {{ $currentType === 'recommendation' ? 'border-indigo-500 ring-2 ring-indigo-100 bg-indigo-50/30' : 'border-slate-200 bg-white' }} p-4 shadow-sm transition hover:border-indigo-300">
             <div class="text-xs font-semibold text-indigo-700">Rekomendasi</div>
-            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-indigo-600">{{ $counts['recommendation'] }}</div>
+            <div class="mt-2 text-2xl font-bold text-slate-800 group-hover:text-indigo-600">{{ $counts['by_type']['recommendation'] ?? ($counts['recommendation'] ?? 0) }}</div>
             <div class="mt-1 text-xs text-slate-400">Surat Referensi</div>
         </a>
     </div>
+
+    <!-- Peringatan Ketiadaan Template Aktif (Fail-Closed Visibility Guard) -->
+    @if (!empty($zeroActiveTypes) && ($currentType === 'all' || in_array($currentType, $zeroActiveTypes, true)))
+        <div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+            <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-amber-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div>
+                    <p class="font-bold">Peringatan: Belum ada template aktif untuk jenis dokumen {{ implode(', ', array_map(fn($t) => strtoupper($t), $zeroActiveTypes)) }}</p>
+                    <p class="mt-0.5 text-xs text-amber-800">
+                        Penerbitan resmi dokumen untuk jenis tersebut <strong>tidak tersedia dan ditolak oleh sistem</strong> sampai minimal satu template berstatus aktif ditetapkan sebagai default.
+                    </p>
+                </div>
+            </div>
+        </div>
+    @endif
 
     <!-- Filter & Search Toolbar -->
     <div class="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -192,7 +216,7 @@
 
                         <!-- Title & Description -->
                         <h3 class="text-base font-bold text-slate-800">
-                            <a href="{{ route('admin.document-templates.edit', $item) }}" class="hover:text-blue-600 transition">
+                            <a href="{{ $item->edit_url ?? route('admin.document-templates.edit', $item) }}" class="hover:text-blue-600 transition">
                                 {{ $item->name }}
                             </a>
                         </h3>
@@ -209,14 +233,14 @@
                                     <line x1="8" y1="2" x2="8" y2="6"/>
                                     <line x1="3" y1="10" x2="21" y2="10"/>
                                 </svg>
-                                Diperbarui {{ $item->updated_at->diffForHumans() }}
+                                Diperbarui {{ is_object($item->updated_at) ? $item->updated_at->diffForHumans() : ($item->updated_at_human ?? 'Baru saja') }}
                             </span>
                             <span class="inline-flex items-center gap-1">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                                     <circle cx="12" cy="7" r="4"/>
                                 </svg>
-                                {{ $item->updater?->name ?? 'Admin' }}
+                                {{ $item->updater_name ?? ($item->updater?->name ?? 'Admin') }}
                             </span>
                             <span>
                                 Editor: <strong class="text-slate-600">{{ $item->editor_type === 'visual_canvas' ? 'Visual Canvas' : 'Word A4' }}</strong>
@@ -229,7 +253,7 @@
                         <div class="flex items-center justify-between gap-2">
                             <!-- Main action: Edit -->
                             <a
-                                href="{{ route('admin.document-templates.edit', $item) }}"
+                                href="{{ $item->edit_url ?? route('admin.document-templates.edit', $item) }}"
                                 class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                             >
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -241,7 +265,7 @@
 
                             <!-- Preview Dropdown / Trigger -->
                             <a
-                                href="{{ route('admin.document-templates.preview', $item) }}"
+                                href="{{ $item->preview_url ?? route('admin.document-templates.preview', $item) }}"
                                 target="_blank"
                                 title="Lihat Preview Dokumen"
                                 class="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-blue-600"
@@ -254,7 +278,7 @@
 
                             <!-- Real DomPDF preview -->
                             <a
-                                href="{{ route('admin.document-templates.preview-pdf', $item) }}"
+                                href="{{ $item->preview_pdf_url ?? route('admin.document-templates.preview-pdf', $item) }}"
                                 target="_blank"
                                 title="Download / Preview PDF Asli"
                                 class="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-rose-600"
@@ -270,7 +294,7 @@
 
                             <!-- Versions History -->
                             <a
-                                href="{{ route('admin.document-templates.versions', $item) }}"
+                                href="{{ $item->versions_url ?? route('admin.document-templates.versions', $item) }}"
                                 title="Riwayat Versi & Audit Log"
                                 class="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-purple-600"
                             >
@@ -298,10 +322,10 @@
                                     x-show="open"
                                     @click.away="open = false"
                                     x-cloak
-                                    class="absolute right-0 bottom-full mb-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                                    class="absolute right-0 bottom-full mb-1 z-20 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
                                 >
                                     <!-- Duplikasi -->
-                                    <form method="POST" action="{{ route('admin.document-templates.duplicate', $item) }}">
+                                    <form method="POST" action="{{ $item->duplicate_url ?? route('admin.document-templates.duplicate', $item) }}">
                                         @csrf
                                         <button
                                             type="submit"
@@ -317,7 +341,7 @@
 
                                     <!-- Tetapkan Default -->
                                     @if (!$item->is_default)
-                                        <form method="POST" action="{{ route('admin.document-templates.set-default', $item) }}">
+                                        <form method="POST" action="{{ $item->set_default_url ?? route('admin.document-templates.set-default', $item) }}">
                                             @csrf
                                             <button
                                                 type="submit"
@@ -333,7 +357,7 @@
 
                                     <!-- Toggle Active -->
                                     @if (!$item->is_default)
-                                        <form method="POST" action="{{ route('admin.document-templates.toggle-active', $item) }}">
+                                        <form method="POST" action="{{ $item->toggle_active_url ?? route('admin.document-templates.toggle-active', $item) }}">
                                             @csrf
                                             <button
                                                 type="submit"
@@ -353,7 +377,7 @@
                                         <div class="my-1 border-t border-slate-100"></div>
                                         <form
                                             method="POST"
-                                            action="{{ route('admin.document-templates.destroy', $item) }}"
+                                            action="{{ $item->delete_url ?? route('admin.document-templates.destroy', $item) }}"
                                             onsubmit="return confirm('Apakah Anda yakin ingin menghapus template ini?')"
                                         >
                                             @csrf
@@ -366,7 +390,7 @@
                                                     <polyline points="3 6 5 6 21 6"/>
                                                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                                                 </svg>
-                                                Hapus Template
+                                                Hapus
                                             </button>
                                         </form>
                                     @endif

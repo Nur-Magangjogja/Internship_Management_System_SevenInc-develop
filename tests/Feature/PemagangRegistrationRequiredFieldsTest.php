@@ -10,6 +10,12 @@ use Illuminate\Support\Facades\Hash;
 
 class PemagangRegistrationRequiredFieldsTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
+    }
+
     public function test_can_submit_registration_with_only_2026_required_contract_fields(): void
     {
         $division = Division::firstOrCreate(['name' => 'Programmer (Front End / Backend)']);

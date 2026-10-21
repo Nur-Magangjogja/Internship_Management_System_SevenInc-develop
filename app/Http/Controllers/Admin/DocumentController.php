@@ -46,19 +46,27 @@ class DocumentController extends Controller
                 } else {
                     $loa->file_path = 'loa_generated';
                 }
-                $loa->status = 'success';
+                $loa->is_issued = true;
+                $loa->status = 'issued';
                 $loa->downloaded_at = $loaRecord->created_at ?? $reg->updated_at;
             } else {
-                // Untuk status accepted / active / completed, dokumen LOA siap dibuat on the fly
-                $loa->file_path = 'loa_generated';
-                $loa->status = 'success';
-                $loa->downloaded_at = $reg->updated_at;
+                // Berstatus eligible (memenuhi syarat) namun belum diterbitkan
+                $loa->is_issued = false;
+                $loa->file_path = null;
+                $loa->status = 'eligible';
+                $loa->downloaded_at = null;
             }
 
             return $loa;
         });
 
-        return view('admin.documents.loas', compact('loas'));
+        $activeLoaTemplate = \App\Models\DocumentTemplate::where('type', 'loa')
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderByDesc('version_number')
+            ->first();
+
+        return view('admin.documents.loas', compact('loas', 'activeLoaTemplate'));
     }
 
     /**
@@ -84,19 +92,26 @@ class DocumentController extends Controller
             $skl->file_url = null;
 
             if ($sklRecord) {
-                // Return a route to download the SKL on the fly if needed
+                $skl->is_issued = true;
                 $skl->file_path = 'skl_generated'; // Mark as generated
-                $skl->status = 'success';
+                $skl->status = 'issued';
                 $skl->downloaded_at = $sklRecord->created_at ?? $reg->updated_at;
             } else {
+                $skl->is_issued = false;
                 $skl->file_path = null;
-                $skl->status = null;
+                $skl->status = 'eligible';
                 $skl->downloaded_at = null;
             }
 
             return $skl;
         });
 
-        return view('admin.documents.skls', compact('skls'));
+        $activeSklTemplate = \App\Models\DocumentTemplate::where('type', 'skl')
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderByDesc('version_number')
+            ->first();
+
+        return view('admin.documents.skls', compact('skls', 'activeSklTemplate'));
     }
 }

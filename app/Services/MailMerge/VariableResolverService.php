@@ -18,9 +18,9 @@ class VariableResolverService
     ) {}
 
     /**
-     * Selesaikan seluruh variabel teks dan aset dari konteks dokumen.
+     * Selesaikan seluruh variabel teks dan aset dari konteks dokumen dengan keamanan owner isolation (INV-05).
      *
-     * @return array [ 'variables' => array, 'asset_references' => array, 'resolved_images' => array ]
+     * @return DocumentContext Typed DTO yang juga mengimplementasikan ArrayAccess untuk kompatibilitas mundur.
      */
     public function resolveContext(
         ?InternshipRegistration $intern = null,
@@ -28,19 +28,23 @@ class VariableResolverService
         ?Brand $brand = null,
         ?Mou $mou = null,
         array $overrides = [],
-        array $assetOverrides = []
-    ): array {
+        array $assetOverrides = [],
+        bool $isLiveIssuance = false,
+        bool $isPreviewMock = false,
+        ?string $documentType = null
+    ): DocumentContext {
         $variables = [];
         $assetReferences = [];
         $resolvedImages = [];
+        $missingAssets = [];
 
-        // 1. Ekstraksi Data Brand Terkait
+        // 1. Ekstraksi Model Brand Terpilih
         $brandModel = $brand;
         if (!$brandModel && $intern && $intern->brandRel) {
             $brandModel = $intern->brandRel;
         }
 
-        // 2. Ekstraksi Data Institusi Terkait
+        // 2. Ekstraksi Model Institusi Terpilih
         $instModel = $institution;
         if (!$instModel && $intern && $intern->institution) {
             $instModel = $intern->institution;
@@ -48,51 +52,96 @@ class VariableResolverService
 
         // ==================== RESOLUSI DATA PEMAGANG ====================
         if ($intern) {
-            $variables['pemagang.nama'] = $intern->fullname ?? 'Nama Pemagang';
+            $variables['pemagang.nama'] = $intern->fullname ?? ($isPreviewMock ? 'Ahmad Zaki Fauzi' : '');
             $variables['pemagang.nim'] = ($intern->student_id ?? $intern->nim_nis ?? $intern->nim ?? '-') ?: '-';
-            $variables['pemagang.institusi'] = $intern->institution_name ?? ($instModel?->name ?? '-');
+            $variables['pemagang.institusi'] = $intern->institution_name ?? ($instModel?->name ?? ($isPreviewMock ? 'Universitas Gadjah Mada' : '-'));
             $variables['pemagang.prodi'] = $intern->study_program ?? ($intern->major ?? '-');
             $variables['pemagang.divisi'] = $intern->division?->name ?? ($intern->internship_interest ?? 'Umum');
             $variables['pemagang.brand'] = $brandModel?->name ?? ($intern->brand ?? 'Seven Inc');
             $variables['pemagang.kontak'] = $intern->phone_number ?? ($intern->email ?? '-');
 
-            $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->translatedFormat('d F Y') : '-';
-            $endDateStr = $intern->end_date ? Carbon::parse($intern->end_date)->translatedFormat('d F Y') : '-';
+            $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->locale('id')->translatedFormat('d F Y') : '-';
+            $endDateStr = $intern->end_date ? Carbon::parse($intern->end_date)->locale('id')->translatedFormat('d F Y') : '-';
             $variables['pemagang.tanggal_mulai'] = $startDateStr;
             $variables['pemagang.tanggal_selesai'] = $endDateStr;
             $variables['pemagang.periode'] = ($startDateStr !== '-' && $endDateStr !== '-')
                 ? "{$startDateStr} - {$endDateStr}"
                 : '-';
+
+            $durationStr = '6 bulan';
+            if ($intern->start_date && $intern->end_date) {
+                $days = Carbon::parse($intern->start_date)->diffInDays(Carbon::parse($intern->end_date));
+                $months = max(1, (int) round($days / 30));
+                $durationStr = "{$months} bulan";
+            }
+            $variables['pemagang.durasi'] = $durationStr;
+            $variables['magang.divisi'] = $variables['pemagang.divisi'];
+            $variables['magang.tanggal_mulai'] = $variables['pemagang.tanggal_mulai'];
+            $variables['magang.tanggal_selesai'] = $variables['pemagang.tanggal_selesai'];
+            $variables['magang.durasi'] = $variables['pemagang.durasi'];
         }
 
-        // ==================== RESOLUSI DATA INSTITUSI ====================
+        // ==================== RESOLUSI DATA INSTITUSI MITRA ====================
         if ($instModel) {
             $variables['institusi.nama'] = $instModel->name;
             $variables['institusi.alamat'] = $instModel->address ?? '-';
             $variables['institusi.telepon'] = $instModel->phone ?? '-';
             $variables['institusi.email'] = $instModel->email ?? '-';
+            $variables['institusi.fax'] = $instModel->fax ?? '-';
 
-            $firstContact = $instModel->contacts()->first();
-            $variables['institusi.kontak_nama'] = $firstContact?->name ?? '-';
-            $variables['institusi.kontak_jabatan'] = $firstContact?->position ?? '-';
+            // Memperbaiki kolom position_title dari institution_contacts (bukan position)
+            $firstContact = $instModel->contacts()->where('is_active', true)->first() ?: $instModel->contacts()->first();
+            $contactName = $firstContact?->name ?? '-';
+            $contactTitle = $firstContact?->position_title ?? ($firstContact?->position ?? '-');
+
+            $variables['institusi.kontak_nama'] = $contactName;
+            $variables['institusi.kontak_jabatan'] = $contactTitle;
+            $variables['institusi.penandatangan.nama'] = $contactName;
+            $variables['institusi.penandatangan.jabatan'] = $contactTitle;
+            $variables['institusi.unit_korespondensi'] = $instModel->correspondence_unit ?? '-';
         }
 
         // ==================== RESOLUSI DATA DOKUMEN / MOU ====================
         if ($mou) {
             $variables['dokumen.nomor'] = $mou->company_mou_number;
             $variables['dokumen.tanggal'] = $mou->agreement_date ? Carbon::parse($mou->agreement_date)->translatedFormat('d F Y') : now()->translatedFormat('d F Y');
-            $variables['dokumen.penandatangan_nama'] = $mou->second_party_signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
-            $variables['dokumen.penandatangan_jabatan'] = $mou->second_party_signatory_title ?? 'Pimpinan';
-            $variables['perusahaan.nama'] = $mou->second_party_company_name ?? 'SEVEN INC';
-            $variables['company_name'] = $variables['perusahaan.nama'];
-            $variables['institution_name'] = $mou->first_party_institution_name ?? ($instModel?->name ?? 'Institusi Mitra');
-            $variables['institusi.nama'] = $variables['institution_name'];
+            $variables['dokumen.tempat'] = $mou->agreement_place ?? 'Yogyakarta';
+            $variables['dokumen.penandatangan_nama'] = $mou->second_party_signatory_name ?? ($brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.'));
+            $variables['dokumen.penandatangan_jabatan'] = $mou->second_party_signatory_title ?? ($brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Pimpinan'));
+            $variables['brand.nama'] = $mou->second_party_company_name ?? ($brandModel?->name ?? 'SEVEN INC');
+            $variables['brand.alamat'] = $mou->second_party_address ?? ($brandModel?->address ?? '-');
+            $variables['brand.telepon'] = $mou->second_party_phone ?? ($brandModel?->phone ?? '-');
+            $variables['brand.email'] = $mou->second_party_email ?? ($brandModel?->email ?? '-');
+            $variables['brand.penandatangan.nama'] = $variables['dokumen.penandatangan_nama'];
+            $variables['brand.penandatangan.jabatan'] = $variables['dokumen.penandatangan_jabatan'];
+            $variables['brand.nomor_mou'] = $mou->company_mou_number;
+
+            $variables['institusi.nama'] = $mou->first_party_institution_name ?? ($instModel?->name ?? 'Institusi Mitra');
+            $variables['institusi.alamat'] = $mou->first_party_address ?? ($instModel?->address ?? '-');
+            $variables['institusi.telepon'] = $mou->first_party_phone ?? ($instModel?->phone ?? '-');
+            $variables['institusi.email'] = $mou->first_party_email ?? ($instModel?->email ?? '-');
+            $variables['institusi.penandatangan.nama'] = $mou->first_party_signatory_name ?? '-';
+            $variables['institusi.penandatangan.jabatan'] = $mou->first_party_signatory_title ?? '-';
+            $variables['institusi.nomor_mou'] = $mou->institution_mou_number ?? '-';
+            $variables['institusi.unit_korespondensi'] = $mou->first_party_correspondence_unit ?? '-';
+
+            $variables['mou.tanggal_mulai'] = $mou->effective_start ? Carbon::parse($mou->effective_start)->translatedFormat('d F Y') : '-';
+            $variables['mou.tanggal_selesai'] = $mou->effective_end ? Carbon::parse($mou->effective_end)->translatedFormat('d F Y') : '-';
+            $variables['mou.durasi'] = ($mou->effective_start && $mou->effective_end)
+                ? (Carbon::parse($mou->effective_start)->diffInYears(Carbon::parse($mou->effective_end)) . ' tahun')
+                : '-';
         } else {
             $variables['dokumen.tanggal'] = now()->translatedFormat('d F Y');
-            $variables['dokumen.penandatangan_nama'] = $brandModel?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
-            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? 'Pimpinan';
-            $variables['perusahaan.nama'] = $brandModel?->name ?? 'SEVEN INC';
-            $variables['company_name'] = $variables['perusahaan.nama'];
+            $variables['dokumen.tempat'] = $brandModel?->city ?? 'Yogyakarta';
+            $variables['dokumen.penandatangan_nama'] = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.');
+            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Pimpinan');
+
+            $variables['brand.nama'] = $brandModel?->name ?? 'SEVEN INC';
+            $variables['brand.alamat'] = $brandModel?->address ?? '-';
+            $variables['brand.telepon'] = $brandModel?->phone ?? '-';
+            $variables['brand.email'] = $brandModel?->email ?? '-';
+            $variables['brand.penandatangan.nama'] = $variables['dokumen.penandatangan_nama'];
+            $variables['brand.penandatangan.jabatan'] = $variables['dokumen.penandatangan_jabatan'];
         }
 
         // Terapkan overrides eksplisit jika ada
@@ -100,34 +149,132 @@ class VariableResolverService
             $variables[$k] = $v;
         }
 
-        // ==================== RESOLUSI ASET VISUAL (HIERARKI TERARAH) ====================
-        $assetCategories = [
-            'asset.company.logo' => SystemAsset::CATEGORY_LOGO,
-            'asset.brand.logo'   => SystemAsset::CATEGORY_LOGO,
-            'asset.letterhead'   => SystemAsset::CATEGORY_LETTERHEAD,
-            'asset.signature'    => SystemAsset::CATEGORY_SIGNATURE,
-            'asset.stamp'        => SystemAsset::CATEGORY_STAMP,
-            'asset.background'   => SystemAsset::CATEGORY_BACKGROUND,
+        // Sinkronisasi alias dua arah untuk data teks
+        $aliasesMap = VariableRegistry::getAliasesMap();
+        foreach ($variables as $key => $val) {
+            $lower = strtolower($key);
+            $canonical = $aliasesMap[$lower] ?? $key;
+            if (!isset($variables[$canonical])) {
+                $variables[$canonical] = $val;
+            }
+        }
+        // Sinkronisasi alias berdasarkan konteks jenis dokumen (V01)
+        $aliasesMap = VariableRegistry::getAliasesMap($documentType);
+        foreach ($aliasesMap as $alias => $canonicalKey) {
+            if (isset($variables[$canonicalKey]) && !isset($variables[$alias])) {
+                $variables[$alias] = $variables[$canonicalKey];
+            }
+        }
+        foreach (VariableRegistry::getDefinitions() as $canonicalKey => $def) {
+            if (isset($variables[$canonicalKey])) {
+                $val = $variables[$canonicalKey];
+                foreach ($def['aliases'] ?? [] as $alias) {
+                    if (!isset($variables[$alias])) {
+                        $variables[$alias] = $val;
+                    }
+                }
+            }
+        }
+
+        // ==================== RESOLUSI ASET VISUAL (OWNER-ISOLATED) ====================
+        $assetTokens = [
+            'asset.brand.logo'            => ['category' => SystemAsset::CATEGORY_LOGO,       'owner' => 'brand'],
+            'asset.company.logo'          => ['category' => SystemAsset::CATEGORY_LOGO,       'owner' => 'brand'],
+            'asset.institusi.logo'        => ['category' => SystemAsset::CATEGORY_LOGO,       'owner' => 'institution'],
+            'asset.institution.logo'      => ['category' => SystemAsset::CATEGORY_LOGO,       'owner' => 'institution'],
+            'asset.brand.tanda_tangan'    => ['category' => SystemAsset::CATEGORY_SIGNATURE,  'owner' => 'brand'],
+            'asset.institusi.tanda_tangan'=> ['category' => SystemAsset::CATEGORY_SIGNATURE,  'owner' => 'institution'],
+            'asset.brand.stempel'         => ['category' => SystemAsset::CATEGORY_STAMP,      'owner' => 'brand'],
+            'asset.institusi.stempel'     => ['category' => SystemAsset::CATEGORY_STAMP,      'owner' => 'institution'],
+            'asset.signature'             => ['category' => SystemAsset::CATEGORY_SIGNATURE,  'owner' => 'brand'],
+            'asset.stamp'                 => ['category' => SystemAsset::CATEGORY_STAMP,      'owner' => 'brand'],
+            'asset.letterhead'            => ['category' => SystemAsset::CATEGORY_LETTERHEAD, 'owner' => 'brand'],
+            'asset.background'            => ['category' => SystemAsset::CATEGORY_BACKGROUND, 'owner' => 'global'],
         ];
 
-        foreach ($assetCategories as $tokenKey => $category) {
+        $brandId = $brandModel?->id;
+        $instId = $instModel?->id;
+
+        foreach ($assetTokens as $tokenKey => $meta) {
+            $category = $meta['category'];
+            $owner = $meta['owner'];
             $resolvedAsset = null;
 
-            // 1. Cek explicit override
-            if (isset($assetOverrides[$tokenKey]) && is_numeric($assetOverrides[$tokenKey])) {
-                $resolvedAsset = SystemAsset::active()->find($assetOverrides[$tokenKey]);
+            // 1. Cek explicit override ID, kode aset, atau model objek (V02)
+            if (!empty($assetOverrides[$tokenKey])) {
+                $overrideVal = $assetOverrides[$tokenKey];
+                $overrideAsset = null;
+
+                if ($overrideVal instanceof SystemAsset) {
+                    $overrideAsset = $overrideVal;
+                } elseif (is_numeric($overrideVal)) {
+                    $overrideAsset = SystemAsset::active()->whereNull('archived_at')->find((int) $overrideVal);
+                } elseif (is_string($overrideVal)) {
+                    $overrideAsset = SystemAsset::active()->whereNull('archived_at')->where('asset_code', $overrideVal)->first();
+                }
+
+                // Guard Keamanan Aset (V02 & INV-05):
+                // Validasi: kategori wajib cocok, status aktif, tidak diarsip, dan isolasi kepemilikan ketat
+                if ($overrideAsset) {
+                    $isCategoryMatch = ($overrideAsset->category === $category);
+                    $isActive = ($overrideAsset->is_active && $overrideAsset->archived_at === null);
+
+                    if ($isCategoryMatch && $isActive) {
+                        if ($owner === 'institution') {
+                            // Institusi: HANYA milik institusi pemohon (bukan institusi lain, brand lain, atau global)
+                            if ($instId !== null && (int) $overrideAsset->institution_id === (int) $instId && $overrideAsset->scope === SystemAsset::SCOPE_INSTITUTION) {
+                                $resolvedAsset = $overrideAsset;
+                            }
+                        } elseif ($owner === 'brand') {
+                            // Tanda tangan & stempel: DILARANG KERAS scope global! Wajib scope brand dan brand_id cocok
+                            if (in_array($category, [SystemAsset::CATEGORY_SIGNATURE, SystemAsset::CATEGORY_STAMP], true)) {
+                                if ($brandId !== null && (int) $overrideAsset->brand_id === (int) $brandId && $overrideAsset->scope === SystemAsset::SCOPE_BRAND) {
+                                    $resolvedAsset = $overrideAsset;
+                                }
+                            } else {
+                                // Logo / kop surat: diizinkan jika milik brand terkait ATAU scope global
+                                if (($brandId !== null && (int) $overrideAsset->brand_id === (int) $brandId && $overrideAsset->scope === SystemAsset::SCOPE_BRAND)
+                                    || $overrideAsset->scope === SystemAsset::SCOPE_GLOBAL) {
+                                    $resolvedAsset = $overrideAsset;
+                                }
+                            }
+                        } elseif ($owner === 'global') {
+                            if ($overrideAsset->scope === SystemAsset::SCOPE_GLOBAL) {
+                                $resolvedAsset = $overrideAsset;
+                            }
+                        }
+                    }
+                }
             }
 
-            // 2. Jika tidak ada override, resolve via SystemAssetService (Brand -> Institution -> Global Default -> Global)
+            // 2. Resolusi aset via SystemAssetService dengan owner filtering ketat
             if (!$resolvedAsset) {
-                $brandId = $brandModel?->id;
-                $instId = $instModel?->id;
-                $resolvedAsset = $this->assetService->resolveAsset(
-                    category: $category,
-                    assetCode: $tokenKey,
-                    brandId: $tokenKey === 'asset.brand.logo' ? $brandId : null,
-                    institutionId: $tokenKey === 'asset.institution.logo' ? $instId : null
-                );
+                if ($owner === 'institution') {
+                    $resolvedAsset = $this->assetService->resolveAsset(
+                        category: $category,
+                        assetCode: $tokenKey,
+                        brandId: null,
+                        institutionId: $instId,
+                        allowGlobalFallback: false // Institusi dilarang fallback ke brand/global!
+                    );
+                } elseif ($owner === 'brand') {
+                    $resolvedAsset = $this->assetService->resolveAsset(
+                        category: $category,
+                        assetCode: $tokenKey,
+                        brandId: $brandId,
+                        institutionId: null,
+                        allowGlobalFallback: true // Hanya logo/kop/background yang boleh fallback
+                    );
+                } else {
+                    // Global (cth: background sertifikat)
+                    $resolvedAsset = $this->assetService->resolveAsset(
+                        category: $category,
+                        assetCode: $tokenKey,
+                        brandId: $brandId,
+                        institutionId: null,
+                        allowGlobalFallback: true
+                    );
+                }
             }
 
             if ($resolvedAsset) {
@@ -137,67 +284,155 @@ class VariableResolverService
                     'version'    => $resolvedAsset->version,
                     'checksum'   => $resolvedAsset->checksum_sha256,
                     'category'   => $resolvedAsset->category,
+                    'scope'      => $resolvedAsset->scope,
+                    'owner_type' => $owner,
                 ];
 
                 $dataUri = $this->assetService->getAssetAsBase64DataUri($resolvedAsset);
                 $resolvedImages[$tokenKey] = $dataUri;
                 $variables[$tokenKey] = $dataUri;
             } else {
-                // Fallback default image placeholder
-                $fallback = match ($category) {
-                    SystemAsset::CATEGORY_LOGO       => 'images/logos/logo_seveninc.png',
-                    SystemAsset::CATEGORY_SIGNATURE  => 'images/signature/ttd_arisetiahusbana.png',
-                    SystemAsset::CATEGORY_STAMP      => 'images/signature/ttd_arisetiahusbana.png',
-                    default                          => null,
-                };
+                $missingAssets[] = $tokenKey;
 
-                $dataUri = $fallback ? $this->assetService->getAssetAsBase64DataUri(null, $fallback) : null;
-                $resolvedImages[$tokenKey] = $dataUri;
-                $variables[$tokenKey] = $dataUri;
+                // Fallback HANYA untuk preview mock, DILARANG KERAS untuk live issuance resmi (INV-05, INV-06, INV-14)
+                if ($isPreviewMock && !$isLiveIssuance) {
+                    $fallback = match ($category) {
+                        SystemAsset::CATEGORY_LOGO       => ($owner === 'institution')
+                            ? 'images/mou/institution-logo-placeholder.png'
+                            : 'images/logos/logo_seveninc.png',
+                        SystemAsset::CATEGORY_SIGNATURE  => 'images/signatures/ttd.png',
+                        SystemAsset::CATEGORY_STAMP      => 'images/stamps/stamp.png',
+                        SystemAsset::CATEGORY_BACKGROUND => 'images/backgrounds/cert_bg.png',
+                        default                          => null,
+                    };
+                    $dataUri = $fallback ? $this->assetService->getAssetAsBase64DataUri(null, $fallback) : null;
+                    $resolvedImages[$tokenKey] = $dataUri;
+                    $variables[$tokenKey] = $dataUri;
+                } else {
+                    // Penerbitan resmi: tidak ada tanda tangan/stempel/logo palsu
+                    $resolvedImages[$tokenKey] = null;
+                    $variables[$tokenKey] = null;
+                }
             }
         }
 
+        // Sinkronisasi alias untuk aset
+        if (isset($variables['asset.brand.logo'])) {
+            $variables['asset.company.logo'] = $variables['asset.brand.logo'];
+        }
+        if (isset($variables['asset.institusi.logo'])) {
+            $variables['asset.institution.logo'] = $variables['asset.institusi.logo'];
+        }
+
+        return new DocumentContext(
+            documentType: $documentType ?? 'general',
+            variables: $variables,
+            assetReferences: $assetReferences,
+            resolvedImages: $resolvedImages,
+            missingAssets: $missingAssets,
+            documentNumber: $variables['dokumen.nomor'] ?? ($variables['mou.nomor_mou'] ?? null),
+            internshipRegistrationId: $intern?->id,
+            institutionId: $instId,
+            brandId: $brandId,
+            mouId: $mou?->id,
+            isLiveIssuance: $isLiveIssuance,
+            isPreviewMock: $isPreviewMock
+        );
+    }
+
+    /**
+     * Diagnosis variabel yang belum terpenuhi pada dokumen serta deteksi placeholder tidak dikenal (FG-02).
+     */
+    public function diagnoseMissingVariables(array $usedTokens, array $resolvedVariables, string $documentType): array
+    {
+        $requiredTokens = VariableRegistry::getRequiredTokens($documentType);
+        $missingRequired = [];
+        $unknownTokens = [];
+        $warnings = [];
+
+        foreach ($usedTokens as $token) {
+            $rawClean = trim($token);
+            $rawClean = preg_replace('/^(\{\{|\{|\[)\s*|\s*(\}\}|\}|\])$/', '', $rawClean);
+            $canonical = VariableRegistry::normalizeToken($token, $documentType);
+            $def = VariableRegistry::getDefinition($canonical, $documentType);
+
+            // Deteksi placeholder tidak dikenal / salah ketik (FG-02)
+            if (!$def && !isset($resolvedVariables[$canonical]) && !isset($resolvedVariables[$token]) && !isset($resolvedVariables[$rawClean])) {
+                $unknownTokens[] = $token;
+                continue;
+            }
+
+            $val = $resolvedVariables[$canonical] ?? ($resolvedVariables[$token] ?? ($resolvedVariables[$rawClean] ?? null));
+            $isEmpty = ($val === null || trim((string) $val) === '' || trim((string) $val) === '-');
+
+            if ($def && in_array($canonical, $requiredTokens, true) && $isEmpty) {
+                $missingRequired[$canonical] = [
+                    'token' => $token,
+                    'canonical' => $canonical,
+                    'label' => $def['label'],
+                    'category' => $def['category'],
+                    'source' => $def['source'],
+                ];
+            } elseif ($isEmpty) {
+                $warnings[$canonical] = [
+                    'token' => $token,
+                    'canonical' => $canonical,
+                    'label' => $def['label'] ?? $token,
+                ];
+            }
+        }
+
+        $uniqueUnknown = array_values(array_unique($unknownTokens));
+
         return [
-            'variables'        => $variables,
-            'asset_references' => $assetReferences,
-            'resolved_images'  => $resolvedImages,
+            'valid'            => empty($missingRequired) && empty($uniqueUnknown),
+            'missing_required' => $missingRequired,
+            'unknown_tokens'   => $uniqueUnknown,
+            'warnings'         => $warnings,
         ];
     }
 
     /**
      * Gantikan token placeholder di dalam konten teks atau HTML dengan nilai yang telah diselesaikan.
+     * Menggunakan scanner berbasis konteks jenis dokumen (V01) untuk menangkal collision alias antar entitas.
      */
-    public function renderContent(string $templateContent, array $resolvedContext): string
-    {
+    public function renderContent(
+        string $templateContent,
+        array|DocumentContext $resolvedContext,
+        bool $isLiveIssuance = false,
+        ?string $documentType = null
+    ): string {
         $variables = $resolvedContext['variables'] ?? [];
         $rendered = $templateContent;
 
-        // Ambil dictionary aliases dari registry
-        $definitions = VariableRegistry::getDefinitions();
-
-        foreach ($definitions as $mainKey => $def) {
-            $val = $variables[$mainKey] ?? ($def['sample'] ?? '');
-
-            // Ganti format {{mainKey}} dan {{ mainKey }}
-            $rendered = str_replace(
-                ["{{" . $mainKey . "}}", "{{ " . $mainKey . " }}"],
-                (string) $val,
-                $rendered
-            );
-
-            // Ganti seluruh aliases (seperti [institution_name], {{institution_name}}, dll.)
-            foreach ($def['aliases'] as $alias) {
-                $rendered = str_replace(
-                    [
-                        "[" . $alias . "]",
-                        "{{" . $alias . "}}",
-                        "{{ " . $alias . " }}",
-                    ],
-                    (string) $val,
-                    $rendered
-                );
+        // 1. Scan dan ganti seluruh token {{token}} dan [token] menggunakan canonical registry dengan context-aware disambiguation
+        $pattern = '/(\{\{\s*([a-zA-Z0-9_\.]+)\s*\}\}|\[\s*([a-zA-Z0-9_\.]+)\s*\])/';
+        $rendered = preg_replace_callback($pattern, function ($matches) use ($variables, $isLiveIssuance, $documentType) {
+            $rawToken = !empty($matches[2]) ? $matches[2] : ($matches[3] ?? '');
+            if ($rawToken === '') {
+                return $matches[0];
             }
-        }
+
+            $canonical = VariableRegistry::normalizeToken($rawToken, $documentType);
+            $def = VariableRegistry::getDefinition($canonical, $documentType);
+
+            // Jika token tidak ada di $variables dan tidak ada di registry sama sekali (token asing/unknown), biarkan utuh
+            if (!isset($variables[$canonical]) && !isset($variables[$rawToken]) && !$def) {
+                return $matches[0];
+            }
+
+            $val = $variables[$canonical] ?? ($variables[$rawToken] ?? null);
+
+            if ($val === null) {
+                if ($isLiveIssuance) {
+                    $val = '';
+                } else {
+                    $val = $def['sample'] ?? '';
+                }
+            }
+
+            return (string) $val;
+        }, $rendered);
 
         return $rendered;
     }

@@ -30,7 +30,9 @@ if (!Route::has('admin.document-templates.index')) {
         Route::put('/{documentTemplate}', [DocumentTemplateController::class, 'update'])->name('update');
         Route::delete('/{documentTemplate}', [DocumentTemplateController::class, 'destroy'])->name('destroy');
 
-        // Aksi Khusus Dokumen & Versi
+        // Aksi Khusus Dokumen & Versi (Lifecycle: Draft -> Published -> Active/Default -> Archived)
+        Route::post('/{documentTemplate}/publish', [DocumentTemplateController::class, 'publish'])->name('publish');
+        Route::post('/{documentTemplate}/archive', [DocumentTemplateController::class, 'archive'])->name('archive');
         Route::post('/{documentTemplate}/duplicate', [DocumentTemplateController::class, 'duplicate'])->name('duplicate');
         Route::post('/{documentTemplate}/set-default', [DocumentTemplateController::class, 'setDefault'])->name('set-default');
         Route::post('/{documentTemplate}/toggle-active', [DocumentTemplateController::class, 'toggleActive'])->name('toggle-active');

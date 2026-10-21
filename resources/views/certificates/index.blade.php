@@ -50,6 +50,24 @@
                 Total <strong class="text-[#1B3A34]">{{ $certificates->count() }}</strong> sertifikat tersimpan
             </p>
         </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('admin.document-templates.index', ['type' => 'certificate']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2 text-xs font-semibold text-[#1B3A34] shadow-xs transition hover:bg-[#F4F8F6]">
+                <svg class="h-3.5 w-3.5 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M3 9h18M9 21V9"/>
+                </svg>
+                Kelola Template Sertifikat
+            </a>
+            <a href="{{ route('admin.document-templates.create', ['type' => 'certificate']) }}"
+               class="inline-flex items-center gap-1.5 rounded-[9px] bg-[#2D8659] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1F5F3F]">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Buat Template Sertifikat
+            </a>
+        </div>
     </div>
 
     @if(session('success'))

@@ -448,6 +448,9 @@ class MouDocumentRenderer
             str_starts_with($normalizedPath, '/images/brands/') ||
             str_starts_with($normalizedPath, '/storage/mou-assets/') ||
             str_starts_with($normalizedPath, '/storage/mou-templates/media/') ||
+            str_starts_with($normalizedPath, '/storage/institutions/') ||
+            str_starts_with($normalizedPath, '/storage/institutions/logos/') ||
+            str_starts_with($normalizedPath, '/storage/brands/') ||
             str_starts_with($normalizedPath, '/admin/system-assets/')
         ) {
             return preg_match('/^\/[a-zA-Z0-9_\-\/\.]+(\.(png|jpg|jpeg|webp))?$/i', $normalizedPath) === 1;
@@ -914,6 +917,10 @@ class MouDocumentRenderer
      */
     public static function convertLocalPathToBase64(string $src): ?string
     {
+        if (str_starts_with($src, 'data:image/')) {
+            return $src;
+        }
+
         $path = $src;
         if (preg_match('/^https?:\/\//i', $src)) {
             $path = (string) parse_url($src, PHP_URL_PATH);
@@ -932,6 +939,9 @@ class MouDocumentRenderer
             $relStorage = substr($normalized, strlen('/storage/'));
             $candidates[] = Storage::disk('public')->path($relStorage);
             $candidates[] = storage_path('app/public/' . $relStorage);
+        } else {
+            $candidates[] = Storage::disk('public')->path(ltrim($normalized, '/'));
+            $candidates[] = storage_path('app/public/' . ltrim($normalized, '/'));
         }
 
         foreach ($candidates as $filePath) {
@@ -1014,6 +1024,15 @@ class MouDocumentRenderer
 
         $rendered = $sanitizedHtml;
 
+        // Normalisasi tabel logo baris lama agar logo tidak mengalir sebagai teks/tabel inline
+        if (preg_match('/<table\b[^>]*class=["\'][^"\']*mou-logo-row-table[\s\S]*?<\/table>/i', $rendered)) {
+            $rendered = preg_replace(
+                '/<table\b[^>]*class=["\'][^"\']*mou-logo-row-table[\s\S]*?<\/table>/i',
+                '<p style="text-align: center; margin-bottom: 6pt;"><strong>ANTARA</strong></p>',
+                $rendered
+            );
+        }
+
         // 1. Ganti token gambar terlebih dahulu
         $imageTokens = [
             'company_logo'           => $companyLogoHtml,
@@ -1093,9 +1112,33 @@ class MouDocumentRenderer
             $rendered = static::embedLocalImagesAsBase64($rendered);
             $inlineCss = static::getCanonicalDocumentCss($pageConfig);
 
+            $showHeaderLogos = (bool) ($pageConfig['show_header_logos'] ?? true);
+            $showWatermark   = (bool) ($pageConfig['show_watermark'] ?? false);
+
+            $watermarkHeaderHtml = '';
+            if ($showHeaderLogos || $showWatermark) {
+                $instSrc = !str_starts_with($institutionLogoPath, 'data:') ? (static::convertLocalPathToBase64($institutionLogoPath) ?? $institutionLogoPath) : $institutionLogoPath;
+                $compSrc = !str_starts_with($companyLogoPath, 'data:') ? (static::convertLocalPathToBase64($companyLogoPath) ?? $companyLogoPath) : $companyLogoPath;
+
+                $watermarkHeaderHtml = '<div class="mou-watermark-layer" data-watermark-layer="true">';
+                if ($showHeaderLogos) {
+                    $watermarkHeaderHtml .= '<div class="mou-watermark-fixed-header">'
+                        . '<img src="' . e($instSrc) . '" width="58" height="58" class="mou-watermark-logo-left" alt="Logo Institusi" />'
+                        . '<img src="' . e($compSrc) . '" width="58" height="58" class="mou-watermark-logo-right" alt="Logo Seven Inc" />'
+                        . '</div>';
+                }
+                if ($showWatermark) {
+                    $watermarkHeaderHtml .= '<img src="' . e($compSrc) . '" class="mou-watermark-center" alt="Watermark" />';
+                }
+                $watermarkHeaderHtml .= '</div>';
+            }
+
             return '<div class="mou-published-snapshot" data-snapshot-version="2">'
                 . '<style class="mou-canonical-snapshot-style">' . $inlineCss . '</style>'
-                . '<div class="mou-doc-canvas">' . $rendered . '</div>'
+                . '<div class="mou-doc-canvas" style="position: relative;">'
+                . $watermarkHeaderHtml
+                . $rendered
+                . '</div>'
                 . '</div>';
         }
 
@@ -1330,6 +1373,44 @@ class MouDocumentRenderer
     orphans: 2;
     widows: 2;
 }
+.mou-doc-canvas ul, .mou-document ul {
+    list-style-type: disc !important;
+    padding-left: 24pt !important;
+    margin-top: 0 !important;
+    margin-bottom: 6pt !important;
+}
+.mou-doc-canvas ul ul, .mou-document ul ul {
+    list-style-type: circle !important;
+}
+.mou-doc-canvas ul ul ul, .mou-document ul ul ul {
+    list-style-type: square !important;
+}
+.mou-doc-canvas ol, .mou-document ol {
+    list-style-type: decimal !important;
+    padding-left: 24pt !important;
+    margin-top: 0 !important;
+    margin-bottom: 6pt !important;
+}
+.mou-doc-canvas ol[type="a"], .mou-document ol[type="a"] {
+    list-style-type: lower-alpha !important;
+}
+.mou-doc-canvas ol[type="A"], .mou-document ol[type="A"] {
+    list-style-type: upper-alpha !important;
+}
+.mou-doc-canvas ol[type="i"], .mou-document ol[type="i"] {
+    list-style-type: lower-roman !important;
+}
+.mou-doc-canvas ol[type="I"], .mou-document ol[type="I"] {
+    list-style-type: upper-roman !important;
+}
+.mou-doc-canvas li, .mou-document li {
+    display: list-item !important;
+    margin-bottom: 2pt !important;
+}
+.mou-doc-canvas li > p, .mou-document li > p {
+    display: inline !important;
+    margin-bottom: 0 !important;
+}
 .mou-doc-canvas td p, .mou-document td p,
 .mou-doc-canvas th p, .mou-document th p,
 .mou-paraf-table td p, .mou-paraf-table th p,
@@ -1339,13 +1420,18 @@ class MouDocumentRenderer
 }
 .mou-doc-canvas table, .mou-document table {
     border-collapse: collapse;
+    table-layout: fixed;
     box-sizing: border-box;
+    width: 100%;
 }
 .mou-doc-canvas td, .mou-document td,
 .mou-doc-canvas th, .mou-document th {
     vertical-align: top;
     padding: 3pt 6pt;
     box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 .mou-doc-canvas img, .mou-document img {
     max-width: 100%;
@@ -1373,6 +1459,62 @@ class MouDocumentRenderer
     page-break-inside: avoid;
     break-inside: avoid;
 }
+/* Fixed Watermark & Fixed Logo Layer (stays in fixed position, does not flow with text) */
+.mou-watermark-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.mou-watermark-fixed-header {
+    position: absolute;
+    top: 18mm;
+    left: 25.4mm;
+    right: 25.4mm;
+    pointer-events: none;
+    user-select: none;
+    box-sizing: border-box;
+    height: 80px;
+}
+.mou-watermark-logo-left {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 72px;
+    width: auto;
+    max-width: 110px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+}
+.mou-watermark-logo-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 72px;
+    width: auto;
+    max-width: 110px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+}
+.mou-watermark-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 320px;
+    max-width: 70%;
+    opacity: 0.05;
+    pointer-events: none;
+    user-select: none;
+}
 .mou-logo-row-table {
     width: 100%;
     border-collapse: collapse;
@@ -1387,6 +1529,7 @@ class MouDocumentRenderer
 .mou-table-borderless {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     border: none;
     margin-top: 4pt;
     margin-bottom: 8pt;
@@ -1395,10 +1538,20 @@ class MouDocumentRenderer
     border: none;
     padding: 2pt 4pt;
     vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
+}
+.mou-table-borderless td:first-child, .mou-table-borderless th:first-child {
+    padding-right: 0 !important;
+}
+.mou-table-borderless td:nth-child(2), .mou-table-borderless th:nth-child(2) {
+    padding-left: 2pt !important;
 }
 .mou-table-bordered {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     border: 1px solid #000000;
     margin-top: 6pt;
     margin-bottom: 10pt;
@@ -1407,6 +1560,9 @@ class MouDocumentRenderer
     border: 1px solid #000000;
     padding: 3pt 6pt;
     vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 .mou-table-bordered tr, .mou-table-borderless tr {
     page-break-inside: avoid;
@@ -1468,6 +1624,7 @@ class MouDocumentRenderer
 .mou-signature-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     border: none;
     margin-top: 18pt;
     margin-bottom: 12pt;
@@ -1478,10 +1635,14 @@ class MouDocumentRenderer
     border: none;
     vertical-align: top;
     padding: 4pt 8pt;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 .mou-paraf-table {
     width: 220pt;
     border-collapse: collapse;
+    table-layout: fixed;
     border: 1px solid #000000;
     font-size: 8.5pt;
     page-break-inside: avoid;
@@ -1517,7 +1678,75 @@ CSS;
         array $pageConfig = [],
         string $documentTitle = 'Nota Kesepahaman (MOU)'
     ): string {
+        // Ekstraksi data logo institusi dari naskah snapshot jika ada sebelum tag dibersihkan
+        $extractedInstitutionLogo = null;
+        if (preg_match('/<img[^>]*class="[^"]*mou-watermark-logo-left[^"]*"[^>]*src="([^"]+)"/i', $renderedHtml, $logoMatches)) {
+            $extractedInstitutionLogo = $logoMatches[1];
+        }
+
         $htmlWithBase64 = static::embedLocalImagesAsBase64($renderedHtml);
+
+        // DomPDF tidak mendukung CSS opacity; bersihkan elemen watermark tengah agar tidak menimpa teks naskah secara solid
+        $htmlWithBase64 = preg_replace('/<img[^>]*class="[^"]*mou-watermark-center[^"]*"[^>]*>/i', '', $htmlWithBase64);
+
+        // Bersihkan layer watermark / header logo bawaan snapshot agar digantikan oleh fixed first page logos yang presisi
+        $htmlWithBase64 = preg_replace('/<div[^>]*class="[^"]*mou-watermark-layer[^"]*"[^>]*>[\s\S]*?<\/div>\s*<\/div>/i', '', $htmlWithBase64);
+        $htmlWithBase64 = preg_replace('/<div[^>]*class="[^"]*mou-watermark-fixed-header[^"]*"[^>]*>[\s\S]*?<\/div>/i', '', $htmlWithBase64);
+        $htmlWithBase64 = preg_replace('/<img[^>]*class="[^"]*mou-watermark-logo-(?:left|right)[^"]*"[^>]*>/i', '', $htmlWithBase64);
+
+        // Cegah orphan heading (Pasal X dan Judul Pasal terpisah dari naskah) pada render DomPDF
+        $htmlWithBase64 = preg_replace_callback(
+            '/(<p[^>]*><strong>\s*Pasal\s+\d+[^<]*<\/strong><\/p>\s*<p[^>]*><strong>[^<]+<\/strong><\/p>)/iu',
+            function ($matches) {
+                return preg_replace('/style="([^"]*)"/i', 'style="$1; page-break-after: avoid; break-after: avoid;"', $matches[1]);
+            },
+            $htmlWithBase64
+        );
+
+        // Pastikan seluruh tabel memiliki table-layout: fixed agar kolom nama tidak menggeser kolom lain (misal titik dua atau pihak)
+        $htmlWithBase64 = preg_replace_callback('/<table\b([^>]*)>/i', function ($matches) {
+            $attrs = $matches[1];
+            if (!preg_match('/table-layout\s*:\s*fixed/i', $attrs)) {
+                if (preg_match('/style="([^"]*)"/i', $attrs, $sm)) {
+                    $newStyle = rtrim(trim($sm[1]), ';') . '; table-layout: fixed; width: 100%;';
+                    $attrs = str_replace($sm[0], 'style="' . $newStyle . '"', $attrs);
+                } else {
+                    $attrs .= ' style="table-layout: fixed; width: 100%;"';
+                }
+            }
+            return '<table' . $attrs . '>';
+        }, $htmlWithBase64);
+
+        // Normalisasi tabel komparisi pihak (4 kolom: nomor, nama penandatangan, titik dua, dan jabatan/deskripsi)
+        // agar proporsi lebar persen (3%, 33%, 2%, 62%) diterapkan secara presisi di DomPDF dan tidak berjarak jauh.
+        $htmlWithBase64 = preg_replace_callback('/<table[^>]*class="[^"]*mou-table-borderless[^"]*"[^>]*>.*?<\/table>/is', function ($matches) {
+            $tableHtml = $matches[0];
+            if (preg_match('/<td[^>]*>\s*(?:<p[^>]*>)?\s*1\.\s*(?:<\/p>)?\s*<\/td>/iu', $tableHtml)) {
+                // Ganti atau sisipkan colgroup proporsional
+                if (preg_match('/<colgroup>.*?<\/colgroup>/is', $tableHtml)) {
+                    $tableHtml = preg_replace('/<colgroup>.*?<\/colgroup>/is', '<colgroup><col style="width: 3%;"><col style="width: 33%;"><col style="width: 2%;"><col style="width: 62%;"></colgroup>', $tableHtml);
+                } else {
+                    $tableHtml = preg_replace('/(<table[^>]*>)/i', '$1<colgroup><col style="width: 3%;"><col style="width: 33%;"><col style="width: 2%;"><col style="width: 62%;"></colgroup>', $tableHtml);
+                }
+
+                // Format setiap baris menjadi 4 kolom yang proporsional dan rapat
+                $tableHtml = preg_replace_callback('/<tr[^>]*>(.*?)<\/tr>/is', function ($rowMatches) {
+                    $rowContent = $rowMatches[1];
+                    if (preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/is', $rowContent, $tdMatches)) {
+                        if (count($tdMatches[0]) === 4) {
+                            $newTd0 = '<td style="width: 3%; vertical-align: top; padding-right: 0;">' . $tdMatches[2][0] . '</td>';
+                            $newTd1 = '<td style="width: 33%; vertical-align: top; padding-left: 2pt; word-break: break-all; word-wrap: break-word;">' . $tdMatches[2][1] . '</td>';
+                            $newTd2 = '<td style="width: 2%; vertical-align: top; text-align: center; padding-left: 0; padding-right: 0;">' . $tdMatches[2][2] . '</td>';
+                            $newTd3 = '<td style="width: 62%; vertical-align: top; text-align: justify; word-break: break-all; word-wrap: break-word;">' . $tdMatches[2][3] . '</td>';
+                            return '<tr>' . $newTd0 . $newTd1 . $newTd2 . $newTd3 . '</tr>';
+                        }
+                    }
+                    return $rowMatches[0];
+                }, $tableHtml);
+            }
+            return $tableHtml;
+        }, $htmlWithBase64);
+
         $canonicalCss   = static::getCanonicalDocumentCss($pageConfig);
 
         $defaults = MouTemplate::getDefaultPageConfig();
@@ -1529,11 +1758,33 @@ CSS;
             }
         }
 
+        $showHeaderLogos = (bool) ($config['show_header_logos'] ?? true);
+        $showWatermark   = (bool) ($config['show_watermark'] ?? false);
+
+        $instLogoPath = $config['institution_logo'] ?? ($config['institution_logo_path'] ?? null);
+        if (empty($instLogoPath) && !empty($extractedInstitutionLogo)) {
+            $instLogoPath = $extractedInstitutionLogo;
+        }
+        if (empty($instLogoPath)) {
+            $instLogoPath = '/images/mou/institution-logo-placeholder.png';
+        }
+        $compLogoPath = $config['company_logo'] ?? ($config['company_logo_path'] ?? null);
+        if (empty($compLogoPath)) {
+            $compLogoPath = '/images/mou/seven-inc-logo.png';
+        }
+
+        $institutionLogoBase64 = static::convertLocalPathToBase64($instLogoPath) ?? $instLogoPath;
+        $companyLogoBase64     = static::convertLocalPathToBase64($compLogoPath) ?? $compLogoPath;
+
         $pdf = Pdf::loadView('hr.mou.pdf-document', [
-            'documentTitle' => $documentTitle,
-            'renderedHtml'  => $htmlWithBase64,
-            'canonicalCss'  => $canonicalCss,
-            'pageConfig'    => $config,
+            'documentTitle'         => $documentTitle,
+            'renderedHtml'          => $htmlWithBase64,
+            'canonicalCss'          => $canonicalCss,
+            'pageConfig'            => $config,
+            'showHeaderLogos'       => $showHeaderLogos,
+            'showWatermark'         => $showWatermark,
+            'institutionLogoBase64' => $institutionLogoBase64,
+            'companyLogoBase64'     => $companyLogoBase64,
         ]);
 
         $paperSize = strtolower((string) ($config['paper_size'] ?? 'a4'));

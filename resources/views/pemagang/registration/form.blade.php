@@ -172,25 +172,29 @@
       </div>
     @endif
 
-    {{-- Stepper Progress Bar --}}
-    <div class="mb-6 rounded-xl border border-gray-150 bg-gray-50/70 p-3 sm:p-4">
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs">
-        <div class="flex items-center gap-2 text-emerald-800 font-semibold">
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white font-bold text-[11px]">1</span>
+    {{-- Stepper Progress Bar (5 Steps) --}}
+    <div class="mb-6 rounded-xl border border-gray-150 bg-gray-50/80 p-3 sm:p-4 sticky top-4 z-20 backdrop-blur-md bg-white/95 shadow-xs">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 text-xs" id="form-stepper">
+        <a href="#section-1-data-diri" data-step="1" class="stepper-tab flex items-center gap-2 text-emerald-800 font-semibold transition hover:opacity-80">
+          <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white font-bold text-[11px]">1</span>
           <span class="truncate">Data Diri & Edukasi</span>
-        </div>
-        <div class="flex items-center gap-2 text-gray-600 font-medium">
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">2</span>
+        </a>
+        <a href="#section-2-pilihan-durasi" data-step="2" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
+          <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">2</span>
           <span class="truncate">Pilihan & Durasi</span>
-        </div>
-        <div class="flex items-center gap-2 text-gray-600 font-medium">
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">3</span>
+        </a>
+        <a href="#section-3-berkas-portofolio" data-step="3" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
+          <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">3</span>
           <span class="truncate">Berkas & Portofolio</span>
-        </div>
-        <div class="flex items-center gap-2 text-gray-600 font-medium">
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">4</span>
+        </a>
+        <a href="#section-4-informasi-tambahan" data-step="4" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
+          <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">4</span>
+          <span class="truncate">Informasi Tambahan</span>
+        </a>
+        <a href="#section-5-finalisasi-submit" data-step="5" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
+          <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">5</span>
           <span class="truncate">Finalisasi & Submit</span>
-        </div>
+        </a>
       </div>
     </div>
 
@@ -224,6 +228,7 @@
       @if(!empty($useFormFields) && $useFormFields)
         {{-- ===== FORM DINAMIS (dari pengaturan admin) ===== --}}
         @include('pemagang.registration.partials.dynamic-form', [
+            'groupedFields' => $groupedFields ?? null,
             'mainFields'    => $mainFields,
             'extraFields'   => $extraFields,
             'customFields'  => $customFields ?? collect(),
@@ -278,11 +283,11 @@
       @else
       {{-- ===== FORM STATIS (fallback) ===== --}}
 
-      {{-- ==================== 1. DATA DIRI ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
+      {{-- ==================== 1. DATA DIRI & EDUKASI ==================== --}}
+      <div id="section-1-data-diri" class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-green-100 text-green-800 text-xs flex items-center justify-center font-bold">1</span>
-          Data Diri <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">1</span>
+          Data Diri & Edukasi <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
         </h3>
         
         <div class="space-y-4">
@@ -375,19 +380,9 @@
               <p class="mt-1 text-xs text-gray-400">Hanya angka, contoh: 08123456789</p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {{-- ==================== 2. DATA MAHASISWA / PENDIDIKAN ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
-        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-green-100 text-green-800 text-xs flex items-center justify-center font-bold">2</span>
-          Data Mahasiswa / Pendidikan <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
-        </h3>
-
-        <div class="space-y-4">
           {{-- Status Saat Ini & NIM / NPM --}}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div>
               <label class="{{ $label }}">Status Saat Ini <span class="text-red-500">*</span></label>
               <select name="current_status" required class="{{ $input }}">
@@ -424,11 +419,11 @@
         </div>
       </div>
 
-      {{-- ==================== 3. DATA MAGANG ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
+      {{-- ==================== 2. PILIHAN & DURASI ==================== --}}
+      <div id="section-2-pilihan-durasi" class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-green-100 text-green-800 text-xs flex items-center justify-center font-bold">3</span>
-          Data Magang <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">2</span>
+          Pilihan & Durasi <span class="text-xs font-normal text-red-500 normal-case">(Wajib)</span>
         </h3>
 
         <div class="space-y-4">
@@ -522,11 +517,11 @@
         </div>
       </div>
 
-      {{-- ==================== 4. BERKAS PENDAFTARAN MULTI-UPLOAD ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
+      {{-- ==================== 3. BERKAS & PORTOFOLIO ==================== --}}
+      <div id="section-3-berkas-portofolio" class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-1 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs flex items-center justify-center font-bold">4</span>
-          Berkas Pendaftaran <span class="text-xs font-normal text-gray-500 normal-case">(Terkategori & Multi-Upload)</span>
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">3</span>
+          Berkas & Portofolio <span class="text-xs font-normal text-gray-500 normal-case">(Terkategori & Multi-Upload)</span>
         </h3>
         <p class="text-xs text-gray-400 mb-4">Unggah dokumen sesuai kategorinya. Anda dapat mengunggah sebagian dokumen sekarang dan melengkapi dokumen susulan kemudian.</p>
 
@@ -627,11 +622,11 @@
         </div>
       </div>
 
-      {{-- ==================== 5. KEAHLIAN & FASILITAS (OPSIONAL) ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
+      {{-- ==================== 4. INFORMASI TAMBAHAN ==================== --}}
+      <div id="section-4-informasi-tambahan" class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs flex items-center justify-center font-bold">5</span>
-          Keahlian & Perlengkapan <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">4</span>
+          Informasi Tambahan <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
         </h3>
 
         <div class="space-y-4">
@@ -666,18 +661,9 @@
             <input type="text" name="owned_tools" placeholder="Asus ROG, Kamera, Tripod"
               class="{{ $input }}" value="{{ $old('owned_tools') ?: $old('laptop_equipment') }}">
           </div>
-        </div>
-      </div>
 
-      {{-- ==================== 6. INFORMASI TAMBAHAN (OPSIONAL) ==================== --}}
-      <div class="border-b border-gray-100 pb-5">
-        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs flex items-center justify-center font-bold">6</span>
-          Informasi Tambahan <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
-        </h3>
-
-        <div class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {{-- Pembimbing --}}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div>
               <label class="{{ $label }}">Nama Pembimbing (Opsional)</label>
               <input type="text" name="supervisor_name" placeholder="Nama pembimbing (jika ada)"
@@ -742,117 +728,124 @@
               @endforeach
             </div>
           </div>
-        </div>
-      </div>
 
-      {{-- Pertanyaan Tambahan dari Form Builder untuk form statis --}}
-      @if(!empty($customFields) && $customFields->isNotEmpty())
-      <div class="border-b border-gray-100 pb-5 pt-4">
-        <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-green-100 text-green-800 text-xs flex items-center justify-center font-bold">5</span>
-          Pertanyaan Tambahan
-        </h3>
-        <div class="space-y-4">
-          @foreach($customFields as $field)
-          <div>
-            <label class="{{ $label }}">
-              {{ $field->label }}
-              @if($field->is_required) <span class="text-red-500">*</span> @endif
-            </label>
-            @if($field->field_type === 'textarea')
-              <textarea name="{{ $field->field_key }}" rows="3" placeholder="{{ $field->placeholder }}" class="{{ $input }} resize-none" {{ $field->is_required ? 'required' : '' }}>{{ $old($field->field_key) }}</textarea>
-            @elseif($field->field_type === 'select')
-              <select name="{{ $field->field_key }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
-                <option value="">{{ $field->placeholder ?: '-- Pilih --' }}</option>
-                @foreach($field->options ?? [] as $opt)
-                  <option value="{{ $opt['value'] }}" {{ $old($field->field_key) == $opt['value'] ? 'selected' : '' }}>{{ $opt['label'] }}</option>
-                @endforeach
-              </select>
-            @elseif($field->field_type === 'radio')
-              <div class="flex gap-4">
-                @foreach($field->options ?? [] as $opt)
-                  <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="radio" name="{{ $field->field_key }}" value="{{ $opt['value'] }}" class="{{ $radio }}" {{ $old($field->field_key) == $opt['value'] ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
-                    {{ $opt['label'] }}
-                  </label>
-                @endforeach
+          {{-- Pertanyaan Tambahan dari Form Builder untuk form statis --}}
+          @if(!empty($customFields) && $customFields->isNotEmpty())
+          <div class="pt-4 border-t border-gray-100">
+            <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Pertanyaan Tambahan</h4>
+            <div class="space-y-4">
+              @foreach($customFields as $field)
+              <div>
+                <label class="{{ $label }}">
+                  {{ $field->label }}
+                  @if($field->is_required) <span class="text-red-500">*</span> @endif
+                </label>
+                @if($field->field_type === 'textarea')
+                  <textarea name="{{ $field->field_key }}" rows="3" placeholder="{{ $field->placeholder }}" class="{{ $input }} resize-none" {{ $field->is_required ? 'required' : '' }}>{{ $old($field->field_key) }}</textarea>
+                @elseif($field->field_type === 'select')
+                  <select name="{{ $field->field_key }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
+                    <option value="">{{ $field->placeholder ?: '-- Pilih --' }}</option>
+                    @foreach($field->options ?? [] as $opt)
+                      <option value="{{ $opt['value'] }}" {{ $old($field->field_key) == $opt['value'] ? 'selected' : '' }}>{{ $opt['label'] }}</option>
+                    @endforeach
+                  </select>
+                @elseif($field->field_type === 'radio')
+                  <div class="flex gap-4">
+                    @foreach($field->options ?? [] as $opt)
+                      <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="radio" name="{{ $field->field_key }}" value="{{ $opt['value'] }}" class="{{ $radio }}" {{ $old($field->field_key) == $opt['value'] ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
+                        {{ $opt['label'] }}
+                      </label>
+                    @endforeach
+                  </div>
+                @elseif($field->field_type === 'checkbox')
+                  <div class="{{ $group }}">
+                    @php $savedVals = (array) $old($field->field_key); @endphp
+                    @foreach($field->options ?? [] as $opt)
+                      <label class="{{ $item }}">
+                        <input type="checkbox" name="{{ $field->field_key }}[]" value="{{ $opt['value'] }}" class="{{ $check }}" {{ in_array($opt['value'], $savedVals) ? 'checked' : '' }}>
+                        <span class="text-sm text-gray-700">{{ $opt['label'] }}</span>
+                      </label>
+                    @endforeach
+                  </div>
+                @else
+                  <input type="{{ $field->field_type }}" name="{{ $field->field_key }}" value="{{ $old($field->field_key) }}" placeholder="{{ $field->placeholder }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
+                @endif
+                @if($field->helper_text)
+                  <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
+                @endif
               </div>
-            @elseif($field->field_type === 'checkbox')
-              <div class="{{ $group }}">
-                @php $savedVals = (array) $old($field->field_key); @endphp
-                @foreach($field->options ?? [] as $opt)
-                  <label class="{{ $item }}">
-                    <input type="checkbox" name="{{ $field->field_key }}[]" value="{{ $opt['value'] }}" class="{{ $check }}" {{ in_array($opt['value'], $savedVals) ? 'checked' : '' }}>
-                    <span class="text-sm text-gray-700">{{ $opt['label'] }}</span>
-                  </label>
-                @endforeach
-              </div>
-            @else
-              <input type="{{ $field->field_type }}" name="{{ $field->field_key }}" value="{{ $old($field->field_key) }}" placeholder="{{ $field->placeholder }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
-            @endif
-            @if($field->helper_text)
-              <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
-            @endif
+              @endforeach
+            </div>
           </div>
-          @endforeach
+          @endif
         </div>
       </div>
-      @endif
-
       @endif {{-- end @else (form statis) --}}
 
-      {{-- Info unpaid --}}
-      @if(!$registration || $registration->is_draft || $registration->internship_status === 'waiting')
-      <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-        <strong>Perhatian:</strong> Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
-        Setelah submit, konfirmasi ke WA Admin <strong>0895 2900 2944</strong> dengan pesan
-        <em>"SAYA SUDAH ISI FORM"</em>.
-      </div>
-      @endif
+      {{-- ==================== 5. FINALISASI & SUBMIT ==================== --}}
+      <div id="section-5-finalisasi-submit" class="pt-5 border-t border-gray-100 space-y-4">
+        <div class="flex items-center gap-2 pb-1">
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">5</span>
+          <div>
+            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Finalisasi & Submit</h3>
+            <p class="text-xs text-gray-500">Tinjau ketentuan program magang dan kirim formulir pendaftaran Anda.</p>
+          </div>
+        </div>
 
-      {{-- Tombol --}}
-      <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100">
-        @if(!$registration || $registration->is_draft)
-          {{-- Belum submit → tombol kirim + server draft + local draft --}}
-          <button type="submit"
-            class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
-            style="background-color:#1a5c38;">
-            <i class="fas fa-paper-plane text-xs"></i>
-            Kirim Pendaftaran
-          </button>
-          <button type="submit" formaction="{{ route('pemagang.registration.draft') }}" formnovalidate
-            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition">
-            <i class="fas fa-cloud-arrow-up text-xs"></i>
-            Simpan Draft ke Server
-          </button>
-          <button type="button" id="btn-save-local"
-            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-            title="Simpan data identitas dasar secara lokal di browser ini">
-            <i class="fas fa-save text-xs"></i>
-            Simpan di Browser
-          </button>
-          <button type="button" id="btn-clear-local"
-            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition"
-            title="Hapus data formulir yang tersimpan di browser ini">
-            <i class="fas fa-trash-alt text-xs"></i>
-            Hapus Draft Browser
-          </button>
-          <p class="text-[11px] text-gray-500 mt-2 w-full">
-            <i class="fas fa-shield-alt text-emerald-600"></i> <strong>Privasi Penyimpanan Lokal:</strong> Fitur "Simpan di Browser" bersifat opsional dan menyimpan data identitas dasar secara teks biasa (tidak terenkripsi) di perangkat ini khusus untuk akun Anda. Berkas lampiran dan jawaban formulir tidak pernah disimpan di penyimpanan browser. <strong>Peringatan Perangkat Bersama:</strong> Jika Anda menggunakan komputer publik atau bersama, harap gunakan tombol "Hapus Draft Browser" sebelum meninggalkan perangkat untuk menjaga privasi akun Anda.
-          </p>
-        @else
-          {{-- Sudah submit → hanya bisa update data --}}
-          <button type="submit"
-            class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
-            style="background-color:#1a5c38;">
-            <i class="fas fa-save text-xs"></i>
-            Simpan Perubahan Data
-          </button>
-          <a href="{{ route('pemagang.dashboard') }}"
-            class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
-            Kembali
-          </a>
+        {{-- Info unpaid --}}
+        @if(!$registration || $registration->is_draft || $registration->internship_status === 'waiting')
+        <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <strong>Perhatian:</strong> Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
+          Setelah submit, konfirmasi ke WA Admin <strong>0895 2900 2944</strong> dengan pesan
+          <em>"SAYA SUDAH ISI FORM"</em>.
+        </div>
         @endif
+
+        {{-- Tombol --}}
+        <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100">
+          @if(!$registration || $registration->is_draft)
+            {{-- Belum submit → tombol kirim + server draft + local draft --}}
+            <button type="submit"
+              class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
+              style="background-color:#1a5c38;">
+              <i class="fas fa-paper-plane text-xs"></i>
+              Kirim Pendaftaran
+            </button>
+            <button type="submit" formaction="{{ route('pemagang.registration.draft') }}" formnovalidate
+              class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition">
+              <i class="fas fa-cloud-arrow-up text-xs"></i>
+              Simpan Draft ke Server
+            </button>
+            <button type="button" id="btn-save-local"
+              class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              title="Simpan data identitas dasar secara lokal di browser ini">
+              <i class="fas fa-save text-xs"></i>
+              Simpan di Browser
+            </button>
+            <button type="button" id="btn-clear-local"
+              class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition"
+              title="Hapus data formulir yang tersimpan di browser ini">
+              <i class="fas fa-trash-alt text-xs"></i>
+              Hapus Draft Browser
+            </button>
+            <p class="text-[11px] text-gray-500 mt-2 w-full">
+              <i class="fas fa-shield-alt text-emerald-600"></i> <strong>Privasi Penyimpanan Lokal:</strong> Fitur "Simpan di Browser" bersifat opsional dan menyimpan data identitas dasar secara teks biasa (tidak terenkripsi) di perangkat ini khusus untuk akun Anda. Berkas lampiran dan jawaban formulir tidak pernah disimpan di penyimpanan browser. <strong>Peringatan Perangkat Bersama:</strong> Jika Anda menggunakan komputer publik atau bersama, harap gunakan tombol "Hapus Draft Browser" sebelum meninggalkan perangkat untuk menjaga privasi akun Anda.
+            </p>
+          @else
+            {{-- Sudah submit → hanya bisa update data --}}
+            <button type="submit"
+              class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition"
+              style="background-color:#1a5c38;">
+              <i class="fas fa-save text-xs"></i>
+              Simpan Perubahan Data
+            </button>
+            <a href="{{ route('pemagang.dashboard') }}"
+              class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+              Kembali
+            </a>
+          @endif
+        </div>
       </div>
 
     </form>
@@ -1251,6 +1244,79 @@
       'input[name="phone_number"]',
       'No. HP hanya boleh berisi angka (contoh: 08123456789)'
     );
+
+    // ===== Stepper Smooth Navigation & Scroll Spy =====
+    (function() {
+      const stepperTabs = document.querySelectorAll('#form-stepper .stepper-tab');
+      if (!stepperTabs.length) return;
+
+      const sectionIds = [
+        'section-1-data-diri',
+        'section-2-pilihan-durasi',
+        'section-3-berkas-portofolio',
+        'section-4-informasi-tambahan',
+        'section-5-finalisasi-submit'
+      ];
+
+      function updateActiveStep(activeId) {
+        stepperTabs.forEach(function(tab) {
+          const href = tab.getAttribute('href');
+          const numBadge = tab.querySelector('.step-num');
+          const isActive = (href === '#' + activeId);
+
+          if (isActive) {
+            tab.classList.add('text-emerald-800', 'font-semibold');
+            tab.classList.remove('text-gray-600', 'font-medium');
+            if (numBadge) {
+              numBadge.classList.add('bg-emerald-700', 'text-white');
+              numBadge.classList.remove('bg-gray-200', 'text-gray-700');
+            }
+          } else {
+            tab.classList.remove('text-emerald-800', 'font-semibold');
+            tab.classList.add('text-gray-600', 'font-medium');
+            if (numBadge) {
+              numBadge.classList.remove('bg-emerald-700', 'text-white');
+              numBadge.classList.add('bg-gray-200', 'text-gray-700');
+            }
+          }
+        });
+      }
+
+      stepperTabs.forEach(function(tab) {
+        tab.addEventListener('click', function(e) {
+          const targetId = this.getAttribute('href')?.replace('#', '');
+          const targetEl = document.getElementById(targetId);
+          if (targetEl) {
+            e.preventDefault();
+            const yOffset = -90; // offset untuk sticky stepper
+            const y = targetEl.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+            updateActiveStep(targetId);
+          }
+        });
+      });
+
+      let ticking = false;
+      window.addEventListener('scroll', function() {
+        if (!ticking) {
+          window.requestAnimationFrame(function() {
+            const scrollPos = window.scrollY + 120;
+            let currentId = sectionIds[0];
+            for (let i = 0; i < sectionIds.length; i++) {
+              const el = document.getElementById(sectionIds[i]);
+              if (el && el.offsetTop <= scrollPos) {
+                currentId = sectionIds[i];
+              }
+            }
+            if (currentId) {
+              updateActiveStep(currentId);
+            }
+            ticking = false;
+          });
+          ticking = true;
+        }
+      }, { passive: true });
+    })();
 
 
     // ===== Keterangan Jenis Magang (form statis fallback) =====

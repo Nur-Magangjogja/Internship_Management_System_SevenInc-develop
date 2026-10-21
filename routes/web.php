@@ -443,6 +443,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/{mouTemplate}/preview', [\App\Http\Controllers\Admin\MouTemplateController::class, 'preview'])->name('preview');
         Route::get('/{mouTemplate}/preview-pdf', [\App\Http\Controllers\Admin\MouTemplateController::class, 'previewPdf'])->name('preview-pdf');
         Route::post('/{mouTemplate}/toggle-active', [\App\Http\Controllers\Admin\MouTemplateController::class, 'toggleActive'])->name('toggle-active');
+        Route::post('/{mouTemplate}/set-default', [\App\Http\Controllers\Admin\MouTemplateController::class, 'setDefault'])->name('set-default');
+        Route::post('/{mouTemplate}/duplicate', [\App\Http\Controllers\Admin\MouTemplateController::class, 'duplicate'])->name('duplicate');
+        Route::post('/{mouTemplate}/archive', [\App\Http\Controllers\Admin\MouTemplateController::class, 'archive'])->name('archive');
+        Route::post('/{mouTemplate}/publish', [\App\Http\Controllers\Admin\MouTemplateController::class, 'publish'])->name('publish');
         Route::delete('/{mouTemplate}', [\App\Http\Controllers\Admin\MouTemplateController::class, 'destroy'])->name('destroy');
     });
 
@@ -552,9 +556,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
     Route::get('/interns/search', [InternApiController::class, 'search'])->name('interns.search');
     Route::get('/interns.json',   [InternApiController::class, 'index'])->name('interns.api');
 
-    // Generate dokumen (LOA / SKL / Sertifikat / Penilaian) → reusable endpoint
+    // Generate dokumen (MoU / LOA / SKL / Sertifikat / Penilaian / Rekomendasi) → Universal Wizard Endpoints
     Route::post('/interns/generate-doc', [\App\Http\Controllers\Admin\GenerateDocController::class, 'generate'])
         ->name('interns.generate.doc');
+    Route::post('/interns/generate-doc/bulk', [\App\Http\Controllers\Admin\GenerateDocController::class, 'generateBulk'])
+        ->name('interns.generate.doc.bulk');
+    Route::get('/interns/generate-wizard/preflight', [\App\Http\Controllers\Admin\GenerateDocController::class, 'preflight'])
+        ->name('interns.generate.wizard.preflight');
 
     // Riwayat dokumen terkirim — dihapus, sudah masuk ke Data SKL & Data LOA masing-masing
 

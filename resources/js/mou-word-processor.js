@@ -14,7 +14,7 @@ import { Editor, Node, Extension, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
-import { OrderedList } from '@tiptap/extension-list';
+import { BulletList, ListItem, ListKeymap, OrderedList } from '@tiptap/extension-list';
 import { Table, TableRow, TableCell, TableHeader, TableView } from '@tiptap/extension-table';
 import { TextStyle, FontFamily, FontSize, Color, BackgroundColor, LineHeight } from '@tiptap/extension-text-style';
 import TextAlign from '@tiptap/extension-text-align';
@@ -23,7 +23,8 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
+import { importDocxFile, exportProseMirrorJsonToDocx, downloadDocxBlob } from './mou-docx-engine.js';
 
 const MM_TO_PX = 96 / 25.4; // ~3.779527559 px per mm
 
@@ -67,6 +68,8 @@ class WordTableView extends TableView {
 
     applyCustomTableAttributes(node) {
         if (!this.table) return;
+        this.table.style.maxWidth = '100%';
+        this.table.style.boxSizing = 'border-box';
         const attrs = node.attrs || {};
         if (attrs.class) {
             this.table.className = attrs.class;
@@ -92,6 +95,34 @@ class WordTableView extends TableView {
                 this.table.style.marginRight = 'auto';
             }
         }
+
+        // Synchronize row heights from node model directly to DOM tr and td elements
+        const trElements = this.table.querySelectorAll('tr');
+        let rIdx = 0;
+        node.forEach((rowNode) => {
+            if (rowNode.type.name === 'tableRow') {
+                const trEl = trElements[rIdx];
+                if (trEl) {
+                    const rh = rowNode.attrs.rowHeight;
+                    if (rh) {
+                        trEl.style.height = rh;
+                        trEl.setAttribute('data-row-height', rh);
+                        Array.from(trEl.children).forEach(cellEl => {
+                            cellEl.style.height = rh;
+                            cellEl.setAttribute('data-row-height', rh);
+                        });
+                    } else {
+                        trEl.style.height = '';
+                        trEl.removeAttribute('data-row-height');
+                        Array.from(trEl.children).forEach(cellEl => {
+                            cellEl.style.height = '';
+                            cellEl.removeAttribute('data-row-height');
+                        });
+                    }
+                }
+                rIdx++;
+            }
+        });
     }
 
     setupTableResizeHandle() {
@@ -229,9 +260,30 @@ const WordOrderedList = OrderedList.extend({
                 renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
             },
             listType: {
-                default: null,
+                default: '1',
                 parseHTML: el => el.getAttribute('type') || null,
                 renderHTML: attrs => (attrs.listType ? { type: attrs.listType } : {}),
+            },
+            marginLeft: {
+                default: null,
+                parseHTML: el => el.style.marginLeft || extractStyleProperty(el.getAttribute('style'), 'margin-left') || null,
+                renderHTML: attrs => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft};` } : {}),
+            },
+        };
+    },
+});
+
+/**
+ * Extended BulletList supporting class and styling preservation.
+ */
+const WordBulletList = BulletList.extend({
+    addAttributes() {
+        return {
+            ...this.parent?.(),
+            class: {
+                default: null,
+                parseHTML: el => el.getAttribute('class') || null,
+                renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
             },
             marginLeft: {
                 default: null,
@@ -301,6 +353,7 @@ const WordTable = Table.extend({
         const widthVal = node.attrs.tableWidth || '100%';
         styles.push(`width: ${widthVal}`);
         styles.push('border-collapse: collapse');
+        styles.push('table-layout: fixed');
 
         if (node.attrs.tableAlign === 'center') {
             styles.push('margin-left: auto', 'margin-right: auto');
@@ -528,6 +581,8 @@ function renderTableCellHTML(tag, node, HTMLAttributes, baseHTMLAttributes) {
         styles.push(`text-align: ${node.attrs.textAlign}`);
     }
 
+    styles.push('word-break: break-word', 'overflow-wrap: break-word');
+
     const styleStr = buildStyleString(styles);
     if (styleStr) attrs.style = styleStr;
 
@@ -553,7 +608,233 @@ const WordTableHeader = TableHeader.extend({
 });
 
 /**
- * Extended Image supporting width, height, alignment, and class.
+ * Interactive WordImageView with 8 Sizing Handles (4 corners + 4 edges)
+ * Supports aspect ratio locked corner resizing, printable width containment, and Undo/Redo.
+ */
+class WordImageView {
+    constructor(node, view, getPos) {
+        this.node = node;
+        this.view = view;
+        this.getPos = getPos;
+
+        this.dom = document.createElement('span');
+        this.dom.className = 'mou-image-wrapper';
+        this.dom.setAttribute('data-tiptap-image-wrapper', 'true');
+
+        this.img = document.createElement('img');
+        this.dom.appendChild(this.img);
+
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'mou-image-handle-overlay no-print';
+        this.overlay.style.display = 'none';
+        this.dom.appendChild(this.overlay);
+
+        this.badge = document.createElement('span');
+        this.badge.className = 'mou-image-size-badge';
+        this.overlay.appendChild(this.badge);
+
+        this.handles = {};
+        const positions = ['nw', 'ne', 'se', 'sw', 'n', 's', 'e', 'w'];
+        positions.forEach(pos => {
+            const h = document.createElement('div');
+            h.className = `mou-image-handle ${pos}`;
+            h.setAttribute('data-handle-pos', pos);
+            this.overlay.appendChild(h);
+            this.handles[pos] = h;
+            this.attachHandleDrag(h, pos);
+        });
+
+        this.updateAppearance(node);
+        this.attachSelectionListeners();
+    }
+
+    updateAppearance(node) {
+        this.node = node;
+        const attrs = node.attrs || {};
+        this.img.src = attrs.src || '';
+        this.img.alt = attrs.alt || '';
+        this.img.title = attrs.title || '';
+        this.img.className = attrs.class || 'mou-logo-img';
+
+        const styles = ['object-fit: contain', 'display: block'];
+        let wPx = 110;
+        if (attrs.width) {
+            const rawW = /^\d+$/.test(String(attrs.width)) ? `${attrs.width}px` : attrs.width;
+            styles.push(`width: ${rawW}`);
+            wPx = parseInt(rawW, 10) || 110;
+        } else {
+            styles.push('width: 110px');
+        }
+        if (attrs.height && attrs.height !== 'auto') {
+            const rawH = /^\d+$/.test(String(attrs.height)) ? `${attrs.height}px` : attrs.height;
+            styles.push(`height: ${rawH}`);
+        } else {
+            styles.push('height: auto');
+        }
+
+        if (attrs.align === 'center') {
+            this.dom.style.display = 'block';
+            this.dom.style.marginLeft = 'auto';
+            this.dom.style.marginRight = 'auto';
+            this.dom.style.textAlign = 'center';
+        } else if (attrs.align === 'right') {
+            this.dom.style.display = 'block';
+            this.dom.style.marginLeft = 'auto';
+            this.dom.style.marginRight = '0';
+            this.dom.style.textAlign = 'right';
+        } else {
+            this.dom.style.display = 'inline-block';
+            this.dom.style.marginLeft = '0';
+            this.dom.style.marginRight = 'auto';
+            this.dom.style.textAlign = 'left';
+        }
+
+        this.img.style.cssText = styles.join('; ');
+        this.badge.textContent = `${wPx} px`;
+    }
+
+    update(node) {
+        if (node.type.name !== 'image') return false;
+        this.updateAppearance(node);
+        return true;
+    }
+
+    selectNode() {
+        this.dom.classList.add('is-selected');
+        this.overlay.style.display = 'block';
+    }
+
+    deselectNode() {
+        this.dom.classList.remove('is-selected');
+        this.overlay.style.display = 'none';
+    }
+
+    attachSelectionListeners() {
+        this.dom.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectNode();
+            try {
+                if (typeof this.getPos === 'function' && this.view) {
+                    const pos = this.getPos();
+                    if (typeof pos === 'number' && pos >= 0) {
+                        const { state } = this.view;
+                        const nodeSel = NodeSelection.create(state.doc, pos);
+                        this.view.dispatch(state.tr.setSelection(nodeSel));
+                    }
+                }
+            } catch (selErr) {
+                // Ignore selection boundary edge case
+            }
+            const wInput = document.getElementById('ribbonImageWidthPx');
+            if (wInput) {
+                const w = parseInt(String(this.node.attrs?.width || '110').replace(/[^0-9]/g, ''), 10) || 110;
+                wInput.value = String(w);
+            }
+        });
+    }
+
+    attachHandleDrag(handleEl, handlePos) {
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let startW = 0;
+        let startH = 0;
+
+        handleEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            try { handleEl.setPointerCapture(e.pointerId); } catch (_) {}
+
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = this.img.getBoundingClientRect();
+            const scale = (parseFloat(window.MouWordProcessor?.state?.zoomPercent) || 100) / 100;
+            startW = rect.width / scale;
+            startH = rect.height / scale;
+            this.selectNode();
+        });
+
+        handleEl.addEventListener('pointermove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const scale = (parseFloat(window.MouWordProcessor?.state?.zoomPercent) || 100) / 100;
+            const deltaX = (e.clientX - startX) / scale;
+            const deltaY = (e.clientY - startY) / scale;
+
+            let newW = startW;
+            let newH = startH;
+            const aspect = startW / (startH || 1);
+
+            if (handlePos === 'se') {
+                newW = Math.max(20, startW + deltaX);
+                newH = newW / aspect;
+            } else if (handlePos === 'sw') {
+                newW = Math.max(20, startW - deltaX);
+                newH = newW / aspect;
+            } else if (handlePos === 'ne') {
+                newW = Math.max(20, startW + deltaX);
+                newH = newW / aspect;
+            } else if (handlePos === 'nw') {
+                newW = Math.max(20, startW - deltaX);
+                newH = newW / aspect;
+            } else if (handlePos === 'e') {
+                newW = Math.max(20, startW + deltaX);
+            } else if (handlePos === 'w') {
+                newW = Math.max(20, startW - deltaX);
+            } else if (handlePos === 's') {
+                newH = Math.max(20, startH + deltaY);
+            } else if (handlePos === 'n') {
+                newH = Math.max(20, startH - deltaY);
+            }
+
+            // Clamp to max printable width (~640px)
+            const maxW = 640;
+            if (newW > maxW) {
+                newW = maxW;
+                if (['se', 'sw', 'ne', 'nw'].includes(handlePos)) newH = newW / aspect;
+            }
+
+            this.img.style.width = `${Math.round(newW)}px`;
+            this.img.style.height = `${Math.round(newH)}px`;
+            this.badge.textContent = `${Math.round(newW)} × ${Math.round(newH)} px`;
+        });
+
+        const stopDrag = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            try { handleEl.releasePointerCapture(e.pointerId); } catch (_) {}
+
+            const finalW = Math.round(parseFloat(this.img.style.width) || startW);
+            const finalH = Math.round(parseFloat(this.img.style.height) || startH);
+
+            if (typeof this.getPos === 'function') {
+                const pos = this.getPos();
+                if (pos !== undefined && this.view?.state?.tr) {
+                    const tr = this.view.state.tr.setNodeMarkup(pos, undefined, {
+                        ...this.node.attrs,
+                        width: `${finalW}px`,
+                        height: `${finalH}px`,
+                    });
+                    this.view.dispatch(tr);
+                }
+            }
+
+            const wInput = document.getElementById('ribbonImageWidthPx');
+            if (wInput) wInput.value = String(finalW);
+        };
+
+        handleEl.addEventListener('pointerup', stopDrag);
+        handleEl.addEventListener('pointercancel', stopDrag);
+    }
+
+    destroy() {
+        this.dom.remove();
+    }
+}
+
+/**
+ * Extended Image supporting width, height, alignment, class, and interactive handles NodeView.
  */
 const WordImage = Image.extend({
     inline: true,
@@ -577,7 +858,22 @@ const WordImage = Image.extend({
                 default: 'mou-logo-img',
                 parseHTML: el => el.getAttribute('class') || 'mou-logo-img',
             },
+            assetId: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-asset-id') || null,
+            },
+            assetCode: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-asset-code') || null,
+            },
+            token: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-token') || null,
+            },
         };
+    },
+    addNodeView() {
+        return (props) => new WordImageView(props.node, props.view, props.getPos);
     },
     renderHTML({ node, HTMLAttributes }) {
         const styles = ['object-fit: contain'];
@@ -587,6 +883,16 @@ const WordImage = Image.extend({
             title: node.attrs.title || '',
             class: node.attrs.class || 'mou-logo-img',
         };
+
+        if (node.attrs.assetId) {
+            attrs['data-asset-id'] = node.attrs.assetId;
+        }
+        if (node.attrs.assetCode) {
+            attrs['data-asset-code'] = node.attrs.assetCode;
+        }
+        if (node.attrs.token) {
+            attrs['data-token'] = node.attrs.token;
+        }
 
         if (node.attrs.width) {
             const w = /^\d+$/.test(String(node.attrs.width)) ? `${node.attrs.width}px` : node.attrs.width;
@@ -750,7 +1056,7 @@ function normalizeLegacyHtmlForTiptap(rawHtml) {
     }
 
     // Unwrap legacy .mou-pasal, .mou-pasal-heading, .mou-pasal-body containers
-    root.querySelectorAll('.mou-pasal, .mou-pasal-body, .mou-pasal-heading').forEach(wrapper => {
+    root.querySelectorAll('.mou-pasal, .mou-pasal-body, .mou-pasal-heading, .mou-group, .mou-card, .mou-box, .mou-section, .mou-content-block, .mou-textbox').forEach(wrapper => {
         const parent = wrapper.parentNode;
         if (!parent) return;
         while (wrapper.firstChild) {
@@ -834,6 +1140,7 @@ function synchronizeSerializedHtml(rawHtml) {
         table.setAttribute('data-table-width', tWidth);
         table.style.width = tWidth;
         table.style.borderCollapse = 'collapse';
+        table.style.tableLayout = 'fixed';
 
         // Synchronize colgroup & first row cells
         const firstRow = table.querySelector('tr');
@@ -854,6 +1161,8 @@ function synchronizeSerializedHtml(rawHtml) {
             let colCursor = 0;
             Array.from(tr.children).forEach(cell => {
                 if (cell.tagName !== 'TD' && cell.tagName !== 'TH') return;
+                cell.style.wordBreak = 'break-word';
+                cell.style.overflowWrap = 'break-word';
                 const colspan = parseInt(cell.getAttribute('colspan') || '1', 10) || 1;
 
                 if (rowH) {
@@ -923,25 +1232,7 @@ function synchronizeSerializedHtml(rawHtml) {
     // Strip temporary pagination artifacts
     root.querySelectorAll('[data-pagination-artifact="true"], .mou-a4-page-header, .mou-a4-page-footer, .mou-table-width-handle, .no-print').forEach(el => el.remove());
 
-    // Preserve physical page breaks between multiple editor pages as composed in the studio
-    const pageNodes = Array.from(root.querySelectorAll('.mou-a4-page-node, [data-mou-page="true"], .mou-a4-paper-sheet'));
-    if (pageNodes.length > 1) {
-        pageNodes.forEach((pageEl, idx) => {
-            if (idx > 0) {
-                const prev = pageEl.previousElementSibling;
-                const hasBreak = prev && (prev.classList.contains('mou-page-break') || prev.getAttribute('data-page-break') === 'true');
-                if (!hasBreak) {
-                    const pb = doc.createElement('div');
-                    pb.className = 'mou-page-break';
-                    pb.setAttribute('data-page-break', 'true');
-                    pb.style.cssText = 'page-break-before: always; break-before: page;';
-                    pageEl.parentNode.insertBefore(pb, pageEl);
-                }
-            }
-        });
-    }
-
-    // Unwrap page containers so output is pure canonical HTML with page breaks
+    // Unwrap page containers so output is pure canonical HTML (preserving explicit user page breaks)
     root.querySelectorAll('.mou-a4-paper-sheet, .mou-a4-page-node, [data-mou-page], .mou-page-body-content').forEach(wrap => {
         const parent = wrap.parentNode;
         if (!parent) return;
@@ -963,6 +1254,9 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
             paragraph: false,
             heading: false,
             orderedList: false,
+            bulletList: false,
+            listItem: false,
+            listKeymap: false,
             link: {
                 openOnClick: false,
                 HTMLAttributes: {
@@ -972,7 +1266,10 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
         }),
         WordParagraph,
         WordHeading.configure({ levels: [1, 2, 3, 4] }),
+        WordBulletList,
         WordOrderedList,
+        ListItem,
+        ListKeymap,
         TextStyle,
         FontFamily,
         FontSize,
@@ -1024,6 +1321,12 @@ class MouPageView {
         this.dom = document.createElement('div');
         this.dom.className = 'mou-a4-paper-sheet mou-a4-page-node';
         this.dom.setAttribute('data-mou-page', 'true');
+
+        this.watermarkEl = document.createElement('div');
+        this.watermarkEl.className = 'mou-page-watermark-layer';
+        this.watermarkEl.setAttribute('data-pagination-artifact', 'true');
+        this.watermarkEl.setAttribute('contenteditable', 'false');
+        this.dom.appendChild(this.watermarkEl);
 
         this.headerEl = document.createElement('div');
         this.headerEl.className = 'mou-a4-page-header';
@@ -1095,8 +1398,42 @@ class MouPageView {
         this.dom.style.fontFamily = `'${state.fontFamily}', Times, serif`;
         this.dom.style.fontSize = `${state.fontSizePt}pt`;
         this.dom.style.lineHeight = String(state.lineHeight);
+        this.dom.style.position = 'relative';
 
         const isFirstPage = pageNum === 1;
+
+        // Render Watermark & Fixed Header Logo Layer (stays pinned, does not flow with text)
+        if (!this.watermarkEl) {
+            this.watermarkEl = document.createElement('div');
+            this.watermarkEl.className = 'mou-page-watermark-layer';
+            this.watermarkEl.setAttribute('data-pagination-artifact', 'true');
+            this.watermarkEl.setAttribute('contenteditable', 'false');
+            this.dom.insertBefore(this.watermarkEl, this.dom.firstChild);
+        }
+
+        const showHeaderLogos = state.showHeaderLogos !== false;
+        const showWatermark = !!state.showWatermark;
+        let watermarkHtml = '';
+
+        if (showWatermark) {
+            const wmUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+            watermarkHtml += `<img src="${wmUrl}" class="mou-watermark-center" alt="Watermark" />`;
+        }
+
+        if (isFirstPage && showHeaderLogos) {
+            const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+            const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+            const topHeaderMm = Math.max(10, state.marginTopMm - 10);
+            watermarkHtml += `
+                <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
+                    <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
+                    <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
+                </div>
+            `;
+        }
+
+        this.watermarkEl.innerHTML = watermarkHtml;
+
         const headerHtml = (state.differentFirstPage && isFirstPage)
             ? (state.firstPageHeaderHtmlStore || '')
             : (state.headerHtmlStore || '');
@@ -1149,12 +1486,14 @@ class MouPageView {
         this.footerEl.addEventListener('click', activateFooter);
         this.footerEl.addEventListener('dblclick', activateFooter);
 
-        this.headerEl.addEventListener('dblclick', (e) => {
+        const activateHeader = (e) => {
             e.stopPropagation();
             const { setActiveZone } = this.mouContext;
             const pageNum = this.getPageIndex() + 1;
             if (setActiveZone) setActiveZone('header', pageNum);
-        });
+        };
+        this.headerEl.addEventListener('click', activateHeader);
+        this.headerEl.addEventListener('dblclick', activateHeader);
 
         const returnToBody = (e) => {
             const { state, setActiveZone } = this.mouContext;
@@ -1239,6 +1578,9 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
             paragraph: false,
             heading: false,
             orderedList: false,
+            bulletList: false,
+            listItem: false,
+            listKeymap: false,
             link: {
                 openOnClick: false,
                 HTMLAttributes: {
@@ -1250,7 +1592,10 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         MouPageNode,
         WordParagraph,
         WordHeading.configure({ levels: [1, 2, 3, 4] }),
+        WordBulletList,
         WordOrderedList,
+        ListItem,
+        ListKeymap,
         TextStyle,
         FontFamily,
         FontSize,
@@ -1310,6 +1655,9 @@ export function initMouWordProcessor(config) {
         differentFirstPage: Boolean(pageConfig.different_first_page),
         showParafBox: pageConfig.show_paraf_box !== undefined ? Boolean(pageConfig.show_paraf_box) : true,
         showPageNumber: pageConfig.show_page_number !== undefined ? Boolean(pageConfig.show_page_number) : true,
+        showHeaderLogos: pageConfig.show_header_logos !== undefined ? Boolean(pageConfig.show_header_logos) : true,
+        showWatermark: pageConfig.show_watermark !== undefined ? Boolean(pageConfig.show_watermark) : false,
+        watermarkOpacity: parseFloat(pageConfig.watermark_opacity ?? 0.05),
         paperSize: (pageConfig.paper_size || 'A4').toUpperCase(),
         orientation: (pageConfig.orientation || 'portrait').toLowerCase(),
         marginTopMm: parseFloat(pageConfig.margin_top_mm ?? 25.4),
@@ -1557,6 +1905,7 @@ export function initMouWordProcessor(config) {
             const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const headerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-header') : null;
             if (headerSlot) {
+                headerSlot.removeAttribute('contenteditable');
                 headerSlot.innerHTML = '';
                 headerSlot.appendChild(headerWrapper);
                 headerWrapper.classList.remove('hidden');
@@ -1564,7 +1913,9 @@ export function initMouWordProcessor(config) {
             }
             loadHeaderFooterVariantIntoEditors();
             headerEditor?.setEditable(true);
-            headerEditor?.commands.focus();
+            setTimeout(() => {
+                headerEditor?.commands.focus('end');
+            }, 40);
             bodyEditor?.setEditable(false);
             footerEditor?.setEditable(false);
             switchRibbonTab('headerfooter');
@@ -1573,6 +1924,7 @@ export function initMouWordProcessor(config) {
             const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const footerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-footer') : null;
             if (footerSlot) {
+                footerSlot.removeAttribute('contenteditable');
                 footerSlot.innerHTML = '';
                 footerSlot.appendChild(footerWrapper);
                 footerWrapper.classList.remove('hidden');
@@ -1580,7 +1932,9 @@ export function initMouWordProcessor(config) {
             }
             loadHeaderFooterVariantIntoEditors();
             footerEditor?.setEditable(true);
-            footerEditor?.commands.focus();
+            setTimeout(() => {
+                footerEditor?.commands.focus('end');
+            }, 40);
             bodyEditor?.setEditable(false);
             headerEditor?.setEditable(false);
             switchRibbonTab('headerfooter');
@@ -1589,6 +1943,10 @@ export function initMouWordProcessor(config) {
             headerEditor?.setEditable(false);
             footerEditor?.setEditable(false);
             bodyEditor?.setEditable(true);
+
+            document.querySelectorAll('.mou-a4-page-header, .mou-a4-page-footer').forEach(el => {
+                el.setAttribute('contenteditable', 'false');
+            });
 
             refreshAllPageViews();
             if (prevZone === 'header' || prevZone === 'footer') {
@@ -1667,6 +2025,57 @@ export function initMouWordProcessor(config) {
         });
     }
 
+    // Ensure clicking ribbon action buttons does not steal/blur editor focus or corrupt active selection
+    document.querySelectorAll('.mou-ribbon-btn, #dropdownInsertTable button').forEach(btn => {
+        btn.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.type !== 'file') {
+                e.preventDefault();
+            }
+        });
+    });
+
+    /**
+     * Locate row resize candidate by scanning all tr elements in the table.
+     * Matches if hovering within 7px of bottom edge of row i, or top edge of row i+1.
+     */
+    function findRowResizeCandidate(tableEl, clientY) {
+        if (!tableEl) return null;
+        const trs = Array.from(tableEl.querySelectorAll('tr'));
+        if (!trs.length) return null;
+        const hitTolerancePx = 7;
+
+        for (let i = 0; i < trs.length; i++) {
+            const tr = trs[i];
+            const rect = tr.getBoundingClientRect();
+            // 1. Hover near bottom border of row i
+            if (Math.abs(clientY - rect.bottom) <= hitTolerancePx) {
+                return { tr, rect, rowIndex: i, edge: 'bottom' };
+            }
+            // 2. Hover near top border of row i (if i > 0, that's bottom of row i-1)
+            if (i > 0 && Math.abs(clientY - rect.top) <= hitTolerancePx) {
+                return { tr: trs[i - 1], rect: trs[i - 1].getBoundingClientRect(), rowIndex: i - 1, edge: 'bottom' };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Compute cell min-content height for a row so upward drag never shrinks below content.
+     */
+    function computeRowMinContentHeightPx(trEl, scale = 1.0) {
+        if (!trEl) return 18;
+        const cells = Array.from(trEl.querySelectorAll('td, th'));
+        let maxContentH = 18;
+        cells.forEach(cell => {
+            let innerH = 0;
+            Array.from(cell.children).forEach(ch => {
+                innerH += ch.offsetHeight || ch.scrollHeight || 0;
+            });
+            if (innerH > maxContentH) maxContentH = innerH;
+        });
+        return Math.max(16, Math.min(maxContentH / scale, 28));
+    }
+
     /**
      * Interactive Row Height & Whole-Table Width Drag Resizing
      * Works inside Body, Header, AND Footer editors, dispatching real ProseMirror transactions.
@@ -1677,10 +2086,14 @@ export function initMouWordProcessor(config) {
         let dragMode = null; // 'row-height' | 'table-width'
         let targetRowEl = null;
         let targetTableEl = null;
+        let startRowIndex = -1;
+        let currentCalculatedHeightPt = null;
+        let currentCalculatedWidthPt = null;
         let startY = 0;
         let startX = 0;
         let startHeightPx = 0;
         let startWidthPx = 0;
+        let minContentHeightPx = 18;
 
         const guideLine = document.createElement('div');
         guideLine.className = 'mou-resize-guide-line hidden no-print';
@@ -1694,11 +2107,14 @@ export function initMouWordProcessor(config) {
             const editor = getEditorInstance();
             if (!editor || !editor.isEditable) return;
 
-            const cell = e.target.closest('td, th');
-            if (cell) {
-                const tr = cell.parentElement;
-                const rect = tr.getBoundingClientRect();
-                if (Math.abs(e.clientY - rect.bottom) <= 5) {
+            let table = e.target.closest('table');
+            if (!table) {
+                const el = document.elementFromPoint(e.clientX, e.clientY);
+                table = el ? el.closest('table') : null;
+            }
+            if (table) {
+                const resizeCandidate = findRowResizeCandidate(table, e.clientY);
+                if (resizeCandidate) {
                     mountContainer.style.cursor = 'row-resize';
                     return;
                 }
@@ -1706,7 +2122,7 @@ export function initMouWordProcessor(config) {
             if (mountContainer.style.cursor === 'row-resize') {
                 mountContainer.style.cursor = '';
             }
-        });
+        }, { capture: true });
 
         mountContainer.addEventListener('mousedown', (e) => {
             const editor = getEditorInstance();
@@ -1720,62 +2136,82 @@ export function initMouWordProcessor(config) {
                 if (table) {
                     e.preventDefault();
                     e.stopPropagation();
+                    e.stopImmediatePropagation?.();
                     dragMode = 'table-width';
                     targetTableEl = table;
                     startX = e.clientX;
-                    startWidthPx = table.getBoundingClientRect().width;
+                    const scale = (state.zoomPercent || 100) / 100;
+                    startWidthPx = table.getBoundingClientRect().width / scale;
+                    currentCalculatedWidthPt = Math.round((startWidthPx * 72) / 96);
                     document.body.style.cursor = 'ew-resize';
                     return;
                 }
             }
 
-            // 2. Check row bottom edge drag
-            const cell = e.target.closest('td, th');
-            if (cell) {
-                const tr = cell.parentElement;
-                const rect = tr.getBoundingClientRect();
-                if (Math.abs(e.clientY - rect.bottom) <= 5) {
+            // 2. Check row border drag across whole table
+            let table = e.target.closest('table');
+            if (!table) {
+                const el = document.elementFromPoint(e.clientX, e.clientY);
+                table = el ? el.closest('table') : null;
+            }
+            if (table) {
+                const resizeCandidate = findRowResizeCandidate(table, e.clientY);
+                if (resizeCandidate) {
                     e.preventDefault();
                     e.stopPropagation();
+                    e.stopImmediatePropagation?.();
                     dragMode = 'row-height';
-                    targetRowEl = tr;
+                    targetRowEl = resizeCandidate.tr;
+                    targetTableEl = table;
+                    startRowIndex = resizeCandidate.rowIndex;
                     startY = e.clientY;
-                    startHeightPx = rect.height;
+                    const scale = (state.zoomPercent || 100) / 100;
+                    startHeightPx = resizeCandidate.rect.height / scale;
+                    minContentHeightPx = computeRowMinContentHeightPx(targetRowEl, scale);
+                    currentCalculatedHeightPt = Math.round((startHeightPx * 72) / 96);
+
                     guideLine.classList.remove('hidden');
                     guideLine.style.top = `${e.clientY}px`;
-                    guideLine.style.left = `${rect.left}px`;
-                    guideLine.style.width = `${rect.width}px`;
-                    const ptVal = Math.round((startHeightPx * 72) / 96);
-                    guideBadge.textContent = `Tinggi Baris: ${ptVal} pt (${(startHeightPx / MM_TO_PX).toFixed(1)} mm)`;
+                    guideLine.style.left = `${resizeCandidate.rect.left}px`;
+                    guideLine.style.width = `${resizeCandidate.rect.width}px`;
+
+                    guideBadge.textContent = `Tinggi Baris: ${currentCalculatedHeightPt} pt (${(startHeightPx / MM_TO_PX).toFixed(1)} mm)`;
+                    guideBadge.style.backgroundColor = '#1d4ed8';
                     document.body.style.cursor = 'row-resize';
                 }
             }
-        });
+        }, { capture: true });
 
         window.addEventListener('mousemove', (e) => {
             if (!dragMode) return;
-            const scale = state.zoomPercent / 100;
+            const scale = (state.zoomPercent || 100) / 100;
 
-            if (dragMode === 'row-height' && targetRowEl) {
+            if (dragMode === 'row-height') {
                 const deltaY = (e.clientY - startY) / scale;
-                const newHeightPx = Math.max(18, Math.round(startHeightPx + deltaY));
+                const rawHeightPx = startHeightPx + deltaY;
+                const newHeightPx = Math.max(minContentHeightPx, rawHeightPx);
+                const isAtMin = rawHeightPx <= minContentHeightPx;
                 const ptVal = Math.max(12, Math.round((newHeightPx * 72) / 96));
-                targetRowEl.style.height = `${ptVal}pt`;
-                targetRowEl.setAttribute('data-row-height', `${ptVal}pt`);
-                Array.from(targetRowEl.children).forEach(td => {
-                    td.style.height = `${ptVal}pt`;
-                    td.setAttribute('data-row-height', `${ptVal}pt`);
-                });
+                const mmVal = (newHeightPx / MM_TO_PX).toFixed(1);
+                currentCalculatedHeightPt = ptVal;
+
                 guideLine.style.top = `${e.clientY}px`;
-                guideBadge.textContent = `Tinggi Baris: ${ptVal} pt (${(newHeightPx / MM_TO_PX).toFixed(1)} mm)`;
-            } else if (dragMode === 'table-width' && targetTableEl) {
+                if (isAtMin) {
+                    guideBadge.textContent = `Tinggi Baris: ${ptVal} pt (${mmVal} mm) • Min. Isi Sel`;
+                    guideBadge.style.backgroundColor = '#d97706';
+                } else {
+                    guideBadge.textContent = `Tinggi Baris: ${ptVal} pt (${mmVal} mm)`;
+                    guideBadge.style.backgroundColor = '#1d4ed8';
+                }
+            } else if (dragMode === 'table-width') {
                 const deltaX = (e.clientX - startX) / scale;
-                const newWidthPx = Math.max(120, Math.round(startWidthPx + deltaX));
+                const maxPrintableW = getPrintableWidthPx();
+                const rawWidthPx = startWidthPx + deltaX;
+                const newWidthPx = Math.max(120, Math.min(maxPrintableW, Math.round(rawWidthPx)));
                 const ptVal = Math.round((newWidthPx * 72) / 96);
-                targetTableEl.style.width = `${ptVal}pt`;
-                targetTableEl.setAttribute('data-table-width', `${ptVal}pt`);
+                currentCalculatedWidthPt = ptVal;
             }
-        });
+        }, { capture: true });
 
         window.addEventListener('mouseup', () => {
             if (!dragMode) return;
@@ -1783,86 +2219,146 @@ export function initMouWordProcessor(config) {
             guideLine.classList.add('hidden');
             document.body.style.cursor = '';
 
-            if (dragMode === 'row-height' && targetRowEl && editor) {
-                const finalRowHeight = targetRowEl.getAttribute('data-row-height') || targetRowEl.style.height;
-                if (finalRowHeight) {
-                    applyRowHeightTransaction(editor, targetRowEl, finalRowHeight);
-                }
-            } else if (dragMode === 'table-width' && targetTableEl && editor) {
-                const finalTableWidth = targetTableEl.getAttribute('data-table-width') || targetTableEl.style.width;
-                if (finalTableWidth) {
-                    applyTableWidthTransaction(editor, targetTableEl, finalTableWidth);
-                }
+            if (dragMode === 'row-height' && editor && currentCalculatedHeightPt !== null) {
+                const finalRowHeight = `${currentCalculatedHeightPt}pt`;
+                applyRowHeightTransaction(editor, targetRowEl, finalRowHeight, targetTableEl, startRowIndex);
+            } else if (dragMode === 'table-width' && editor && currentCalculatedWidthPt !== null) {
+                const finalTableWidth = `${currentCalculatedWidthPt}pt`;
+                applyTableWidthTransaction(editor, targetTableEl, finalTableWidth);
             }
 
             dragMode = null;
             targetRowEl = null;
             targetTableEl = null;
+            startRowIndex = -1;
+            currentCalculatedHeightPt = null;
+            currentCalculatedWidthPt = null;
             scheduleSyncAndPagination();
-        });
+        }, { capture: true });
     }
 
     /**
-     * Dispatch a ProseMirror transaction to persist rowHeight on a DOM <tr> element's node and child cells.
+     * Dispatch a deterministic ProseMirror transaction to persist rowHeight on a DOM <tr> element's node and child cells.
      */
-    function applyRowHeightTransaction(editor, trDom, rowHeightValue) {
+    function applyRowHeightTransaction(editor, trDom, rowHeightValue, tableDomFallback = null, rowIndexFallback = -1) {
+        if (!editor || !editor.view) return;
         try {
-            const pos = editor.view.posAtDOM(trDom, 0);
-            const $pos = editor.state.doc.resolve(pos);
-            let trPos = null;
-            let trNode = null;
-            for (let d = $pos.depth; d >= 0; d--) {
-                const node = $pos.node(d);
-                if (node.type.name === 'tableRow') {
-                    trPos = $pos.before(d);
-                    trNode = node;
-                    break;
-                }
+            const tableDom = trDom?.closest?.('table') || tableDomFallback;
+            if (!tableDom) return;
+            const allTrs = Array.from(tableDom.querySelectorAll('tr'));
+            let rowIndex = trDom ? allTrs.indexOf(trDom) : -1;
+            if (rowIndex === -1 && typeof rowIndexFallback === 'number') {
+                rowIndex = rowIndexFallback;
             }
-            if (trPos !== null && trNode) {
-                const tr = editor.state.tr;
-                tr.setNodeMarkup(trPos, undefined, {
-                    ...trNode.attrs,
+            if (rowIndex === -1) return;
+
+            let tablePos = null;
+            let tableNode = null;
+            const targetTr = allTrs[rowIndex] || trDom;
+            const td = targetTr ? targetTr.querySelector('td, th') : null;
+            if (td) {
+                try {
+                    const cellPos = editor.view.posAtDOM(td, 0);
+                    if (cellPos >= 0) {
+                        const $pos = editor.state.doc.resolve(cellPos);
+                        for (let d = $pos.depth; d >= 0; d--) {
+                            if ($pos.node(d).type.name === 'table') {
+                                tablePos = $pos.before(d);
+                                tableNode = $pos.node(d);
+                                break;
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            if (tablePos === null || !tableNode) {
+                editor.state.doc.descendants((node, pos) => {
+                    if (node.type.name === 'table' && tablePos === null) {
+                        tablePos = pos;
+                        tableNode = node;
+                        return false;
+                    }
+                });
+            }
+
+            if (tablePos === null || !tableNode || rowIndex >= tableNode.childCount) return;
+
+            let trPos = tablePos + 1;
+            for (let i = 0; i < rowIndex; i++) {
+                trPos += tableNode.child(i).nodeSize;
+            }
+            const trNode = tableNode.child(rowIndex);
+
+            const tr = editor.state.tr;
+            tr.setNodeMarkup(trPos, undefined, {
+                ...trNode.attrs,
+                rowHeight: rowHeightValue,
+            });
+
+            let offset = trPos + 1;
+            for (let i = 0; i < trNode.childCount; i++) {
+                const cell = trNode.child(i);
+                tr.setNodeMarkup(offset, undefined, {
+                    ...cell.attrs,
                     rowHeight: rowHeightValue,
                 });
-                let offset = trPos + 1;
-                for (let i = 0; i < trNode.childCount; i++) {
-                    const cell = trNode.child(i);
-                    tr.setNodeMarkup(offset, undefined, {
-                        ...cell.attrs,
-                        rowHeight: rowHeightValue,
-                    });
-                    offset += cell.nodeSize;
-                }
-                editor.view.dispatch(tr);
-                const rowHeightInput = document.getElementById('ribbonRowHeightInput');
-                if (rowHeightInput) rowHeightInput.value = rowHeightValue;
+                offset += cell.nodeSize;
+            }
+
+            editor.view.dispatch(tr);
+
+            const rowHeightInput = document.getElementById('ribbonRowHeightInput');
+            if (rowHeightInput) {
+                rowHeightInput.value = String(rowHeightValue).replace(/[^0-9.]/g, '');
             }
         } catch (err) {
-            console.warn('Row height transaction fallback:', err);
+            console.warn('Row height transaction error:', err);
         }
     }
 
     /**
      * Dispatch a ProseMirror transaction to persist tableWidth on a DOM <table> element's node.
+     * Clamped to printable width so table never exceeds physical page boundary.
      */
     function applyTableWidthTransaction(editor, tableDom, tableWidthValue) {
+        if (!editor || !editor.view || !tableDom) return;
         try {
-            const pos = editor.view.posAtDOM(tableDom, 0);
-            const $pos = editor.state.doc.resolve(pos);
-            for (let d = $pos.depth; d >= 0; d--) {
-                const node = $pos.node(d);
-                if (node.type.name === 'table') {
-                    const tablePos = $pos.before(d);
-                    const tr = editor.state.tr.setNodeMarkup(tablePos, undefined, {
-                        ...node.attrs,
-                        tableWidth: tableWidthValue,
-                    });
-                    editor.view.dispatch(tr);
-                    const tableWidthInput = document.getElementById('ribbonTableWidthInput');
-                    if (tableWidthInput) tableWidthInput.value = tableWidthValue;
-                    break;
+            const maxPrintableW = getPrintableWidthPx();
+            let safeWidth = tableWidthValue;
+            if (typeof tableWidthValue === 'string' && tableWidthValue.endsWith('pt')) {
+                const pt = parseFloat(tableWidthValue) || 0;
+                const px = (pt * 96) / 72;
+                if (px > maxPrintableW) {
+                    safeWidth = `${Math.round((maxPrintableW * 72) / 96)}pt`;
                 }
+            }
+
+            const cell = tableDom.querySelector('td, th');
+            let tablePos = null;
+            let tableNode = null;
+            if (cell) {
+                const cellPos = editor.view.posAtDOM(cell, 0);
+                if (cellPos >= 0) {
+                    const $pos = editor.state.doc.resolve(cellPos);
+                    for (let d = $pos.depth; d >= 0; d--) {
+                        if ($pos.node(d).type.name === 'table') {
+                            tablePos = $pos.before(d);
+                            tableNode = $pos.node(d);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (tablePos !== null && tableNode) {
+                const tr = editor.state.tr.setNodeMarkup(tablePos, undefined, {
+                    ...tableNode.attrs,
+                    tableWidth: safeWidth,
+                });
+                editor.view.dispatch(tr);
+                const tableWidthInput = document.getElementById('ribbonTableWidthInput');
+                if (tableWidthInput) tableWidthInput.value = safeWidth;
             }
         } catch (err) {
             console.warn('Table width transaction fallback:', err);
@@ -1908,15 +2404,41 @@ export function initMouWordProcessor(config) {
     function setCurrentTableWidth(widthValue) {
         const editor = getActiveEditor();
         if (!editor) return;
-        editor.chain().focus().updateAttributes('table', { tableWidth: widthValue || '100%' }).run();
-        scheduleSyncAndPagination();
+        const { state: edState } = editor;
+        const { $from } = edState.selection;
+        for (let d = $from.depth; d >= 0; d--) {
+            const node = $from.node(d);
+            if (node.type.name === 'table') {
+                const tablePos = $from.before(d);
+                const tr = edState.tr.setNodeMarkup(tablePos, undefined, {
+                    ...node.attrs,
+                    tableWidth: widthValue || '100%',
+                });
+                editor.view.dispatch(tr);
+                scheduleSyncAndPagination();
+                return;
+            }
+        }
     }
 
     function setCurrentTableAlign(alignValue) {
         const editor = getActiveEditor();
         if (!editor) return;
-        editor.chain().focus().updateAttributes('table', { tableAlign: alignValue }).run();
-        scheduleSyncAndPagination();
+        const { state: edState } = editor;
+        const { $from } = edState.selection;
+        for (let d = $from.depth; d >= 0; d--) {
+            const node = $from.node(d);
+            if (node.type.name === 'table') {
+                const tablePos = $from.before(d);
+                const tr = edState.tr.setNodeMarkup(tablePos, undefined, {
+                    ...node.attrs,
+                    tableAlign: alignValue || null,
+                });
+                editor.view.dispatch(tr);
+                scheduleSyncAndPagination();
+                return;
+            }
+        }
     }
 
     function setCurrentColumnWidth(widthPxValue) {
@@ -1976,44 +2498,219 @@ export function initMouWordProcessor(config) {
         }
     }
 
+    function adjustRowHeightSpin(deltaPt) {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const { $from } = editor.state.selection;
+        let currentPt = 18;
+        for (let d = $from.depth; d >= 0; d--) {
+            const node = $from.node(d);
+            if (node.type.name === 'tableRow') {
+                if (node.attrs.rowHeight) {
+                    currentPt = parseFloat(String(node.attrs.rowHeight).replace(/[^0-9.]/g, '')) || 18;
+                }
+                break;
+            }
+        }
+        const newPt = Math.max(12, Math.round(currentPt + deltaPt));
+        setCurrentRowHeight(`${newPt}pt`);
+        const input = document.getElementById('ribbonRowHeightInput');
+        if (input) input.value = String(newPt);
+    }
+
+    function adjustColWidthSpin(deltaPx) {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const input = document.getElementById('ribbonColWidthInput');
+        let currentPx = input && input.value ? (parseInt(input.value, 10) || 120) : 120;
+        const maxPrintableW = getPrintableWidthPx();
+        const newPx = Math.max(30, Math.min(maxPrintableW - 40, currentPx + deltaPx));
+        setCurrentColumnWidth(newPx);
+        if (input) input.value = String(newPx);
+    }
+
+    function adjustTableWidthSpin(deltaPercent) {
+        const input = document.getElementById('ribbonTableWidthInput');
+        let cur = input && input.value ? (parseInt(input.value.replace(/[^0-9]/g, ''), 10) || 100) : 100;
+        const newPct = Math.max(30, Math.min(100, cur + deltaPercent));
+        setCurrentTableWidth(`${newPct}%`);
+        if (input) input.value = `${newPct}%`;
+    }
+
+    function adjustFontSizeSpin(deltaPt) {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const input = document.getElementById('ribbonFontSizeInput') || document.getElementById('ribbonFontSize');
+        let cur = state.fontSizePt || 12;
+        if (input && input.value) {
+            cur = parseFloat(String(input.value).replace(/[^0-9.]/g, '')) || cur;
+        }
+        const newPt = Math.max(6, Math.min(72, cur + deltaPt));
+        state.fontSizePt = newPt;
+        editor.chain().focus().setFontSize(`${newPt}pt`).run();
+        if (input) input.value = `${newPt}pt`;
+        scheduleSyncAndPagination();
+    }
+
+    function setZoomPercent(zoomVal) {
+        const scale = (parseFloat(zoomVal) || 100) / 100;
+        state.zoomPercent = Math.round(scale * 100);
+        const deskStage = document.getElementById('mouPagesDeskStage');
+        if (deskStage) {
+            deskStage.style.transform = `scale(${scale})`;
+            deskStage.style.transformOrigin = 'top center';
+            const totalSheets = deskStage.querySelectorAll('.mou-a4-paper-sheet').length || 1;
+            const a4H = 297 * MM_TO_PX;
+            const naturalH = totalSheets * a4H + (totalSheets - 1) * 24;
+            const scaledH = naturalH * scale;
+            deskStage.style.marginBottom = `${Math.max(48, scaledH - naturalH + 48)}px`;
+        }
+    }
+
     function updateActiveTableCells(attrUpdates, applyToWholeTable = false) {
         const editor = getActiveEditor();
         if (!editor) return;
         const { state: edState } = editor;
-        const { $from } = edState.selection;
+        const { selection } = edState;
+        const { $from } = selection;
+
+        let tableDepth = -1;
+        let tableNode = null;
+        for (let d = $from.depth; d >= 0; d--) {
+            const n = $from.node(d);
+            if (n.type.name === 'table') {
+                tableDepth = d;
+                tableNode = n;
+                break;
+            }
+        }
+
+        if (!tableNode || tableDepth === -1) {
+            return;
+        }
+
+        const tableStart = $from.before(tableDepth);
+        const tableEnd = $from.after(tableDepth);
+        const tr = edState.tr;
 
         if (applyToWholeTable) {
-            for (let d = $from.depth; d >= 0; d--) {
+            let rowOffset = tableStart + 1;
+            for (let r = 0; r < tableNode.childCount; r++) {
+                const row = tableNode.child(r);
+                let cellOffset = rowOffset + 1;
+                for (let c = 0; c < row.childCount; c++) {
+                    const cell = row.child(c);
+                    tr.setNodeMarkup(cellOffset, undefined, {
+                        ...cell.attrs,
+                        ...attrUpdates,
+                    });
+                    cellOffset += cell.nodeSize;
+                }
+                rowOffset += row.nodeSize;
+            }
+            editor.view.dispatch(tr);
+            scheduleSyncAndPagination();
+            return;
+        }
+
+        // Apply only to selected cells, strictly constrained within this table [tableStart, tableEnd]
+        let updatedAny = false;
+        if (selection.forEachCell) {
+            selection.forEachCell((node, pos) => {
+                if (pos >= tableStart && pos <= tableEnd) {
+                    tr.setNodeMarkup(pos, undefined, {
+                        ...node.attrs,
+                        ...attrUpdates,
+                    });
+                    updatedAny = true;
+                }
+            });
+        } else {
+            for (let d = $from.depth; d > tableDepth; d--) {
                 const n = $from.node(d);
-                if (n.type.name === 'table') {
-                    const tablePos = $from.before(d);
-                    const tr = edState.tr;
-                    let rowOffset = tablePos + 1;
-                    for (let r = 0; r < n.childCount; r++) {
-                        const row = n.child(r);
-                        let cellOffset = rowOffset + 1;
-                        for (let c = 0; c < row.childCount; c++) {
-                            const cell = row.child(c);
-                            tr.setNodeMarkup(cellOffset, undefined, {
-                                ...cell.attrs,
-                                ...attrUpdates,
-                            });
-                            cellOffset += cell.nodeSize;
-                        }
-                        rowOffset += row.nodeSize;
-                    }
-                    editor.view.dispatch(tr);
-                    scheduleSyncAndPagination();
-                    return;
+                if (n.type.name === 'tableCell' || n.type.name === 'tableHeader') {
+                    const cellPos = $from.before(d);
+                    tr.setNodeMarkup(cellPos, undefined, {
+                        ...n.attrs,
+                        ...attrUpdates,
+                    });
+                    updatedAny = true;
+                    break;
                 }
             }
         }
 
-        editor.chain().focus()
-            .updateAttributes('tableCell', attrUpdates)
-            .updateAttributes('tableHeader', attrUpdates)
-            .run();
+        if (updatedAny) {
+            editor.view.dispatch(tr);
+            scheduleSyncAndPagination();
+        }
+    }
+
+    /**
+     * Safely delete strictly the active table at cursor depth.
+     * Guaranteed to never affect or delete any other table in the document.
+     */
+    function deleteCurrentTable() {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const { state: edState } = editor;
+        const { selection } = edState;
+        const { $from } = selection;
+
+        let tableDepth = -1;
+        let tableNode = null;
+        for (let d = $from.depth; d >= 0; d--) {
+            const n = $from.node(d);
+            if (n.type.name === 'table') {
+                tableDepth = d;
+                tableNode = n;
+                break;
+            }
+        }
+
+        if (!tableNode || tableDepth === -1) {
+            if (selection.node && selection.node.type.name === 'table') {
+                const tr = edState.tr.delete(selection.from, selection.to);
+                if (tr.doc.content.size === 0 || tr.doc.childCount === 0) {
+                    tr.insert(0, editor.schema.nodes.paragraph.create());
+                }
+                editor.view.dispatch(tr);
+                scheduleSyncAndPagination();
+                scheduleReflow(true);
+            }
+            return;
+        }
+
+        const tablePos = $from.before(tableDepth);
+        const tableEnd = $from.after(tableDepth);
+        const tr = edState.tr;
+
+        // Delete ONLY the exact range of this active table
+        tr.delete(tablePos, tableEnd);
+
+        // Check neighboring nodes at the deletion boundary
+        const safePos = Math.min(tablePos, tr.doc.content.size);
+        const $resolved = tr.doc.resolve(safePos);
+        const nodeBefore = $resolved.nodeBefore;
+        const nodeAfter = $resolved.nodeAfter;
+
+        // If deletion leaves adjacent tables touching or page/doc becomes empty,
+        // insert an empty paragraph placeholder so tables are safely isolated.
+        const isTouchingTable = (nodeBefore && nodeBefore.type.name === 'table') || (nodeAfter && nodeAfter.type.name === 'table');
+        const isParentPageEmpty = $resolved.parent && $resolved.parent.type.name === 'mouPage' && $resolved.parent.childCount === 0;
+        const isDocEmpty = tr.doc.childCount === 0;
+
+        if (isTouchingTable || isParentPageEmpty || isDocEmpty) {
+            const pNode = editor.schema.nodes.paragraph.create();
+            tr.insert(tablePos, pNode);
+            try {
+                tr.setSelection(editor.state.selection.constructor.near(tr.doc.resolve(tablePos + 1)));
+            } catch (e) {}
+        }
+
+        editor.view.dispatch(tr);
         scheduleSyncAndPagination();
+        scheduleReflow(true);
     }
 
     /**
@@ -2042,6 +2739,17 @@ export function initMouWordProcessor(config) {
         return { width: base.width, height: base.height };
     }
 
+    function getPrintableWidthMm() {
+        const dims = getPaperDimensionsMm();
+        const lMargin = parseFloat(state.marginLeftMm) || 20;
+        const rMargin = parseFloat(state.marginRightMm) || 20;
+        return Math.max(80, dims.width - lMargin - rMargin);
+    }
+
+    function getPrintableWidthPx() {
+        return Math.round(getPrintableWidthMm() * MM_TO_PX);
+    }
+
     function syncAllToHiddenInputs() {
         saveActiveHeaderFooterToStore();
 
@@ -2057,6 +2765,7 @@ export function initMouWordProcessor(config) {
         const instLogo = state.mediaAssets.institution_logo || state.mediaAssets.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
 
         setInputVal('inputTemplateHtml', bodyHtml);
+        setInputVal('inputContentHtml', bodyHtml);
         setInputVal('inputEditorJson', bodyJson);
         setInputVal('inputHeaderHtml', state.headerHtmlStore || '');
         setInputVal('inputFooterHtml', state.footerHtmlStore || '');
@@ -2081,6 +2790,9 @@ export function initMouWordProcessor(config) {
         setInputVal('inputCompanyLogo', compLogo);
         setInputVal('inputInstitutionLogoUrl', instLogo);
         setInputVal('inputCompanyLogoUrl', compLogo);
+        setInputVal('inputShowHeaderLogos', state.showHeaderLogos ? '1' : '0');
+        setInputVal('inputShowWatermark', state.showWatermark ? '1' : '0');
+        setInputVal('inputWatermarkOpacity', String(state.watermarkOpacity ?? 0.05));
     }
 
     /**
@@ -2173,8 +2885,43 @@ export function initMouWordProcessor(config) {
             pageDom.style.fontFamily = `'${state.fontFamily}', Times, serif`;
             pageDom.style.fontSize = `${state.fontSizePt}pt`;
             pageDom.style.lineHeight = String(state.lineHeight);
+            pageDom.style.position = 'relative';
 
             const isFirstPage = pageNum === 1;
+
+            // Render Watermark & Fixed Header Logo Layer (pinned to page, independent of text stream)
+            let watermarkEl = pageDom.querySelector('.mou-page-watermark-layer');
+            if (!watermarkEl) {
+                watermarkEl = document.createElement('div');
+                watermarkEl.className = 'mou-page-watermark-layer';
+                watermarkEl.setAttribute('data-pagination-artifact', 'true');
+                watermarkEl.setAttribute('contenteditable', 'false');
+                pageDom.insertBefore(watermarkEl, pageDom.firstChild);
+            }
+
+            const showHeaderLogos = state.showHeaderLogos !== false;
+            const showWatermark = !!state.showWatermark;
+            let watermarkHtml = '';
+
+            if (showWatermark) {
+                const wmUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+                watermarkHtml += `<img src="${wmUrl}" class="mou-watermark-center" alt="Watermark" />`;
+            }
+
+            if (isFirstPage && showHeaderLogos) {
+                const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+                const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+                const topHeaderMm = Math.max(10, state.marginTopMm - 10);
+                watermarkHtml += `
+                    <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
+                        <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
+                        <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
+                    </div>
+                `;
+            }
+
+            watermarkEl.innerHTML = watermarkHtml;
+
             const headerHtml = (state.differentFirstPage && isFirstPage)
                 ? (state.firstPageHeaderHtmlStore || '')
                 : (state.headerHtmlStore || '');
@@ -2310,6 +3057,7 @@ export function initMouWordProcessor(config) {
 
             const children = contentDom.children;
             const contentDomRect = contentDom.getBoundingClientRect();
+            const scale = (state.zoomPercent || 100) / 100;
 
             let overflowingIndex = -1;
             for (let cIdx = 0; cIdx < children.length; cIdx++) {
@@ -2324,12 +3072,35 @@ export function initMouWordProcessor(config) {
                 }
 
                 const childRect = childEl.getBoundingClientRect();
-                const childBottom = childRect.bottom - contentDomRect.top;
+                const scale = (state.zoomPercent || 100) / 100;
+                const childBottom = (childRect.bottom - contentDomRect.top) / scale;
 
                 // 12px tolerance buffer so minor padding/cursor adjustments never cause spurious page breaks
                 if (childBottom > usableHeight + 12) {
-                    if (cIdx === 0 && children.length === 1) {
-                        continue;
+                    const tableEl = childEl.querySelector('table') || (childEl.tagName === 'TABLE' ? childEl : null);
+                    if (tableEl) {
+                        const trs = Array.from(tableEl.querySelectorAll('tr'));
+                        if (trs.length > 1) {
+                            let splitRow = -1;
+                            for (let r = 0; r < trs.length; r++) {
+                                const rRect = trs[r].getBoundingClientRect();
+                                const rBottom = (rRect.bottom - contentDomRect.top) / scale;
+                                if (rBottom > usableHeight + 12) {
+                                    splitRow = r;
+                                    break;
+                                }
+                            }
+                            if (splitRow > 0) {
+                                splitAction = {
+                                    type: 'split_table',
+                                    pageIndex: pIdx,
+                                    nodeIndex: cIdx,
+                                    splitRowIndex: splitRow
+                                };
+                                needsReflow = true;
+                                break;
+                            }
+                        }
                     }
                     overflowingIndex = cIdx;
                     break;
@@ -2338,12 +3109,19 @@ export function initMouWordProcessor(config) {
 
             if (overflowingIndex !== -1 && overflowingIndex < pageNode.childCount) {
                 let finalSplitIndex = overflowingIndex;
-                if (finalSplitIndex > 0) {
-                    const prevNode = pageNode.child(finalSplitIndex - 1);
-                    const isHeading = prevNode.type.name === 'heading' || prevNode.attrs?.isPasalHeading || false;
-                    if (isHeading && (finalSplitIndex - 1 > 0)) {
-                        finalSplitIndex = finalSplitIndex - 1;
+                function isHeadingNode(n) {
+                    if (!n) return false;
+                    if (n.type.name === 'heading') return true;
+                    const txt = (n.textContent || '').trim();
+                    if (/^Pasal\s+\d+/i.test(txt)) return true;
+                    if (n.type.name === 'paragraph' && txt.length >= 3 && txt.length <= 60 && txt === txt.toUpperCase() && !txt.includes(':')) {
+                        return true;
                     }
+                    return false;
+                }
+
+                while (finalSplitIndex > 0 && isHeadingNode(pageNode.child(finalSplitIndex - 1))) {
+                    finalSplitIndex--;
                 }
 
                 // If remaining nodes on the last page are merely empty paragraphs, do not spawn a new blank page!
@@ -2414,6 +3192,64 @@ export function initMouWordProcessor(config) {
         const { state: edState, view } = editor;
         const doc = edState.doc;
         const tr = edState.tr;
+
+        if (action.type === 'split_table') {
+            const { pageIndex, nodeIndex, splitRowIndex } = action;
+            const pageNode = doc.child(pageIndex);
+            if (nodeIndex >= pageNode.childCount) return;
+            const tableNode = pageNode.child(nodeIndex);
+            if (!tableNode || tableNode.type.name !== 'table' || splitRowIndex <= 0 || splitRowIndex >= tableNode.childCount) return;
+
+            const table1Rows = [];
+            const table2Rows = [];
+            for (let r = 0; r < tableNode.childCount; r++) {
+                if (r < splitRowIndex) table1Rows.push(tableNode.child(r));
+                else table2Rows.push(tableNode.child(r));
+            }
+            if (table1Rows.length === 0 || table2Rows.length === 0) return;
+
+            const table1Node = edState.schema.nodes.table.create(tableNode.attrs, table1Rows);
+            const table2Node = edState.schema.nodes.table.create(tableNode.attrs, table2Rows);
+
+            let pagePos = 0;
+            for (let i = 0; i < pageIndex; i++) pagePos += doc.child(i).nodeSize;
+            let nodeOffset = 0;
+            for (let c = 0; c < nodeIndex; c++) nodeOffset += pageNode.child(c).nodeSize;
+
+            const tableStartPos = pagePos + 1 + nodeOffset;
+            const tableEndPos = tableStartPos + tableNode.nodeSize;
+
+            const followingNodes = [];
+            for (let c = nodeIndex + 1; c < pageNode.childCount; c++) {
+                followingNodes.push(pageNode.child(c));
+            }
+
+            const pageEndPos = pagePos + 1 + pageNode.content.size;
+            tr.delete(tableStartPos, pageEndPos);
+            tr.insert(tableStartPos, table1Node);
+
+            const nodesToMove = [table2Node, ...followingNodes];
+
+            if (pageIndex + 1 < doc.childCount) {
+                let nextPagePos = 0;
+                for (let i = 0; i < pageIndex + 1; i++) nextPagePos += doc.child(i).nodeSize;
+                const mappedNextPageStart = tr.mapping.map(nextPagePos + 1);
+                tr.insert(mappedNextPageStart, nodesToMove);
+            } else {
+                const newPageNode = edState.schema.nodes.mouPage.create(
+                    { pageNumber: pageIndex + 2 },
+                    nodesToMove
+                );
+                const mappedInsertPos = tr.mapping.map(pagePos + pageNode.nodeSize);
+                tr.insert(mappedInsertPos, newPageNode);
+            }
+
+            tr.setMeta('addToHistory', false);
+            tr.setMeta(reflowPluginKey, true);
+            view.dispatch(tr);
+            scheduleReflow(false);
+            return;
+        }
 
         if (action.type === 'overflow') {
             const { pageIndex, splitIndex } = action;
@@ -2846,12 +3682,20 @@ export function initMouWordProcessor(config) {
     syncAllToHiddenInputs();
 
     // Form submit hook to guarantee latest HTML & JSON are synced
-    const form = document.getElementById('mouTemplateForm');
-    if (form) {
-        form.addEventListener('submit', () => {
-            syncAllToHiddenInputs();
-        });
-    }
+    const candidateForms = [
+        document.getElementById('mouTemplateForm'),
+        document.getElementById('documentTemplateForm'),
+        bodyMountEl ? bodyMountEl.closest('form') : null,
+    ].filter(Boolean);
+    const attachedForms = new Set();
+    candidateForms.forEach(f => {
+        if (!attachedForms.has(f)) {
+            attachedForms.add(f);
+            f.addEventListener('submit', () => {
+                syncAllToHiddenInputs();
+            });
+        }
+    });
 
     // Public controller API exposed to Ribbon UI and window
     const api = {
@@ -3065,7 +3909,12 @@ export function initMouWordProcessor(config) {
                 ed.chain().focus().toggleHeading({ level }).run();
             }
         },
-        toggleBulletList: () => getActiveEditor()?.chain().focus().toggleBulletList().run(),
+        toggleBulletList: () => {
+            const ed = getActiveEditor();
+            if (!ed) return;
+            ed.chain().focus().toggleBulletList().run();
+            updateToolbarState();
+        },
         toggleOrderedList: (listType = null) => {
             const ed = getActiveEditor();
             if (!ed) return;
@@ -3078,10 +3927,19 @@ export function initMouWordProcessor(config) {
             } else {
                 ed.chain().focus().toggleOrderedList().run();
             }
+            updateToolbarState();
         },
         adjustIndent: (deltaMm) => {
             const ed = getActiveEditor();
             if (!ed) return;
+            if (ed.isActive('listItem')) {
+                if (deltaMm > 0) {
+                    ed.chain().focus().sinkListItem('listItem').run();
+                } else {
+                    ed.chain().focus().liftListItem('listItem').run();
+                }
+                return;
+            }
             const attrs = ed.getAttributes('paragraph');
             const curMm = parseFloat(String(attrs.marginLeft || '0').replace('mm', '')) || 0;
             const nextMm = Math.max(0, Math.min(80, curMm + deltaMm));
@@ -3117,11 +3975,45 @@ export function initMouWordProcessor(config) {
         insertTable: (rows = 3, cols = 3, withHeaderRow = false) => {
             const ed = getActiveEditor();
             if (!ed) return;
+            const { state: edState } = ed;
+            const { $from } = edState.selection;
+
+            // If cursor is currently inside a table, move cursor after that table first
+            for (let d = $from.depth; d >= 0; d--) {
+                if ($from.node(d).type.name === 'table') {
+                    const afterPos = $from.after(d);
+                    ed.commands.setTextSelection(afterPos);
+                    break;
+                }
+            }
+
+            // Ensure there is a paragraph before the table if directly following another table
+            const curPos = ed.state.selection.$from;
+            const nodeBefore = curPos.nodeBefore;
+            if (nodeBefore && nodeBefore.type.name === 'table') {
+                ed.commands.insertContent('<p></p>');
+            }
+
             ed.chain().focus().insertTable({
                 rows: Math.max(1, parseInt(rows, 10) || 3),
                 cols: Math.max(1, parseInt(cols, 10) || 3),
                 withHeaderRow: Boolean(withHeaderRow),
             }).run();
+
+            // Insert paragraph after table if it is adjacent to another table or at document end
+            const afterInsertPos = ed.state.selection.$from;
+            for (let d = afterInsertPos.depth; d >= 0; d--) {
+                if (afterInsertPos.node(d).type.name === 'table') {
+                    const endPos = afterInsertPos.after(d);
+                    const docEnd = ed.state.doc.content.size;
+                    if (endPos >= docEnd || (ed.state.doc.resolve(endPos).nodeAfter && ed.state.doc.resolve(endPos).nodeAfter.type.name === 'table')) {
+                        const tr = ed.state.tr.insert(endPos, ed.schema.nodes.paragraph.create());
+                        ed.view.dispatch(tr);
+                    }
+                    break;
+                }
+            }
+            scheduleSyncAndPagination();
         },
         insertPageBreak: () => bodyEditor.chain().focus().insertPageBreak().run(),
         insertHorizontalRule: () => getActiveEditor()?.chain().focus().setHorizontalRule().run(),
@@ -3172,8 +4064,84 @@ export function initMouWordProcessor(config) {
             const updates = {};
             if (widthVal) updates.width = /^\d+$/.test(String(widthVal)) ? `${widthVal}px` : widthVal;
             if (alignVal) updates.align = alignVal;
-            ed.chain().focus().updateAttributes('image', updates).run();
+
+            const { state, view } = ed;
+            if (state.selection.node && state.selection.node.type.name === 'image') {
+                ed.chain().focus().updateAttributes('image', updates).run();
+            } else {
+                let imgPos = null;
+                const selectedWrap = document.querySelector('.mou-image-wrapper.is-selected');
+                if (selectedWrap && view) {
+                    const imgEl = selectedWrap.querySelector('img');
+                    if (imgEl) {
+                        try {
+                            const p = view.posAtDOM(imgEl, 0);
+                            if (p >= 0) imgPos = p;
+                        } catch (_) {}
+                    }
+                }
+                if (imgPos === null) {
+                    state.doc.descendants((node, pos) => {
+                        if (node.type.name === 'image' && imgPos === null) {
+                            imgPos = pos;
+                            return false;
+                        }
+                    });
+                }
+                if (imgPos !== null) {
+                    try {
+                        const nodeSel = NodeSelection.create(state.doc, imgPos);
+                        const tr = state.tr.setSelection(nodeSel);
+                        const node = state.doc.nodeAt(imgPos);
+                        if (node) {
+                            tr.setNodeMarkup(imgPos, undefined, { ...node.attrs, ...updates });
+                        }
+                        view.dispatch(tr);
+                    } catch (_) {
+                        ed.chain().focus().updateAttributes('image', updates).run();
+                    }
+                } else {
+                    ed.chain().focus().updateAttributes('image', updates).run();
+                }
+            }
             scheduleSyncAndPagination();
+        },
+        insertSystemAsset: (asset) => {
+            const ed = getActiveEditor();
+            if (!ed || !asset) return;
+            const src = asset.preview_url || `/admin/system-assets/${asset.id}/preview`;
+            let width = '110px';
+            if (asset.category === 'letterhead') {
+                width = '100%';
+            } else if (asset.category === 'signature' || asset.category === 'stamp') {
+                width = '120px';
+            } else if (asset.category === 'logo') {
+                width = '100px';
+            }
+
+            ed.chain().focus().setImage({
+                src,
+                alt: asset.name || 'Aset Sistem',
+                title: asset.name || '',
+                assetId: String(asset.id),
+                assetCode: asset.code || '',
+                token: asset.code ? `asset.${asset.code}` : '',
+                width,
+                align: 'center',
+            }).run();
+            scheduleSyncAndPagination();
+        },
+        toggleHeaderLogos(enable) {
+            state.showHeaderLogos = enable !== undefined ? Boolean(enable) : !state.showHeaderLogos;
+            applyPageLayoutToCanvas();
+            syncAllToHiddenInputs();
+            return state.showHeaderLogos;
+        },
+        toggleWatermark(enable) {
+            state.showWatermark = enable !== undefined ? Boolean(enable) : !state.showWatermark;
+            applyPageLayoutToCanvas();
+            syncAllToHiddenInputs();
+            return state.showWatermark;
         },
         async uploadImageFile(file, slot = 'custom_image') {
             if (!file || !uploadMediaUrl) return null;
@@ -3194,10 +4162,18 @@ export function initMouWordProcessor(config) {
                 if (slot === 'institution_logo') {
                     state.mediaAssets.institution_logo = data.url;
                     state.mediaAssets.institution_logo_url = data.url;
+                    state.showHeaderLogos = true;
+                    applyPageLayoutToCanvas();
+                    syncAllToHiddenInputs();
+                    return data.url;
                 }
                 if (slot === 'company_logo') {
                     state.mediaAssets.company_logo = data.url;
                     state.mediaAssets.company_logo_url = data.url;
+                    state.showHeaderLogos = true;
+                    applyPageLayoutToCanvas();
+                    syncAllToHiddenInputs();
+                    return data.url;
                 }
                 api.insertImageFromUrl(data.url, 100, 'center');
                 syncAllToHiddenInputs();
@@ -3215,21 +4191,103 @@ export function initMouWordProcessor(config) {
         deleteColumn: () => getActiveEditor()?.chain().focus().deleteColumn().run(),
         mergeCells: () => getActiveEditor()?.chain().focus().mergeCells().run(),
         splitCell: () => getActiveEditor()?.chain().focus().splitCell().run(),
-        deleteTable: () => getActiveEditor()?.chain().focus().deleteTable().run(),
+        deleteTable: deleteCurrentTable,
         setCurrentRowHeight,
         setCurrentTableWidth,
         setCurrentTableAlign,
         setCurrentColumnWidth,
+        adjustRowHeightSpin,
+        adjustColWidthSpin,
+        adjustTableWidthSpin,
+        adjustFontSizeSpin,
+        setZoomPercent,
+        async importDocx(fileOrBuffer, mode = 'replace') {
+            const result = await importDocxFile(fileOrBuffer);
+            if (mode === 'replace') {
+                bodyEditor.commands.setContent(normalizeHtmlForBodyEditor(result.html));
+                scheduleReflow(true);
+                scheduleSyncAndPagination();
+            } else {
+                bodyEditor.chain().focus().insertContent(result.html).run();
+                scheduleReflow(true);
+                scheduleSyncAndPagination();
+            }
+            return result;
+        },
+        async exportDocx(filename = 'template.docx') {
+            const pageConfig = {
+                paper_size: state.paperSize,
+                orientation: state.orientation,
+                margin_top_mm: state.marginTopMm,
+                margin_bottom_mm: state.marginBottomMm,
+                margin_left_mm: state.marginLeftMm,
+                margin_right_mm: state.marginRightMm,
+            };
+            const docxBlob = await exportProseMirrorJsonToDocx(bodyEditor.getJSON(), pageConfig);
+            if (typeof window !== 'undefined' && window.document) {
+                downloadDocxBlob(docxBlob, filename);
+            }
+            return docxBlob;
+        },
         updateActiveTableCells,
         applyTablePreset(preset) {
-            if (preset === 'borderless') {
-                updateActiveTableCells({ borderStyle: 'none', borderWidth: '0px' }, true);
-            } else if (preset === 'grid') {
-                updateActiveTableCells({ borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000' }, true);
-            } else if (preset === 'paraf') {
-                setCurrentTableWidth('220pt');
-                updateActiveTableCells({ borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000', padding: '2pt 4pt' }, true);
+            const editor = getActiveEditor();
+            if (!editor) return;
+            const { state: edState } = editor;
+            const { $from } = edState.selection;
+
+            let targetTable = null;
+            let tablePos = null;
+            for (let d = $from.depth; d >= 0; d--) {
+                const n = $from.node(d);
+                if (n.type.name === 'table') {
+                    targetTable = n;
+                    tablePos = $from.before(d);
+                    break;
+                }
             }
+            if (!targetTable || tablePos === null) return;
+
+            let tableClass = 'mou-table-borderless';
+            let cellAttrs = { borderStyle: 'none', borderWidth: '0px', borderColor: 'transparent' };
+            let newTableWidth = targetTable.attrs.tableWidth || '100%';
+
+            if (preset === 'bordered' || preset === 'grid') {
+                tableClass = 'mou-table-bordered';
+                cellAttrs = { borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000' };
+            } else if (preset === 'borderless') {
+                tableClass = 'mou-table-borderless';
+                cellAttrs = { borderStyle: 'none', borderWidth: '0px', borderColor: 'transparent' };
+            } else if (preset === 'paraf') {
+                tableClass = 'mou-paraf-table';
+                newTableWidth = '220pt';
+                cellAttrs = { borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000', padding: '2pt 4pt' };
+            }
+
+            const tr = edState.tr;
+            tr.setNodeMarkup(tablePos, undefined, {
+                ...targetTable.attrs,
+                class: tableClass,
+                tableWidth: newTableWidth,
+            });
+
+            let rowOffset = tablePos + 1;
+            for (let r = 0; r < targetTable.childCount; r++) {
+                const row = targetTable.child(r);
+                let cellOffset = rowOffset + 1;
+                for (let c = 0; c < row.childCount; c++) {
+                    const cell = row.child(c);
+                    tr.setNodeMarkup(cellOffset, undefined, {
+                        ...cell.attrs,
+                        ...cellAttrs,
+                    });
+                    cellOffset += cell.nodeSize;
+                }
+                rowOffset += row.nodeSize;
+            }
+
+            editor.view.dispatch(tr);
+            scheduleSyncAndPagination();
         },
 
         // Find & Replace in active editor
@@ -3258,11 +4316,15 @@ export function initMouWordProcessor(config) {
     };
 
     window.MouWordProcessor = api;
+    window.UnifiedWordProcessor = api;
     return api;
 }
 
+export const initUnifiedWordProcessor = initMouWordProcessor;
 window.initMouWordProcessor = initMouWordProcessor;
+window.initUnifiedWordProcessor = initMouWordProcessor;
 if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('mou-word-processor:ready'));
+    window.dispatchEvent(new CustomEvent('unified-word-processor:ready'));
 }
 

@@ -80,6 +80,36 @@ class MouService
                 throw new InvalidArgumentException('Belum ada template MOU aktif yang dapat digunakan. Silakan aktifkan template terlebih dahulu.');
             }
 
+            // Validasi keberadaan placeholder tidak dikenal atau salah ketik pada template MOU (FG-02)
+            $rawTemplateContent = $template->content_html ?? '';
+            if (preg_match_all('/\{\{\s*([a-zA-Z0-9_\.]+)\s*\}\}|\[\s*([a-zA-Z0-9_\.]+)\s*\]/', $rawTemplateContent, $matches)) {
+                $aliasesMap = \App\Services\MailMerge\VariableRegistry::getAliasesMap('mou');
+                $mouPlaceholders = \App\Models\MouTemplate::getDefaultPlaceholders();
+                $definitions = \App\Services\MailMerge\VariableRegistry::getDefinitions();
+
+                $unknownTokens = [];
+                foreach ($matches[1] as $idx => $m1) {
+                    $rawToken = !empty($m1) ? $m1 : ($matches[2][$idx] ?? '');
+                    $cleanToken = strtolower(trim($rawToken));
+                    if ($cleanToken === '') continue;
+
+                    $isRecognized = isset($aliasesMap[$cleanToken])
+                        || isset($mouPlaceholders[$cleanToken])
+                        || isset($definitions[$cleanToken]);
+
+                    if (!$isRecognized) {
+                        $unknownTokens[] = $rawToken;
+                    }
+                }
+
+                $uniqueUnknown = array_values(array_unique($unknownTokens));
+                if (!empty($uniqueUnknown)) {
+                    throw new InvalidArgumentException(
+                        "Penerbitan MOU ditolak: Ditemukan placeholder tidak dikenal atau salah ketik pada template: " . implode(', ', $uniqueUnknown) . ". Harap perbaiki template sebelum menerbitkan dokumen resmi."
+                    );
+                }
+            }
+
             // Cek keunikan nomor MOU perusahaan
             $companyMouNumber = trim($data['company_mou_number']);
             if (Mou::where('company_mou_number', $companyMouNumber)->exists()) {
@@ -91,9 +121,33 @@ class MouService
             $pageConfig       = $template->getPageConfig();
             $mediaAssets      = $template->getMediaAssets();
 
+            $firstContact          = $institution->contacts()->where('is_active', true)->first() ?: $institution->contacts->first();
+
+            $institutionLogoPath = !empty($data['institution_logo_path'])
+                ? $data['institution_logo_path']
+                : ($institution->logo_url ?? ($mediaAssets['institution_logo'] ?? '/images/mou/institution-logo-placeholder.png'));
+
+            $companyLogoPath = !empty($data['company_logo_path'])
+                ? $data['company_logo_path']
+                : ($mediaAssets['company_logo'] ?? '/images/mou/seven-inc-logo.png');
+
+            if (!empty($data['brand_id'])) {
+                $brand = \App\Models\Brand::find($data['brand_id']);
+                if ($brand && $brand->logo_url) {
+                    $companyLogoPath = $brand->logo_url;
+                }
+            }
+
+            $mediaAssets['company_logo'] = $companyLogoPath;
+            $mediaAssets['institution_logo'] = $institutionLogoPath;
+            $pageConfig['company_logo'] = $companyLogoPath;
+            $pageConfig['company_logo_path'] = $companyLogoPath;
+            $pageConfig['institution_logo'] = $institutionLogoPath;
+            $pageConfig['institution_logo_path'] = $institutionLogoPath;
+
             $firstPartyName        = $data['first_party_institution_name'] ?? $institution->name;
-            $firstPartySignatory   = $data['first_party_signatory_name'] ?? ($institution->contacts->first()?->name ?? '-');
-            $firstPartyTitle       = $data['first_party_signatory_title'] ?? ($institution->contacts->first()?->position_title ?? 'Pimpinan Institusi');
+            $firstPartySignatory   = $data['first_party_signatory_name'] ?? ($firstContact?->name ?? null);
+            $firstPartyTitle       = $data['first_party_signatory_title'] ?? ($firstContact?->position_title ?? ($firstContact?->position ?? 'Pimpinan Institusi'));
             $firstPartyAddress     = $data['first_party_address'] ?? $institution->address;
             $firstPartyPhone       = $data['first_party_phone'] ?? $institution->phone;
             $firstPartyFax         = $data['first_party_fax'] ?? ($data['institution_fax'] ?? '-');
@@ -108,6 +162,27 @@ class MouService
             $secondPartyFax        = $data['second_party_fax'] ?? ($templateDefaults['company_fax'] ?? '-');
             $secondPartyEmail      = $data['second_party_email'] ?? ($templateDefaults['company_email'] ?? 'magangjogjadotcom@gmail.com');
             $secondPartyUnit       = $data['second_party_correspondence_unit'] ?? ($templateDefaults['company_correspondence_unit'] ?? 'CEO');
+
+            // Validasi identitas wajib dan penandatangan sebelum penerbitan resmi (FG-01)
+            $missingFields = [];
+            if (empty($firstPartyName) || trim((string)$firstPartyName) === '' || trim((string)$firstPartyName) === '-') {
+                $missingFields[] = 'Nama Institusi Mitra (first_party_institution_name)';
+            }
+            if (empty($firstPartySignatory) || trim((string)$firstPartySignatory) === '' || trim((string)$firstPartySignatory) === '-') {
+                $missingFields[] = 'Nama Penandatangan Institusi Mitra (first_party_signatory_name)';
+            }
+            if (empty($secondPartyName) || trim((string)$secondPartyName) === '' || trim((string)$secondPartyName) === '-') {
+                $missingFields[] = 'Nama Perusahaan Pihak Kedua (second_party_company_name)';
+            }
+            if (empty($secondPartySignatory) || trim((string)$secondPartySignatory) === '' || trim((string)$secondPartySignatory) === '-') {
+                $missingFields[] = 'Nama Penandatangan Perusahaan Pihak Kedua (second_party_signatory_name)';
+            }
+
+            if (!empty($missingFields)) {
+                throw new InvalidArgumentException(
+                    "Penerbitan MOU ditolak: Data wajib belum lengkap: " . implode(', ', $missingFields) . "."
+                );
+            }
 
             $agreementPlace        = $data['agreement_place'] ?? ($templateDefaults['agreement_place'] ?? 'Yogyakarta');
             $agreementDate         = $data['agreement_date'] ?? now()->toDateString();
@@ -129,6 +204,8 @@ class MouService
             // Kumpulkan snapshot payload lengkap (termasuk _page_config & _media_assets) agar historis 100% mandiri
             $snapshotData = [
                 'institution_name'                => $firstPartyName,
+                'institution_logo'                => $institutionLogoPath,
+                'institution_logo_path'           => $institutionLogoPath,
                 'institution_mou_number'          => $data['institution_mou_number'] ?? '-',
                 'institution_address'             => $firstPartyAddress,
                 'institution_correspondence_unit' => $firstPartyUnit,
@@ -138,6 +215,9 @@ class MouService
                 'institution_signatory_name'      => $firstPartySignatory,
                 'institution_signatory_title'     => $firstPartyTitle,
                 'company_name'                    => $secondPartyName,
+                'company_logo'                    => $companyLogoPath,
+                'company_logo_path'               => $companyLogoPath,
+                'brand_id'                        => !empty($data['brand_id']) ? (int) $data['brand_id'] : null,
                 'company_mou_number'              => $companyMouNumber,
                 'company_address'                 => $secondPartyAddress,
                 'company_correspondence_unit'     => $secondPartyUnit,
@@ -189,6 +269,7 @@ class MouService
                 'institution_id'                  => $institution->id,
                 'followup_cycle_id'               => $data['followup_cycle_id'] ?? null,
                 'mou_template_id'                 => $template->id,
+                'brand_id'                        => !empty($data['brand_id']) ? (int) $data['brand_id'] : null,
                 'company_mou_number'              => $companyMouNumber,
                 'institution_mou_number'          => $data['institution_mou_number'] ?? null,
                 'first_party_institution_name'    => $firstPartyName,
