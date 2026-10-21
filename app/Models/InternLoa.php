@@ -10,7 +10,8 @@ class InternLoa extends Model
     use HasFactory;
 
     protected $table = 'intern_loas';
-    public $timestamps = false;
+    public $timestamps = true;
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'intern_id',

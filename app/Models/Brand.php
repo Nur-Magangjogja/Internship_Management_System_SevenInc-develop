@@ -23,7 +23,25 @@ class Brand extends Model
         'signatory_email',
         'signatory_position',
         'signature',
+        'stamp',
     ];
+
+    public function getStampUrlAttribute(): ?string
+    {
+        if (!$this->stamp) {
+            return null;
+        }
+
+        if (str_starts_with($this->stamp, 'http://') || str_starts_with($this->stamp, 'https://') || str_starts_with($this->stamp, '/')) {
+            return $this->stamp;
+        }
+
+        if (str_starts_with($this->stamp, 'images/')) {
+            return '/' . $this->stamp;
+        }
+
+        return \Illuminate\Support\Facades\Storage::url($this->stamp);
+    }
 
     public function getLogoUrlAttribute(): ?string
     {

@@ -184,7 +184,7 @@
     <table class="header-table">
       <tr>
         <td class="header-logo" style="width: 20%; text-align: left;">
-          <img src="{{ $logoData ?? asset('storage/images/logos/logo_seveninc.png') }}" alt="Logo">
+          <img src="{{ $logoData ?: asset('images/mou/seven-inc-logo.png') }}" alt="Logo">
         </td>
         <td class="header-text-container" style="width: 60%; text-align: center;">
           <h1>{{ $companyName ?? 'SEVEN INC.' }}</h1>
@@ -265,8 +265,8 @@
         <p>Yogyakarta, {{ $letterDateStr ?? \Carbon\Carbon::now()->translatedFormat('d F Y') }}</p>
         <p>Hormat kami,</p>
         <div class="signature-img-container">
-          <img src="{{ $logoData ?? asset('storage/images/logos/logo_seveninc.png') }}" class="stamp" alt="Cap Perusahaan">
-          <img src="{{ $stampData ?? asset('storage/images/signature/ttd_arisetiahusbana.png') }}" class="ttd" alt="Tanda Tangan">
+          <img src="{{ $stampData ?: asset('images/mou/stamp-sample.png') }}" class="stamp" alt="Cap Perusahaan">
+          <img src="{{ $sigData ?? $stampData ?: asset('images/mou/signature-sample.png') }}" class="ttd" alt="Tanda Tangan">
         </div>
         <p class="signatory-name">{{ $leaderName ?? 'Ari Setia Husbana' }}</p>
         <p>{{ $leaderTitle ?? 'HRD' }}</p>

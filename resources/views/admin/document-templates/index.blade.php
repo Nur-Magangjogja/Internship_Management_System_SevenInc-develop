@@ -184,9 +184,16 @@
                     <div>
                         <!-- Top Badges -->
                         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                            <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {{ $item->getTypeBadgeClass($item->type) }}">
-                                {{ $item->getTypeLabel($item->type) }}
-                            </span>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {{ $item->getTypeBadgeClass($item->type) }}">
+                                    {{ $item->getTypeLabel($item->type) }}
+                                </span>
+                                @if ($item->getSubtypeBadge())
+                                    <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $item->certificate_type === 'webinar' ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-amber-50 text-amber-700 border-amber-200' }}">
+                                        {{ $item->getSubtypeBadge() }}
+                                    </span>
+                                @endif
+                            </div>
 
                             <div class="flex items-center gap-1.5">
                                 @if ($item->is_default)
@@ -266,7 +273,6 @@
                             <!-- Preview Dropdown / Trigger -->
                             <a
                                 href="{{ $item->preview_url ?? route('admin.document-templates.preview', $item) }}"
-                                target="_blank"
                                 title="Lihat Preview Dokumen"
                                 class="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-blue-600"
                             >

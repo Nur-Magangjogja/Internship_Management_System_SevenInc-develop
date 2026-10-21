@@ -314,6 +314,16 @@ class CertificateVisualCanvasTest extends TestCase
         $response->assertSee('width: 840px; height: 594px;', false);
         $response->assertSee('x-data="certificateCanvasApp()"', false);
         $response->assertSee('/images/certificate/certificate-bg.png', false);
+
+        // 6. Pastikan signature_group di kanvas editor selaras 1:1 dengan pratinjau
+        $response->assertSee('width: 220px;', false);
+        $response->assertSee('height: 50px;', false);
+        $response->assertSee('height: 85px;', false);
+        $response->assertSee('width: 85px;', false);
+        $response->assertSee('top: -18px;', false);
+        $response->assertSee('stamp_offset_x', false);
+        $response->assertSee('font-size: 11pt;', false);
+        $response->assertSee('font-size: 12pt;', false);
     }
 
     /**
@@ -360,12 +370,12 @@ class CertificateVisualCanvasTest extends TestCase
             foreach ($matches[1] as $stream) {
                 $uncompressed = @gzuncompress($stream);
                 $data = $uncompressed !== false ? $uncompressed : $stream;
-                if (preg_match_all('/([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+cm\s*\/([a-zA-Z0-9_]+)\s+Do/i', $data, $mList, PREG_SET_ORDER)) {
+                if (preg_match_all('/([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+([0-9\.\-]+)\s+cm(?:[^Q]+?)\/([a-zA-Z0-9_]+)\s+Do/is', $data, $mList, PREG_SET_ORDER)) {
                     foreach ($mList as $m) {
-                        $w = (float) $m[1];
-                        $h = (float) $m[4];
-                        // Background is ~842pt, logo is around 45-60pt
-                        if ($w > 20 && $w < 100 && $h > 20 && $h < 100) {
+                        $w = abs((float) $m[1]);
+                        $h = abs((float) $m[4]);
+                        // Background is ~3500x2480pt, logo is around 500-600pt, signature is ~415x187pt
+                        if ($w > 200 && $w < 1000 && $h > 200 && $h < 1000) {
                             $ratio = round($w / $h, 2);
                             $this->assertEqualsWithDelta(1.0, $ratio, 0.05, "Logo aspect ratio in PDF should remain 1:1 and not be stretched");
                             $foundLogo = true;

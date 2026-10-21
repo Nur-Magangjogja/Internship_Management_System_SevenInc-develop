@@ -8,6 +8,11 @@
 
   // Brand sertifikat terpilih
   $selectedCertBrandId = old('brand_id', $webinar?->brand_id ?? '');
+
+  // Metode Sertifikat (Template vs GDrive)
+  $certSource = old('certificate_source', $webinar?->certificate_source ?? 'template');
+  $selectedTemplateId = old('certificate_template_id', $webinar?->certificate_template_id ?? '');
+  $gdriveLinkVal = old('gdrive_certificate_link', $webinar?->gdrive_certificate_link ?? '');
 @endphp
 
 {{-- ===== INFO WEBINAR ===== --}}
@@ -97,10 +102,113 @@
 {{-- ===== PENGATURAN SERTIFIKAT ===== --}}
 <div class="bg-white rounded-xl border border-[#DCE7E1] p-6 shadow-sm mb-5">
   <p class="text-xs font-bold uppercase tracking-widest text-[#2D8659] mb-1">Pengaturan Sertifikat</p>
-  <p class="text-xs text-[#4B5F5A] mb-4">Pilih Brand Sertifikat. Aset sertifikat (logo, background, tanda tangan) akan terisi otomatis sesuai dengan data di tabel Brand.</p>
+  <p class="text-xs text-[#4B5F5A] mb-5">Tentukan metode penyediaan sertifikat webinar untuk peserta yang disetujui kehadirannya.</p>
 
+  {{-- Pilihan Sumber Sertifikat --}}
+  <div class="mb-5">
+    <label class="block text-sm font-semibold text-[#1B3A34] mb-2">Metode Sertifikat Webinar <span class="text-red-500">*</span></label>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <!-- Option 1: Template Sistem -->
+      <label class="relative flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition bg-white border-[#DCE7E1] has-[:checked]:border-[#2D8659] has-[:checked]:bg-[#2D8659]/5 hover:border-[#2D8659]/60">
+        <input type="radio" name="certificate_source" value="template" id="cert_source_template"
+               @checked($certSource === 'template') class="mt-1 accent-[#2D8659]">
+        <div>
+          <span class="block text-sm font-bold text-[#1B3A34] flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Template Sertifikat Sistem
+          </span>
+          <span class="block text-xs text-[#4B5F5A] mt-1 leading-relaxed">
+            Pilih template visual kanvas resmi dari sistem. Berkas PDF sertifikat akan digenerate otomatis dengan nama peserta dan nomor seri resmi.
+          </span>
+        </div>
+      </label>
+
+      <!-- Option 2: Google Drive -->
+      <label class="relative flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition bg-white border-[#DCE7E1] has-[:checked]:border-[#2D8659] has-[:checked]:bg-[#2D8659]/5 hover:border-[#2D8659]/60">
+        <input type="radio" name="certificate_source" value="gdrive" id="cert_source_gdrive"
+               @checked($certSource === 'gdrive') class="mt-1 accent-[#2D8659]">
+        <div>
+          <span class="block text-sm font-bold text-[#1B3A34] flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+            </svg>
+            Tautan Google Drive
+          </span>
+          <span class="block text-xs text-[#4B5F5A] mt-1 leading-relaxed">
+            Hanya perlu mengisi tautan Google Drive. Peserta yang disetujui akan langsung diarahkan ke tautan Google Drive tersebut.
+          </span>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  {{-- Container Opsi 1: Template Sertifikat --}}
+  <div id="cert_template_container" class="{{ $certSource === 'gdrive' ? 'hidden' : '' }} mb-5 p-4 rounded-xl border border-emerald-100 bg-emerald-50/30">
+    <div class="flex items-center justify-between mb-2">
+      <label class="block text-sm font-semibold text-[#1B3A34]">
+        Pilih Template Sertifikat <span class="text-red-500">*</span>
+      </label>
+      <a href="{{ route('admin.document-templates.create', ['type' => 'certificate']) }}" target="_blank"
+         class="text-xs font-semibold text-[#2D8659] hover:underline flex items-center gap-1">
+        <i class="fas fa-plus text-[10px]"></i> Buat Template Baru
+      </a>
+    </div>
+
+    <select name="certificate_template_id" id="certificate_template_id" class="{{ $inp }}">
+      <option value="">-- Pilih Template Sertifikat --</option>
+      @if(isset($certificateTemplates))
+        @php
+          $webinarTemplates = $certificateTemplates->filter(fn($t) => $t->certificate_type === 'webinar');
+          $otherTemplates = $certificateTemplates->filter(fn($t) => $t->certificate_type !== 'webinar');
+        @endphp
+
+        @if($webinarTemplates->isNotEmpty())
+          <optgroup label="Template Khusus Webinar">
+            @foreach($webinarTemplates as $t)
+              <option value="{{ $t->id }}" @selected($selectedTemplateId == $t->id || (!$selectedTemplateId && $t->is_default))>
+                {{ $t->name }} {{ $t->is_default ? '(Default)' : '' }} [Versi {{ $t->version_number }}]
+              </option>
+            @endforeach
+          </optgroup>
+        @endif
+
+        @if($otherTemplates->isNotEmpty())
+          <optgroup label="Template Sertifikat Lainnya">
+            @foreach($otherTemplates as $t)
+              <option value="{{ $t->id }}" @selected($selectedTemplateId == $t->id)>
+                {{ $t->name }} [{{ ucfirst($t->certificate_type ?? 'magang') }}]
+              </option>
+            @endforeach
+          </optgroup>
+        @endif
+      @endif
+    </select>
+    <p class="text-xs text-[#4B5F5A] mt-1.5">Template visual yang dipilih akan otomatis digenerate menjadi berkas sertifikat PDF resmi bagi peserta.</p>
+  </div>
+
+  {{-- Container Opsi 2: Link Google Drive --}}
+  <div id="cert_gdrive_container" class="{{ $certSource === 'gdrive' ? '' : 'hidden' }} mb-5 p-4 rounded-xl border border-blue-100 bg-blue-50/30">
+    <label class="block text-sm font-semibold text-[#1B3A34] mb-1.5">
+      Link Google Drive Sertifikat <span class="text-red-500">*</span>
+    </label>
+    <div class="relative">
+      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-blue-500">
+        <i class="fab fa-google-drive text-sm"></i>
+      </div>
+      <input type="url" name="gdrive_certificate_link" id="gdrive_certificate_link"
+             value="{{ $gdriveLinkVal }}"
+             placeholder="https://drive.google.com/drive/folders/..."
+             class="{{ $inp }} pl-9">
+    </div>
+    <p class="text-xs text-[#4B5F5A] mt-1.5">Masukkan tautan folder atau file Google Drive. Pastikan izin akses link dapat dibuka oleh publik (siapa saja yang memiliki link).</p>
+  </div>
+
+  {{-- Brand Penyelenggara --}}
   <div class="mb-6">
-    <label class="block text-sm font-semibold text-[#1B3A34] mb-1.5">Brand Sertifikat <span class="text-red-500">*</span></label>
+    <label class="block text-sm font-semibold text-[#1B3A34] mb-1.5">Brand Penyelenggara & Aset Sertifikat <span class="text-red-500">*</span></label>
     <select id="certBrandSelect" name="brand_id" class="{{ $inp }} lg:w-1/2" required>
       <option value="">-- Pilih Brand --</option>
       @foreach($brands as $b)
@@ -109,13 +217,14 @@
         </option>
       @endforeach
     </select>
+    <p class="text-xs text-[#4B5F5A] mt-1">Logo, stempel, dan tanda tangan digital sertifikat akan mengikuti data dari brand ini.</p>
   </div>
 
   {{-- Preview Aset --}}
   <div id="brandPreviewContainer" class="hidden border border-[#DCE7E1] rounded-lg p-4 bg-[#F4F8F6]">
     <h3 class="text-sm font-semibold text-[#1B3A34] mb-4">Preview Aset Sertifikat Brand: <span id="previewBrandName" class="text-[#2D8659]"></span></h3>
     
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
       {{-- Background Preview --}}
       <div>
         <p class="text-xs font-semibold text-[#4B5F5A] mb-2 uppercase">Background</p>
@@ -131,6 +240,15 @@
         <div class="bg-white rounded-lg border border-[#DCE7E1] p-2 h-32 flex items-center justify-center">
           <img id="previewLogo" src="" alt="Logo" class="max-h-full max-w-full object-contain hidden">
           <p id="previewLogoMissing" class="text-xs text-red-500 text-center italic hidden">Belum ada logo untuk brand ini</p>
+        </div>
+      </div>
+
+      {{-- Stempel Preview --}}
+      <div>
+        <p class="text-xs font-semibold text-[#4B5F5A] mb-2 uppercase">Stempel Resmi</p>
+        <div class="bg-white rounded-lg border border-[#DCE7E1] p-2 h-32 flex items-center justify-center">
+          <img id="previewStamp" src="" alt="Stempel" class="max-h-full max-w-full object-contain hidden">
+          <p id="previewStampMissing" class="text-xs text-red-500 text-center italic hidden">Belum ada stempel untuk brand ini</p>
         </div>
       </div>
 
@@ -193,6 +311,7 @@ function updateBrandPreview() {
 
     updateImg('previewBg', 'previewBgMissing', brand.webinar_certificate_bg);
     updateImg('previewLogo', 'previewLogoMissing', brand.logo);
+    updateImg('previewStamp', 'previewStampMissing', brand.stamp);
     updateImg('previewSig', 'previewSigMissing', brand.signature);
 
     // Update Signatory Inputs
@@ -202,9 +321,35 @@ function updateBrandPreview() {
 
 document.getElementById('certBrandSelect').addEventListener('change', updateBrandPreview);
 
+// Toggle sumber sertifikat (Template vs GDrive)
+const radioTemplate = document.getElementById('cert_source_template');
+const radioGdrive = document.getElementById('cert_source_gdrive');
+const containerTemplate = document.getElementById('cert_template_container');
+const containerGdrive = document.getElementById('cert_gdrive_container');
+const inputTemplate = document.getElementById('certificate_template_id');
+const inputGdrive = document.getElementById('gdrive_certificate_link');
+
+function updateCertSourceToggle() {
+    if (radioGdrive && radioGdrive.checked) {
+        if (containerGdrive) containerGdrive.classList.remove('hidden');
+        if (containerTemplate) containerTemplate.classList.add('hidden');
+        if (inputGdrive) inputGdrive.setAttribute('required', 'required');
+        if (inputTemplate) inputTemplate.removeAttribute('required');
+    } else {
+        if (containerTemplate) containerTemplate.classList.remove('hidden');
+        if (containerGdrive) containerGdrive.classList.add('hidden');
+        if (inputTemplate) inputTemplate.setAttribute('required', 'required');
+        if (inputGdrive) inputGdrive.removeAttribute('required');
+    }
+}
+
+radioTemplate?.addEventListener('change', updateCertSourceToggle);
+radioGdrive?.addEventListener('change', updateCertSourceToggle);
+
 // Trigger on load
 document.addEventListener('DOMContentLoaded', () => {
     updateBrandPreview();
+    updateCertSourceToggle();
 });
 
 // Toggle brand checkbox panel

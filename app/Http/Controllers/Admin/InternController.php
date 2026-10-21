@@ -1529,6 +1529,41 @@ class InternController extends Controller
         $safe = trim(preg_replace('/[^A-Za-z0-9_\- ]+/', '', (string) $intern->fullname)) ?: 'Pemagang';
         $downloadName = 'Sertifikat_' . Str::slug($safe, '_') . '.pdf';
 
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('certificate', failClosed: false);
+
+        if ($activeTemplate && $activeTemplate->exists) {
+            // 1. Cek berkas GeneratedDocument valid jika ada
+            $genDoc = \App\Models\GeneratedDocument::select(['id', 'file_path', 'file_name'])
+                ->where('internship_registration_id', $intern->id)
+                ->where('document_type', 'certificate')
+                ->latest('id')
+                ->first();
+
+            if ($genDoc && \Illuminate\Support\Facades\Storage::disk('local')->exists($genDoc->file_path)) {
+                $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($genDoc->file_path);
+                return response()->download($fullPath, $downloadName, ['Content-Type' => 'application/pdf']);
+            }
+
+            // 2. Render PDF dari template aktif
+            try {
+                $context = $issuanceService->buildContext($intern, 'certificate', isLiveIssuance: true);
+                $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                $tmpPath = storage_path('app/tmp/' . $downloadName);
+                if (!is_dir(dirname($tmpPath))) {
+                    mkdir(dirname($tmpPath), 0775, true);
+                }
+                file_put_contents($tmpPath, $pdfBinary);
+
+                return response()->download($tmpPath, $downloadName, ['Content-Type' => 'application/pdf'])
+                    ->deleteFileAfterSend(true);
+            } catch (\Throwable $e) {
+                Log::warning("Gagal generate certificatePdf dari template: " . $e->getMessage());
+            }
+        }
+
         // Ganti view sesuai template yang ingin dipakai
         return $pdf->download('certificates.certmagangjogjacom', $data, $downloadName);
     }

@@ -63,6 +63,92 @@ class AssetLibraryContract
             }
         }
 
+        // 1b. Muat aset dari tabel Brands (Setting Brand: background sertifikat magang, webinar, logo, dan tanda tangan)
+        if (class_exists(\App\Models\Brand::class) && \Illuminate\Support\Facades\Schema::hasTable('brands')) {
+            try {
+                $brands = \App\Models\Brand::all();
+                foreach ($brands as $brand) {
+                    // Background Sertifikat Magang Brand
+                    if (!empty($brand->internship_certificate_bg)) {
+                        $url = '/storage/' . ltrim($brand->internship_certificate_bg, '/');
+                        $realAssets['backgrounds'][] = [
+                            'id'         => 'brand_bg_magang_' . $brand->id,
+                            'name'       => "Background Sertifikat Magang — {$brand->name}",
+                            'slot'       => 'background',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.background}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Background Sertifikat Webinar Brand
+                    if (!empty($brand->webinar_certificate_bg)) {
+                        $url = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+                        $realAssets['backgrounds'][] = [
+                            'id'         => 'brand_bg_webinar_' . $brand->id,
+                            'name'       => "Background Sertifikat Webinar — {$brand->name}",
+                            'slot'       => 'background',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.background}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Logo Brand
+                    if (!empty($brand->logo)) {
+                        $url = '/storage/' . ltrim($brand->logo, '/');
+                        $realAssets['logos'][] = [
+                            'id'         => 'brand_logo_' . $brand->id,
+                            'name'       => "Logo Brand — {$brand->name}",
+                            'slot'       => 'company_logo',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.company.logo}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Tanda Tangan Brand
+                    if (!empty($brand->signature)) {
+                        $url = '/storage/' . ltrim($brand->signature, '/');
+                        $realAssets['signatures'][] = [
+                            'id'         => 'brand_sig_' . $brand->id,
+                            'name'       => "Tanda Tangan {$brand->signatory_name} ({$brand->name})",
+                            'slot'       => 'signature',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.signature}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Stempel Brand
+                    if (!empty($brand->stamp)) {
+                        $url = '/storage/' . ltrim($brand->stamp, '/');
+                        $realAssets['stamps'][] = [
+                            'id'         => 'brand_stamp_' . $brand->id,
+                            'name'       => "Stempel Resmi ({$brand->name})",
+                            'slot'       => 'stamp',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.stamp}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback
+            }
+        }
+
         // 2. Katalog fallback/contoh development statis (diberi tanda jelas)
         $fallbackCatalog = [
             'logos' => [

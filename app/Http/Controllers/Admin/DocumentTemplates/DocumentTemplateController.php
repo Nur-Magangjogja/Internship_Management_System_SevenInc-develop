@@ -70,6 +70,7 @@ class DocumentTemplateController extends Controller
         $validated = $request->validate([
             'name'                   => 'required|string|max:255',
             'type'                   => 'required|string|in:' . implode(',', array_keys(DocumentTemplate::getDocumentTypes())),
+            'certificate_type'       => 'nullable|string|in:magang,webinar',
             'description'            => 'nullable|string|max:1000',
             'preset_type'            => 'nullable|string|in:standard,blank',
             'certificate_background' => 'nullable|string|max:500',
@@ -77,6 +78,7 @@ class DocumentTemplateController extends Controller
 
         $type = $validated['type'];
         $isCanvas = ($type === 'certificate');
+        $certType = $isCanvas ? ($request->input('certificate_type', 'magang') ?: 'magang') : null;
         $editorType = $isCanvas ? 'visual_canvas' : 'visual_doc';
         $useStandardPreset = ($request->input('preset_type', 'standard') === 'standard');
 
@@ -85,7 +87,9 @@ class DocumentTemplateController extends Controller
 
         if ($useStandardPreset) {
             if ($isCanvas) {
-                $canvasLayout = DocumentTemplate::getDefaultCertificateCanvasLayout();
+                $canvasLayout = ($certType === 'webinar')
+                    ? DocumentTemplate::getDefaultWebinarCertificateCanvasLayout()
+                    : DocumentTemplate::getDefaultCertificateCanvasLayout();
             } else {
                 $contentHtml = DocumentTemplate::getDefaultStandardContent($type);
             }
@@ -114,19 +118,20 @@ class DocumentTemplateController extends Controller
         $pageConfig = DocumentTemplate::getDefaultPageConfig($type);
 
         $template = DocumentTemplate::create([
-            'type'           => $type,
-            'name'           => $validated['name'],
-            'description'    => $validated['description'] ?? null,
-            'editor_type'    => $editorType,
-            'content_html'   => $contentHtml,
-            'editor_json'    => null,
-            'canvas_layout'  => $canvasLayout,
-            'page_config'    => $pageConfig,
-            'is_active'      => false, // Draf baru selalu non-aktif
-            'is_default'     => false,
-            'version_number' => 1,
-            'created_by'     => auth()->id(),
-            'updated_by'     => auth()->id(),
+            'type'             => $type,
+            'certificate_type' => $certType,
+            'name'             => $validated['name'],
+            'description'      => $validated['description'] ?? null,
+            'editor_type'      => $editorType,
+            'content_html'     => $contentHtml,
+            'editor_json'      => null,
+            'canvas_layout'    => $canvasLayout,
+            'page_config'      => $pageConfig,
+            'is_active'        => false, // Draf baru selalu non-aktif
+            'is_default'       => false,
+            'version_number'   => 1,
+            'created_by'       => auth()->id(),
+            'updated_by'       => auth()->id(),
         ]);
 
         // Simpan snapshot versi 1
@@ -145,7 +150,7 @@ class DocumentTemplateController extends Controller
         $documentTemplate->loadCount('versions');
 
         $placeholders = DocumentTemplate::getDefaultPlaceholders($documentTemplate->type);
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
         $assetCatalog = AssetLibraryContract::getAssetCatalog();
 
         if ($documentTemplate->editor_type === 'visual_canvas' || $documentTemplate->type === 'certificate') {
@@ -238,9 +243,12 @@ class DocumentTemplateController extends Controller
         // Kelola status default jika dicentang
         $isDefault = $request->boolean('is_default', $documentTemplate->is_default);
         if ($isDefault) {
-            DocumentTemplate::where('type', $documentTemplate->type)
-                ->where('id', '!=', $documentTemplate->id)
-                ->update(['is_default' => false]);
+            $defaultQuery = DocumentTemplate::where('type', $documentTemplate->type)
+                ->where('id', '!=', $documentTemplate->id);
+            if ($documentTemplate->type === 'certificate' && $documentTemplate->certificate_type) {
+                $defaultQuery->where('certificate_type', $documentTemplate->certificate_type);
+            }
+            $defaultQuery->update(['is_default' => false]);
             // Default template harus aktif
             $isActive = true;
         } else {
@@ -255,17 +263,22 @@ class DocumentTemplateController extends Controller
         // Tingkatkan nomor versi
         $nextVersion = $documentTemplate->version_number + 1;
 
+        $certTypeUpdate = $documentTemplate->type === 'certificate'
+            ? ($request->input('certificate_type', $documentTemplate->certificate_type ?? 'magang'))
+            : null;
+
         $documentTemplate->fill([
-            'name'           => $validated['name'],
-            'description'    => $validated['description'] ?? null,
-            'content_html'   => $contentHtml,
-            'editor_json'    => $editorJson ?? $documentTemplate->editor_json,
-            'canvas_layout'  => $canvasLayout ?? $documentTemplate->canvas_layout,
-            'page_config'    => $pageConfig ?? $documentTemplate->page_config,
-            'is_active'      => $isActive,
-            'is_default'     => $isDefault,
-            'version_number' => $nextVersion,
-            'updated_by'     => auth()->id(),
+            'name'             => $validated['name'],
+            'certificate_type' => $certTypeUpdate,
+            'description'      => $validated['description'] ?? null,
+            'content_html'     => $contentHtml,
+            'editor_json'      => $editorJson ?? $documentTemplate->editor_json,
+            'canvas_layout'    => $canvasLayout ?? $documentTemplate->canvas_layout,
+            'page_config'      => $pageConfig ?? $documentTemplate->page_config,
+            'is_active'        => $isActive,
+            'is_default'       => $isDefault,
+            'version_number'   => $nextVersion,
+            'updated_by'       => auth()->id(),
         ]);
 
         $documentTemplate->save();
@@ -427,7 +440,7 @@ class DocumentTemplateController extends Controller
      */
     public function preview(Request $request, DocumentTemplate $documentTemplate): View|Response|JsonResponse
     {
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
 
         if ($documentTemplate->editor_type === 'visual_canvas' || $documentTemplate->type === 'certificate') {
             $renderedHtml = DocumentTemplateRenderer::renderCertificateHtml($documentTemplate, $mockData);
@@ -451,7 +464,7 @@ class DocumentTemplateController extends Controller
      */
     public function previewPdf(DocumentTemplate $documentTemplate): Response
     {
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
         $binaryPdf = DocumentTemplateRenderer::renderPdfBinary($documentTemplate, $mockData);
 
         $safeName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $documentTemplate->name);

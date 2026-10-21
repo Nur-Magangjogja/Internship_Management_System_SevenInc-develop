@@ -3,7 +3,7 @@
 @php
     $typeLabel = $template->getTypeLabel($template->type);
     $typeBadgeClass = $template->getTypeBadgeClass($template->type);
-    $backUrl = route('admin.document-templates.index', ['type' => $template->type]);
+    $backUrl = route('admin.document-templates.index');
 @endphp
 
 @section('content')
@@ -65,6 +65,19 @@
                 </svg>
                 <span>Preview Browser</span>
             </button>
+
+            <!-- Halaman Preview Resmi (Tab Sama) -->
+            <a
+                href="{{ route('admin.document-templates.preview', $template) }}"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                title="Buka Halaman Pratinjau Resmi"
+            >
+                <svg class="h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span>Halaman Preview</span>
+            </a>
 
             <!-- Real DomPDF Preview Button -->
             <a

@@ -62,8 +62,8 @@ class VariableRegistry
             // =========================================================================
             'pemagang.nama' => [
                 'token'                  => 'pemagang.nama',
-                'aliases'                => ['student_name', 'intern_name', 'fullname', 'nama_siswa', 'nama_pemagang', 'nama'],
-                'label'                  => 'Nama Lengkap Pemagang',
+                'aliases'                => ['student_name', 'intern_name', 'fullname', 'nama_siswa', 'nama_pemagang', 'nama', 'peserta.nama', 'participant_name', 'attendee_name', 'nama_peserta'],
+                'label'                  => 'Nama Lengkap Pemagang / Peserta',
                 'category'               => 'Data Pemagang',
                 'data_type'              => self::TYPE_STRING,
                 'type'                   => 'text',
@@ -881,7 +881,45 @@ class VariableRegistry
             ],
 
             // =========================================================================
-            // 7. ASET GRAFIS & TANDA TANGAN DUA PIHAK (OWNER ISOLATION STRICT)
+            // 7. DATA KEGIATAN WEBINAR (SERTIFIKAT WEBINAR)
+            // =========================================================================
+            'webinar.judul' => [
+                'token'                  => 'webinar.judul',
+                'aliases'                => ['webinar_title', 'judul_webinar', 'title', 'nama_webinar'],
+                'label'                  => 'Judul / Topik Kegiatan Webinar',
+                'category'               => 'Kegiatan Webinar',
+                'data_type'              => self::TYPE_STRING,
+                'type'                   => 'text',
+                'sample'                 => 'Workshop UI/UX Design & Front-End Development Modern',
+                'scope'                  => ['admin', 'hr_staff', 'pemagang'],
+                'allowed_document_types' => [self::DOC_TYPE_CERTIFICATE],
+                'required_policy'        => self::POLICY_OPTIONAL,
+                'source'                 => 'webinars.title',
+                'source_owner_policy'    => self::OWNER_GLOBAL,
+                'null_policy'            => self::NULL_POLICY_EMPTY,
+                'sensitive'              => false,
+                'can_override'           => true,
+            ],
+            'webinar.tanggal' => [
+                'token'                  => 'webinar.tanggal',
+                'aliases'                => ['webinar_date', 'tanggal_webinar', 'event_date', 'tanggal_pelaksanaan'],
+                'label'                  => 'Tanggal Penyelenggaraan Webinar',
+                'category'               => 'Kegiatan Webinar',
+                'data_type'              => self::TYPE_STRING,
+                'type'                   => 'text',
+                'sample'                 => '25 Oktober 2026',
+                'scope'                  => ['admin', 'hr_staff', 'pemagang'],
+                'allowed_document_types' => [self::DOC_TYPE_CERTIFICATE],
+                'required_policy'        => self::POLICY_OPTIONAL,
+                'source'                 => 'webinars.event_date',
+                'source_owner_policy'    => self::OWNER_GLOBAL,
+                'null_policy'            => self::NULL_POLICY_EMPTY,
+                'sensitive'              => false,
+                'can_override'           => true,
+            ],
+
+            // =========================================================================
+            // 8. ASET GRAFIS & TANDA TANGAN DUA PIHAK (OWNER ISOLATION STRICT)
             // =========================================================================
             'asset.brand.logo' => [
                 'token'                  => 'asset.brand.logo',

@@ -637,7 +637,7 @@ class InternAssessmentController extends Controller
 
     public function previewPDF($id)
     {
-        $assessment = InternAssessment::findOrFail($id);
+        $assessment = InternAssessment::with('intern')->findOrFail($id);
         $user = auth()->user();
 
         if (!$user) {
@@ -654,27 +654,84 @@ class InternAssessmentController extends Controller
             return redirect()->back()->with('error', 'Dokumen hanya bisa dilihat setelah status pemagang selesai.');
         }
 
-        $logoFile = public_path('storage/' . ($assessment->company_logo_path ?? 'images/logos/logo_seveninc.png'));
-        $logoSrc  = file_exists($logoFile)
-            ? asset('storage/' . ($assessment->company_logo_path ?? 'images/logos/logo_seveninc.png'))
-            : asset('storage/images/logos/logo_seveninc.png');
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('assessment', failClosed: false);
 
-        $sigFile = public_path('storage/' . ($assessment->signature_image_path ?? 'images/signature/ttd_rekariodanny.png'));
-        $sigSrc  = file_exists($sigFile)
-            ? asset('storage/' . ($assessment->signature_image_path ?? 'images/signature/ttd_rekariodanny.png'))
-            : asset('storage/images/signature/ttd_rekariodanny.png');
+        if ($activeTemplate && $activeTemplate->exists && $assessment->intern) {
+            $preview = $issuanceService->previewDocument($assessment->intern, 'assessment', [
+                'template_id'     => $activeTemplate->id,
+                'document_number' => $assessment->assessment_number,
+            ]);
+            return response($preview['html'], 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        }
+
+        $resolveImg = function (...$paths) {
+            foreach ($paths as $path) {
+                if (empty($path)) continue;
+                if (str_starts_with($path, 'data:image/')) return $path;
+                $cleanPath = ltrim($path, '/');
+                if (str_starts_with($cleanPath, 'storage/')) {
+                    $cleanPath = substr($cleanPath, 8);
+                }
+                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanPath)) {
+                    $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanPath);
+                    $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanPath) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode($content);
+                }
+                if (file_exists($path) && is_file($path)) {
+                    $mime = mime_content_type($path) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+                $inPub = public_path(ltrim($path, '/'));
+                if (file_exists($inPub) && is_file($inPub)) {
+                    $mime = mime_content_type($inPub) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+                }
+                $inStorage = storage_path('app/public/' . ltrim($path, '/'));
+                if (file_exists($inStorage) && is_file($inStorage)) {
+                    $mime = mime_content_type($inStorage) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+                }
+            }
+            return null;
+        };
+
+        $intern = $assessment->intern;
+        $brandCode = $intern?->brand;
+        $brandModel = $intern?->brandRel ?? ($brandCode ? Brand::where('code', $brandCode)->first() : null);
+
+        $logoSrc = $resolveImg(
+            $brandModel?->logo,
+            $assessment->company_logo_path,
+            'images/mou/seven-inc-logo.png',
+            'images/logos/logo_seveninc.png'
+        );
+        $sigSrc = $resolveImg(
+            $brandModel?->signature,
+            $assessment->signature_image_path,
+            'images/mou/signature-sample.png',
+            'images/signature/ttd_arisetiahusbana.png',
+            'images/signatures/ttd.png'
+        );
+        $stampSrc = $resolveImg(
+            $brandModel?->stamp,
+            'images/mou/stamp-sample.png',
+            'images/stamps/stamp.png'
+        );
 
         return view('admin.interns.pdf_assessment', [
             'assessment' => $assessment,
             'logoSrc'    => $logoSrc,
             'sigSrc'     => $sigSrc,
+            'stampSrc'   => $stampSrc,
             'autoPrint'  => false,
         ]);
     }
 
     public function downloadPDF($id)
     {
-        $assessment = InternAssessment::findOrFail($id);
+        $assessment = InternAssessment::with('intern')->findOrFail($id);
         $user = auth()->user();
 
         if (!$user) {
@@ -691,17 +748,101 @@ class InternAssessmentController extends Controller
             return redirect()->back()->with('error', 'Dokumen hanya bisa diunduh setelah status pemagang selesai.');
         }
 
-        $logoFile     = public_path('storage/' . ($assessment->company_logo_path ?? 'images/logos/logo_seveninc.png'));
-        $fallbackLogo = public_path('storage/images/logos/logo_seveninc.png');
-        $logoSrc      = $this->imageDataUri($logoFile) ?: $this->imageDataUri($fallbackLogo);
+        $assessmentSlug = Str::slug($assessment->intern->fullname ?? 'assessment', '-');
+        $filename       = "intern-assessment-{$assessmentSlug}.pdf";
 
-        $sigFile          = public_path('storage/' . ($assessment->signature_image_path ?? 'images/signature/ttd_rekariodanny.png'));
-        $fallbackSignature = public_path('storage/images/signature/ttd_rekariodanny.png');
-        $sigSrc           = $this->imageDataUri($sigFile) ?: $this->imageDataUri($fallbackSignature);
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('assessment', failClosed: false);
 
-        $empty     = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAn0B9WYaBZMAAAAASUVORK5CYII=';
-        $logoSrc   = $logoSrc   ?: $empty;
-        $sigSrc    = $sigSrc    ?: $empty;
+        if ($activeTemplate && $activeTemplate->exists && $assessment->intern) {
+            // 1. Cek berkas GeneratedDocument valid sudah ada di local storage
+            $genDoc = \App\Models\GeneratedDocument::select(['id', 'file_path', 'file_name'])
+                ->where('internship_registration_id', $assessment->intern->id)
+                ->where('document_type', 'assessment')
+                ->latest('id')
+                ->first();
+
+            if ($genDoc && \Illuminate\Support\Facades\Storage::disk('local')->exists($genDoc->file_path)) {
+                $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($genDoc->file_path);
+                return response()->download($fullPath, $filename, ['Content-Type' => 'application/pdf']);
+            }
+
+            // 2. Render PDF dari template aktif
+            try {
+                $context = $issuanceService->buildContext($assessment->intern, 'assessment', [
+                    'document_number' => $assessment->assessment_number,
+                    'template_id'     => $activeTemplate->id,
+                ], isLiveIssuance: true);
+
+                $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                $tmpPath = storage_path('app/tmp/' . $filename);
+                if (!is_dir(dirname($tmpPath))) {
+                    mkdir(dirname($tmpPath), 0775, true);
+                }
+                file_put_contents($tmpPath, $pdfBinary);
+
+                return response()->download($tmpPath, $filename, ['Content-Type' => 'application/pdf'])
+                    ->deleteFileAfterSend(true);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal generate surat penilaian dari template aktif: " . $e->getMessage() . " — mencoba fallback legacy view");
+            }
+        }
+
+        $resolveImg = function (...$paths) {
+            foreach ($paths as $path) {
+                if (empty($path)) continue;
+                if (str_starts_with($path, 'data:image/')) return $path;
+                $cleanPath = ltrim($path, '/');
+                if (str_starts_with($cleanPath, 'storage/')) {
+                    $cleanPath = substr($cleanPath, 8);
+                }
+                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanPath)) {
+                    $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanPath);
+                    $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanPath) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode($content);
+                }
+                if (file_exists($path) && is_file($path)) {
+                    $mime = mime_content_type($path) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+                $inPub = public_path(ltrim($path, '/'));
+                if (file_exists($inPub) && is_file($inPub)) {
+                    $mime = mime_content_type($inPub) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+                }
+                $inStorage = storage_path('app/public/' . ltrim($path, '/'));
+                if (file_exists($inStorage) && is_file($inStorage)) {
+                    $mime = mime_content_type($inStorage) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+                }
+            }
+            return null;
+        };
+
+        $intern = $assessment->intern;
+        $brandCode = $intern?->brand;
+        $brandModel = $intern?->brandRel ?? ($brandCode ? Brand::where('code', $brandCode)->first() : null);
+
+        $logoSrc = $resolveImg(
+            $brandModel?->logo,
+            $assessment->company_logo_path,
+            'images/mou/seven-inc-logo.png',
+            'images/logos/logo_seveninc.png'
+        );
+        $sigSrc = $resolveImg(
+            $brandModel?->signature,
+            $assessment->signature_image_path,
+            'images/mou/signature-sample.png',
+            'images/signature/ttd_arisetiahusbana.png',
+            'images/signatures/ttd.png'
+        );
+        $stampSrc = $resolveImg(
+            $brandModel?->stamp,
+            'images/mou/stamp-sample.png',
+            'images/stamps/stamp.png'
+        );
 
         $assessmentSlug = Str::slug($assessment->intern->fullname ?? 'assessment', '-');
         $filename       = "intern-assessment-{$assessmentSlug}.pdf";
@@ -710,6 +851,7 @@ class InternAssessmentController extends Controller
             'assessment' => $assessment,
             'logoSrc'    => $logoSrc,
             'sigSrc'     => $sigSrc,
+            'stampSrc'   => $stampSrc,
             'autoPrint'  => false,
         ])->render();
 

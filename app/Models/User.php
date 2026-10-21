@@ -429,16 +429,109 @@ class User extends Authenticatable
     }
 
     /**
+     * Dapatkan timestamp dokumen terbaru milik pemagang.
+     */
+    public function getLatestDocumentTimestamp(): ?Carbon
+    {
+        if ($this->role !== self::ROLE_PEMAGANG) {
+            return null;
+        }
+
+        $registration = $this->internshipRegistration
+            ?? InternshipRegistration::where('user_id', $this->id)->latest('id')->first();
+
+        if (!$registration || $registration->is_draft) {
+            return null;
+        }
+
+        $status = $registration->internship_status;
+        $isAccepted = in_array($status, [
+            InternshipRegistration::STATUS_ACCEPTED,
+            InternshipRegistration::STATUS_ACTIVE,
+            InternshipRegistration::STATUS_COMPLETED,
+        ], true);
+
+        if (!$isAccepted) {
+            return null;
+        }
+
+        $timestamps = [];
+
+        // 1. LOA
+        $loaTime = InternLoa::where('intern_id', $registration->id)->latest('id')->value('created_at');
+        if ($loaTime) {
+            $timestamps[] = Carbon::parse($loaTime);
+        } elseif ($registration->updated_at) {
+            $timestamps[] = Carbon::parse($registration->updated_at);
+        }
+
+        // 2. Dokumen Kelulusan jika status completed
+        if ($status === InternshipRegistration::STATUS_COMPLETED) {
+            $sklTime = SklDocument::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($sklTime) {
+                $timestamps[] = Carbon::parse($sklTime);
+            } elseif ($registration->updated_at) {
+                $timestamps[] = Carbon::parse($registration->updated_at);
+            }
+
+            $sertifTime = InternCertificate::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($sertifTime) {
+                $timestamps[] = Carbon::parse($sertifTime);
+            }
+
+            $assessTime = InternAssessment::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($assessTime) {
+                $timestamps[] = Carbon::parse($assessTime);
+            }
+
+            $membercardTime = AlumniMembercard::where('intern_id', $registration->id)->latest('id')->value('created_at');
+            if ($membercardTime) {
+                $timestamps[] = Carbon::parse($membercardTime);
+            }
+        }
+
+        // 3. Surat Rekomendasi
+        $extra = InternExtra::where('intern_id', $registration->id)->first();
+        if ($extra && $extra->surat_rekomendasi) {
+            $timestamps[] = Carbon::parse($extra->updated_at ?? $extra->created_at);
+        }
+
+        // 4. Sertifikat Webinar
+        $webinarTime = WebinarCertificate::whereHas('attendance', function ($q) {
+            $q->where('user_id', $this->id)
+              ->where('status', WebinarAttendance::STATUS_APPROVED);
+        })->latest('id')->value('created_at');
+        if ($webinarTime) {
+            $timestamps[] = Carbon::parse($webinarTime);
+        }
+
+        if (empty($timestamps)) {
+            return null;
+        }
+
+        return collect($timestamps)->max();
+    }
+
+    /**
      * Tandai bahwa pengguna (pemagang) telah membuka halaman Dokumen Saya.
      */
     public function markDocumentsAsViewed(): void
     {
         $now = now();
+        $latestDocTime = $this->getLatestDocumentTimestamp();
+
+        // Pastikan documents_viewed_at minimal sama dengan waktu dokumen terbaru + 1 detik
+        // untuk mengantisipasi perbedaan timezone / clock skew.
+        $effectiveViewedAt = ($latestDocTime && $latestDocTime->gt($now))
+            ? $latestDocTime->copy()->addSecond()
+            : $now;
+
         if (\Illuminate\Support\Facades\Schema::connection($this->getConnectionName())->hasColumn('users', 'documents_viewed_at')) {
-            $this->update(['documents_viewed_at' => $now]);
+            $this->update(['documents_viewed_at' => $effectiveViewedAt]);
+            $this->documents_viewed_at = $effectiveViewedAt;
         }
-        session(['documents_viewed_at' => $now]);
-        \Illuminate\Support\Facades\Cache::forever("user_{$this->id}_documents_viewed_at", $now->toDateTimeString());
+        session(['documents_viewed_at' => $effectiveViewedAt]);
+        \Illuminate\Support\Facades\Cache::forever("user_{$this->id}_documents_viewed_at", $effectiveViewedAt->toDateTimeString());
     }
 
     /**
@@ -450,84 +543,27 @@ class User extends Authenticatable
             return false;
         }
 
-        $registration = $this->internshipRegistration
-            ?? InternshipRegistration::where('user_id', $this->id)->latest('id')->first();
-
-        if (!$registration || $registration->is_draft) {
+        $latestDocTime = $this->getLatestDocumentTimestamp();
+        if (!$latestDocTime) {
             return false;
         }
 
-        $status = $registration->internship_status;
-        $isAccepted = in_array($status, [
-            InternshipRegistration::STATUS_ACCEPTED,
-            InternshipRegistration::STATUS_ACTIVE,
-            InternshipRegistration::STATUS_COMPLETED,
-        ], true);
+        $candidates = array_filter([
+            $this->documents_viewed_at ? Carbon::parse($this->documents_viewed_at) : null,
+            session('documents_viewed_at') ? Carbon::parse(session('documents_viewed_at')) : null,
+            \Illuminate\Support\Facades\Cache::get("user_{$this->id}_documents_viewed_at")
+                ? Carbon::parse(\Illuminate\Support\Facades\Cache::get("user_{$this->id}_documents_viewed_at"))
+                : null,
+        ]);
 
-        if (!$isAccepted) {
-            return false;
-        }
-
-        $lastViewed = $this->documents_viewed_at
-            ?? session('documents_viewed_at')
-            ?? \Illuminate\Support\Facades\Cache::get("user_{$this->id}_documents_viewed_at");
-
-        $timestamps = [];
-
-        // 1. LOA
-        $loaTime = InternLoa::where('intern_id', $registration->id)->latest('id')->value('created_at');
-        if ($loaTime) {
-            $timestamps[] = $loaTime;
-        } elseif ($registration->updated_at) {
-            $timestamps[] = $registration->updated_at;
-        }
-
-        // 2. Dokumen Kelulusan jika status completed
-        if ($status === InternshipRegistration::STATUS_COMPLETED) {
-            $sklTime = SklDocument::where('intern_id', $registration->id)->latest('id')->value('created_at');
-            $timestamps[] = $sklTime ?: $registration->updated_at;
-
-            $sertifTime = InternCertificate::where('intern_id', $registration->id)->latest('id')->value('created_at');
-            if ($sertifTime) {
-                $timestamps[] = $sertifTime;
-            }
-
-            $assessTime = InternAssessment::where('intern_id', $registration->id)->latest('id')->value('created_at');
-            if ($assessTime) {
-                $timestamps[] = $assessTime;
-            }
-
-            $membercardTime = AlumniMembercard::where('intern_id', $registration->id)->latest('id')->value('created_at');
-            if ($membercardTime) {
-                $timestamps[] = $membercardTime;
-            }
-        }
-
-        // 3. Surat Rekomendasi
-        $extra = InternExtra::where('intern_id', $registration->id)->first();
-        if ($extra && $extra->surat_rekomendasi) {
-            $timestamps[] = $extra->updated_at ?? $extra->created_at;
-        }
-
-        // 4. Sertifikat Webinar
-        $webinarTime = WebinarCertificate::whereHas('attendance', function ($q) {
-            $q->where('user_id', $this->id)
-              ->where('status', WebinarAttendance::STATUS_APPROVED);
-        })->latest('id')->value('created_at');
-        if ($webinarTime) {
-            $timestamps[] = $webinarTime;
-        }
-
-        if (empty($timestamps)) {
-            return false;
-        }
-
-        $latestDocTime = max($timestamps);
-
-        if (!$lastViewed) {
+        if (empty($candidates)) {
             return true;
         }
 
-        return Carbon::parse($latestDocTime)->gt(Carbon::parse($lastViewed));
+        /** @var Carbon $lastViewed */
+        $lastViewed = collect($candidates)->max();
+
+        // Dokumen dianggap belum dibaca jika dokumen diterbitkan setelah waktu terakhir dilihat (toleransi 1 detik)
+        return $latestDocTime->gt($lastViewed->copy()->addSecond());
     }
 }

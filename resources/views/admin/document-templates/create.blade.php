@@ -116,6 +116,29 @@
                 </label>
             </div>
 
+            <!-- Pilihan Kategori Sertifikat (Magang vs Webinar) -->
+            <div id="certificate-subtype-container" class="mt-5 rounded-xl border border-amber-200 bg-amber-50/40 p-4 {{ old('type', $selectedType) === 'certificate' ? '' : 'hidden' }}">
+                <label class="block text-xs font-bold uppercase tracking-wider text-amber-900 mb-2">
+                    Peruntukan / Kategori Sertifikat <span class="text-rose-500">*</span>
+                </label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label class="flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition bg-white border-slate-200 has-[:checked]:border-amber-600 has-[:checked]:bg-amber-50/40">
+                        <input type="radio" name="certificate_type" value="magang" class="mt-1 accent-amber-600" {{ old('certificate_type', 'magang') === 'magang' ? 'checked' : '' }} onchange="onCertTypeChanged('magang')">
+                        <div>
+                            <span class="block text-xs font-bold text-slate-800">Sertifikat Magang (Internship)</span>
+                            <span class="block text-[11px] text-slate-500 mt-0.5">Untuk kelulusan peserta magang pada divisi kerja tertentu. Menggunakan placeholder pemagang & divisi magang.</span>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition bg-white border-slate-200 has-[:checked]:border-teal-600 has-[:checked]:bg-teal-50/40">
+                        <input type="radio" name="certificate_type" value="webinar" class="mt-1 accent-teal-600" {{ old('certificate_type') === 'webinar' ? 'checked' : '' }} onchange="onCertTypeChanged('webinar')">
+                        <div>
+                            <span class="block text-xs font-bold text-slate-800">Sertifikat Webinar (Workshop/Event)</span>
+                            <span class="block text-[11px] text-slate-500 mt-0.5">Untuk peserta kegiatan webinar online. Menggunakan placeholder judul webinar & tanggal kegiatan.</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
             <!-- Dynamic Editor Notice -->
             <div id="editor-hint-container" class="mt-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4 text-xs text-blue-900 flex items-start gap-3">
                 <svg class="h-5 w-5 text-blue-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -258,15 +281,29 @@
         const hintText = document.getElementById('editor-hint-text');
         const container = document.getElementById('editor-hint-container');
         const bgPickerContainer = document.getElementById('certificate-bg-picker-container');
+        const certSubtypeContainer = document.getElementById('certificate-subtype-container');
 
         if (type === 'certificate') {
             container.className = 'mt-5 rounded-lg border border-amber-100 bg-amber-50/60 p-4 text-xs text-amber-900 flex items-start gap-3';
-            hintText.innerHTML = 'Untuk <strong>Sertifikat Magang</strong>, Anda akan menggunakan <strong>Visual Canvas Editor</strong> (A4 Landscape) dengan posisi koordinat layer (X%, Y%), pilihan border/background piagam, tipografi sertifikat, serta tanda tangan & stempel digital.';
+            hintText.innerHTML = 'Untuk <strong>Sertifikat (Magang & Webinar)</strong>, Anda akan menggunakan <strong>Visual Canvas Editor</strong> (A4 Landscape) dengan posisi koordinat layer (X%, Y%), pilihan border/background piagam, tipografi sertifikat, serta tanda tangan & stempel digital.';
             if (bgPickerContainer) bgPickerContainer.classList.remove('hidden');
+            if (certSubtypeContainer) certSubtypeContainer.classList.remove('hidden');
         } else {
             container.className = 'mt-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4 text-xs text-blue-900 flex items-start gap-3';
             hintText.innerHTML = 'Untuk <strong>Surat Resmi (' + type.toUpperCase() + ')</strong>, sistem menyediakan <strong>Editor Dokumen A4 Visual</strong> dengan pengaturan paragraf, margin kertas, tabel, dan variabel Mail Merge.';
             if (bgPickerContainer) bgPickerContainer.classList.add('hidden');
+            if (certSubtypeContainer) certSubtypeContainer.classList.add('hidden');
+        }
+    }
+
+    function onCertTypeChanged(certType) {
+        const nameInput = document.querySelector('input[name="name"]');
+        if (nameInput && (!nameInput.value || nameInput.value.startsWith('Template Standar') || nameInput.value.startsWith('Template Sertifikat'))) {
+            if (certType === 'webinar') {
+                nameInput.placeholder = 'Contoh: Template Sertifikat Webinar Desain Grafis';
+            } else {
+                nameInput.placeholder = 'Contoh: Template Sertifikat Kelulusan Magang 2026';
+            }
         }
     }
 

@@ -10,7 +10,8 @@ class InternCertificate extends Model
     use HasFactory;
 
     protected $table = 'intern_certificates';
-    public $timestamps = false;
+    public $timestamps = true;
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'intern_id',

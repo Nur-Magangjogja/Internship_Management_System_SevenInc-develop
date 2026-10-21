@@ -19,6 +19,10 @@
                     <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 border-amber-200">
                         Kanvas Desain Sertifikat (Visual Studio)
                     </span>
+                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold"
+                          :class="certificateType === 'webinar' ? 'bg-teal-100 text-teal-800 border-teal-200' : 'bg-amber-100 text-amber-800 border-amber-200'"
+                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
+                    </span>
                     <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
                         Versi {{ $template->version_number }}
                     </span>
@@ -95,6 +99,19 @@
                     <polyline points="12 6 12 12 14 14"/>
                 </svg>
                 <span>Versi ({{ $template->versions_count ?? 1 }})</span>
+            </a>
+
+            <!-- Halaman Preview Resmi (Tab Sama) -->
+            <a
+                href="{{ route('admin.document-templates.preview', $template) }}"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 shadow-sm"
+                title="Buka Halaman Pratinjau Resmi"
+            >
+                <svg class="h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span>Halaman Preview</span>
             </a>
 
             <!-- Real DomPDF Preview Button -->
@@ -323,51 +340,102 @@
 
                                 <!-- 5. QR Code Type -->
                                 <template x-if="elem.type === 'qr_code'">
-                                    <div class="w-full h-full flex flex-col items-center justify-center pointer-events-none bg-white p-1 rounded border border-slate-200">
+                                    <div
+                                        class="w-full h-full flex flex-col items-center justify-center pointer-events-none p-1 rounded box-border"
+                                        :style="`
+                                            background-color: ${elem.bg_color && elem.bg_color !== 'transparent' ? elem.bg_color : '#ffffff'};
+                                            border: ${elem.bg_color && elem.bg_color !== 'transparent' ? '1px solid #cbd5e1' : 'none'};
+                                        `"
+                                    >
                                         <svg viewBox="0 0 29 29" class="w-full h-full" shape-rendering="crispEdges">
                                             <!-- Finder Top-Left -->
-                                            <rect x="2" y="2" width="7" height="7" fill="#000"/>
-                                            <rect x="3" y="3" width="5" height="5" fill="#fff"/>
-                                            <rect x="4" y="4" width="3" height="3" fill="#000"/>
+                                            <rect x="2" y="2" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="3" y="3" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="4" y="4" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Finder Top-Right -->
-                                            <rect x="20" y="2" width="7" height="7" fill="#000"/>
-                                            <rect x="21" y="3" width="5" height="5" fill="#fff"/>
-                                            <rect x="22" y="4" width="3" height="3" fill="#000"/>
+                                            <rect x="20" y="2" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="21" y="3" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="22" y="4" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Finder Bottom-Left -->
-                                            <rect x="2" y="20" width="7" height="7" fill="#000"/>
-                                            <rect x="3" y="21" width="5" height="5" fill="#fff"/>
-                                            <rect x="4" y="22" width="3" height="3" fill="#000"/>
+                                            <rect x="2" y="20" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="3" y="21" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="4" y="22" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Data simulation bits -->
-                                            <rect x="11" y="4" width="2" height="2" fill="#000"/>
-                                            <rect x="15" y="4" width="2" height="2" fill="#000"/>
-                                            <rect x="11" y="8" width="2" height="2" fill="#000"/>
-                                            <rect x="15" y="8" width="2" height="2" fill="#000"/>
-                                            <rect x="11" y="14" width="7" height="2" fill="#000"/>
-                                            <rect x="11" y="20" width="3" height="3" fill="#000"/>
-                                            <rect x="16" y="22" width="4" height="2" fill="#000"/>
-                                            <rect x="22" y="14" width="3" height="3" fill="#000"/>
+                                            <rect x="11" y="4" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="15" y="4" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="8" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="15" y="8" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="14" width="7" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="20" width="3" height="3" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="16" y="22" width="4" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="22" y="14" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                         </svg>
-                                        <span class="text-[8px] font-mono text-slate-500 mt-0.5 truncate max-w-full" x-text="resolveText(elem.qr_data || '@{{dokumen.nomor}}')"></span>
                                     </div>
                                 </template>
 
-                                <!-- 6. Signature Group Type -->
+                                <!-- 6. Signature Group Type (Diselaraskan 1:1 dengan Pratinjau & DomPDF) -->
                                 <template x-if="elem.type === 'signature_group'">
-                                    <div class="w-full text-center p-1 pointer-events-none" :style="`opacity: ${elem.opacity ?? 1.0};`">
-                                        <div class="text-[12px] text-slate-700 font-medium" x-html="resolveText(elem.date_text)"></div>
-                                        <div class="text-[11px] text-slate-500 mt-0.5" x-html="resolveText(elem.role_text)"></div>
+                                    <div
+                                        class="w-full pointer-events-none select-none box-border"
+                                        :style="`
+                                            opacity: ${elem.opacity ?? 1.0};
+                                            text-align: ${elem.align ?? 'center'};
+                                            font-family: ${elem.font_family || '\'Times New Roman\''}, serif;
+                                            color: ${elem.color || '#000000'};
+                                        `"
+                                    >
+                                        <template x-if="elem.cert_no_text">
+                                            <p class="m-0 leading-normal" style="margin-bottom: 2px; font-size: 11pt;" x-html="resolveText(elem.cert_no_text)"></p>
+                                        </template>
+                                        <p class="m-0 leading-normal" style="font-size: 11pt;" x-html="resolveText(elem.date_text)"></p>
+                                        <p class="m-0 leading-normal" style="margin-top: 2px; font-size: 11pt;" x-html="resolveText(elem.role_text)"></p>
                                         
-                                        <!-- Sig & Stamp Stack -->
-                                        <div class="relative inline-block my-1.5 h-16 w-44">
-                                            <template x-if="elem.sig_image">
-                                                <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" x-on:error="$event.target.style.display = 'none'" />
-                                            </template>
+                                        <!-- Sig & Stamp Stack (Presisi tengah 1:1 dengan pratinjau & PDF) -->
+                                        <div
+                                            :style="`
+                                                height: 50px;
+                                                position: relative;
+                                                width: 220px;
+                                                margin: ${elem.align === 'left' ? '4px 0' : (elem.align === 'right' ? '4px 0 4px auto' : '4px auto')};
+                                            `"
+                                        >
                                             <template x-if="elem.stamp_image">
-                                                <img :src="resolveImage(elem.stamp_image)" class="absolute -left-2 -top-2 h-24 w-24 object-contain opacity-80 z-20 pointer-events-none" x-on:error="$event.target.style.display = 'none'" />
+                                                <img
+                                                    :src="resolveImage(elem.stamp_image)"
+                                                    :style="`
+                                                        height: 85px;
+                                                        width: 85px;
+                                                        position: absolute;
+                                                        opacity: 0.65;
+                                                        mix-blend-mode: multiply;
+                                                        z-index: 5;
+                                                        pointer-events: none;
+                                                        top: -18px;
+                                                        left: ${elem.align === 'left' ? '0' : (elem.align === 'right' ? 'auto' : (elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 15) + 'px')};
+                                                        right: ${elem.align === 'right' ? '0' : 'auto'};
+                                                    `"
+                                                    alt="Stempel"
+                                                    x-on:error="$event.target.style.display = 'none'"
+                                                />
+                                            </template>
+                                            <template x-if="elem.sig_image">
+                                                <img
+                                                    :src="resolveImage(elem.sig_image)"
+                                                    :style="`
+                                                        height: 50px;
+                                                        width: auto;
+                                                        position: relative;
+                                                        z-index: 10;
+                                                        display: block;
+                                                        margin: ${elem.align === 'left' ? '0' : (elem.align === 'right' ? '0 0 0 auto' : '0 auto')};
+                                                    `"
+                                                    alt="Tanda Tangan"
+                                                    x-on:error="$event.target.style.display = 'none'"
+                                                />
                                             </template>
                                         </div>
 
-                                        <div class="text-[12px] font-bold text-slate-800 underline relative z-10" x-html="resolveText(elem.name_text)"></div>
+                                        <p class="m-0 font-bold underline relative z-10 leading-normal" style="margin-top: 2px; font-size: 12pt;" x-html="resolveText(elem.name_text)"></p>
                                     </div>
                                 </template>
 
@@ -803,6 +871,30 @@
                             <!-- 6. Signature Group Properties -->
                             <template x-if="selectedElement.type === 'signature_group'">
                                 <div class="space-y-3">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Perataan</label>
+                                            <select x-model="selectedElement.align" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                                <option value="center">Tengah (Center)</option>
+                                                <option value="left">Rata Kiri (Left)</option>
+                                                <option value="right">Rata Kanan (Right)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                            <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
+                                                <option value="Times New Roman">Times New Roman (Resmi)</option>
+                                                <option value="'Playfair Display', serif">Playfair Display (Elegan)</option>
+                                                <option value="'Cinzel', serif">Cinzel (Roman Formal)</option>
+                                                <option value="'Montserrat', sans-serif">Montserrat (Modern)</option>
+                                                <option value="Arial">Arial (Sans Serif)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nomor Sertifikat (Opsional)</label>
+                                        <input type="text" x-model="selectedElement.cert_no_text" placeholder="Contoh: Nomor Sertifikat: @{{dokumen.nomor}}" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" />
+                                    </div>
                                     <div>
                                         <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
                                         <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
@@ -824,6 +916,16 @@
                                             <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Stempel</label>
                                             <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
                                         </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (default: 20px = sedikit ke kiri tanda tangan)">Offset Stempel X (px)</label>
+                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="20 (Geser Kiri)" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1 pt-0.5">
+                                        <button type="button" @click="selectedElement.sig_image = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ TTD Sistem</button>
+                                        <button type="button" @click="selectedElement.stamp_image = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Stempel Sistem</button>
                                     </div>
                                 </div>
                             </template>
@@ -905,6 +1007,16 @@
                         </select>
                     </div>
 
+                    <!-- Peruntukan / Jenis Sertifikat -->
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+                        <label class="block text-[11px] font-semibold text-slate-700 mb-1">Peruntukan Sertifikat</label>
+                        <select x-model="certificateType" class="w-full rounded border border-slate-300 p-1.5 text-xs bg-white">
+                            <option value="magang">Sertifikat Magang (Kelulusan Pemagang)</option>
+                            <option value="webinar">Sertifikat Webinar (Event / Workshop)</option>
+                        </select>
+                        <p class="text-[10px] text-slate-500 mt-1">Pilih "Sertifikat Webinar" jika template ini ingin digunakan pada modul Webinar.</p>
+                    </div>
+
                     <!-- Pilihan Background Gallery (Drive & Sistem Assets) -->
                     <div>
                         <div class="flex items-center justify-between mb-1.5">
@@ -938,7 +1050,12 @@
                                                 Drive
                                             </span>
                                         </template>
-                                        <template x-if="!bg.is_drive && bg.is_real">
+                                        <template x-if="!bg.is_drive && bg.source && bg.source.startsWith('Brand')">
+                                            <span class="absolute top-1 right-1 rounded bg-amber-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                Brand
+                                            </span>
+                                        </template>
+                                        <template x-if="!bg.is_drive && bg.is_real && (!bg.source || !bg.source.startsWith('Brand'))">
                                             <span class="absolute top-1 right-1 rounded bg-indigo-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
                                                 Sistem
                                             </span>
@@ -1080,6 +1197,7 @@ function certificateCanvasApp() {
     return {
         activeDrawerTab: 'element',
         templateName: @json($template->name),
+        certificateType: @json($template->certificate_type ?? 'magang'),
         templateDescription: @json($template->description ?? ''),
         changeSummary: '',
         isActive: {{ $template->is_active ? 'true' : 'false' }},
@@ -1125,6 +1243,15 @@ function certificateCanvasApp() {
                     if (elem.height_percent === undefined || elem.height_percent === null) {
                         elem.height_percent = elem.height_px ? Math.round((elem.height_px / 594) * 1000) / 10 : 10.0;
                     }
+                }
+
+                // Normalisasi blok tanda tangan & stempel
+                if (elem.type === 'signature_group') {
+                    if (elem.width_percent === undefined || elem.width_percent === null) {
+                        elem.width_percent = 45.0;
+                    }
+                    if (!elem.align) elem.align = 'center';
+                    if (!elem.font_family) elem.font_family = 'Times New Roman';
                 }
             });
             if (!this.selectedElement && this.layout.elements.length > 0) {
@@ -1267,6 +1394,8 @@ function certificateCanvasApp() {
                 width = '16.5%';
             } else if (elem.type === 'qr_code') {
                 width = '14%';
+            } else if (elem.type === 'signature_group') {
+                width = '45%';
             } else {
                 width = '50%';
             }
@@ -1360,6 +1489,9 @@ function certificateCanvasApp() {
         resolveImage(tagOrUrl) {
             if (!tagOrUrl) return '';
             if (tagOrUrl.includes('asset.background')) return this.mockData?.asset?.background || '/images/certificate/certificate-bg.png';
+            if ((tagOrUrl === '/images/certificate/certificate-bg.png' || tagOrUrl.endsWith('certificate-bg.png')) && this.mockData?.asset?.background) {
+                return this.mockData.asset.background;
+            }
             if (tagOrUrl.includes('asset.signature')) return this.mockData?.asset?.signature || '/images/mou/signature-sample.png';
             if (tagOrUrl.includes('asset.stamp')) return this.mockData?.asset?.stamp || '/images/mou/stamp-sample.png';
             if (tagOrUrl.includes('asset.company.logo')) return this.mockData?.asset?.company?.logo || '/images/mou/seven-inc-logo.png';
@@ -1504,9 +1636,10 @@ function certificateCanvasApp() {
                 sig_image: '@{{asset.signature}}',
                 stamp_image: '@{{asset.stamp}}',
                 x_percent: 50.0,
-                y_percent: 78.0,
-                width_percent: 40.0,
+                y_percent: 72.0,
+                width_percent: 45.0,
                 height_percent: null,
+                font_family: 'Times New Roman',
                 align: 'center',
                 rotation: 0,
                 z_index: 20,
@@ -1684,6 +1817,9 @@ function certificateCanvasApp() {
                 if (elem.type !== 'text') {
                     elem.height_percent = Math.round(nextH * 10) / 10;
                     elem.height_px = Math.round((elem.height_percent / 100) * 594);
+                }
+                if (elem.type === 'qr_code') {
+                    elem.size_px = Math.round((elem.width_percent / 100) * 840);
                 } else {
                     // Scale font size proportionally on diagonal drag for text
                     const fontRatio = nextW / initW;
@@ -1748,6 +1884,7 @@ function certificateCanvasApp() {
                 _token: '{{ csrf_token() }}',
                 _method: 'PUT',
                 name: this.templateName,
+                certificate_type: this.certificateType,
                 description: this.templateDescription,
                 canvas_layout: this.layout,
                 page_config: {

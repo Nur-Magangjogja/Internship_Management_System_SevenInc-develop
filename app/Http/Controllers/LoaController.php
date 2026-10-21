@@ -76,8 +76,9 @@ class LoaController extends Controller
         $signatoryName = $brandData->signatory_name ?? 'Ari Setia Husbana';
         $signatoryPosition = $brandData->signatory_position ?? 'HRD';
         
-        $logoData = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-        $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
+        $sigData   = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $stampData = $this->resolveBase64Image($brandData?->stamp, 'images/mou/stamp-sample.png');
 
         $dir = 'documents/loa';
         $this->ensurePublicDir($dir);
@@ -90,124 +91,27 @@ class LoaController extends Controller
 
         foreach ($interns as $intern) {
             try {
-                $loaNumber = $docService->generateUniqueLoaNumber($intern, $brandData);
-                $safeLoaNumber = str_replace('/', '-', $loaNumber);
-
-                $rows = $this->buildRows([$intern]);
-
-                $pdf = Pdf::loadView('user.loa', [
-                    'intern'          => $intern,
-                    'loaNumber'       => $loaNumber,
-                    'user'            => $user,
-                    'loaSettings'     => (object)[
-                        'header_text' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                        'footer_text' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                        'company_name' => $companyName,
-                        'company_address' => $brandData?->company_address,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                    ],
-                    'rows'            => $rows,
-                    'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                    'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                    'logoData'        => $logoData,
-                    'stampData'       => $stampData,
-                ])->setPaper('A4', 'portrait');
-
-                $pdf->setOptions(['isRemoteEnabled' => true, 'isPhpEnabled' => true]);
-
+                $internLoa = $docService->ensureLoaGenerated($intern, $user, forceRefresh: true);
+                $safeLoaNumber = str_replace(['/', '\\'], '-', $internLoa->loa_number);
                 $safeName = Str::slug($intern->fullname ?? 'intern', '-');
                 $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
-                $path     = $dir . '/' . $fileName;
+                $storedPath = storage_path('app/documents/loa/' . $fileName);
 
-                Storage::disk('local')->put($path, $pdf->output());
-
-                // Insert snapshot to intern_loas (if missing or update if needed)
-                $internLoa = InternLoa::updateOrCreate(
-                    ['intern_id' => $intern->id],
-                    [
-                        'loa_number' => $loaNumber,
-                        'accepted_start_date' => $intern->start_date ?? now(),
-                        'accepted_end_date' => $intern->end_date ?? now(),
-                        'company_name' => $companyName,
-                        'company_logo_path' => $brandData?->logo,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                        'signature_image_path' => $brandData?->signature,
-                    ]
-                );
-
-                // Catat audit log setelah file PDF LOA dan snapshot DB berhasil dibuat
-                if ($user && $user->role === 'admin') {
-                    $docService->logDocumentAccess('loa', $intern, $user, 'generated');
-                }
-
-                $html = view('user.loa', [
-                    'intern'          => $intern,
-                    'loaNumber'       => $loaNumber,
-                    'user'            => $user,
-                    'loaSettings'     => (object)[
-                        'header_text' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                        'footer_text' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                        'company_name' => $companyName,
-                        'company_address' => $brandData?->company_address,
-                        'signatory_name' => $signatoryName,
-                        'signatory_position' => $signatoryPosition,
-                    ],
-                    'rows'            => $rows,
-                    'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                    'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                    'logoData'        => $logoData,
-                    'stampData'       => $stampData,
-                ])->render();
-
-                $safeName = Str::slug($intern->fullname ?? 'intern', '-');
-                $fileName = $safeLoaNumber . '-' . $safeName . '.pdf';
-                $tmpPath  = storage_path('app/tmp/' . $fileName);
-                
+                $tmpPath = storage_path('app/tmp/' . $fileName);
                 if (!is_dir(dirname($tmpPath))) {
                     mkdir(dirname($tmpPath), 0775, true);
                 }
 
-                try {
-                    if (app()->environment('testing')) {
-                        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                            \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->save($tmpPath);
-                        } else {
-                            file_put_contents($tmpPath, '%PDF-1.4 test loa');
-                        }
-                    } else {
-                        \Spatie\Browsershot\Browsershot::html($html)
-                            ->setOption('no-sandbox', true)
-                            ->setOption('args', ['--disable-setuid-sandbox'])
-                            ->emulateMedia('print')
-                            ->format('A4')
-                            ->margins(0, 0, 0, 0)
-                            ->showBackground()
-                            ->waitUntilNetworkIdle()
-                            ->timeout(180)
-                            ->savePdf($tmpPath);
-                    }
-                } catch (\Throwable $errBrowser) {
-                    \Illuminate\Support\Facades\Log::warning('Browsershot LOA generation failed, falling back to DomPDF: ' . $errBrowser->getMessage());
-                    if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                        \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->save($tmpPath);
-                    } else {
-                        file_put_contents($tmpPath, '%PDF-1.4 fallback loa');
-                    }
-                }
-
-                if (file_exists($tmpPath) && filesize($tmpPath) > 0) {
+                if (file_exists($storedPath) && filesize($storedPath) > 0) {
+                    copy($storedPath, $tmpPath);
                     $generatedFiles[$intern->id] = [
                         'fullname' => $intern->fullname,
                         'path'     => $tmpPath,
                         'filename' => $fileName,
                     ];
                 } else {
-                    if (file_exists($tmpPath)) @unlink($tmpPath);
                     $errors[] = $intern->fullname;
                 }
-
             } catch (\Throwable $e) {
                 Log::error('Gagal generate LOA (brand)', ['err' => $e->getMessage(), 'intern_id' => $intern->id]);
                 $errors[] = $intern->fullname;
@@ -249,18 +153,33 @@ class LoaController extends Controller
 
     protected function resolveBase64Image(?string $savedPath, string $fallbackRelative): ?string
     {
-        if ($savedPath) {
-            $fullPath = storage_path('app/public/' . $savedPath);
-            if (file_exists($fullPath)) {
-                $mime = mime_content_type($fullPath);
-                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($fullPath));
+        $candidates = array_filter([$savedPath, $fallbackRelative]);
+        foreach ($candidates as $cand) {
+            if (empty($cand)) continue;
+            if (str_starts_with($cand, 'data:image/')) return $cand;
+            $cleanCand = ltrim($cand, '/');
+            if (str_starts_with($cleanCand, 'storage/')) {
+                $cleanCand = substr($cleanCand, 8);
             }
-        }
-
-        $fallbackPath = storage_path('app/public/' . $fallbackRelative);
-        if (file_exists($fallbackPath)) {
-            $mime = mime_content_type($fallbackPath);
-            return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($fallbackPath));
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanCand)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanCand);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanCand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+            if (file_exists($cand) && is_file($cand)) {
+                $mime = mime_content_type($cand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($cand));
+            }
+            $inPub = public_path(ltrim($cand, '/'));
+            if (file_exists($inPub) && is_file($inPub)) {
+                $mime = mime_content_type($inPub) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+            }
+            $inStorage = storage_path('app/public/' . ltrim($cand, '/'));
+            if (file_exists($inStorage) && is_file($inStorage)) {
+                $mime = mime_content_type($inStorage) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+            }
         }
 
         return null;
@@ -373,6 +292,16 @@ class LoaController extends Controller
     public function rawPreview(Request $request, $id)
     {
         $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $template = $issuanceService->resolveActiveTemplate('loa', failClosed: false);
+
+        if ($template && $template->exists) {
+            $preview = $issuanceService->previewDocument($intern, 'loa', ['template_id' => $template->id]);
+            return response($preview['html'], 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        }
+
         $user   = $request->user();
 
         $brandCode = $intern->brandRel?->code ?? $intern->brand;
@@ -385,7 +314,8 @@ class LoaController extends Controller
         $signatoryPosition = $brandData->signatory_position ?? 'HRD';
 
         $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-        $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $sigData   = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $stampData = $this->resolveBase64Image($brandData?->stamp, 'images/mou/stamp-sample.png');
 
         // Jika sudah ada record snapshot LOA, gunakan nomor yang sama
         $loaRecord = InternLoa::where('intern_id', $intern->id)->latest('id')->first();
@@ -415,6 +345,7 @@ class LoaController extends Controller
             'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
             'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
             'logoData'        => $logoData,
+            'sigData'         => $sigData,
             'stampData'       => $stampData,
         ]);
     }

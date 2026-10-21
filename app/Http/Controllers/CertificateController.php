@@ -202,11 +202,128 @@ class CertificateController extends Controller
 
     public function downloadInternPdf(InternCertificate $certificate)
     {
+        $intern = $certificate->intern;
+        if ($intern) {
+            /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+            $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+            $activeTemplate = $issuanceService->resolveActiveTemplate('certificate', failClosed: false);
+
+            if ($activeTemplate && $activeTemplate->exists) {
+                $nameSlug = Str::slug($intern->fullname ?? 'cert', '-');
+                $filename = "Sertifikat-{$nameSlug}.pdf";
+
+                // 1. Cek apakah berkas GeneratedDocument valid sudah ada
+                $genDoc = \App\Models\GeneratedDocument::select(['id', 'file_path', 'file_name'])
+                    ->where('internship_registration_id', $intern->id)
+                    ->where('document_type', 'certificate')
+                    ->latest('id')
+                    ->first();
+
+                if ($genDoc && Storage::disk('local')->exists($genDoc->file_path)) {
+                    $fullPath = Storage::disk('local')->path($genDoc->file_path);
+                    return response()->download($fullPath, $filename, ['Content-Type' => 'application/pdf']);
+                }
+
+                // 2. Render PDF dari template aktif
+                try {
+                    $context = $issuanceService->buildContext($intern, 'certificate', [
+                        'document_number' => $certificate->certificate_number,
+                        'template_id'     => $activeTemplate->id,
+                    ], isLiveIssuance: true);
+
+                    $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                    $tmpPath = storage_path('app/tmp/' . $filename);
+                    if (!is_dir(dirname($tmpPath))) {
+                        mkdir(dirname($tmpPath), 0775, true);
+                    }
+                    file_put_contents($tmpPath, $pdfBinary);
+
+                    return response()->download($tmpPath, $filename, ['Content-Type' => 'application/pdf'])
+                        ->deleteFileAfterSend(true);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal generate sertifikat dari template aktif: " . $e->getMessage() . " — mencoba fallback legacy view");
+                }
+            }
+        }
+
         return $this->generatePdf($certificate, 'intern');
     }
 
     public function downloadWebinarPdf(WebinarCertificate $certificate)
     {
+        $certificate->loadMissing('attendance.webinar.brand', 'attendance.user', 'documentTemplate');
+        $webinar = $certificate->attendance?->webinar;
+
+        // 1. Jika sumber sertifikat adalah Google Drive, arahkan langsung ke URL GDrive
+        if (!empty($certificate->gdrive_link) || ($webinar && $webinar->isGdriveCertificate() && !empty($webinar->gdrive_certificate_link))) {
+            $url = $certificate->gdrive_link ?: $webinar->gdrive_certificate_link;
+            return redirect()->away($url);
+        }
+
+        // 2. Jika menggunakan Template dari Modul Document Templates
+        $template = $certificate->documentTemplate 
+            ?: ($webinar?->certificateTemplate)
+            ?: \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                ->where('certificate_type', \App\Models\DocumentTemplate::CERT_TYPE_WEBINAR)
+                ->where('is_active', true)
+                ->first();
+
+        if ($template) {
+            $user = $certificate->attendance?->user;
+            $brand = $webinar?->brand;
+            if (!$brand && $webinar?->brand_id) {
+                $brand = \App\Models\Brand::find($webinar->brand_id);
+            }
+            if (!$brand && !empty($certificate->company_name)) {
+                $brand = \App\Models\Brand::where('name', $certificate->company_name)->first();
+            }
+
+            $formattedDate = $webinar?->event_date 
+                ? \Carbon\Carbon::parse($webinar->event_date)->isoFormat('D MMMM Y')
+                : \Carbon\Carbon::now()->isoFormat('D MMMM Y');
+
+            $bgCandidate = $brand?->webinar_certificate_bg 
+                ?: ($certificate->background_image_path 
+                ?: ($template->canvas_layout['canvas']['background_image'] ?? '/images/certificate/certificate-bg.png'));
+            
+            $bgPath = $bgCandidate;
+            if ($bgPath && !str_starts_with($bgPath, '/') && !str_starts_with($bgPath, 'data:') && !str_starts_with($bgPath, 'http')) {
+                $bgPath = '/storage/' . ltrim($bgPath, '/');
+            }
+
+            $mockVars = [
+                'pemagang.nama'          => $user->name ?? 'Peserta Webinar',
+                'peserta.nama'           => $user->name ?? 'Peserta Webinar',
+                'webinar.judul'          => $webinar?->title ?? 'Webinar Seven Inc',
+                'webinar.tanggal'        => $formattedDate,
+                'dokumen.nomor'          => $certificate->certificate_number,
+                'dokumen.tempat'         => 'Yogyakarta',
+                'dokumen.tanggal'        => \Carbon\Carbon::now()->isoFormat('D MMMM Y'),
+                'perusahaan.nama'        => $brand?->name ?? ($certificate->company_name ?: 'Seven Inc'),
+                'perusahaan.pimpinan'    => $brand?->signatory_name ?? ($certificate->signatory_name ?: 'Rekario Danny Sanjaya, S.Kom.'),
+                'perusahaan.jabatan'     => $brand?->signatory_position ?? ($certificate->signatory_position ?: 'Penyelenggara'),
+                'asset.company.logo'     => $brand?->logo ? ('/storage/' . ltrim($brand->logo, '/')) : '/images/mou/seven-inc-logo.png',
+                'asset.signature'        => $brand?->signature ? ('/storage/' . ltrim($brand->signature, '/')) : '/images/mou/signature-sample.png',
+                'asset.stamp'            => $brand?->stamp ? ('/storage/' . ltrim($brand->stamp, '/')) : '/images/mou/stamp-sample.png',
+                'asset.background'       => $bgPath,
+                'force_brand_background' => true,
+            ];
+
+            try {
+                $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($template, $mockVars, isLiveIssuance: true);
+                $slug = Str::slug($user->name ?? 'peserta', '-');
+                $filename = "Sertifikat-Webinar-{$slug}.pdf";
+
+                return response($pdfBinary, 200, [
+                    'Content-Type'        => 'application/pdf',
+                    'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal render sertifikat webinar via visual template: " . $e->getMessage() . " — fallback legacy view");
+            }
+        }
+
         return $this->generatePdf($certificate, 'webinar');
     }
 

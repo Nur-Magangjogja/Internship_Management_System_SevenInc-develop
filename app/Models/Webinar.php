@@ -11,6 +11,9 @@ class Webinar extends Model
 {
     use HasFactory;
 
+    public const CERT_SOURCE_TEMPLATE = 'template';
+    public const CERT_SOURCE_GDRIVE   = 'gdrive';
+
     protected $fillable = [
         'title',
         'description',
@@ -18,6 +21,9 @@ class Webinar extends Model
         'zoom_link',
         'brand_id',
         'allowed_brands',
+        'certificate_source',
+        'certificate_template_id',
+        'gdrive_certificate_link',
     ];
 
     protected $casts = [
@@ -28,6 +34,21 @@ class Webinar extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function certificateTemplate(): BelongsTo
+    {
+        return $this->belongsTo(DocumentTemplate::class, 'certificate_template_id');
+    }
+
+    public function isTemplateCertificate(): bool
+    {
+        return ($this->certificate_source ?? self::CERT_SOURCE_TEMPLATE) === self::CERT_SOURCE_TEMPLATE;
+    }
+
+    public function isGdriveCertificate(): bool
+    {
+        return ($this->certificate_source ?? '') === self::CERT_SOURCE_GDRIVE;
     }
 
     /**

@@ -29,12 +29,23 @@ class WebinarController extends Controller
 
     public function create()
     {
+        \App\Models\DocumentTemplate::ensureDefaultTemplatesExist();
+
         $brands = Brand::all();
-        return view('admin.webinars.create', compact('brands'));
+        $certificateTemplates = \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN certificate_type = 'webinar' THEN 0 ELSE 1 END")
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.webinars.create', compact('brands', 'certificateTemplates'));
     }
 
     public function store(Request $request)
     {
+        $source = $request->input('certificate_source', Webinar::CERT_SOURCE_TEMPLATE) ?: Webinar::CERT_SOURCE_TEMPLATE;
+
         $validated = $request->validate([
             'title'                      => 'required|string|max:255',
             'description'                => 'nullable|string',
@@ -43,12 +54,35 @@ class WebinarController extends Controller
             'brand_id'                   => 'required|exists:brands,id',
             'allowed_brands'             => 'nullable|array',
             'allowed_brands.*'           => 'string|max:10',
+            'certificate_source'         => 'nullable|in:template,gdrive',
+            'certificate_template_id'    => 'nullable|exists:document_templates,id',
+            'gdrive_certificate_link'    => 'nullable|required_if:certificate_source,gdrive|url|max:1000',
+        ], [
+            'gdrive_certificate_link.required_if' => 'Link Google Drive sertifikat wajib diisi jika memilih opsi Google Drive.',
+            'gdrive_certificate_link.url'         => 'Format Link Google Drive harus berupa URL yang valid (diawali https://).',
         ]);
+
+        $validated['certificate_source'] = $source;
 
         $mode = $request->input('_allowed_brands_mode', 'all');
         $validated['allowed_brands'] = ($mode === 'specific' && !empty($validated['allowed_brands']))
             ? array_values(array_unique($validated['allowed_brands']))
             : null;
+
+        if ($validated['certificate_source'] === 'gdrive') {
+            $validated['certificate_template_id'] = null;
+        } else {
+            $validated['gdrive_certificate_link'] = null;
+            if (empty($validated['certificate_template_id'])) {
+                $validated['certificate_template_id'] = \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                    ->where('certificate_type', \App\Models\DocumentTemplate::CERT_TYPE_WEBINAR)
+                    ->where('is_active', true)
+                    ->value('id')
+                    ?? \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                    ->where('is_active', true)
+                    ->value('id');
+            }
+        }
 
         Webinar::create($validated);
 
@@ -58,12 +92,23 @@ class WebinarController extends Controller
 
     public function edit(Webinar $webinar)
     {
+        \App\Models\DocumentTemplate::ensureDefaultTemplatesExist();
+
         $brands = Brand::all();
-        return view('admin.webinars.edit', compact('webinar', 'brands'));
+        $certificateTemplates = \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN certificate_type = 'webinar' THEN 0 ELSE 1 END")
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.webinars.edit', compact('webinar', 'brands', 'certificateTemplates'));
     }
 
     public function update(Request $request, Webinar $webinar)
     {
+        $source = $request->input('certificate_source', $webinar->certificate_source ?? Webinar::CERT_SOURCE_TEMPLATE) ?: Webinar::CERT_SOURCE_TEMPLATE;
+
         $validated = $request->validate([
             'title'                      => 'required|string|max:255',
             'description'                => 'nullable|string',
@@ -72,12 +117,35 @@ class WebinarController extends Controller
             'brand_id'                   => 'required|exists:brands,id',
             'allowed_brands'             => 'nullable|array',
             'allowed_brands.*'           => 'string|max:10',
+            'certificate_source'         => 'nullable|in:template,gdrive',
+            'certificate_template_id'    => 'nullable|exists:document_templates,id',
+            'gdrive_certificate_link'    => 'nullable|required_if:certificate_source,gdrive|url|max:1000',
+        ], [
+            'gdrive_certificate_link.required_if' => 'Link Google Drive sertifikat wajib diisi jika memilih opsi Google Drive.',
+            'gdrive_certificate_link.url'         => 'Format Link Google Drive harus berupa URL yang valid (diawali https://).',
         ]);
+
+        $validated['certificate_source'] = $source;
 
         $mode = $request->input('_allowed_brands_mode', 'all');
         $validated['allowed_brands'] = ($mode === 'specific' && !empty($validated['allowed_brands']))
             ? array_values(array_unique($validated['allowed_brands']))
             : null;
+
+        if ($validated['certificate_source'] === 'gdrive') {
+            $validated['certificate_template_id'] = null;
+        } else {
+            $validated['gdrive_certificate_link'] = null;
+            if (empty($validated['certificate_template_id'])) {
+                $validated['certificate_template_id'] = \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                    ->where('certificate_type', \App\Models\DocumentTemplate::CERT_TYPE_WEBINAR)
+                    ->where('is_active', true)
+                    ->value('id')
+                    ?? \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                    ->where('is_active', true)
+                    ->value('id');
+            }
+        }
 
         $webinar->update($validated);
 
@@ -272,7 +340,7 @@ class WebinarController extends Controller
     private function generateWebinarCertificate(Webinar $webinar, $user, $attendanceId = null): ?\App\Models\WebinarCertificate
     {
         $attendanceId = $attendanceId ?? \App\Models\WebinarAttendance::where('webinar_id', $webinar->id)->where('user_id', $user->id ?? null)->value('id');
-        $webinar->loadMissing('brand');
+        $webinar->loadMissing('brand', 'certificateTemplate');
         
         $startDate = $webinar->event_date;
         $endDate   = $webinar->event_date;
@@ -282,20 +350,30 @@ class WebinarController extends Controller
         $year       = $endDate->year;
 
         $brand = $webinar->brand;
-        $brandCode    = strtoupper($brand->code);
-        $companyName  = $brand->name;
+        $brandCode    = strtoupper($brand->code ?? 'SEVEN');
+        $companyName  = $brand->name ?? 'Seven Inc';
         $companyCode  = $this->companyCode($companyName);
         $divisionCode = 'WBN';
 
         // Gunakan path relatif tanpa storage/ karena dicetak di PDF, fungsi gambar_logo di Helper yang akan me-resolve path
-        $bg   = $brand->webinar_certificate_bg;
-        $l1   = $brand->logo;
-        $sig1 = $brand->signature;
+        $bg   = $brand->webinar_certificate_bg ?? null;
+        $l1   = $brand->logo ?? null;
+        $sig1 = $brand->signature ?? null;
+
+        $certSource = $webinar->certificate_source ?? Webinar::CERT_SOURCE_TEMPLATE;
+        $templateId = $webinar->certificate_template_id;
+        if ($certSource === Webinar::CERT_SOURCE_TEMPLATE && !$templateId) {
+            $templateId = \App\Models\DocumentTemplate::where('type', \App\Models\DocumentTemplate::TYPE_CERTIFICATE)
+                ->where('certificate_type', \App\Models\DocumentTemplate::CERT_TYPE_WEBINAR)
+                ->where('is_active', true)
+                ->value('id');
+        }
+        $gdriveLink = ($certSource === Webinar::CERT_SOURCE_GDRIVE) ? $webinar->gdrive_certificate_link : null;
 
         return \Illuminate\Support\Facades\DB::transaction(function () use (
             $attendanceId, $webinar, $startDate, $endDate,
             $monthRoman, $year, $brandCode, $companyName, $companyCode,
-            $divisionCode, $bg, $l1, $sig1, $brand
+            $divisionCode, $bg, $l1, $sig1, $brand, $templateId, $gdriveLink
         ) {
             $serialSuffix = "/SERT/{$divisionCode}/{$companyCode}.{$brandCode}/{$monthRoman}/{$year}";
 
@@ -314,6 +392,8 @@ class WebinarController extends Controller
             return \App\Models\WebinarCertificate::create([
                 'attendance_id'         => $attendanceId,
                 'certificate_number'    => $serial,
+                'document_template_id'  => $templateId,
+                'gdrive_link'           => $gdriveLink,
                 'company_name'          => $companyName,
                 'background_image_path' => $bg,
                 'company_logo_path'     => $l1,

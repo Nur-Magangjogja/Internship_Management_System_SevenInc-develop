@@ -300,8 +300,16 @@
         <p>Yogyakarta, {{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}</p>
         <p>Hormat kami,</p>
         <div class="signature-img-container">
-          <img src="{{ $logoData ?? asset('storage/images/logos/logo_seveninc.png') }}" class="stamp" alt="Cap Perusahaan">
-          <img src="{{ $stampData ?? asset('storage/images/signature/ttd_arisetiahusbana.png') }}" class="ttd" alt="Tanda Tangan">
+          @if(!empty($stampData))
+          <img src="{{ $stampData }}" class="stamp" alt="Cap Perusahaan">
+          @endif
+          @if(!empty($sigData))
+          <img src="{{ $sigData }}" class="ttd" alt="Tanda Tangan">
+          @elseif(!empty($stampData))
+          {{-- Jika hanya stempel tanpa ttd --}}
+          @else
+          <img src="{{ asset('storage/images/signature/ttd_arisetiahusbana.png') }}" class="ttd" alt="Tanda Tangan">
+          @endif
         </div>
         <p class="signatory-name">{{ $loaSettings->signatory_name ?? 'Ari Setia Husbana' }}</p>
         <p>{{ $loaSettings->signatory_position ?? 'HRD' }} {{ $loaSettings->company_name ?? 'SEVEN INC.' }}</p>

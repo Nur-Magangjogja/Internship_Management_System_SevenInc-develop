@@ -66,10 +66,18 @@
           </div>
         </div>
         @if($attendance->certificate_id)
-          <a href="{{ route('pemagang.documents.sertifikat_webinar', $attendance->certificate_id) }}"
-             class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-xl"
+          @php
+            $isGdriveCert = ($webinar->isGdriveCertificate()) || !empty($attendance->certificate?->gdrive_link);
+            $certHref = $isGdriveCert 
+              ? ($attendance->certificate?->gdrive_link ?: $webinar->gdrive_certificate_link)
+              : route('pemagang.documents.sertifikat_webinar', $attendance->certificate_id);
+          @endphp
+          <a href="{{ $certHref }}"
+             {{ $isGdriveCert ? 'target="_blank"' : '' }}
+             class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-xl shadow-sm transition hover:opacity-90"
              style="background-color:#1a5c38;">
-            <i class="fas fa-download text-xs"></i> Unduh Sertifikat
+            <i class="{{ $isGdriveCert ? 'fab fa-google-drive' : 'fas fa-download' }} text-xs"></i>
+            {{ $isGdriveCert ? 'Buka Sertifikat di Google Drive' : 'Unduh Sertifikat' }}
           </a>
         @endif
 

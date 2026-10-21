@@ -35,10 +35,6 @@ class DocumentController extends Controller
     public function index()
     {
         $user         = auth()->user();
-        if ($user && method_exists($user, 'markDocumentsAsViewed')) {
-            $user->markDocumentsAsViewed();
-        }
-
         $regId        = request()->query('registration_id');
         $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
         $registration = $lifecycle->resolveRegistrationForDocuments($user, $regId ? (int) $regId : null);
@@ -157,6 +153,11 @@ class DocumentController extends Controller
         $extras = $registration
             ? InternExtra::where('intern_id', $registration->id)->first()
             : null;
+
+        // Tandai bahwa pemagang telah melihat seluruh dokumen yang tersedia saat ini
+        if ($user && method_exists($user, 'markDocumentsAsViewed')) {
+            $user->markDocumentsAsViewed();
+        }
 
         return view('pemagang.documents.index', compact(
             'user',
