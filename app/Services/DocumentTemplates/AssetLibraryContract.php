@@ -39,6 +39,8 @@ class AssetLibraryContract
 
                     if ($cat) {
                         $previewUrl = route('admin.system-assets.preview', $asset);
+                        $isDrive = !empty($asset->drive_file_id);
+                        $source = $isDrive ? 'Google Drive' : 'Penyimpanan Sistem';
                         $realAssets[$cat][] = [
                             'id'         => 'asset_' . $asset->id,
                             'asset_id'   => $asset->id,
@@ -48,6 +50,9 @@ class AssetLibraryContract
                             'thumb'      => $previewUrl,
                             'tag'        => '{{' . ($asset->asset_code ?: 'asset.' . $asset->category) . '}}',
                             'asset_code' => $asset->asset_code,
+                            'source'     => $source,
+                            'is_drive'   => $isDrive,
+                            'drive_id'   => $asset->drive_file_id,
                             'is_sample'  => false,
                             'is_real'    => true,
                         ];
@@ -55,6 +60,92 @@ class AssetLibraryContract
                 }
             } catch (\Throwable $e) {
                 // Fallback gracefully jika koneksi DB terganggu
+            }
+        }
+
+        // 1b. Muat aset dari tabel Brands (Setting Brand: background sertifikat magang, webinar, logo, dan tanda tangan)
+        if (class_exists(\App\Models\Brand::class) && \Illuminate\Support\Facades\Schema::hasTable('brands')) {
+            try {
+                $brands = \App\Models\Brand::all();
+                foreach ($brands as $brand) {
+                    // Background Sertifikat Magang Brand
+                    if (!empty($brand->internship_certificate_bg)) {
+                        $url = '/storage/' . ltrim($brand->internship_certificate_bg, '/');
+                        $realAssets['backgrounds'][] = [
+                            'id'         => 'brand_bg_magang_' . $brand->id,
+                            'name'       => "Background Sertifikat Magang — {$brand->name}",
+                            'slot'       => 'background',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.background}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Background Sertifikat Webinar Brand
+                    if (!empty($brand->webinar_certificate_bg)) {
+                        $url = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+                        $realAssets['backgrounds'][] = [
+                            'id'         => 'brand_bg_webinar_' . $brand->id,
+                            'name'       => "Background Sertifikat Webinar — {$brand->name}",
+                            'slot'       => 'background',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.background}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Logo Brand
+                    if (!empty($brand->logo)) {
+                        $url = '/storage/' . ltrim($brand->logo, '/');
+                        $realAssets['logos'][] = [
+                            'id'         => 'brand_logo_' . $brand->id,
+                            'name'       => "Logo Brand — {$brand->name}",
+                            'slot'       => 'company_logo',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.company.logo}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Tanda Tangan Brand
+                    if (!empty($brand->signature)) {
+                        $url = '/storage/' . ltrim($brand->signature, '/');
+                        $realAssets['signatures'][] = [
+                            'id'         => 'brand_sig_' . $brand->id,
+                            'name'       => "Tanda Tangan {$brand->signatory_name} ({$brand->name})",
+                            'slot'       => 'signature',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.signature}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                    // Stempel Brand
+                    if (!empty($brand->stamp)) {
+                        $url = '/storage/' . ltrim($brand->stamp, '/');
+                        $realAssets['stamps'][] = [
+                            'id'         => 'brand_stamp_' . $brand->id,
+                            'name'       => "Stempel Resmi ({$brand->name})",
+                            'slot'       => 'stamp',
+                            'url'        => $url,
+                            'thumb'      => $url,
+                            'tag'        => '{{asset.stamp}}',
+                            'source'     => "Brand: {$brand->name}",
+                            'is_sample'  => false,
+                            'is_real'    => true,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback
             }
         }
 
@@ -109,24 +200,64 @@ class AssetLibraryContract
             'backgrounds' => [
                 [
                     'id'          => 'asset_bg_gold',
-                    'name'        => '[Contoh/Fallback] Background Sertifikat Gold Border (A4 Landscape)',
+                    'name'        => 'Background Border Emas Klasik (Bawaan)',
                     'slot'        => 'background',
                     'url'         => '/images/certificate/certificate-bg.png',
                     'thumb'       => '/images/certificate/certificate-bg.png',
                     'tag'         => '{{asset.background}}',
+                    'source'      => 'Bawaan Sistem',
                     'is_sample'   => true,
                     'is_fallback' => true,
+                    'is_drive'    => false,
                 ],
             ],
         ];
 
-        // 3. Gabungkan: Aset nyata diletakkan di urutan teratas, diikuti data contoh fallback
+        // 3. Scan dinamis berkas latar belakang tambahan di public/images/certificate/ jika ada
+        $certDir = public_path('images/certificate');
+        if (is_dir($certDir)) {
+            $files = glob($certDir . '/*.{png,jpg,jpeg,webp,svg}', GLOB_BRACE) ?: [];
+            foreach ($files as $file) {
+                $filename = basename($file);
+                if ($filename === 'certificate-bg.png') {
+                    continue; // Sudah didaftarkan di atas
+                }
+                $url = '/images/certificate/' . $filename;
+                $cleanTitle = ucwords(str_replace(['certificate-bg-', 'bg-', '-', '_', '.png', '.jpg', '.jpeg', '.webp', '.svg'], ' ', $filename));
+                $fallbackCatalog['backgrounds'][] = [
+                    'id'          => 'asset_bg_' . substr(md5($filename), 0, 8),
+                    'name'        => "Background {$cleanTitle} (Bawaan)",
+                    'slot'        => 'background',
+                    'url'         => $url,
+                    'thumb'       => $url,
+                    'tag'         => '{{asset.background}}',
+                    'source'      => 'Bawaan Sistem',
+                    'is_sample'   => true,
+                    'is_fallback' => true,
+                    'is_drive'    => false,
+                ];
+            }
+        }
+
+        // 4. Gabungkan: Aset nyata diletakkan di urutan teratas, diikuti data contoh fallback
         $mergedCatalog = [];
         foreach (['logos', 'signatures', 'stamps', 'backgrounds'] as $category) {
-            $mergedCatalog[$category] = array_merge(
+            $merged = array_merge(
                 $realAssets[$category] ?? [],
                 $fallbackCatalog[$category] ?? []
             );
+
+            // Deduplikasi berdasarkan URL untuk mencegah duplikasi entri
+            $seenUrls = [];
+            $uniqueList = [];
+            foreach ($merged as $item) {
+                $u = $item['url'] ?? '';
+                if (!isset($seenUrls[$u])) {
+                    $seenUrls[$u] = true;
+                    $uniqueList[] = $item;
+                }
+            }
+            $mergedCatalog[$category] = $uniqueList;
         }
         if (!empty($realAssets['letterheads'])) {
             $mergedCatalog['letterheads'] = $realAssets['letterheads'];

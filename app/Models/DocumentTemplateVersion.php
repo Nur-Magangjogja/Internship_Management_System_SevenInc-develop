@@ -13,6 +13,7 @@ class DocumentTemplateVersion extends Model
 
     protected $fillable = [
         'document_template_id',
+        'certificate_type',
         'version_number',
         'name',
         'content_html',

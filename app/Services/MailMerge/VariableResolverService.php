@@ -132,12 +132,12 @@ class VariableResolverService
                 : '-';
         } else {
             $variables['dokumen.tanggal'] = now()->translatedFormat('d F Y');
-            $variables['dokumen.tempat'] = $brandModel?->city ?? 'Yogyakarta';
+            $variables['dokumen.tempat'] = $brandModel?->city ?? 'Sleman';
             $variables['dokumen.penandatangan_nama'] = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.');
-            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Pimpinan');
+            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Direktur Utama');
 
             $variables['brand.nama'] = $brandModel?->name ?? 'SEVEN INC';
-            $variables['brand.alamat'] = $brandModel?->address ?? '-';
+            $variables['brand.alamat'] = $brandModel?->company_address ?? ($brandModel?->address ?? 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
             $variables['brand.telepon'] = $brandModel?->phone ?? '-';
             $variables['brand.email'] = $brandModel?->email ?? '-';
             $variables['brand.penandatangan.nama'] = $variables['dokumen.penandatangan_nama'];

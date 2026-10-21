@@ -565,88 +565,78 @@ HTML;
     <p style="text-align: center; margin-bottom: 4pt;"><strong>KORESPONDENSI</strong></p>
     <p style="text-align: justify; margin-left: 24pt; text-indent: -24pt; margin-bottom: 6pt;"><strong>(1)</strong> semua pemberitahuan, permintaan dan atau usulan yang dibuat sehubungan dengan Nota Kesepahaman ini harus dilakukan secara tertulis dan diserahkan secara langsung, melalui pos, email, atau melalui faksimili kepada masing masing <strong>PIHAK</strong> yang alamatnya disebutkan dibawah ini.</p>
 
-    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 6pt; margin-bottom: 10pt;">
+    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;">
         <colgroup>
-            <col width="132" style="width: 132px">
-            <col width="24" style="width: 24px">
-            <col width="444" style="width: 444px">
+            <col style="width: 22%;">
+            <col style="width: 4%;">
+            <col style="width: 74%;">
         </colgroup>
         <tbody>
-            <tr>
-                <td colspan="3" style="border: 1px solid #000000; padding: 3pt 6pt; font-weight: bold;"><p style="margin: 0;"><strong>PIHAK KESATU</strong></p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td colspan="3" style="border: 1px solid #000000; padding: 2.5pt 6pt; font-weight: bold; background-color: #f8fafc;"><p style="margin: 0;"><strong>PIHAK KESATU</strong></p></td>
             </tr>
-            <tr>
-                <td colwidth="132" data-cell-width="22%" style="width: 22%; border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Instansi</p></td>
-                <td colwidth="24" data-cell-width="4%" style="width: 4%; border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td colwidth="444" data-cell-width="74%" style="width: 74%; border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_name]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Instansi</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_name]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Alamat</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_address]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Alamat</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_address]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">U.p</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_correspondence_unit]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">U.p</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_correspondence_unit]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Telepon</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_phone]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Telepon</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_phone]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Fax</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_fax]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Fax</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_fax]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Email</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[institution_email]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Email</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[institution_email]</p></td>
             </tr>
-        </tbody>
-    </table>
-
-    <table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 6pt; margin-bottom: 10pt;">
-        <colgroup>
-            <col width="132" style="width: 132px">
-            <col width="24" style="width: 24px">
-            <col width="444" style="width: 444px">
-        </colgroup>
-        <tbody>
-            <tr>
-                <td colspan="3" style="border: 1px solid #000000; padding: 3pt 6pt; font-weight: bold;"><p style="margin: 0;"><strong>PIHAK KEDUA</strong></p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td colspan="3" style="border: 1px solid #000000; padding: 2.5pt 6pt; font-weight: bold; background-color: #f8fafc;"><p style="margin: 0;"><strong>PIHAK KEDUA</strong></p></td>
             </tr>
-            <tr>
-                <td colwidth="132" data-cell-width="22%" style="width: 22%; border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Instansi</p></td>
-                <td colwidth="24" data-cell-width="4%" style="width: 4%; border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td colwidth="444" data-cell-width="74%" style="width: 74%; border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_name]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Instansi</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_name]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Alamat</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_address]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Alamat</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_address]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">U.p</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_correspondence_unit]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">U.p</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_correspondence_unit]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Telepon</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_phone]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Telepon</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_phone]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Fax</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_fax]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Fax</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_fax]</p></td>
             </tr>
-            <tr>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt 3pt 18pt;"><p style="margin: 0;">Email</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;">:</p></td>
-                <td style="border: 1px solid #000000; padding: 3pt 6pt;"><p style="margin: 0;">[company_email]</p></td>
+            <tr style="page-break-inside: avoid; break-inside: avoid;">
+                <td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;"><p style="margin: 0;">Email</p></td>
+                <td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;"><p style="text-align: center; margin: 0;">:</p></td>
+                <td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top;"><p style="margin: 0;">[company_email]</p></td>
             </tr>
         </tbody>
     </table>

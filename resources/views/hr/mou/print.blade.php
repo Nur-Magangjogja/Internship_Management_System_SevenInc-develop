@@ -383,6 +383,43 @@
             const cloneRoot = innerRoot.cloneNode(true);
             cloneRoot.querySelectorAll('style, .mou-watermark-layer').forEach(el => el.remove());
 
+            // Satukan dua tabel korespondensi berurutan (PIHAK KESATU & PIHAK KEDUA) jika snapshot lama menyimpannya terpisah
+            const corrTables = Array.from(cloneRoot.querySelectorAll('.mou-correspondence-table'));
+            for (let cIdx = 0; cIdx < corrTables.length - 1; cIdx++) {
+                const curT = corrTables[cIdx];
+                const nextT = curT.nextElementSibling;
+                if (nextT && nextT.classList.contains('mou-correspondence-table')) {
+                    const tb1 = curT.querySelector('tbody');
+                    const tb2 = nextT.querySelector('tbody');
+                    if (tb1 && tb2) {
+                        while (tb2.firstElementChild) {
+                            tb1.appendChild(tb2.firstElementChild);
+                        }
+                        nextT.remove();
+                    }
+                }
+            }
+
+            // Normalisasi proporsi kolom tabel korespondensi agar rapat dan tidak berjarak jauh
+            cloneRoot.querySelectorAll('.mou-correspondence-table').forEach(t => {
+                t.style.width = '100%';
+                t.style.tableLayout = 'fixed';
+                t.style.marginTop = '4pt';
+                t.style.marginBottom = '6pt';
+                t.querySelectorAll('tr').forEach(tr => {
+                    const tds = Array.from(tr.children);
+                    if (tds.length === 3) {
+                        tds[0].style.width = '22%';
+                        tds[0].style.padding = '2pt 5pt 2pt 14pt';
+                        tds[1].style.width = '4%';
+                        tds[1].style.textAlign = 'center';
+                        tds[1].style.padding = '2pt 2pt';
+                        tds[2].style.width = '74%';
+                        tds[2].style.padding = '2pt 5pt';
+                    }
+                });
+            });
+
             const blocks = Array.from(cloneRoot.children).filter(el => {
                 return !el.classList.contains('mou-a4-page-header') &&
                        !el.classList.contains('mou-a4-page-footer') &&

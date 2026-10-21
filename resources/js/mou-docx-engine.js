@@ -5,8 +5,22 @@
  * Strictly free: No cloud API, no external telemetry, no paid converter.
  */
 
-import mammoth from 'mammoth';
-import * as docx from 'docx';
+let mammoth = null;
+async function loadMammoth() {
+    if (!mammoth) {
+        const mod = await import('mammoth');
+        mammoth = mod.default || mod;
+    }
+    return mammoth;
+}
+
+let docx = null;
+async function loadDocx() {
+    if (!docx) {
+        docx = await import('docx');
+    }
+    return docx;
+}
 
 /**
  * Reconstruct Mail Merge placeholder tokens split across Word text runs.
@@ -59,6 +73,7 @@ export function validateDocxBinary(buffer) {
  * Import a DOCX file from an ArrayBuffer, Blob, File, or Buffer into clean semantic HTML.
  */
 export async function importDocxFile(fileOrBuffer) {
+    await loadMammoth();
     let arrayBuffer = null;
     let rawBuffer = null;
 
@@ -137,6 +152,7 @@ export async function importDocxFile(fileOrBuffer) {
  * Convert a ProseMirror JSON Document into a genuine Microsoft Word (.docx) document.
  */
 export async function exportProseMirrorJsonToDocx(docJson, pageConfig = {}) {
+    await loadDocx();
     if (!docJson || typeof docJson !== 'object') {
         throw new Error('Model dokumen JSON tidak valid.');
     }

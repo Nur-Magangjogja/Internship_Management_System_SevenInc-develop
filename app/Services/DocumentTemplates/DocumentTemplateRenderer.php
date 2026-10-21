@@ -56,31 +56,49 @@ class DocumentTemplateRenderer
     /**
      * Render HTML lengkap untuk dokumen surat A4 (LOA, SKL, Penilaian, Rekomendasi).
      */
-    public static function renderLetterHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
+    public static function renderLetterHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false, bool $isForPdf = false): string
     {
         $rawContent = $template->content_html ?? '';
         $resolvedHtml = MailMergePlaceholderContract::resolve($rawContent, $data, $isLiveIssuance);
         $sanitizedHtml = static::sanitizeHtml($resolvedHtml);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig($template->type), $template->page_config ?? []);
 
-        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name);
+        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name, $isForPdf);
     }
 
     /**
      * Render HTML lengkap untuk sertifikat berbasis Canvas Layout.
      */
-    public static function renderCertificateHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
+    public static function renderCertificateHtml(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false, bool $isForPdf = false): string
     {
         $layout = array_merge(DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? []);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig('certificate'), $template->page_config ?? []);
         
-        $renderedElementsHtml = static::renderCanvasElementsHtml($layout, $data, $isLiveIssuance);
-        $rawBg = $layout['canvas']['background_image'] ?? ($pageConfig['background_image'] ?? '/images/certificate/certificate-bg.png');
+        $renderedElementsHtml = static::renderCanvasElementsHtml($layout, $data, $isLiveIssuance, $isForPdf);
+
+        $defaultBg = '/images/certificate/certificate-bg.png';
+        $layoutBg = $layout['canvas']['background_image'] ?? ($pageConfig['background_image'] ?? $defaultBg);
+
+        // Resolusi placeholder jika layout background mengandung tag (misal {{asset.background}})
+        if (str_contains($layoutBg, '{{') || str_contains($layoutBg, '[')) {
+            $layoutBg = MailMergePlaceholderContract::resolve($layoutBg, $data, $isLiveIssuance);
+        }
+
+        // Tentukan background image: gunakan aset background dari brand ($data['asset.background'])
+        // jika layout masih default atau jika memang diisi oleh konteks brand
+        if (!empty($data['asset.background']) && ($layoutBg === $defaultBg || str_ends_with($layoutBg, 'certificate-bg.png') || empty($layoutBg) || str_contains($layoutBg, 'asset.background'))) {
+            $rawBg = $data['asset.background'];
+        } elseif (!empty($data['asset.background']) && !empty($data['force_brand_background'])) {
+            $rawBg = $data['asset.background'];
+        } else {
+            $rawBg = !empty($layoutBg) ? $layoutBg : (!empty($data['asset.background']) ? $data['asset.background'] : $defaultBg);
+        }
+
         $bgImage = static::resolveImageToBase64($rawBg) ?? $rawBg;
         $bgColor = $layout['canvas']['background_color'] ?? '#ffffff';
         $orientation = strtolower((string) ($pageConfig['orientation'] ?? 'landscape'));
 
-        return static::wrapCertificateDocumentHtml($renderedElementsHtml, $bgImage, $bgColor, $orientation, $template->name);
+        return static::wrapCertificateDocumentHtml($renderedElementsHtml, $bgImage, $bgColor, $orientation, $template->name, $isForPdf);
     }
 
     /**
@@ -88,12 +106,57 @@ class DocumentTemplateRenderer
      */
     public static function renderPdfBinary(DocumentTemplate $template, array $data = [], bool $isLiveIssuance = false): string
     {
-        if ($template->type === 'certificate' || $template->editor_type === 'visual_canvas') {
-            $html = static::renderCertificateHtml($template, $data, $isLiveIssuance);
+        $isCanvas = ($template->type === 'certificate' || $template->editor_type === 'visual_canvas');
+        $paperSize = strtolower((string) ($template->page_config['paper_size'] ?? 'a4'));
+        $orientation = strtolower((string) ($template->page_config['orientation'] ?? ($isCanvas ? 'landscape' : 'portrait')));
+
+        // 1. Coba render PDF berbasis Chromium (Browsershot) untuk presisi dan kualitas visual 100% identik dengan browser
+        try {
+            if (class_exists(\Spatie\Browsershot\Browsershot::class)) {
+                $screenHtml = $isCanvas
+                    ? static::renderCertificateHtml($template, $data, $isLiveIssuance, isForPdf: false)
+                    : static::renderLetterHtml($template, $data, $isLiveIssuance, isForPdf: false);
+
+                $htmlWithBase64 = static::embedLocalImagesAsBase64($screenHtml);
+                $browsershot = \Spatie\Browsershot\Browsershot::html($htmlWithBase64);
+
+                $chromeCandidates = [
+                    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/chromium-browser',
+                ];
+                foreach ($chromeCandidates as $candidate) {
+                    if (file_exists($candidate)) {
+                        $browsershot->setChromePath($candidate);
+                        break;
+                    }
+                }
+
+                $browsershot->setOption('no-sandbox', true)
+                    ->setOption('args', ['--disable-setuid-sandbox', '--font-render-hinting=none'])
+                    ->emulateMedia('print')
+                    ->format($paperSize)
+                    ->landscape($orientation === 'landscape')
+                    ->margins(0, 0, 0, 0)
+                    ->showBackground();
+
+                $pdfBinary = $browsershot->pdf();
+                if (!empty($pdfBinary) && strlen($pdfBinary) > 1000) {
+                    return $pdfBinary;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Browsershot generation failed, falling back to DomPDF: " . $e->getMessage());
+        }
+
+        // 2. Fallback aman ke DomPDF jika Browsershot tidak tersedia
+        if ($isCanvas) {
+            $html = static::renderCertificateHtml($template, $data, $isLiveIssuance, isForPdf: true);
             $paperSize = 'a4';
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'landscape'));
         } else {
-            $html = static::renderLetterHtml($template, $data, $isLiveIssuance);
+            $html = static::renderLetterHtml($template, $data, $isLiveIssuance, isForPdf: true);
             $paperSize = strtolower((string) ($template->page_config['paper_size'] ?? 'a4'));
             $orientation = strtolower((string) ($template->page_config['orientation'] ?? 'portrait'));
         }
@@ -114,7 +177,7 @@ class DocumentTemplateRenderer
     /**
      * Render elemen-elemen visual canvas sertifikat menjadi layer CSS absolut.
      */
-    public static function renderCanvasElementsHtml(array $layout, array $data = [], bool $isLiveIssuance = false): string
+    public static function renderCanvasElementsHtml(array $layout, array $data = [], bool $isLiveIssuance = false, bool $isForPdf = false): string
     {
         $elements = $layout['elements'] ?? [];
         $out = '';
@@ -165,12 +228,38 @@ class DocumentTemplateRenderer
                     $src = $m[1];
                 }
                 $src = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
-                $w = isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : (isset($elem['width_percent']) ? "{$elem['width_percent']}%" : '120px');
-                $h = isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : (isset($elem['height_percent']) ? "{$elem['height_percent']}%" : 'auto');
+                
+                // Prioritaskan width_percent hasil kustomisasi visual studio, fallback ke width_px, lalu default 16.5% (~140px)
+                $wPercent = (isset($elem['width_percent']) && is_numeric($elem['width_percent']))
+                    ? (float) $elem['width_percent'] 
+                    : (isset($elem['width_px']) ? round(((float) $elem['width_px'] / 840) * 100, 2) : 16.5);
+                $w = "{$wPercent}%";
+                    
+                $hPercent = (isset($elem['height_percent']) && is_numeric($elem['height_percent']))
+                    ? (float) $elem['height_percent'] 
+                    : (isset($elem['height_px']) ? round(((float) $elem['height_px'] / 594) * 100, 2) : 10.0);
+                $h = "{$hPercent}%";
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle}\">\n";
-                $out .= "<img src=\"{$src}\" style=\"width: {$w}; height: {$h}; max-width: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
-                $out .= "</div>\n";
+                // Bounding box maksimal dalam milimeter (A4 Landscape: 297mm x 210mm) untuk isolasi DomPDF
+                $maxWMm = round(($wPercent / 100) * 297, 2);
+                $maxHMm = round(($hPercent / 100) * 210, 2);
+
+                if ($isForPdf) {
+                    $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle} box-sizing: border-box;\">\n";
+                    $out .= "<table style=\"width: 100%; height: 100%; border-collapse: collapse; margin: 0; padding: 0; border: none;\"><tr><td style=\"vertical-align: middle; text-align: {$align}; padding: 0; margin: 0; border: none;\">\n";
+                    $out .= "<img src=\"{$src}\" style=\"max-width: {$maxWMm}mm; max-height: {$maxHMm}mm; width: auto; height: auto; object-fit: contain; display: inline-block; vertical-align: middle; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                    $out .= "</td></tr></table>\n";
+                    $out .= "</div>\n";
+                } else {
+                    $justify = match ($align) {
+                        'left'  => 'flex-start',
+                        'right' => 'flex-end',
+                        default => 'center',
+                    };
+                    $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; z-index: {$zIndex}; {$opacityStyle} box-sizing: border-box; display: flex; align-items: center; justify-content: {$justify};\">\n";
+                    $out .= "<img src=\"{$src}\" style=\"max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Elemen Sertifikat\" />\n";
+                    $out .= "</div>\n";
+                }
             } elseif ($type === 'shape') {
                 $bgColor = htmlspecialchars($elem['bg_color'] ?? '#f1f5f9', ENT_QUOTES, 'UTF-8');
                 $borderColor = htmlspecialchars($elem['border_color'] ?? '#cbd5e1', ENT_QUOTES, 'UTF-8');
@@ -191,16 +280,36 @@ class DocumentTemplateRenderer
             } elseif ($type === 'qr_code') {
                 $rawQrData = $elem['qr_data'] ?? ($elem['content'] ?? '{{dokumen.nomor}}');
                 $resolvedQrData = MailMergePlaceholderContract::resolve($rawQrData, $data, $isLiveIssuance);
-                $sizePx = (int) ($elem['size_px'] ?? 90);
-                $fgColor = $elem['fg_color'] ?? '#000000';
-                $bgColor = $elem['bg_color'] ?? '#ffffff';
+                $fgColor = htmlspecialchars($elem['fg_color'] ?? '#000000', ENT_QUOTES, 'UTF-8');
+                $bgColor = htmlspecialchars($elem['bg_color'] ?? '#ffffff', ENT_QUOTES, 'UTF-8');
 
-                $qrDataUri = OfflineQrCodeGenerator::renderDataUri($resolvedQrData, $sizePx, $fgColor, $bgColor);
+                $w = (isset($elem['width_percent']) && is_numeric($elem['width_percent']))
+                    ? "{$elem['width_percent']}%" 
+                    : (isset($elem['width_px']) ? ((int) $elem['width_px'] . 'px') : '12%');
+                $h = (isset($elem['height_percent']) && is_numeric($elem['height_percent']))
+                    ? "{$elem['height_percent']}%" 
+                    : (isset($elem['height_px']) ? ((int) $elem['height_px'] . 'px') : '15%');
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$opacityStyle}\">\n";
-                $out .= "<img src=\"{$qrDataUri}\" style=\"width: {$sizePx}px; height: {$sizePx}px; display: block; margin: 0 auto;\" alt=\"QR Code Verifikasi\" />\n";
-                $out .= "</div>\n";
+                $hasBox = !empty($bgColor) && $bgColor !== 'transparent';
+                $boxStyle = $hasBox 
+                    ? "background-color: {$bgColor}; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px;" 
+                    : "";
+
+                $qrDataUri = OfflineQrCodeGenerator::renderDataUri($resolvedQrData, 300, $fgColor, 'transparent');
+
+                if ($isForPdf) {
+                    $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$boxStyle} box-sizing: border-box; {$opacityStyle}\">\n";
+                    $out .= "<table style=\"width: 100%; height: 100%; border-collapse: collapse; margin: 0; padding: 0; border: none;\"><tr><td style=\"vertical-align: middle; text-align: center; padding: 0; margin: 0; border: none;\">\n";
+                    $out .= "<img src=\"{$qrDataUri}\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"QR Code Verifikasi\" />\n";
+                    $out .= "</td></tr></table>\n";
+                    $out .= "</div>\n";
+                } else {
+                    $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; width: {$w}; height: {$h}; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; {$boxStyle} box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; {$opacityStyle}\">\n";
+                    $out .= "<img src=\"{$qrDataUri}\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: 0 auto;\" alt=\"QR Code Verifikasi\" />\n";
+                    $out .= "</div>\n";
+                }
             } elseif ($type === 'signature_group') {
+                $certNoText = !empty($elem['cert_no_text']) ? MailMergePlaceholderContract::resolve($elem['cert_no_text'], $data, $isLiveIssuance) : '';
                 $dateText = MailMergePlaceholderContract::resolve($elem['date_text'] ?? '', $data, $isLiveIssuance);
                 $roleText = MailMergePlaceholderContract::resolve($elem['role_text'] ?? '', $data, $isLiveIssuance);
                 $nameText = MailMergePlaceholderContract::resolve($elem['name_text'] ?? '', $data, $isLiveIssuance);
@@ -210,15 +319,35 @@ class DocumentTemplateRenderer
                 if (preg_match('/src="([^"]+)"/i', $stampImg, $m)) $stampImg = $m[1];
 
                 $width = isset($elem['width_percent']) ? "width: {$elem['width_percent']}%;" : 'width: 45%;';
+                $fontFamily = htmlspecialchars($elem['font_family'] ?? 'Times New Roman', ENT_QUOTES, 'UTF-8');
+                $color = htmlspecialchars($elem['color'] ?? '#000000', ENT_QUOTES, 'UTF-8');
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: 'Times New Roman', serif; {$width} {$opacityStyle}\">\n";
-                if ($dateText) $out .= "<p style=\"margin: 0; font-size: 11pt;\">{$dateText}</p>\n";
-                if ($roleText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 11pt;\">{$roleText}</p>\n";
-                $out .= "<div style=\"height: 70px; margin: 6px auto; position: relative; width: 220px;\">\n";
-                if ($sigImg) $out .= "<img src=\"{$sigImg}\" style=\"height: 60px; width: auto; position: relative; z-index: 10; display: block; margin: 0 auto;\" alt=\"Tanda Tangan\" />\n";
-                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: 65px; width: auto; position: absolute; left: 15px; top: -5px; opacity: 0.85; z-index: 20;\" alt=\"Stempel\" />\n";
+                $stackMargin = match ($align) {
+                    'left'  => 'margin: 4px 0;',
+                    'right' => 'margin: 4px 0 4px auto;',
+                    default => 'margin: 4px auto;',
+                };
+                $sigMargin = match ($align) {
+                    'left'  => 'margin: 0;',
+                    'right' => 'margin: 0 0 0 auto;',
+                    default => 'margin: 0 auto;',
+                };
+                $stampX = isset($elem['stamp_offset_x']) && is_numeric($elem['stamp_offset_x']) ? (int) $elem['stamp_offset_x'] : 15;
+                $stampStyle = match ($align) {
+                    'left'  => 'position: absolute; left: 0; top: -18px;',
+                    'right' => 'position: absolute; right: 0; top: -18px;',
+                    default => "position: absolute; left: {$stampX}px; top: -18px;",
+                };
+
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: '{$fontFamily}', serif; color: {$color}; {$width} {$opacityStyle}\">\n";
+                if ($certNoText) $out .= "<p style=\"margin: 0 0 2px 0; font-size: 11pt; line-height: 1.3;\">{$certNoText}</p>\n";
+                if ($dateText) $out .= "<p style=\"margin: 0; font-size: 11pt; line-height: 1.3;\">{$dateText}</p>\n";
+                if ($roleText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 11pt; line-height: 1.3;\">{$roleText}</p>\n";
+                $out .= "<div style=\"height: 50px; {$stackMargin} position: relative; width: 220px;\">\n";
+                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: 85px; width: 85px; {$stampStyle} opacity: 0.65; mix-blend-mode: multiply; z-index: 5; pointer-events: none;\" alt=\"Stempel\" />\n";
+                if ($sigImg) $out .= "<img src=\"{$sigImg}\" style=\"height: 50px; width: auto; position: relative; z-index: 10; display: block; {$sigMargin}\" alt=\"Tanda Tangan\" />\n";
                 $out .= "</div>\n";
-                if ($nameText) $out .= "<p style=\"margin: 0; font-size: 12pt; font-weight: bold; text-decoration: underline;\">{$nameText}</p>\n";
+                if ($nameText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 12pt; font-weight: bold; text-decoration: underline; position: relative; z-index: 10; line-height: 1.3;\">{$nameText}</p>\n";
                 $out .= "</div>\n";
             }
         }
@@ -229,7 +358,7 @@ class DocumentTemplateRenderer
     /**
      * Wrapper HTML untuk Dokumen Surat A4.
      */
-    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen'): string
+    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen', bool $isForPdf = false): string
     {
         $mTop = (float) ($pageConfig['margin_top_mm'] ?? 20.0);
         $mBtm = (float) ($pageConfig['margin_bottom_mm'] ?? 20.0);
@@ -246,14 +375,40 @@ class DocumentTemplateRenderer
 
         $headerBlock = '';
         if ($headerHtml !== '') {
-            $headerBlock = '<div class="letter-running-header" style="position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;">' . $headerHtml . '</div>';
+            $headerBlock = '<div class="letter-running-header" style="position: ' . ($isForPdf ? 'fixed' : 'relative') . '; top: ' . ($isForPdf ? '-' . max(2, $mTop - 2) . 'mm' : '0') . '; left: 0; right: 0; overflow: hidden; margin-bottom: 4mm;">' . $headerHtml . '</div>';
         }
         $footerBlock = '';
         if ($footerHtml !== '') {
-            $footerBlock = '<div class="letter-running-footer" style="position: fixed; bottom: -' . max(2, $mBtm - 2) . 'mm; left: 0; right: 0; height: ' . max(4, $mBtm - 4) . 'mm; overflow: hidden;">' . $footerHtml . '</div>';
+            $footerBlock = '<div class="letter-running-footer" style="position: ' . ($isForPdf ? 'fixed' : 'relative') . '; bottom: ' . ($isForPdf ? '-' . max(2, $mBtm - 2) . 'mm' : '0') . '; left: 0; right: 0; overflow: hidden; margin-top: 6mm;">' . $footerHtml . '</div>';
         }
 
-        return <<<HTML
+        // Watermark support (Logo perusahaan tepat di tengah kertas, tidak menggeser teks)
+        $showWatermark = (bool) ($pageConfig['show_watermark'] ?? true);
+        $watermarkBlock = '';
+        if ($showWatermark) {
+            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
+            $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
+            $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
+            $posStyle = $isForPdf 
+                ? 'position: fixed; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: -1000; pointer-events: none;'
+                : 'position: absolute; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: 1; pointer-events: none;';
+            $watermarkBlock = '<div class="letter-watermark-center" style="' . $posStyle . '"><img src="' . htmlspecialchars($compLogoBase64, ENT_QUOTES, 'UTF-8') . '" style="width: 300px; height: auto; opacity: ' . $wmOpacity . '; margin: 0 auto; display: inline-block;" alt="Watermark"/></div>';
+        }
+
+        // Header single logo (1 logo perusahaan di kiri saja untuk LOA/surat resmi)
+        $showHeaderLogos = (bool) ($pageConfig['show_header_logos'] ?? false);
+        $headerLogoBlock = '';
+        if ($showHeaderLogos && empty($headerHtml)) {
+            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
+            $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
+            $posLogoStyle = $isForPdf
+                ? 'position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;'
+                : 'position: relative; left: 0; margin-bottom: 4mm;';
+            $headerLogoBlock = '<div class="letter-fixed-header-logo" style="' . $posLogoStyle . '"><img src="' . htmlspecialchars($compLogoBase64, ENT_QUOTES, 'UTF-8') . '" style="height: 65px; width: auto;" alt="Logo Perusahaan"/></div>';
+        }
+
+        if ($isForPdf) {
+            return <<<HTML
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -284,6 +439,15 @@ class DocumentTemplateRenderer
         }
         table {
             border-collapse: collapse;
+            width: 100%;
+        }
+        table td, table th {
+            vertical-align: top;
+        }
+        table td p, table th p {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.25 !important;
         }
         .page-break {
             page-break-after: always;
@@ -295,44 +459,147 @@ class DocumentTemplateRenderer
             margin-top: 0 !important;
             margin-bottom: 6pt !important;
         }
-        ol {
-            list-style-type: decimal !important;
+        ol { list-style-type: decimal !important; }
+        ol[type="a"] { list-style-type: lower-alpha !important; }
+        ol[type="A"] { list-style-type: upper-alpha !important; }
+        ol[type="i"] { list-style-type: lower-roman !important; }
+        ol[type="I"] { list-style-type: upper-roman !important; }
+        ul { list-style-type: disc !important; }
+        ul ul { list-style-type: circle !important; }
+        ul ul ul { list-style-type: square !important; }
+        li { display: list-item !important; margin-bottom: 2pt !important; }
+        li > p { display: inline !important; margin-bottom: 0 !important; }
+    </style>
+</head>
+<body>
+    {$watermarkBlock}
+    {$headerBlock}
+    {$headerLogoBlock}
+    {$bodyHtml}
+    {$footerBlock}
+</body>
+</html>
+HTML;
         }
-        ol[type="a"] {
-            list-style-type: lower-alpha !important;
+
+        // Screen Preview Layout with Authentically Sized & Padded A4 Paper Sheet
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>{$title}</title>
+    <style>
+        @page {
+            size: {$pSize} {$orient};
+            margin: {$mTop}mm {$mRgt}mm {$mBtm}mm {$mLft}mm;
         }
-        ol[type="A"] {
-            list-style-type: upper-alpha !important;
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
-        ol[type="i"] {
-            list-style-type: lower-roman !important;
+        html {
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 24px 12px;
+            min-height: 100%;
         }
-        ol[type="I"] {
-            list-style-type: upper-roman !important;
+        body {
+            margin: 0 auto;
+            padding: 0;
+            font-family: '{$fontFamily}', Times, serif;
+            font-size: {$fontSize}pt;
+            line-height: {$lineHeight};
+            color: #000000;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        ul {
-            list-style-type: disc !important;
+        .letter-paper-sheet {
+            width: 210mm;
+            min-height: 297mm;
+            max-width: 100%;
+            background-color: #ffffff;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15), 0 2px 6px rgba(15, 23, 42, 0.08);
+            border: 1px solid #cbd5e1;
+            padding: {$mTop}mm {$mRgt}mm {$mBtm}mm {$mLft}mm;
+            box-sizing: border-box;
+            position: relative;
+            word-wrap: break-word;
         }
-        ul ul {
-            list-style-type: circle !important;
+        .letter-body-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
         }
-        ul ul ul {
-            list-style-type: square !important;
+        img {
+            max-width: 100%;
+            height: auto;
         }
-        li {
-            display: list-item !important;
-            margin-bottom: 2pt !important;
+        table {
+            border-collapse: collapse;
+            width: 100%;
         }
-        li > p {
-            display: inline !important;
-            margin-bottom: 0 !important;
+        table td, table th {
+            vertical-align: top;
+        }
+        table td p, table th p {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.25 !important;
+        }
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
+        ol, ul {
+            padding-left: 24pt !important;
+            margin-top: 0 !important;
+            margin-bottom: 6pt !important;
+        }
+        ol { list-style-type: decimal !important; }
+        ul { list-style-type: disc !important; }
+        li { display: list-item !important; margin-bottom: 2pt !important; }
+        li > p { display: inline !important; margin-bottom: 0 !important; }
+        @media print {
+            @page {
+                size: {$pSize} {$orient};
+                margin: {$mTop}mm {$mRgt}mm {$mBtm}mm {$mLft}mm;
+            }
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                display: block !important;
+            }
+            .letter-paper-sheet {
+                width: 100% !important;
+                max-width: none !important;
+                min-height: auto !important;
+                height: auto !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
         }
     </style>
 </head>
 <body>
-    {$headerBlock}
-    {$bodyHtml}
-    {$footerBlock}
+    <div class="letter-paper-sheet">
+        {$watermarkBlock}
+        {$headerBlock}
+        {$headerLogoBlock}
+        <div class="letter-body-content">
+            {$bodyHtml}
+        </div>
+        {$footerBlock}
+    </div>
 </body>
 </html>
 HTML;
@@ -346,12 +613,14 @@ HTML;
         string $bgImage,
         string $bgColor,
         string $orientation = 'landscape',
-        string $title = 'Sertifikat'
+        string $title = 'Sertifikat',
+        bool $isForPdf = false
     ): string {
         $widthMm = $orientation === 'landscape' ? 297.0 : 210.0;
         $heightMm = $orientation === 'landscape' ? 210.0 : 297.0;
 
-        return <<<HTML
+        if ($isForPdf) {
+            return <<<HTML
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -395,6 +664,81 @@ HTML;
 </body>
 </html>
 HTML;
+        }
+
+        // Screen Preview Layout with Fully-Scaled Visual Canvas
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>{$title}</title>
+    <style>
+        @page {
+            size: a4 {$orientation};
+            margin: 0;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        html {
+            background-color: #0f172a;
+            margin: 0;
+            padding: 24px 12px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: auto;
+        }
+        body {
+            margin: auto;
+            padding: 0;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .cert-canvas-container {
+            position: relative;
+            width: {$widthMm}mm;
+            height: {$heightMm}mm;
+            min-width: {$widthMm}mm;
+            min-height: {$heightMm}mm;
+            background-color: {$bgColor};
+            background-image: url('{$bgImage}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        @media print {
+            html, body {
+                background: #ffffff !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+            }
+            .cert-canvas-container {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="cert-canvas-container">
+        {$canvasElementsHtml}
+    </div>
+</body>
+</html>
+HTML;
     }
 
     /**
@@ -427,6 +771,26 @@ HTML;
         if (!$root instanceof DOMElement) return '';
 
         static::sanitizeDomNode($root);
+
+        // Auto-balance 2-column kop surat table so middle text is centered on the whole page
+        $tables = $xpath->query('.//table', $root);
+        foreach ($tables as $tbl) {
+            $rows = $xpath->query('.//tr', $tbl);
+            if ($rows->length === 1) {
+                $cells = $xpath->query('.//td', $rows->item(0));
+                if ($cells->length === 2) {
+                    $img = $xpath->query('.//img', $cells->item(0));
+                    if ($img->length > 0) {
+                        $w1 = $cells->item(0)->getAttribute('style');
+                        preg_match('/width\s*:\s*([^;]+)/i', $w1, $wm);
+                        $widthStyle = !empty($wm[1]) ? trim($wm[1]) : '110px';
+                        $thirdCell = $dom->createElement('td');
+                        $thirdCell->setAttribute('style', "width: {$widthStyle}; vertical-align: middle;");
+                        $rows->item(0)->appendChild($thirdCell);
+                    }
+                }
+            }
+        }
 
         $out = '';
         foreach ($root->childNodes as $child) {
@@ -495,6 +859,11 @@ HTML;
             return $src;
         }
 
+        if (file_exists($src) && is_file($src)) {
+            $mime = mime_content_type($src) ?: 'image/png';
+            return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($src));
+        }
+
         // Resolusi SystemAsset preview atau ID
         $assetId = null;
         if (is_numeric($src)) {
@@ -515,16 +884,24 @@ HTML;
             }
         }
 
-        // Resolusi Storage disk public (/storage/... atau http://.../storage/...)
+        // Resolusi Storage disk public (/storage/... atau relative path disk public)
+        $relStorage = null;
         if (preg_match('#(?:^|/)storage/(.+)$#i', $src, $sm)) {
-            $rel = ltrim($sm[1], '/');
-            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($rel)) {
-                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($rel);
-                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($rel) ?: 'image/png';
+            $relStorage = ltrim($sm[1], '/');
+        } elseif (\Illuminate\Support\Facades\Storage::disk('public')->exists($src)) {
+            $relStorage = ltrim($src, '/');
+        } elseif (file_exists(storage_path('app/public/' . ltrim($src, '/')))) {
+            $relStorage = ltrim($src, '/');
+        }
+
+        if ($relStorage !== null) {
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($relStorage)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($relStorage);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($relStorage) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode($content);
             }
-            $localPath = storage_path('app/public/' . $rel);
-            if (file_exists($localPath)) {
+            $localPath = storage_path('app/public/' . $relStorage);
+            if (file_exists($localPath) && is_file($localPath)) {
                 $mime = mime_content_type($localPath) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
             }
@@ -533,10 +910,16 @@ HTML;
         // Resolusi Public path (/images/... atau http://.../images/...)
         if (preg_match('#(?:^|/)images/(.+)$#i', $src, $im)) {
             $localPath = public_path('images/' . ltrim($im[1], '/'));
-            if (file_exists($localPath)) {
+            if (file_exists($localPath) && is_file($localPath)) {
                 $mime = mime_content_type($localPath) ?: 'image/png';
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
             }
+        }
+
+        $pubDirect = public_path(ltrim($src, '/'));
+        if (file_exists($pubDirect) && is_file($pubDirect)) {
+            $mime = mime_content_type($pubDirect) ?: 'image/png';
+            return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($pubDirect));
         }
 
         return null;

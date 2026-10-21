@@ -28,6 +28,7 @@
         "@tiptap/extension-text-style": "^3.32.0",
         "@tiptap/pm": "^3.32.0",
         "@tiptap/starter-kit": "^3.32.0",
+        "alpinejs": "^3.17.5",
         "apexcharts": "^3.54.0",
         "docx": "^9.13.0",
         "flowbite-typography": "^1.0.4",

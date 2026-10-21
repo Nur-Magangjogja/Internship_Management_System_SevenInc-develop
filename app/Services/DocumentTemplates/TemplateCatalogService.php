@@ -26,6 +26,8 @@ class TemplateCatalogService
      */
     public function getCatalog(array $filters = [], int $perPage = 12, int $page = 1): array
     {
+        DocumentTemplate::ensureDefaultTemplatesExist();
+
         $typeFilter   = $filters['type'] ?? 'all';
         $statusFilter = $filters['status'] ?? 'all';
         $search       = trim((string) ($filters['search'] ?? ''));

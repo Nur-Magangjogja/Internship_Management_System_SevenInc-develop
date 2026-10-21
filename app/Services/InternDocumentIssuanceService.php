@@ -132,7 +132,8 @@ class InternDocumentIssuanceService
         $canonical = self::normalizeType($documentType);
 
         // 1. Cek dari GeneratedDocument yang sudah ada
-        $existingGen = GeneratedDocument::where('internship_registration_id', $intern->id)
+        $existingGen = GeneratedDocument::select(['id', 'document_number'])
+            ->where('internship_registration_id', $intern->id)
             ->where('document_type', $canonical)
             ->whereNotNull('document_number')
             ->latest('id')
@@ -197,16 +198,29 @@ class InternDocumentIssuanceService
         $assetReferences = $baseContext['asset_references'];
 
         // 3. Tambahkan variabel-variabel detail spesifik dokumen
-        $companyName = $brandModel?->name ?? ($intern->brand ?: ($isLiveIssuance ? '' : 'Seven Inc'));
-        $companyAddress = $brandModel?->address ?? ($brandModel?->company_address ?? 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
+        $companyName = $brandModel?->name ?? ($intern->brand ?: ($isLiveIssuance ? 'Seven Inc' : 'Seven Inc'));
+        $companyAddress = $brandModel?->company_address ?? ($brandModel?->address ?? 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
+        if (empty(trim((string)$companyAddress)) || $companyAddress === '-') {
+            $companyAddress = 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198';
+        }
         
-        // Signatory: Pada live issuance DILARANG KERAS fallback ke nama contoh palsu! (V03)
-        $signatoryName = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Ari Setia Husbana');
-        $signatoryPosition = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'HRD');
+        // Signatory: Pada live issuance TIDAK BOLEH fallback ke brand lain atau nama mock/placeholder (INV-06, INV-14)
+        if ($isLiveIssuance) {
+            $signatoryName = $brandModel?->signatory_name;
+            $signatoryPosition = $brandModel?->signatory_position;
+        } else {
+            $signatoryName = $brandModel?->signatory_name ?: (Brand::whereNotNull('signatory_name')->where('signatory_name', '!=', '')->value('signatory_name') ?: 'Ari Setia Husbana');
+            $signatoryPosition = $brandModel?->signatory_position ?: (Brand::whereNotNull('signatory_position')->where('signatory_position', '!=', '')->value('signatory_position') ?: 'HRD');
+        }
 
         if ($canonical === self::TYPE_RECOMMENDATION) {
-            $signatoryName = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.');
-            $signatoryPosition = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'CEO');
+            if ($isLiveIssuance) {
+                $signatoryName = $brandModel?->signatory_name;
+                $signatoryPosition = $brandModel?->signatory_position;
+            } else {
+                $signatoryName = $brandModel?->signatory_name ?: 'Rekario Danny Sanjaya, S.Kom.';
+                $signatoryPosition = $brandModel?->signatory_position ?: 'CEO';
+            }
         }
 
         $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->locale('id')->translatedFormat('d F Y') : ($isLiveIssuance ? '' : '-');
@@ -237,23 +251,35 @@ class InternDocumentIssuanceService
         $additionalVars = [
             'dokumen.nomor'                 => $docNumber,
             'dokumen.tanggal'               => now()->translatedFormat('d F Y'),
+            'dokumen.tempat'                => 'Sleman',
             'dokumen.penandatangan_nama'    => $signatoryName,
             'dokumen.penandatangan_jabatan' => $signatoryPosition,
+            'brand.penandatangan.nama'      => $signatoryName,
+            'brand.penandatangan.jabatan'   => $signatoryPosition,
+            'perusahaan.pimpinan'           => $signatoryName,
+            'perusahaan.jabatan'            => $signatoryPosition,
             'perusahaan.nama'               => $companyName,
             'perusahaan.alamat'             => $companyAddress,
-            'perusahaan.kota'               => 'Yogyakarta',
-            'perusahaan.telepon'            => $brandModel?->phone ?? ($isLiveIssuance ? '' : '0274-4534571'),
+            'brand.nama'                    => $companyName,
+            'brand.alamat'                  => $companyAddress,
+            'perusahaan.kota'               => 'Sleman',
+            'brand.kota'                    => 'Sleman',
+            'perusahaan.telepon'            => $brandModel?->phone ?? ($isLiveIssuance ? '0274-4534571' : '0274-4534571'),
             'perusahaan.kodepos'            => '55198',
             'pemagang.nama'                 => $intern->fullname ?? ($isLiveIssuance ? '' : 'Nama Pemagang'),
             'pemagang.nim'                  => ($intern->student_id ?? $intern->nim_nis ?? $intern->nim ?? '-') ?: '-',
             'pemagang.institusi'            => $intern->institution_name ?? ($instModel?->name ?? ($isLiveIssuance ? '' : '-')),
             'pemagang.prodi'                => $intern->study_program ?? ($intern->major ?? '-'),
             'pemagang.divisi'               => $intern->division?->name ?? ($intern->internship_interest ?? ($isLiveIssuance ? '' : 'Umum')),
+            'magang.divisi'                 => $intern->division?->name ?? ($intern->internship_interest ?? ($isLiveIssuance ? '' : 'Umum')),
             'pemagang.brand'                => $companyName,
             'pemagang.tanggal_mulai'        => $startDateStr,
             'pemagang.tanggal_selesai'      => $endDateStr,
+            'magang.tanggal_mulai'          => $startDateStr,
+            'magang.tanggal_selesai'        => $endDateStr,
             'pemagang.periode'              => ($startDateStr && $endDateStr) ? "{$startDateStr} - {$endDateStr}" : '-',
             'pemagang.durasi'               => $durationStr,
+            'magang.durasi'                 => $durationStr,
             'penilaian.nilai_akhir'         => $rataRata,
             'penilaian.predikat'            => $predikat,
             'nilai.rata_rata'               => $rataRata,
@@ -262,7 +288,9 @@ class InternDocumentIssuanceService
         ];
 
         foreach ($additionalVars as $k => $v) {
-            if (!isset($variables[$k]) || ($variables[$k] === '' && $v !== null && $v !== '')) {
+            if ($v !== null && $v !== '' && $v !== '-') {
+                $variables[$k] = $v;
+            } elseif (!isset($variables[$k])) {
                 $variables[$k] = $v;
             }
         }
@@ -285,6 +313,117 @@ class InternDocumentIssuanceService
                 ];
                 $bgDataUri = $this->assetService->getAssetAsBase64DataUri($bgAsset);
                 $variables['asset.background'] = $bgDataUri;
+            }
+        }
+
+        // Resolusi aset fisik fallback jika token gambar masih belum terisi (INV-05 / fail-safe)
+        $resolveImageHelper = function (...$paths) {
+            foreach ($paths as $path) {
+                if (empty($path)) continue;
+                $cleanPath = ltrim($path, '/');
+                if (str_starts_with($cleanPath, 'storage/')) {
+                    $cleanPath = substr($cleanPath, 8);
+                }
+                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanPath)) {
+                    $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanPath);
+                    $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanPath) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode($content);
+                }
+                if (file_exists($path) && is_file($path)) {
+                    $mime = mime_content_type($path) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+                $inPub = public_path(ltrim($path, '/'));
+                if (file_exists($inPub) && is_file($inPub)) {
+                    $mime = mime_content_type($inPub) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+                }
+                $inStorage = storage_path('app/public/' . ltrim($path, '/'));
+                if (file_exists($inStorage) && is_file($inStorage)) {
+                    $mime = mime_content_type($inStorage) ?: 'image/png';
+                    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+                }
+            }
+            return null;
+        };
+
+        // 1. Logo Perusahaan / Brand
+        if (!empty($brandModel?->logo)) {
+            $logoData = $resolveImageHelper($brandModel->logo);
+            if ($logoData) {
+                $variables['asset.company.logo'] = $logoData;
+                $variables['asset.brand.logo']   = $logoData;
+                $variables['company_logo']       = $logoData;
+                $variables['brand_logo']         = $logoData;
+            }
+        } elseif (empty($variables['asset.company.logo']) && empty($variables['asset.brand.logo'])) {
+            $logoData = $resolveImageHelper(
+                'images/mou/seven-inc-logo.png',
+                'images/logos/logo_seveninc.png'
+            );
+            if ($logoData) {
+                $variables['asset.company.logo'] = $logoData;
+                $variables['asset.brand.logo']   = $logoData;
+            }
+        }
+
+        // 2. Tanda Tangan Penandatangan
+        if (!empty($brandModel?->signature)) {
+            $sigData = $resolveImageHelper($brandModel->signature);
+            if ($sigData) {
+                $variables['asset.signature']          = $sigData;
+                $variables['asset.brand.tanda_tangan'] = $sigData;
+                $variables['signature']                = $sigData;
+                $variables['tanda_tangan']             = $sigData;
+            }
+        } elseif (empty($variables['asset.signature']) && empty($variables['asset.brand.tanda_tangan'])) {
+            $sigData = $resolveImageHelper(
+                'images/mou/signature-sample.png',
+                'images/signature/ttd_arisetiahusbana.png',
+                'images/signatures/ttd.png'
+            );
+            if ($sigData) {
+                $variables['asset.signature']          = $sigData;
+                $variables['asset.brand.tanda_tangan'] = $sigData;
+            }
+        }
+
+        // 3. Stempel Perusahaan
+        if (!empty($brandModel?->stamp)) {
+            $stampData = $resolveImageHelper($brandModel->stamp);
+            if ($stampData) {
+                $variables['asset.stamp']         = $stampData;
+                $variables['asset.brand.stempel'] = $stampData;
+                $variables['asset.company.stamp'] = $stampData;
+                $variables['stamp']               = $stampData;
+                $variables['stempel']             = $stampData;
+            }
+        } elseif (empty($variables['asset.stamp']) && empty($variables['asset.brand.stempel'])) {
+            $stampData = $resolveImageHelper(
+                'images/mou/stamp-sample.png',
+                'images/stamps/stamp.png'
+            );
+            if ($stampData) {
+                $variables['asset.stamp']         = $stampData;
+                $variables['asset.brand.stempel'] = $stampData;
+                $variables['asset.company.stamp'] = $stampData;
+                $variables['stamp']               = $stampData;
+                $variables['stempel']             = $stampData;
+            }
+        }
+
+        // 4. Background Sertifikat
+        if (empty($variables['asset.background'])) {
+            $bgData = $resolveImageHelper(
+                $brandModel?->internship_certificate_bg,
+                'images/certificate/certificate-bg.png',
+                'images/backgrounds/cert_bg.png'
+            );
+            if ($bgData) {
+                $variables['asset.background'] = $bgData;
+                if (!empty($brandModel?->internship_certificate_bg)) {
+                    $variables['force_brand_background'] = true;
+                }
             }
         }
 
@@ -363,7 +502,8 @@ class InternDocumentIssuanceService
                     $revisionVersion = (int) $options['revision_version'];
                 } else {
                     // Cek apakah ada revisi yang baru saja diterbitkan (debounce < 60 detik) untuk menangkal double-click / concurrent requests
-                    $recentRevision = GeneratedDocument::where('internship_registration_id', $intern->id)
+                    $recentRevision = GeneratedDocument::select(['id', 'template_version', 'created_at'])
+                        ->where('internship_registration_id', $intern->id)
                         ->where('document_type', $canonical)
                         ->where('template_version', '>', 1)
                         ->latest('id')

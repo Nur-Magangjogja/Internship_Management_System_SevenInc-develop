@@ -17,9 +17,13 @@ class DocumentTemplate extends Model
     public const STATE_PUBLISHED = 'published';
     public const STATE_ARCHIVED  = 'archived';
 
+    public const CERT_TYPE_MAGANG  = 'magang';
+    public const CERT_TYPE_WEBINAR = 'webinar';
+
     protected $fillable = [
         'uuid',
         'type',
+        'certificate_type',
         'name',
         'description',
         'editor_type',
@@ -166,20 +170,65 @@ class DocumentTemplate extends Model
             self::TYPE_MOU            => 'Nota Kesepahaman (MOU)',
             self::TYPE_LOA            => 'Letter of Acceptance (LOA)',
             self::TYPE_SKL            => 'Surat Keterangan Selesai Magang (SKL)',
-            self::TYPE_CERTIFICATE    => 'Sertifikat Magang',
+            self::TYPE_CERTIFICATE    => 'Sertifikat',
             self::TYPE_ASSESSMENT     => 'Surat Penilaian Magang',
             self::TYPE_RECOMMENDATION => 'Surat Rekomendasi Magang',
         ];
     }
 
-    public static function getTypeLabel(string $type): string
+    public static function getCertificateTypes(): array
     {
+        return [
+            self::CERT_TYPE_MAGANG  => 'Sertifikat Magang',
+            self::CERT_TYPE_WEBINAR => 'Sertifikat Webinar',
+        ];
+    }
+
+    public function getCertificateTypeLabel(): string
+    {
+        return static::getCertificateTypes()[$this->certificate_type ?? self::CERT_TYPE_MAGANG] ?? 'Sertifikat Magang';
+    }
+
+    public function isWebinarCertificate(): bool
+    {
+        return $this->type === self::TYPE_CERTIFICATE && ($this->certificate_type === self::CERT_TYPE_WEBINAR);
+    }
+
+    public function isInternshipCertificate(): bool
+    {
+        return $this->type === self::TYPE_CERTIFICATE && ($this->certificate_type ?? self::CERT_TYPE_MAGANG) === self::CERT_TYPE_MAGANG;
+    }
+
+    public function scopeWebinarCertificate($query)
+    {
+        return $query->where('type', self::TYPE_CERTIFICATE)->where('certificate_type', self::CERT_TYPE_WEBINAR);
+    }
+
+    public function scopeInternshipCertificate($query)
+    {
+        return $query->where('type', self::TYPE_CERTIFICATE)->where(function ($q) {
+            $q->where('certificate_type', self::CERT_TYPE_MAGANG)
+              ->orWhereNull('certificate_type');
+        });
+    }
+
+    public static function getTypeLabel(string $type, ?string $certificateType = null): string
+    {
+        if ($type === self::TYPE_CERTIFICATE) {
+            if ($certificateType === self::CERT_TYPE_WEBINAR) {
+                return 'Sertifikat Webinar';
+            }
+            return 'Sertifikat Magang';
+        }
         $types = static::getDocumentTypes();
         return $types[$type] ?? ucfirst($type);
     }
 
-    public static function getTypeBadgeClass(string $type): string
+    public static function getTypeBadgeClass(string $type, ?string $certificateType = null): string
     {
+        if ($type === self::TYPE_CERTIFICATE && $certificateType === self::CERT_TYPE_WEBINAR) {
+            return 'bg-teal-100 text-teal-800 border-teal-200';
+        }
         return match ($type) {
             'mou'            => 'bg-cyan-100 text-cyan-800 border-cyan-200',
             'loa'            => 'bg-blue-100 text-blue-800 border-blue-200',
@@ -222,6 +271,10 @@ class DocumentTemplate extends Model
             'line_height'         => 1.3,
             'header_distance_mm'  => 10.0,
             'footer_distance_mm'  => 10.0,
+            'show_header_logos'   => false,
+            'show_watermark'      => true,
+            'watermark_opacity'   => 0.05,
+            'company_logo'        => '/images/mou/seven-inc-logo.png',
         ];
     }
 
@@ -230,14 +283,42 @@ class DocumentTemplate extends Model
         return \App\Services\DocumentTemplates\MailMergePlaceholderContract::getAvailablePlaceholders($type);
     }
 
-    public static function getMockPlaceholderData(): array
+    public static function getMockPlaceholderData(?string $certificateType = null): array
     {
-        return static::getDefaultMockData();
+        return static::getDefaultMockData($certificateType);
     }
 
-    public static function getDefaultMockData(): array
+    public static function getDefaultMockData(?string $certificateType = null): array
     {
         $year = date('Y');
+
+        $brand = null;
+        if (\Illuminate\Support\Facades\Schema::hasTable('brands')) {
+            try {
+                $brand = \App\Models\Brand::whereNotNull('internship_certificate_bg')
+                    ->orWhereNotNull('webinar_certificate_bg')
+                    ->orWhereNotNull('logo')
+                    ->first() ?? \App\Models\Brand::first();
+            } catch (\Throwable $e) {}
+        }
+
+        $bg = '/images/certificate/certificate-bg.png';
+        if ($certificateType === self::CERT_TYPE_WEBINAR && !empty($brand?->webinar_certificate_bg)) {
+            $bg = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+        } elseif (!empty($brand?->internship_certificate_bg)) {
+            $bg = '/storage/' . ltrim($brand->internship_certificate_bg, '/');
+        } elseif (!empty($brand?->webinar_certificate_bg)) {
+            $bg = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+        }
+
+        $logo = !empty($brand?->logo) ? ('/storage/' . ltrim($brand->logo, '/')) : '/images/mou/seven-inc-logo.png';
+        $sig  = !empty($brand?->signature) ? ('/storage/' . ltrim($brand->signature, '/')) : '/images/mou/signature-sample.png';
+        $stamp = !empty($brand?->stamp) ? ('/storage/' . ltrim($brand->stamp, '/')) : '/images/mou/stamp-sample.png';
+        $companyName = $brand?->name ?? 'SEVEN INC';
+        $signatory = $brand?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
+        $position = $brand?->signatory_position ?? 'Direktur Utama';
+        $companyAddress = $brand?->company_address ?? 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198';
+
         return [
             'pemagang' => [
                 'nama'      => 'Ananda Pratama, S.Kom.',
@@ -256,21 +337,29 @@ class DocumentTemplate extends Model
                 'tempat'  => 'Yogyakarta',
             ],
             'perusahaan' => [
-                'nama'     => 'SEVEN INC',
-                'alamat'   => 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198',
-                'pimpinan' => 'Rekario Danny Sanjaya, S.Kom.',
-                'jabatan'  => 'Direktur Utama',
+                'nama'     => $companyName,
+                'alamat'   => $companyAddress,
+                'pimpinan' => $signatory,
+                'jabatan'  => $position,
+            ],
+            'webinar' => [
+                'judul'   => 'Workshop UI/UX Design & Front-End Development Modern',
+                'tanggal' => '25 Oktober ' . $year,
+                'link'    => 'https://zoom.us/j/1234567890',
+            ],
+            'peserta' => [
+                'nama' => 'Ananda Pratama, S.Kom.',
             ],
             'asset' => [
                 'company' => [
-                    'logo' => '/images/mou/seven-inc-logo.png',
+                    'logo' => $logo,
                 ],
                 'institution' => [
                     'logo' => '/images/mou/institution-logo-placeholder.png',
                 ],
-                'signature'  => '/images/mou/signature-sample.png',
-                'stamp'      => '/images/mou/stamp-sample.png',
-                'background' => '/images/certificate/certificate-bg.png',
+                'signature'  => $sig,
+                'stamp'      => $stamp,
+                'background' => $bg,
             ],
         ];
     }
@@ -293,6 +382,7 @@ class DocumentTemplate extends Model
             $existing = static::where('type', $type)->where('is_active', true)->first();
             if ($existing) {
                 $existing->update([
+                    'certificate_type'  => ($type === self::TYPE_CERTIFICATE) ? ($existing->certificate_type ?: self::CERT_TYPE_MAGANG) : null,
                     'state'             => self::STATE_PUBLISHED,
                     'is_active'         => true,
                     'is_default'        => true,
@@ -303,6 +393,7 @@ class DocumentTemplate extends Model
                 $any = static::where('type', $type)->first();
                 if ($any) {
                     $any->update([
+                        'certificate_type'  => ($type === self::TYPE_CERTIFICATE) ? ($any->certificate_type ?: self::CERT_TYPE_MAGANG) : null,
                         'state'             => self::STATE_PUBLISHED,
                         'is_active'         => true,
                         'is_default'        => true,
@@ -321,6 +412,7 @@ class DocumentTemplate extends Model
                 $template = static::create([
                     'uuid'              => (string) Str::uuid(),
                     'type'              => $type,
+                    'certificate_type'  => $isCanvas ? self::CERT_TYPE_MAGANG : null,
                     'name'              => 'Template Standar ' . strtoupper($type),
                     'description'       => 'Template standar sistem untuk ' . static::getTypeLabel($type),
                     'editor_type'       => $isCanvas ? 'visual_canvas' : 'visual_doc',
@@ -342,6 +434,40 @@ class DocumentTemplate extends Model
                 $template->createVersionSnapshot('Inisialisasi template standar sistem', $userId);
             }
         }
+
+        // Pastikan template default untuk Sertifikat Webinar juga tersedia
+        $existingWebinarCert = static::where('type', self::TYPE_CERTIFICATE)
+            ->where('certificate_type', self::CERT_TYPE_WEBINAR)
+            ->first();
+
+        if (!$existingWebinarCert) {
+            $webinarLayout = static::getDefaultWebinarCertificateCanvasLayout();
+            $webinarPageConfig = static::getDefaultPageConfig(self::TYPE_CERTIFICATE);
+
+            $webinarTemplate = static::create([
+                'uuid'              => (string) Str::uuid(),
+                'type'              => self::TYPE_CERTIFICATE,
+                'certificate_type'  => self::CERT_TYPE_WEBINAR,
+                'name'              => 'Template Standar Sertifikat Webinar',
+                'description'       => 'Template sertifikat resmi sistem untuk peserta webinar dan workshop online.',
+                'editor_type'       => 'visual_canvas',
+                'content_html'      => null,
+                'editor_json'       => null,
+                'canvas_layout'     => $webinarLayout,
+                'page_config'       => $webinarPageConfig,
+                'state'             => self::STATE_PUBLISHED,
+                'is_active'         => true,
+                'is_default'        => false,
+                'version_number'    => 1,
+                'published_version' => 1,
+                'published_at'      => now(),
+                'content_sha256'    => hash('sha256', json_encode($webinarLayout)),
+                'created_by'        => $userId,
+                'updated_by'        => $userId,
+            ]);
+
+            $webinarTemplate->createVersionSnapshot('Inisialisasi template standar sertifikat webinar', $userId);
+        }
     }
 
     /**
@@ -353,13 +479,14 @@ class DocumentTemplate extends Model
             'loa' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -413,9 +540,9 @@ di Tempat</p>
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -423,13 +550,14 @@ HTML,
             'skl' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -493,9 +621,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -503,13 +631,14 @@ HTML,
             'assessment' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -598,9 +727,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -608,13 +737,14 @@ HTML,
             'recommendation' => <<<HTML
 <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
     <tr>
-        <td style="width: 110px; vertical-align: middle;">
+        <td style="width: 110px; vertical-align: middle; text-align: left;">
             <img src="{{asset.company.logo}}" alt="Logo Perusahaan" style="width: 95px; height: auto;" />
         </td>
         <td style="text-align: center; vertical-align: middle;">
             <h1 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">{{perusahaan.nama}}</h1>
             <p style="margin: 4px 0 0 0; font-size: 10pt; line-height: 1.2;">{{perusahaan.alamat}}<br>Telp: 089529002944 | Email: magangjogjadotcom@gmail.com</p>
         </td>
+        <td style="width: 110px; vertical-align: middle;">&nbsp;</td>
     </tr>
 </table>
 <div style="border-top: 3px solid #000; border-bottom: 1px solid #000; height: 2px; margin-top: 5px; margin-bottom: 16px;"></div>
@@ -680,9 +810,9 @@ HTML,
             <p style="margin: 0;">{{dokumen.tempat}}, {{dokumen.tanggal}}<br>{{perusahaan.jabatan}} {{perusahaan.nama}}</p>
             <div style="height: 75px; margin: 8px 0; position: relative;">
                 <img src="{{asset.signature}}" alt="Tanda Tangan" style="height: 65px; width: auto; position: relative; z-index: 10;" />
-                <img src="{{asset.stamp}}" alt="Stempel" style="height: 70px; width: auto; position: absolute; left: 15%; top: -5px; opacity: 0.85; z-index: 20;" />
+                <img src="{{asset.stamp}}" alt="Stempel" style="height: 125px; width: 125px; position: absolute; left: 12%; top: -10px; opacity: 0.78; z-index: 20; pointer-events: none;" />
             </div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline;">{{perusahaan.pimpinan}}</p>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; position: relative; z-index: 5;">{{perusahaan.pimpinan}}</p>
         </td>
     </tr>
 </table>
@@ -705,15 +835,18 @@ HTML,
             ],
             'elements' => [
                 [
-                    'id'          => 'elem_logo',
-                    'type'        => 'image',
-                    'src'         => '{{asset.company.logo}}',
-                    'x_percent'   => 50.0, // centered
-                    'y_percent'   => 10.0,
-                    'width_px'    => 140,
-                    'height_px'   => 60,
-                    'align'       => 'center',
-                    'z_index'     => 10,
+                    'id'             => 'elem_logo',
+                    'type'           => 'image',
+                    'src'            => '{{asset.company.logo}}',
+                    'x_percent'      => 50.0, // centered
+                    'y_percent'      => 10.0,
+                    'width_percent'  => 16.5,
+                    'height_percent' => 10.0,
+                    'width_px'       => 140,
+                    'height_px'      => 60,
+                    'align'          => 'center',
+                    'aspect_locked'  => true,
+                    'z_index'        => 10,
                 ],
                 [
                     'id'          => 'elem_title',
@@ -825,19 +958,156 @@ HTML,
     }
 
     /**
+     * Default Visual Canvas Layout untuk Sertifikat Webinar / Workshop.
+     */
+    public static function getDefaultWebinarCertificateCanvasLayout(): array
+    {
+        return [
+            'canvas' => [
+                'width_mm'         => 297.0, // A4 Landscape
+                'height_mm'        => 210.0,
+                'background_image' => '/images/certificate/certificate-bg.png',
+                'background_color' => '#ffffff',
+            ],
+            'elements' => [
+                [
+                    'id'             => 'elem_logo',
+                    'type'           => 'image',
+                    'src'            => '{{asset.company.logo}}',
+                    'x_percent'      => 50.0,
+                    'y_percent'      => 10.0,
+                    'width_percent'  => 16.5,
+                    'height_percent' => 10.0,
+                    'width_px'       => 140,
+                    'height_px'      => 60,
+                    'align'          => 'center',
+                    'aspect_locked'  => true,
+                    'z_index'        => 10,
+                ],
+                [
+                    'id'          => 'elem_title',
+                    'type'        => 'text',
+                    'content'     => 'SERTIFIKAT PENGHARGAAN',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 22.0,
+                    'width_percent' => 85.0,
+                    'font_family' => 'Times New Roman',
+                    'font_size_pt'=> 30,
+                    'font_weight' => 'bold',
+                    'color'       => '#1e293b',
+                    'align'       => 'center',
+                    'letter_spacing_px' => 3,
+                    'z_index'     => 10,
+                ],
+                [
+                    'id'          => 'elem_subtitle',
+                    'type'        => 'text',
+                    'content'     => 'DIBERIKAN DENGAN BANGGA KEPADA :',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 32.0,
+                    'width_percent' => 70.0,
+                    'font_family' => 'Arial',
+                    'font_size_pt'=> 12,
+                    'font_weight' => '600',
+                    'color'       => '#64748b',
+                    'align'       => 'center',
+                    'letter_spacing_px' => 2,
+                    'z_index'     => 10,
+                ],
+                [
+                    'id'          => 'elem_recipient_name',
+                    'type'        => 'text',
+                    'content'     => '{{pemagang.nama}}',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 38.0,
+                    'width_percent' => 85.0,
+                    'font_family' => 'Times New Roman',
+                    'font_size_pt'=> 30,
+                    'font_weight' => 'bold',
+                    'font_style'  => 'italic',
+                    'color'       => '#0f172a',
+                    'align'       => 'center',
+                    'underline'   => true,
+                    'z_index'     => 15,
+                ],
+                [
+                    'id'          => 'elem_event_desc',
+                    'type'        => 'text',
+                    'content'     => 'Atas partisipasi aktifnya sebagai Peserta dalam Webinar: "{{webinar.judul}}" yang diselenggarakan pada tanggal {{webinar.tanggal}} oleh {{perusahaan.nama}}.',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 50.0,
+                    'width_percent' => 76.0,
+                    'font_family' => 'Times New Roman',
+                    'font_size_pt'=> 13,
+                    'font_weight' => 'normal',
+                    'line_height' => 1.5,
+                    'color'       => '#334155',
+                    'align'       => 'center',
+                    'z_index'     => 10,
+                ],
+                [
+                    'id'          => 'elem_cert_number',
+                    'type'        => 'text',
+                    'content'     => 'Nomor Sertifikat: {{dokumen.nomor}}',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 62.0,
+                    'width_percent' => 50.0,
+                    'font_family' => 'Courier New',
+                    'font_size_pt'=> 11,
+                    'font_weight' => 'bold',
+                    'color'       => '#475569',
+                    'align'       => 'center',
+                    'z_index'     => 10,
+                ],
+                [
+                    'id'          => 'elem_signature_block',
+                    'type'        => 'signature_group',
+                    'x_percent'   => 50.0,
+                    'y_percent'   => 72.0,
+                    'width_percent' => 45.0,
+                    'date_text'   => '{{dokumen.tempat}}, {{dokumen.tanggal}}',
+                    'role_text'   => '{{perusahaan.jabatan}} {{perusahaan.nama}}',
+                    'name_text'   => '{{perusahaan.pimpinan}}',
+                    'sig_image'   => '{{asset.signature}}',
+                    'stamp_image' => '{{asset.stamp}}',
+                    'align'       => 'center',
+                    'z_index'     => 20,
+                ],
+                [
+                    'id'          => 'elem_qr_verify',
+                    'type'        => 'qr_code',
+                    'qr_data'     => '{{dokumen.nomor}}',
+                    'x_percent'   => 88.0,
+                    'y_percent'   => 82.0,
+                    'width_percent' => 12.0,
+                    'height_percent' => 15.0,
+                    'size_px'     => 85,
+                    'fg_color'    => '#000000',
+                    'bg_color'    => '#ffffff',
+                    'align'       => 'center',
+                    'rotation'    => 0,
+                    'aspect_locked' => true,
+                    'z_index'     => 25,
+                ],
+            ],
+        ];
+    }
+
+    /**
      * Snapshot revisi baru ke tabel document_template_versions.
      */
     public function createVersionSnapshot(?string $changeSummary = null, ?int $userId = null): DocumentTemplateVersion
     {
         return $this->versions()->create([
-            'version_number' => $this->version_number,
-            'name'           => $this->name,
-            'content_html'   => $this->content_html,
-            'editor_json'    => $this->editor_json,
-            'canvas_layout'  => $this->canvas_layout,
-            'page_config'    => $this->page_config,
-            'change_summary' => $changeSummary ?? "Pembaruan versi {$this->version_number}",
-            'created_by'     => $userId ?? auth()->id(),
+            'version_number'   => $this->version_number,
+            'certificate_type' => $this->certificate_type,
+            'name'             => $this->name,
+            'content_html'     => $this->content_html,
+            'editor_json'      => $this->editor_json,
+            'canvas_layout'    => $this->canvas_layout,
+            'page_config'      => $this->page_config,
+            'change_summary'   => $changeSummary ?? "Pembaruan versi {$this->version_number}",
+            'created_by'       => $userId ?? auth()->id(),
         ]);
     }
 
@@ -848,19 +1118,20 @@ HTML,
     {
         $copyName = $newName ?? ($this->name . ' (Salinan)');
         $clone = static::create([
-            'type'           => $this->type,
-            'name'           => $copyName,
-            'description'    => $this->description,
-            'editor_type'    => $this->editor_type,
-            'content_html'   => $this->content_html,
-            'editor_json'    => $this->editor_json,
-            'canvas_layout'  => $this->canvas_layout,
-            'page_config'    => $this->page_config,
-            'is_active'      => false, // default draft
-            'is_default'     => false,
-            'version_number' => 1,
-            'created_by'     => $userId ?? auth()->id(),
-            'updated_by'     => $userId ?? auth()->id(),
+            'type'             => $this->type,
+            'certificate_type' => $this->certificate_type,
+            'name'             => $copyName,
+            'description'      => $this->description,
+            'editor_type'      => $this->editor_type,
+            'content_html'     => $this->content_html,
+            'editor_json'      => $this->editor_json,
+            'canvas_layout'    => $this->canvas_layout,
+            'page_config'      => $this->page_config,
+            'is_active'        => false, // default draft
+            'is_default'       => false,
+            'version_number'   => 1,
+            'created_by'       => $userId ?? auth()->id(),
+            'updated_by'       => $userId ?? auth()->id(),
         ]);
 
         $clone->createVersionSnapshot('Salinan awal dari template ' . $this->name, $userId);

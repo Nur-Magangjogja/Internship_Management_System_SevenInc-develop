@@ -22,17 +22,36 @@ class BrandController extends Controller
 
     public function store(Request $request)
     {
+        $messages = [
+            'code.required'                 => 'Kode Brand wajib diisi.',
+            'code.unique'                   => 'Kode Brand ini sudah digunakan.',
+            'name.required'                 => 'Nama Brand wajib diisi.',
+            'logo.max'                      => 'Ukuran file Logo Brand tidak boleh melebihi 2MB.',
+            'signature.max'                 => 'Ukuran file Tanda Tangan tidak boleh melebihi 2MB.',
+            'stamp.max'                     => 'Ukuran file Stempel Perusahaan tidak boleh melebihi 2MB.',
+            'internship_certificate_bg.max' => 'Ukuran file Background Sertifikat Magang tidak boleh melebihi 2MB.',
+            'webinar_certificate_bg.max'    => 'Ukuran file Background Sertifikat Webinar tidak boleh melebihi 2MB.',
+            'membercard_bg.max'             => 'Ukuran file Background Membercard Digital tidak boleh melebihi 3MB.',
+            'logo.image'                    => 'Berkas Logo harus berupa gambar yang valid.',
+            'signature.image'               => 'Berkas Tanda Tangan harus berupa gambar yang valid.',
+            'stamp.image'                   => 'Berkas Stempel harus berupa gambar yang valid.',
+            'internship_certificate_bg.image' => 'Berkas Background Magang harus berupa gambar yang valid.',
+            'webinar_certificate_bg.image'  => 'Berkas Background Webinar harus berupa gambar yang valid.',
+            'membercard_bg.image'           => 'Berkas Background Membercard harus berupa gambar yang valid.',
+        ];
+
         $request->validate([
             'code' => 'required|string|max:50|unique:brands,code',
             'name' => 'required|string|max:255',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'membercard_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:3072',
-            'signature' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-        ]);
+            'signature' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'stamp' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+        ], $messages);
 
-        $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature'];
+        $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature', 'stamp'];
         $data = $request->except($fileFields);
 
         foreach ($fileFields as $fileField) {
@@ -59,17 +78,36 @@ class BrandController extends Controller
 
     public function update(Request $request, Brand $brand)
     {
+        $messages = [
+            'code.required'                 => 'Kode Brand wajib diisi.',
+            'code.unique'                   => 'Kode Brand ini sudah digunakan.',
+            'name.required'                 => 'Nama Brand wajib diisi.',
+            'logo.max'                      => 'Ukuran file Logo Brand tidak boleh melebihi 2MB.',
+            'signature.max'                 => 'Ukuran file Tanda Tangan tidak boleh melebihi 2MB.',
+            'stamp.max'                     => 'Ukuran file Stempel Perusahaan tidak boleh melebihi 2MB.',
+            'internship_certificate_bg.max' => 'Ukuran file Background Sertifikat Magang tidak boleh melebihi 2MB.',
+            'webinar_certificate_bg.max'    => 'Ukuran file Background Sertifikat Webinar tidak boleh melebihi 2MB.',
+            'membercard_bg.max'             => 'Ukuran file Background Membercard Digital tidak boleh melebihi 3MB.',
+            'logo.image'                    => 'Berkas Logo harus berupa gambar yang valid.',
+            'signature.image'               => 'Berkas Tanda Tangan harus berupa gambar yang valid.',
+            'stamp.image'                   => 'Berkas Stempel harus berupa gambar yang valid.',
+            'internship_certificate_bg.image' => 'Berkas Background Magang harus berupa gambar yang valid.',
+            'webinar_certificate_bg.image'  => 'Berkas Background Webinar harus berupa gambar yang valid.',
+            'membercard_bg.image'           => 'Berkas Background Membercard harus berupa gambar yang valid.',
+        ];
+
         $request->validate([
             'code' => 'required|string|max:50|unique:brands,code,' . $brand->id,
             'name' => 'required|string|max:255',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'membercard_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:3072',
-            'signature' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-        ]);
+            'signature' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'stamp' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+        ], $messages);
 
-        $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature'];
+        $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature', 'stamp'];
         $data = $request->except($fileFields);
 
         foreach ($fileFields as $fileField) {

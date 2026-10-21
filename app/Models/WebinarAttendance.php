@@ -48,7 +48,7 @@ class WebinarAttendance extends Model
 
     public function certificate(): BelongsTo
     {
-        return $this->belongsTo(Certificate::class);
+        return $this->belongsTo(WebinarCertificate::class, 'certificate_id');
     }
 
     public function isPending(): bool  { return $this->status === self::STATUS_PENDING; }

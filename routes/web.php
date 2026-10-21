@@ -56,7 +56,13 @@ Route::get('/', function () {
         }
         return redirect()->route('pemagang.dashboard');
     }
-    return view('landing');
+
+    $divisions = \App\Models\Division::active()->pluck('name');
+    if ($divisions->isEmpty()) {
+        $divisions = \App\Models\Division::orderBy('name')->pluck('name');
+    }
+
+    return view('landing', compact('divisions'));
 })->name('home');
 
 /* =================== AUTH (GUEST) =================== */

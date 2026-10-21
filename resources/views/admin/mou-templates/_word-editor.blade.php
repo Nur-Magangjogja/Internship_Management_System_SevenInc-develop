@@ -11,7 +11,6 @@
         ? \App\Models\MouTemplate::getDefaultMediaAssets()
         : [
             'company_logo' => '/images/mou/seven-inc-logo.png',
-            'institution_logo' => '/images/mou/institution-logo-placeholder.png',
         ];
     $assets = array_merge($defaultAssets, $mediaAssets ?? []);
 
@@ -40,7 +39,7 @@
     $initialFirstFooterContent = old('first_page_footer_html', array_key_exists('first_page_footer_html', $cfg) && $cfg['first_page_footer_html'] !== null ? $cfg['first_page_footer_html'] : $initialFooterContent);
     $initialEditorJson = old('editor_json', isset($editorJson) && is_array($editorJson) ? json_encode($editorJson) : (is_string($editorJson ?? null) ? $editorJson : ''));
     $resolvedCompanyLogo = $assets['company_logo'] ?? $assets['company_logo_url'] ?? '/images/mou/seven-inc-logo.png';
-    $resolvedInstitutionLogo = $assets['institution_logo'] ?? $assets['institution_logo_url'] ?? '/images/mou/institution-logo-placeholder.png';
+    $resolvedInstitutionLogo = $isMou ? ($assets['institution_logo'] ?? $assets['institution_logo_url'] ?? '/images/mou/institution-logo-placeholder.png') : '';
     $resolvedUploadMediaUrl = $uploadMediaUrl ?? (Route::has('admin.mou-templates.upload-media') ? route('admin.mou-templates.upload-media') : '/admin/mou-templates/upload-media');
 @endphp
 
@@ -196,8 +195,9 @@
         flex: 1 1 auto;
         display: flex;
         overflow: hidden;
-        min-height: 700px;
-        max-height: calc(100dvh - 130px);
+        height: 750px;
+        min-height: 650px;
+        max-height: calc(100vh - 130px);
     }
     .mou-workspace-viewport {
         flex: 1 1 auto;
@@ -208,6 +208,53 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        height: 100%;
+        max-height: 100%;
+    }
+
+    /* Collapsible Mail Merge Drawer Sidebar */
+    .mou-mail-merge-sidebar {
+        width: 320px;
+        min-width: 320px;
+        max-width: 340px;
+        flex: 0 0 320px;
+        align-self: stretch;
+        height: 100% !important;
+        max-height: 100% !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        border-left: 1px solid #e2e8f0;
+        background-color: #ffffff;
+        overflow: hidden !important;
+        z-index: 20;
+        box-sizing: border-box;
+    }
+    .mou-mail-merge-sidebar.hidden {
+        display: none !important;
+    }
+    #mouSidebarTokenCategories {
+        flex: 1 1 0px !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: calc(100% - 105px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar {
+        width: 6px;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-track {
+        background: #f8fafc;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    #mouSidebarTokenCategories::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
     }
 
     /* Horizontal Millimeter Ruler */
@@ -270,6 +317,80 @@
         transition: transform 0.15s ease;
     }
 
+    /* Fixed Watermark & Fixed Logo Layer */
+    .mou-page-watermark-layer,
+    .mou-watermark-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        user-select: none;
+        z-index: 1;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+    .mou-watermark-fixed-header {
+        position: absolute;
+        top: 18mm;
+        left: 25.4mm;
+        right: 25.4mm;
+        pointer-events: none;
+        user-select: none;
+        box-sizing: border-box;
+        height: 86px;
+    }
+    .mou-watermark-fixed-header.mou-watermark-single-logo {
+        right: auto !important;
+    }
+    .mou-watermark-logo-left {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 70px;
+        width: auto;
+        max-width: 140px;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
+    }
+    .mou-watermark-logo-right {
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 70px;
+        width: auto;
+        max-width: 140px;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
+    }
+    .mou-watermark-center-wrapper {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        user-select: none;
+        z-index: 1;
+    }
+    .mou-watermark-center {
+        width: 320px;
+        max-width: 65%;
+        height: auto;
+        pointer-events: none;
+        user-select: none;
+        margin: auto;
+        display: block;
+    }
+
     /* Header, Body, Footer Zones on A4 Sheet */
     .mou-header-zone-wrapper {
         position: relative;
@@ -326,6 +447,7 @@
     }
     .mou-a4-page-header {
         position: relative;
+        z-index: 2;
         cursor: pointer;
         user-select: none;
         flex-shrink: 0;
@@ -333,6 +455,7 @@
     }
     .mou-a4-page-footer {
         position: relative;
+        z-index: 2;
         cursor: pointer;
         user-select: none;
         flex-shrink: 0;
@@ -343,6 +466,7 @@
         width: 100%;
         min-height: 0;
         position: relative;
+        z-index: 2;
         outline: none;
         word-wrap: break-word;
         overflow: visible;
@@ -442,6 +566,22 @@
     .ProseMirror .tableWrapper:hover .mou-table-width-handle,
     .mou-zone-active .tableWrapper .mou-table-width-handle {
         opacity: 1;
+    }
+
+    /* Signature & Official Wet-Ink Stamp Seal Overlapping Container */
+    .signature-block,
+    div[data-signature-block="true"] {
+        height: 75px !important;
+        margin: 8px 0 !important;
+        position: relative !important;
+        text-align: center;
+        overflow: visible !important;
+    }
+    .signature-block .mou-image-wrapper[style*="position: absolute"],
+    .signature-block .mou-image-wrapper.is-stamp-seal,
+    .mou-image-wrapper.is-stamp-seal {
+        position: absolute !important;
+        overflow: visible !important;
     }
 
     /* Interactive Object Sizing Handles (Images & Objects) */
@@ -601,10 +741,14 @@
         color: #000000;
     }
     .mou-preview-sheet-header {
+        position: relative;
+        z-index: 2;
         flex-shrink: 0;
         margin-bottom: 3mm;
     }
     .mou-preview-sheet-body {
+        position: relative;
+        z-index: 2;
         flex: 1 1 0%;
         width: 100%;
         min-height: 0;
@@ -614,6 +758,8 @@
         display: none !important;
     }
     .mou-preview-sheet-footer {
+        position: relative;
+        z-index: 2;
         flex-shrink: 0;
         min-height: 15mm;
         display: flex;
@@ -710,12 +856,14 @@
 <input type="hidden" name="font_family" id="inputFontFamily" value="{{ $cfg['font_family'] ?? 'Times New Roman' }}">
 <input type="hidden" name="font_size_pt" id="inputFontSizePt" value="{{ $cfg['font_size_pt'] ?? 12 }}">
 <input type="hidden" name="line_height" id="inputLineHeight" value="{{ $cfg['line_height'] ?? 1.15 }}">
+@if($isMou)
 <input type="hidden" name="institution_logo" id="inputInstitutionLogo" value="{{ $resolvedInstitutionLogo }}">
-<input type="hidden" name="company_logo" id="inputCompanyLogo" value="{{ $resolvedCompanyLogo }}">
 <input type="hidden" name="institution_logo_url" id="inputInstitutionLogoUrl" value="{{ $resolvedInstitutionLogo }}">
+@endif
+<input type="hidden" name="company_logo" id="inputCompanyLogo" value="{{ $resolvedCompanyLogo }}">
 <input type="hidden" name="company_logo_url" id="inputCompanyLogoUrl" value="{{ $resolvedCompanyLogo }}">
 <input type="hidden" name="show_header_logos" id="inputShowHeaderLogos" value="{{ ($cfg['show_header_logos'] ?? true) ? '1' : '0' }}">
-<input type="hidden" name="show_watermark" id="inputShowWatermark" value="{{ ($cfg['show_watermark'] ?? false) ? '1' : '0' }}">
+<input type="hidden" name="show_watermark" id="inputShowWatermark" value="{{ ($cfg['show_watermark'] ?? (!$isMou ? true : false)) ? '1' : '0' }}">
 <input type="hidden" name="watermark_opacity" id="inputWatermarkOpacity" value="{{ $cfg['watermark_opacity'] ?? 0.05 }}">
 
 <!-- Diagnostic Error Banner (Only visible if JS runtime fails to mount Tiptap) -->
@@ -1012,6 +1160,7 @@
                             <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <span>+ Aset</span>
                         </button>
+                        @if($isMou)
                         <label class="mou-ribbon-btn border-slate-200 bg-slate-50 cursor-pointer" title="Unggah Logo Institusi (Tetap / Watermark Kiri Atas)">
                             <span>Logo Institusi</span>
                             <input type="file" id="inputUploadInstitutionLogo" accept="image/png,image/jpeg,image/webp" class="hidden">
@@ -1019,17 +1168,20 @@
                         <button type="button" id="btnInsertCompanyLogo" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tetapkan Logo Seven Inc (Tetap / Watermark Kanan Atas)">
                             Logo Seven Inc
                         </button>
+                        @endif
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5">
+                        @if($isMou)
                         <button type="button" id="btnToggleHeaderLogos" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_header_logos'] ?? true) ? 'mou-ribbon-btn-active' : '' }}" title="Tampilkan / Sembunyikan Logo Tetap di Sudut Atas Kertas">
                             Logo Tetap (Header)
                         </button>
-                        <button type="button" id="btnToggleWatermark" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_watermark'] ?? false) ? 'mou-ribbon-btn-active' : '' }}" title="Aktifkan / Nonaktifkan Watermark Latar Tengah Kertas">
+                        @endif
+                        <button type="button" id="btnToggleWatermark" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_watermark'] ?? true) ? 'mou-ribbon-btn-active' : '' }}" title="Aktifkan / Nonaktifkan Watermark Latar Tengah Kertas">
                             Watermark Tengah
                         </button>
                         <button type="button" id="btnApplyImageSize" class="mou-ribbon-btn border-slate-200 bg-slate-50">Terapkan Ukuran</button>
                     </div>
-                    <div class="mou-ribbon-group-label">Logo Tetap &amp; Media</div>
+                    <div class="mou-ribbon-group-label">{{ $isMou ? 'Logo Tetap & Media' : 'Watermark & Media' }}</div>
                 </div>
 
                 <!-- Group: Elemen Dokumen, Tautan, Simbol & Variabel -->
@@ -1331,9 +1483,9 @@
     </div>
 
     <!-- MAIN STUDIO WORKSPACE ROW: Canvas + Right Mail Merge Drawer Sidebar -->
-    <div id="mouStudioMainWorkspaceRow" class="mou-studio-workspace-row">
+    <div id="mouStudioMainWorkspaceRow" class="mou-studio-workspace-row" style="height: 750px; min-height: 650px; max-height: calc(100vh - 130px); display: flex; overflow: hidden; position: relative;">
         <!-- WORKSPACE VIEW 1: LIVE WORD PROCESSOR CANVAS -->
-        <div id="mouEditorWorkspaceView" class="mou-workspace-viewport">
+        <div id="mouEditorWorkspaceView" class="mou-workspace-viewport" style="height: 100%; max-height: 100%; overflow-y: auto;">
             <!-- Horizontal Millimeter Ruler (0 - 210 mm) -->
             <div id="mouHorizontalRulerTrack" class="mou-ruler-bar mb-0 shadow-xs">
                 <div id="mouRulerLeftMargin" class="mou-ruler-margin-mask" style="left: 0; width: {{ $cfg['margin_left_mm'] ?? 25.4 }}mm;"></div>
@@ -1418,9 +1570,9 @@
         </div>
 
         <!-- RIGHT SIDEBAR: Collapsible Mail Merge / Dynamic Placeholder Drawer -->
-        <aside id="mouMailMergeSidebar" class="mou-mail-merge-sidebar shadow-sm">
+        <aside id="mouMailMergeSidebar" class="mou-mail-merge-sidebar shadow-sm flex flex-col w-80 shrink-0 border-l border-slate-200 bg-white overflow-hidden" style="height: 100%; max-height: 100%; min-height: 0; display: flex; flex-direction: column;">
             <!-- Sidebar Header -->
-            <div class="p-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div class="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between" style="flex-shrink: 0;">
                 <div class="flex items-center gap-2">
                     <span class="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800">Mail Merge</span>
                     <span class="text-xs font-bold text-slate-800">Variabel Dinamis</span>
@@ -1439,7 +1591,7 @@
             </div>
 
             <!-- Search Filter for Variables -->
-            <div class="p-2.5 border-b border-slate-100 bg-white">
+            <div class="shrink-0 p-2.5 border-b border-slate-100 bg-white" style="flex-shrink: 0;">
                 <div class="relative">
                     <input
                         type="text"
@@ -1456,7 +1608,7 @@
             </div>
 
             <!-- Category Accordion List (Scrollable) -->
-            <div id="mouSidebarTokenCategories" class="flex-1 overflow-y-auto p-2.5 space-y-2">
+            <div id="mouSidebarTokenCategories" class="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2" style="flex: 1 1 0px; min-height: 0; height: calc(100% - 105px); max-height: calc(100% - 105px); overflow-y: auto !important; overflow-x: hidden;">
                 @foreach($placeholderGroups as $groupLabel => $groupKeys)
                     <div class="mou-token-category-card rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden shadow-2xs">
                         <button
@@ -1764,7 +1916,7 @@
 
     function showDiagnosticError(msg) {
         const banner = document.getElementById('mouEditorDiagnosticBanner');
-        const detail = document.getElementById('mouEditorDiagnosticMessage');
+        const detail = document.getElementById('mouEditorDiagnosticText') || document.getElementById('mouEditorDiagnosticMessage');
         if (banner) {
             banner.classList.remove('hidden');
             banner.classList.add('flex');
@@ -1884,6 +2036,7 @@
                 bodyMountEl,
                 headerMountEl,
                 footerMountEl,
+                documentType: '{{ $docType }}',
                 initialBodyHtml: document.getElementById('inputTemplateHtml')?.value || sampleWordHtml || '<p></p>',
                 initialEditorJson: initialEditorJson,
                 initialHeaderHtml: document.getElementById('inputHeaderHtml')?.value || '',
@@ -2346,6 +2499,16 @@
             if (!file) return;
             try {
                 await processor.uploadImageFile(file, 'institution_logo');
+            } catch (err) {
+                alert(err.message);
+            }
+            e.target.value = '';
+        });
+        document.getElementById('inputUploadCompanyLogoCustom')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                await processor.uploadImageFile(file, 'company_logo');
             } catch (err) {
                 alert(err.message);
             }
