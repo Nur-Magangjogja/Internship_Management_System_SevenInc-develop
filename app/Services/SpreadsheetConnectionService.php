@@ -20,8 +20,6 @@ class SpreadsheetConnectionService
      */
     public function getAllConnections(): Collection
     {
-        SpreadsheetConnection::ensureDriveFolderColumns();
-
         return SpreadsheetConnection::orderBy('id', 'asc')->get();
     }
 
@@ -30,8 +28,6 @@ class SpreadsheetConnectionService
      */
     public function getConnectionByKey(string $key): SpreadsheetConnection
     {
-        SpreadsheetConnection::ensureDriveFolderColumns();
-
         if (!in_array($key, SpreadsheetConnection::VALID_KEYS, true)) {
             throw new InvalidArgumentException("Tipe koneksi '{$key}' tidak valid.");
         }
@@ -53,8 +49,6 @@ class SpreadsheetConnectionService
      */
     public function updateConnection(SpreadsheetConnection $connection, array $data, ?User $actor = null): SpreadsheetConnection
     {
-        SpreadsheetConnection::ensureDriveFolderColumns();
-
         $before = $connection->only([
             'display_name',
             'spreadsheet_url',

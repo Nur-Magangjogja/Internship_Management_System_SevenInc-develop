@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -52,9 +53,12 @@ class DocumentTemplateController extends Controller
             $selectedType = 'loa';
         }
 
+        $assetCatalog = AssetLibraryContract::getAssetCatalog();
+
         return view('admin.document-templates.create', [
             'documentTypes' => DocumentTemplate::getDocumentTypes(),
             'selectedType'  => $selectedType,
+            'assetCatalog'  => $assetCatalog,
         ]);
     }
 
@@ -64,14 +68,17 @@ class DocumentTemplateController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'type'           => 'required|string|in:' . implode(',', array_keys(DocumentTemplate::getDocumentTypes())),
-            'description'    => 'nullable|string|max:1000',
-            'preset_type'    => 'nullable|string|in:standard,blank',
+            'name'                   => 'required|string|max:255',
+            'type'                   => 'required|string|in:' . implode(',', array_keys(DocumentTemplate::getDocumentTypes())),
+            'certificate_type'       => 'nullable|string|in:magang,webinar',
+            'description'            => 'nullable|string|max:1000',
+            'preset_type'            => 'nullable|string|in:standard,blank',
+            'certificate_background' => 'nullable|string|max:500',
         ]);
 
         $type = $validated['type'];
         $isCanvas = ($type === 'certificate');
+        $certType = $isCanvas ? ($request->input('certificate_type', 'magang') ?: 'magang') : null;
         $editorType = $isCanvas ? 'visual_canvas' : 'visual_doc';
         $useStandardPreset = ($request->input('preset_type', 'standard') === 'standard');
 
@@ -80,28 +87,51 @@ class DocumentTemplateController extends Controller
 
         if ($useStandardPreset) {
             if ($isCanvas) {
-                $canvasLayout = DocumentTemplate::getDefaultCertificateCanvasLayout();
+                $canvasLayout = ($certType === 'webinar')
+                    ? DocumentTemplate::getDefaultWebinarCertificateCanvasLayout()
+                    : DocumentTemplate::getDefaultCertificateCanvasLayout();
             } else {
                 $contentHtml = DocumentTemplate::getDefaultStandardContent($type);
+            }
+        } elseif ($isCanvas) {
+            $defaultPage = DocumentTemplate::getDefaultPageConfig('certificate');
+            $canvasLayout = [
+                'canvas' => [
+                    'orientation'      => $defaultPage['orientation'] ?? 'landscape',
+                    'background_image' => '',
+                    'background_color' => '#ffffff',
+                ],
+                'elements' => [],
+            ];
+        }
+
+        // Terapkan pilihan background jika dispesifikasikan untuk sertifikat
+        if ($isCanvas && $request->filled('certificate_background')) {
+            $bgUrl = $request->input('certificate_background');
+            if ($bgUrl === 'none' || $bgUrl === 'blank') {
+                $canvasLayout['canvas']['background_image'] = '';
+            } else {
+                $canvasLayout['canvas']['background_image'] = $bgUrl;
             }
         }
 
         $pageConfig = DocumentTemplate::getDefaultPageConfig($type);
 
         $template = DocumentTemplate::create([
-            'type'           => $type,
-            'name'           => $validated['name'],
-            'description'    => $validated['description'] ?? null,
-            'editor_type'    => $editorType,
-            'content_html'   => $contentHtml,
-            'editor_json'    => null,
-            'canvas_layout'  => $canvasLayout,
-            'page_config'    => $pageConfig,
-            'is_active'      => false, // Draf baru selalu non-aktif
-            'is_default'     => false,
-            'version_number' => 1,
-            'created_by'     => auth()->id(),
-            'updated_by'     => auth()->id(),
+            'type'             => $type,
+            'certificate_type' => $certType,
+            'name'             => $validated['name'],
+            'description'      => $validated['description'] ?? null,
+            'editor_type'      => $editorType,
+            'content_html'     => $contentHtml,
+            'editor_json'      => null,
+            'canvas_layout'    => $canvasLayout,
+            'page_config'      => $pageConfig,
+            'is_active'        => false, // Draf baru selalu non-aktif
+            'is_default'       => false,
+            'version_number'   => 1,
+            'created_by'       => auth()->id(),
+            'updated_by'       => auth()->id(),
         ]);
 
         // Simpan snapshot versi 1
@@ -120,7 +150,7 @@ class DocumentTemplateController extends Controller
         $documentTemplate->loadCount('versions');
 
         $placeholders = DocumentTemplate::getDefaultPlaceholders($documentTemplate->type);
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
         $assetCatalog = AssetLibraryContract::getAssetCatalog();
 
         if ($documentTemplate->editor_type === 'visual_canvas' || $documentTemplate->type === 'certificate') {
@@ -213,9 +243,12 @@ class DocumentTemplateController extends Controller
         // Kelola status default jika dicentang
         $isDefault = $request->boolean('is_default', $documentTemplate->is_default);
         if ($isDefault) {
-            DocumentTemplate::where('type', $documentTemplate->type)
-                ->where('id', '!=', $documentTemplate->id)
-                ->update(['is_default' => false]);
+            $defaultQuery = DocumentTemplate::where('type', $documentTemplate->type)
+                ->where('id', '!=', $documentTemplate->id);
+            if ($documentTemplate->type === 'certificate' && $documentTemplate->certificate_type) {
+                $defaultQuery->where('certificate_type', $documentTemplate->certificate_type);
+            }
+            $defaultQuery->update(['is_default' => false]);
             // Default template harus aktif
             $isActive = true;
         } else {
@@ -230,17 +263,22 @@ class DocumentTemplateController extends Controller
         // Tingkatkan nomor versi
         $nextVersion = $documentTemplate->version_number + 1;
 
+        $certTypeUpdate = $documentTemplate->type === 'certificate'
+            ? ($request->input('certificate_type', $documentTemplate->certificate_type ?? 'magang'))
+            : null;
+
         $documentTemplate->fill([
-            'name'           => $validated['name'],
-            'description'    => $validated['description'] ?? null,
-            'content_html'   => $contentHtml,
-            'editor_json'    => $editorJson ?? $documentTemplate->editor_json,
-            'canvas_layout'  => $canvasLayout ?? $documentTemplate->canvas_layout,
-            'page_config'    => $pageConfig ?? $documentTemplate->page_config,
-            'is_active'      => $isActive,
-            'is_default'     => $isDefault,
-            'version_number' => $nextVersion,
-            'updated_by'     => auth()->id(),
+            'name'             => $validated['name'],
+            'certificate_type' => $certTypeUpdate,
+            'description'      => $validated['description'] ?? null,
+            'content_html'     => $contentHtml,
+            'editor_json'      => $editorJson ?? $documentTemplate->editor_json,
+            'canvas_layout'    => $canvasLayout ?? $documentTemplate->canvas_layout,
+            'page_config'      => $pageConfig ?? $documentTemplate->page_config,
+            'is_active'        => $isActive,
+            'is_default'       => $isDefault,
+            'version_number'   => $nextVersion,
+            'updated_by'       => auth()->id(),
         ]);
 
         $documentTemplate->save();
@@ -402,7 +440,7 @@ class DocumentTemplateController extends Controller
      */
     public function preview(Request $request, DocumentTemplate $documentTemplate): View|Response|JsonResponse
     {
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
 
         if ($documentTemplate->editor_type === 'visual_canvas' || $documentTemplate->type === 'certificate') {
             $renderedHtml = DocumentTemplateRenderer::renderCertificateHtml($documentTemplate, $mockData);
@@ -426,7 +464,7 @@ class DocumentTemplateController extends Controller
      */
     public function previewPdf(DocumentTemplate $documentTemplate): Response
     {
-        $mockData = DocumentTemplate::getMockPlaceholderData();
+        $mockData = DocumentTemplate::getMockPlaceholderData($documentTemplate->certificate_type);
         $binaryPdf = DocumentTemplateRenderer::renderPdfBinary($documentTemplate, $mockData);
 
         $safeName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $documentTemplate->name);
@@ -493,5 +531,152 @@ class DocumentTemplateController extends Controller
             'success' => true,
             'data'    => AssetLibraryContract::getAssetCatalog(),
         ]);
+    }
+
+    /**
+     * Unggah berkas background sertifikat baru secara asinkron dari editor/create page.
+     */
+    public function uploadBackground(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:png,jpg,jpeg,webp,svg|max:10240', // Maks 10MB
+            'name' => 'nullable|string|max:255',
+        ]);
+
+        $file = $request->file('file');
+        $fileName = $request->input('name') ?: pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+
+        try {
+            // Jika SystemAssetService aktif, simpan sebagai SystemAsset resmi (terhubung sinkronisasi Drive)
+            if (class_exists(\App\Services\SystemAssetService::class) && \Illuminate\Support\Facades\Schema::hasTable('system_assets')) {
+                $service = app(\App\Services\SystemAssetService::class);
+                $asset = $service->storeAsset($file, [
+                    'name'       => $fileName,
+                    'category'   => \App\Models\SystemAsset::CATEGORY_BACKGROUND,
+                    'scope'      => \App\Models\SystemAsset::SCOPE_GLOBAL,
+                    'is_default' => false,
+                ], auth()->user());
+
+                $previewUrl = route('admin.system-assets.preview', $asset);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Background '{$asset->name}' berhasil diunggah ke Penyimpanan Sistem.",
+                    'asset'   => [
+                        'id'         => 'asset_' . $asset->id,
+                        'asset_id'   => $asset->id,
+                        'name'       => $asset->name,
+                        'url'        => $previewUrl,
+                        'thumb'      => $previewUrl,
+                        'tag'        => '{{' . ($asset->asset_code ?: 'asset.background') . '}}',
+                        'source'     => !empty($asset->drive_file_id) ? 'Google Drive' : 'Penyimpanan Sistem',
+                        'is_drive'   => !empty($asset->drive_file_id),
+                        'is_real'    => true,
+                    ],
+                ]);
+            }
+
+            // Fallback penyimpanan lokal public disk
+            $ext = $file->getClientOriginalExtension() ?: 'png';
+            $safeName = 'bg_' . time() . '_' . Str::random(6) . '.' . $ext;
+            $path = $file->storeAs('backgrounds', $safeName, 'public');
+            $url = '/storage/' . $path;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Background berhasil diunggah.',
+                'asset'   => [
+                    'id'       => 'asset_bg_' . time(),
+                    'name'     => $fileName,
+                    'url'      => $url,
+                    'thumb'    => $url,
+                    'tag'      => $url,
+                    'source'   => 'Penyimpanan Lokal',
+                    'is_drive' => false,
+                    'is_real'  => true,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengunggah background: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Unggah berkas gambar/logo bebas secara asinkron dari editor sertifikat dan sinkronkan ke Google Drive.
+     */
+    public function uploadImage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file'     => 'required|file|mimes:png,jpg,jpeg,webp,svg|max:10240', // Maks 10MB
+            'name'     => 'nullable|string|max:255',
+            'category' => 'nullable|string|in:logo,attachment,other,stamp,signature',
+        ]);
+
+        $file = $request->file('file');
+        $fileName = $request->input('name') ?: pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $category = $request->input('category') ?: \App\Models\SystemAsset::CATEGORY_LOGO;
+
+        try {
+            // Simpan sebagai SystemAsset resmi (otomatis tersinkron ke Google Drive via SystemAssetService)
+            if (class_exists(\App\Services\SystemAssetService::class) && \Illuminate\Support\Facades\Schema::hasTable('system_assets')) {
+                $service = app(\App\Services\SystemAssetService::class);
+                $asset = $service->storeAsset($file, [
+                    'name'       => $fileName,
+                    'category'   => $category,
+                    'scope'      => \App\Models\SystemAsset::SCOPE_GLOBAL,
+                    'is_default' => false,
+                ], auth()->user());
+
+                $previewUrl = route('admin.system-assets.preview', $asset);
+                $isDrive = !empty($asset->drive_file_id);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $isDrive
+                        ? "Gambar '{$asset->name}' berhasil diunggah dan disinkronkan ke Google Drive."
+                        : "Gambar '{$asset->name}' berhasil disimpan ke Penyimpanan Sistem.",
+                    'asset'   => [
+                        'id'         => 'asset_' . $asset->id,
+                        'asset_id'   => $asset->id,
+                        'name'       => $asset->name,
+                        'url'        => $previewUrl,
+                        'thumb'      => $previewUrl,
+                        'tag'        => '{{' . ($asset->asset_code ?: 'asset.' . $category) . '}}',
+                        'source'     => $isDrive ? 'Google Drive' : 'Penyimpanan Sistem',
+                        'is_drive'   => $isDrive,
+                        'is_real'    => true,
+                    ],
+                ]);
+            }
+
+            // Fallback penyimpanan lokal jika tabel SystemAsset belum aktif
+            $ext = $file->getClientOriginalExtension() ?: 'png';
+            $safeName = 'img_' . time() . '_' . Str::random(6) . '.' . $ext;
+            $path = $file->storeAs('certificate_images', $safeName, 'public');
+            $url = '/storage/' . $path;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Gambar berhasil diunggah ke penyimpanan lokal.',
+                'asset'   => [
+                    'id'       => 'asset_img_' . time(),
+                    'name'     => $fileName,
+                    'url'      => $url,
+                    'thumb'    => $url,
+                    'tag'      => $url,
+                    'source'   => 'Penyimpanan Lokal',
+                    'is_drive' => false,
+                    'is_real'  => true,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengunggah gambar: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

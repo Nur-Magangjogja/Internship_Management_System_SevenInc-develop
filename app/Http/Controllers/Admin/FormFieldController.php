@@ -336,23 +336,30 @@ class FormFieldController extends Controller
                 ->with('error', "Gagal mempublikasikan versi formulir: {$e->getMessage()}");
         }
 
-        if (!app()->runningUnitTests()) {
-            try {
-                app(\App\Services\SpreadsheetSyncEngineService::class)->syncSpreadsheetColumnsAndRowsForYear($year, $published);
-            } catch (\Throwable) {
-            }
-        }
+        // Ambil status outbox event yang dibuat secara atomik dalam transaksi publikasi
+        $outboxEvent = \App\Models\IntegrationOutboxEvent::where('aggregate_type', \App\Models\FormSchema::class)
+            ->where('aggregate_id', (string) $published->id)
+            ->latest('id')
+            ->first();
+
+        $remoteSyncStatus = $outboxEvent ? $outboxEvent->status : 'pending';
+        $remoteSyncMessage = $remoteSyncStatus === \App\Models\IntegrationOutboxEvent::STATUS_SKIPPED
+            ? 'Koneksi Google Spreadsheet belum dikonfigurasi atau dinonaktifkan.'
+            : 'Sinkronisasi Spreadsheet dijadwalkan secara asinkron melalui antrean outbox terverifikasi.';
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
-                'ok'      => true,
-                'message' => "Versi {$published->version_code} berhasil dipublikasikan.",
-                'schema'  => $published,
+                'ok'                => true,
+                'form_status'       => 'published',
+                'sheet_sync_status' => $remoteSyncStatus,
+                'message'           => "Versi {$published->version_code} berhasil dipublikasikan lokal. Status remote spreadsheet: {$remoteSyncStatus}.",
+                'schema'            => $published,
             ]);
         }
 
+        $flashType = $remoteSyncStatus === 'verified' ? 'success' : 'warning';
         return redirect()->route('admin.form-settings.fields', ['year' => $year])
-            ->with('success', "Versi {$published->version_code} berhasil dipublikasikan. Kolom & isi Spreadsheet serta daftar pertanyaan yang dipublikasikan telah disinkronkan secara otomatis.");
+            ->with($flashType, "Versi {$published->version_code} berhasil dipublikasikan di database. Status sinkronisasi Spreadsheet: {$remoteSyncStatus} ({$remoteSyncMessage}).");
     }
 
     /**

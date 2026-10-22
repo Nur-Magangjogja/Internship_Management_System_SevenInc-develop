@@ -13,6 +13,20 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <script defer src="{{ asset('vendor/alpine/alpine.min.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!window.Alpine) {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js';
+                s.defer = true;
+                document.head.appendChild(s);
+            }
+        });
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
 </head>
 
 <body class="min-h-screen bg-admin-bg font-['Inter'] text-admin-text-dark antialiased">

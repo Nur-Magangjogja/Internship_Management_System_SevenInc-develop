@@ -1,86 +1,106 @@
 @extends('layouts.dashboard', ['title' => 'Editor Sertifikat Visual: ' . $template->name])
 
 @section('content')
+<!-- Google Fonts for Certificate Typography -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+</style>
 <div class="px-6 py-6" x-data="certificateCanvasApp()" @keydown.window="handleKeyboard($event)">
     <!-- Top Action & Navigation Bar -->
-    <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
-        <div class="flex items-center gap-3">
+    <div class="mb-5 flex flex-col gap-3.5 xl:flex-row xl:items-center xl:justify-between border-b border-slate-200 pb-4">
+        <!-- Left: Navigation & Document Meta -->
+        <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ route('admin.document-templates.index') }}"
-                class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm"
-                title="Kembali ke Daftar Template"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                title="Kembali ke Katalog Template"
             >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
             </a>
-            <div>
+            <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 border-amber-200">
-                        Kanvas Desain Sertifikat (Visual Studio)
-                    </span>
-                    <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
-                        Versi {{ $template->version_number }}
-                    </span>
+                    <h1 class="text-base font-bold text-slate-800 truncate" title="{{ $template->name }}">
+                        {{ $template->name }}
+                    </h1>
                     @if ($template->is_default)
-                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                            DEFAULT
+                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+                            Default
                         </span>
                     @endif
                 </div>
-                <h1 class="text-xl font-bold text-slate-800 mt-1">
-                    {{ $template->name }}
-                </h1>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium border"
+                          :class="certificateType === 'webinar' ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
+                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
+                    </span>
+                    <span class="text-slate-300">•</span>
+                    <span class="font-mono text-[11px] text-slate-600">v{{ $template->version_number }}</span>
+                    <span class="text-slate-300">•</span>
+                    <span class="text-[11px] text-slate-400">Visual Studio</span>
+                </div>
             </div>
         </div>
 
+        <!-- Right: Canvas Controls & Actions -->
         <div class="flex flex-wrap items-center gap-2">
-            <!-- Undo / Redo Toolbar -->
-            <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
-                <button
-                    type="button"
-                    @click="undo()"
-                    :disabled="!canUndo"
-                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                    title="Urungkan Perubahan (Ctrl+Z)"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v6h6"/>
-                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    @click="redo()"
-                    :disabled="!canRedo"
-                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                    title="Ulangi Perubahan (Ctrl+Y)"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 7v6h-6"/>
-                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
-                    </svg>
-                </button>
-            </div>
+            <!-- Canvas Controls: Undo/Redo & Zoom -->
+            <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                <!-- Undo / Redo -->
+                <div class="flex items-center">
+                    <button
+                        type="button"
+                        @click="undo()"
+                        :disabled="!canUndo"
+                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                        title="Urungkan (Ctrl+Z)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6"/>
+                            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        @click="redo()"
+                        :disabled="!canRedo"
+                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                        title="Ulangi (Ctrl+Y)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6"/>
+                            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+                        </svg>
+                    </button>
+                </div>
 
-            <!-- Zoom Controls -->
-            <div class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm text-xs font-semibold text-slate-600 gap-1">
-                <span class="text-slate-400 text-[10px] mr-1">ZOOM:</span>
-                <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 0.75 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">75%</button>
-                <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.0 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">100%</button>
-                <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.25 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">125%</button>
+                <span class="h-4 w-px bg-slate-200"></span>
+
+                <!-- Zoom Controls -->
+                <div class="flex items-center gap-0.5 text-slate-600 px-1">
+                    <svg class="h-3.5 w-3.5 text-slate-400 mr-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 0.75 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">75%</button>
+                    <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.0 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">100%</button>
+                    <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.25 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">125%</button>
+                </div>
             </div>
 
             <!-- Toggle Sample / Placeholder -->
             <button
                 type="button"
                 @click="showMockData = !showMockData"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition shadow-sm"
-                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition shadow-2xs"
+                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+                :title="showMockData ? 'Mode Simulasi aktif: menampilkan data contoh pemagang (klik untuk beralih ke kode token)' : 'Mode Token aktif: menampilkan placeholder mentah (klik untuk beralih ke simulasi)'"
             >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                 </svg>
                 <span x-text="showMockData ? 'Data Simulasi' : 'Token Mentah'"></span>
             </button>
@@ -88,36 +108,49 @@
             <!-- Histori Versi -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 shadow-sm"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                title="Histori Versi Dokumen"
             >
-                <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 14 14"/>
+                <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>
                 </svg>
                 <span>Versi ({{ $template->versions_count ?? 1 }})</span>
             </a>
 
-            <!-- Real DomPDF Preview Button -->
-            <a
-                href="{{ route('admin.document-templates.preview-pdf', $template) }}"
-                target="_blank"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 shadow-sm"
-            >
-                <svg class="h-4 w-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <span>Preview PDF</span>
-            </a>
+            <!-- Grouped Preview Actions (Web & PDF) -->
+            <div class="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                <a
+                    href="{{ route('admin.document-templates.preview', $template) }}"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition"
+                    title="Buka Halaman Pratinjau Resmi"
+                >
+                    <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>Pratinjau</span>
+                </a>
+                <span class="h-4 w-px bg-slate-200"></span>
+                <a
+                    href="{{ route('admin.document-templates.preview-pdf', $template) }}"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-700 bg-rose-50/50 hover:bg-rose-50 transition"
+                    title="Buka Pratinjau PDF Cetak Asli di Tab Baru"
+                >
+                    <svg class="h-3.5 w-3.5 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>PDF</span>
+                </a>
+            </div>
 
             <!-- Save Changes Button -->
             <button
                 type="button"
                 @click="saveTemplate()"
                 :disabled="isSaving"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition disabled:opacity-50"
             >
-                <svg x-show="!isSaving" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg x-show="!isSaving" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                     <polyline points="17 21 17 13 7 13 7 21"/>
                     <polyline points="7 3 7 8 15 8"/>
@@ -195,6 +228,15 @@
                         <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 19v-4a2 2 0 0 0-2-2h-4"/><path d="M4 19v-4a2 2 0 0 1 2-2h4"/><line x1="12" y1="15" x2="12" y2="3"/><polyline points="8 7 12 3 16 7"/></svg>
                         <span>Tanda Tangan</span>
                     </button>
+                    <button
+                        type="button"
+                        @click="activeDrawerTab = 'canvas'"
+                        class="inline-flex items-center gap-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 font-semibold transition"
+                        title="Buka Pilihan Background Kertas & Desain"
+                    >
+                        <svg class="h-3.5 w-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span>Ganti Background</span>
+                    </button>
                 </div>
 
                 <!-- Layer Quick Actions for Selected Element -->
@@ -247,16 +289,18 @@
                     <div
                         id="certificate-viewport"
                         class="relative bg-white shadow-2xl select-none overflow-hidden"
+                        style="width: 840px; height: 594px; background-color: #ffffff;"
                         :style="canvasStyle()"
                         @click.self="selectedElementId = null"
                     >
                         <!-- Background Image Layer -->
-                        <template x-if="layout.canvas.background_image">
+                        <template x-if="layout && layout.canvas && layout.canvas.background_image">
                             <img
-                                :src="layout.canvas.background_image"
+                                :src="resolveImage(layout.canvas.background_image)"
                                 alt="Background Sertifikat"
                                 class="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                :style="`opacity: ${layout.canvas.background_opacity || 1.0};`"
+                                :style="`opacity: ${layout.canvas.background_opacity ?? 1.0};`"
+                                x-on:error="$event.target.style.display = 'none'"
                             />
                         </template>
 
@@ -286,9 +330,10 @@
                                     <div class="w-full h-full flex items-center justify-center pointer-events-none">
                                         <img
                                             :src="resolveImage(elem.src)"
-                                            class="max-w-full max-h-full object-contain"
+                                            class="max-w-full max-h-full w-auto h-auto object-contain pointer-events-none"
                                             :style="`opacity: ${elem.opacity ?? 1.0};`"
                                             alt="Gambar Sertifikat"
+                                            x-on:error="if ($event.target.src.includes('/storage/images/')) { $event.target.src = $event.target.src.replace('/storage/images/', '/images/'); } else { $event.target.style.display = 'none'; }"
                                         />
                                     </div>
                                 </template>
@@ -311,51 +356,102 @@
 
                                 <!-- 5. QR Code Type -->
                                 <template x-if="elem.type === 'qr_code'">
-                                    <div class="w-full h-full flex flex-col items-center justify-center pointer-events-none bg-white p-1 rounded border border-slate-200">
+                                    <div
+                                        class="w-full h-full flex flex-col items-center justify-center pointer-events-none p-1 rounded box-border"
+                                        :style="`
+                                            background-color: ${elem.bg_color && elem.bg_color !== 'transparent' ? elem.bg_color : '#ffffff'};
+                                            border: ${elem.bg_color && elem.bg_color !== 'transparent' ? '1px solid #cbd5e1' : 'none'};
+                                        `"
+                                    >
                                         <svg viewBox="0 0 29 29" class="w-full h-full" shape-rendering="crispEdges">
                                             <!-- Finder Top-Left -->
-                                            <rect x="2" y="2" width="7" height="7" fill="#000"/>
-                                            <rect x="3" y="3" width="5" height="5" fill="#fff"/>
-                                            <rect x="4" y="4" width="3" height="3" fill="#000"/>
+                                            <rect x="2" y="2" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="3" y="3" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="4" y="4" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Finder Top-Right -->
-                                            <rect x="20" y="2" width="7" height="7" fill="#000"/>
-                                            <rect x="21" y="3" width="5" height="5" fill="#fff"/>
-                                            <rect x="22" y="4" width="3" height="3" fill="#000"/>
+                                            <rect x="20" y="2" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="21" y="3" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="22" y="4" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Finder Bottom-Left -->
-                                            <rect x="2" y="20" width="7" height="7" fill="#000"/>
-                                            <rect x="3" y="21" width="5" height="5" fill="#fff"/>
-                                            <rect x="4" y="22" width="3" height="3" fill="#000"/>
+                                            <rect x="2" y="20" width="7" height="7" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="3" y="21" width="5" height="5" :fill="elem.bg_color || '#fff'"/>
+                                            <rect x="4" y="22" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                             <!-- Data simulation bits -->
-                                            <rect x="11" y="4" width="2" height="2" fill="#000"/>
-                                            <rect x="15" y="4" width="2" height="2" fill="#000"/>
-                                            <rect x="11" y="8" width="2" height="2" fill="#000"/>
-                                            <rect x="15" y="8" width="2" height="2" fill="#000"/>
-                                            <rect x="11" y="14" width="7" height="2" fill="#000"/>
-                                            <rect x="11" y="20" width="3" height="3" fill="#000"/>
-                                            <rect x="16" y="22" width="4" height="2" fill="#000"/>
-                                            <rect x="22" y="14" width="3" height="3" fill="#000"/>
+                                            <rect x="11" y="4" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="15" y="4" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="8" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="15" y="8" width="2" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="14" width="7" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="11" y="20" width="3" height="3" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="16" y="22" width="4" height="2" :fill="elem.fg_color || '#000'"/>
+                                            <rect x="22" y="14" width="3" height="3" :fill="elem.fg_color || '#000'"/>
                                         </svg>
-                                        <span class="text-[8px] font-mono text-slate-500 mt-0.5 truncate max-w-full" x-text="resolveText(elem.qr_data || '@{{dokumen.nomor}}')"></span>
                                     </div>
                                 </template>
 
-                                <!-- 6. Signature Group Type -->
+                                <!-- 6. Signature Group Type (Diselaraskan 1:1 dengan Pratinjau & DomPDF) -->
                                 <template x-if="elem.type === 'signature_group'">
-                                    <div class="w-full text-center p-1 pointer-events-none" :style="`opacity: ${elem.opacity ?? 1.0};`">
-                                        <div class="text-[12px] text-slate-700 font-medium" x-html="resolveText(elem.date_text)"></div>
-                                        <div class="text-[11px] text-slate-500 mt-0.5" x-html="resolveText(elem.role_text)"></div>
+                                    <div
+                                        class="w-full pointer-events-none select-none box-border"
+                                        :style="`
+                                            opacity: ${elem.opacity ?? 1.0};
+                                            text-align: ${elem.align ?? 'center'};
+                                            font-family: ${formatFontFamily(elem.font_family)};
+                                            color: ${elem.color || '#000000'};
+                                        `"
+                                    >
+                                        <template x-if="elem.cert_no_text">
+                                            <p class="m-0 leading-normal" style="margin-bottom: 2px; font-size: 11pt;" x-html="resolveText(elem.cert_no_text)"></p>
+                                        </template>
+                                        <p class="m-0 leading-normal" style="font-size: 11pt;" x-html="resolveText(elem.date_text)"></p>
+                                        <p class="m-0 leading-normal" style="margin-top: 2px; font-size: 11pt;" x-html="resolveText(elem.role_text)"></p>
                                         
-                                        <!-- Sig & Stamp Stack -->
-                                        <div class="relative inline-block my-1.5 h-14 w-40">
-                                            <template x-if="elem.sig_image">
-                                                <img :src="resolveImage(elem.sig_image)" class="absolute inset-0 h-full w-full object-contain z-10" />
-                                            </template>
+                                        <!-- Sig & Stamp Stack (Presisi tengah 1:1 dengan pratinjau & PDF) -->
+                                        <div
+                                            :style="`
+                                                height: ${(elem.sig_height_px || 50)}px;
+                                                position: relative;
+                                                width: 220px;
+                                                margin: ${elem.align === 'left' ? '4px 0' : (elem.align === 'right' ? '4px 0 4px auto' : '4px auto')};
+                                            `"
+                                        >
                                             <template x-if="elem.stamp_image">
-                                                <img :src="resolveImage(elem.stamp_image)" class="absolute -right-2 -top-2 h-14 w-14 object-contain opacity-85 z-20" />
+                                                <img
+                                                    :src="resolveImage(elem.stamp_image)"
+                                                    :style="`
+                                                        height: ${(elem.stamp_size_px || 120)}px;
+                                                        width: ${(elem.stamp_size_px || 120)}px;
+                                                        position: absolute;
+                                                        opacity: 0.70;
+                                                        mix-blend-mode: multiply;
+                                                        z-index: 5;
+                                                        pointer-events: none;
+                                                        top: ${(elem.stamp_offset_y !== undefined && elem.stamp_offset_y !== null ? elem.stamp_offset_y : -35)}px;
+                                                        left: ${elem.align === 'left' ? ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px') : (elem.align === 'right' ? 'auto' : ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px'))};
+                                                        right: ${elem.align === 'right' ? ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px') : 'auto'};
+                                                    `"
+                                                    alt="Stempel"
+                                                    x-on:error="$event.target.style.display = 'none'"
+                                                />
+                                            </template>
+                                            <template x-if="elem.sig_image">
+                                                <img
+                                                    :src="resolveImage(elem.sig_image)"
+                                                    :style="`
+                                                        height: ${(elem.sig_height_px || 50)}px;
+                                                        width: auto;
+                                                        position: relative;
+                                                        z-index: 10;
+                                                        display: block;
+                                                        margin: ${elem.align === 'left' ? '0' : (elem.align === 'right' ? '0 0 0 auto' : '0 auto')};
+                                                    `"
+                                                    alt="Tanda Tangan"
+                                                    x-on:error="$event.target.style.display = 'none'"
+                                                />
                                             </template>
                                         </div>
 
-                                        <div class="text-[12px] font-bold text-slate-800 underline" x-html="resolveText(elem.name_text)"></div>
+                                        <p class="m-0 font-bold underline relative z-10 leading-normal" style="margin-top: 2px; font-size: 12pt;" x-html="resolveText(elem.name_text)"></p>
                                     </div>
                                 </template>
 
@@ -446,26 +542,90 @@
                     <template x-if="selectedElement">
                         <div class="space-y-4">
                             
-                            <!-- Header & Type Badge -->
-                            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                                <div class="flex items-center gap-1.5">
-                                    <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 uppercase" x-text="selectedElement.type"></span>
-                                    <span class="text-xs font-bold text-slate-800 truncate max-w-[130px]" x-text="selectedElement.id"></span>
+                            <!-- Header & Type Badge & Action Card -->
+                            <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-xs space-y-2.5">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <!-- Dynamic Icon Indicator -->
+                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 shadow-2xs">
+                                            <template x-if="selectedElement.type === 'signature_group'">
+                                                <svg class="h-4.5 w-4.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                                                    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                                                    <path d="M2 2l7.586 7.586"/>
+                                                    <circle cx="11" cy="11" r="2"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'qr_code'">
+                                                <svg class="h-4.5 w-4.5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'image'">
+                                                <svg class="h-4.5 w-4.5 text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'shape' || selectedElement.type === 'line'">
+                                                <svg class="h-4.5 w-4.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="!['signature_group', 'qr_code', 'image', 'shape', 'line'].includes(selectedElement.type)">
+                                                <svg class="h-4.5 w-4.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>
+                                                </svg>
+                                            </template>
+                                        </div>
+
+                                        <!-- Friendly Name & Details -->
+                                        <div class="min-w-0">
+                                            <h4 class="text-xs font-bold text-slate-800 truncate leading-tight" x-text="getElementFriendlyTitle(selectedElement)"></h4>
+                                            <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                <span class="rounded bg-slate-100 border border-slate-200/80 px-1.5 py-0.2 text-[9px] font-mono font-bold text-slate-600 uppercase" x-text="selectedElement.type"></span>
+                                                <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]" :title="selectedElement.id" x-text="selectedElement.id"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Quick Layer Badge -->
+                                    <div class="shrink-0">
+                                        <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-mono font-semibold text-slate-600 shadow-2xs" title="Tingkat Layer (Z-Index)">
+                                            <span class="text-slate-400 text-[9px]">Z:</span>
+                                            <span class="text-slate-800 font-bold" x-text="selectedElement.z_index || 1"></span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-2">
+
+                                <!-- Action Buttons (Duplikat & Hapus) -->
+                                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                                     <button
                                         type="button"
                                         @click="duplicateSelected()"
-                                        class="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                                        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 active:scale-95 transition cursor-pointer"
+                                        title="Duplikat Elemen Ini (Ctrl+D)"
                                     >
-                                        Duplikat
+                                        <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                        <span>Duplikat</span>
                                     </button>
+
                                     <button
                                         type="button"
                                         @click="deleteElement(selectedElement.id)"
-                                        class="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                                        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 active:scale-95 transition cursor-pointer"
+                                        title="Hapus Elemen Ini (Delete / Backspace)"
                                     >
-                                        Hapus
+                                        <svg class="h-3.5 w-3.5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18"/>
+                                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                            <line x1="10" y1="11" x2="10" y2="17"/>
+                                            <line x1="14" y1="11" x2="14" y2="17"/>
+                                        </svg>
+                                        <span>Hapus</span>
                                     </button>
                                 </div>
                             </div>
@@ -583,15 +743,38 @@
                                     </div>
 
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family (Tipografi)</label>
                                         <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                                            <option value="Times New Roman">Times New Roman (Klasik Resmi)</option>
-                                            <option value="'Great Vibes', cursive">Great Vibes (Kaligrafi / Script)</option>
-                                            <option value="'Playfair Display', serif">Playfair Display (Elegan Modern)</option>
-                                            <option value="'Cinzel', serif">Cinzel (Roman Formal)</option>
-                                            <option value="'Montserrat', sans-serif">Montserrat (Modern Sans)</option>
-                                            <option value="Arial">Arial (Sans Serif)</option>
-                                            <option value="Courier New">Courier New (Monospace)</option>
+                                            <optgroup label="✍️ Kaligrafi & Script (Nama Penerima)">
+                                                <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik Mewah)</option>
+                                                <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus & Resmi)</option>
+                                                <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal & Prestisius)</option>
+                                                <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
+                                                <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
+                                                <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
+                                            </optgroup>
+                                            <optgroup label="🏛️ Serif Klasik & Formal (Judul & Legal)">
+                                                <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
+                                                <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
+                                                <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
+                                                <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
+                                                <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
+                                                <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
+                                                <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
+                                                <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
+                                            </optgroup>
+                                            <optgroup label="✨ Modern Sans-Serif (Webinar, Subtitle, Divisi)">
+                                                <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
+                                                <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
+                                                <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
+                                                <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
+                                                <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
+                                                <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
+                                            </optgroup>
+                                            <optgroup label="🔢 Monospace (Nomor Seri / Kode Dokumen)">
+                                                <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
+                                                <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
+                                            </optgroup>
                                         </select>
                                     </div>
 
@@ -646,24 +829,100 @@
                                 </div>
                             </template>
 
-                            <!-- 2. Image Properties -->
+                            <!-- 2. Image Properties (Mendukung Upload Bebas & Sinkron Google Drive) -->
                             <template x-if="selectedElement.type === 'image'">
                                 <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sumber Gambar / Aset</label>
-                                        <input type="text" x-model="selectedElement.src" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{asset.company.logo}} atau URL" />
-                                        
-                                        <!-- Quick Asset Presets -->
-                                        <div class="mt-1.5 flex flex-wrap gap-1">
-                                            <button type="button" @click="selectedElement.src = '@{{asset.company.logo}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Logo Perusahaan</button>
-                                            <button type="button" @click="selectedElement.src = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Stempel</button>
-                                            <button type="button" @click="selectedElement.src = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Tanda Tangan</button>
+                                    <!-- Live Preview Thumbnail of Selected Image -->
+                                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2 flex items-center gap-3">
+                                        <div class="h-14 w-14 rounded border border-slate-300 bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-2xs">
+                                            <img
+                                                :src="resolveImage(selectedElement.src)"
+                                                class="max-h-full max-w-full object-contain"
+                                                alt="Preview Aset"
+                                                x-on:error="$event.target.style.display = 'none'"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="text-[11px] font-bold text-slate-800 truncate" x-text="selectedElement.src?.startsWith('http') || selectedElement.src?.startsWith('/') ? 'Gambar Kustom / Upload' : (selectedElement.src || 'Aset Gambar')"></span>
+                                            </div>
+                                            <p class="text-[10px] text-slate-500 font-mono truncate mt-0.5" x-text="selectedElement.src || '-'"></p>
+                                            <div class="mt-1 flex items-center gap-1 text-[10px]">
+                                                <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-semibold" title="Tersinkronisasi dengan penyimpanan awan Google Drive">
+                                                    <svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                                                    Tersinkron Google Drive
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 
+                                    <!-- Unggah Berkas Gambar Bebas Langsung -->
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Opasitas / Transparansi: ${Math.round((selectedElement.opacity ?? 1.0) * 100)}%`"></label>
-                                        <input type="range" min="0.1" max="1" step="0.05" x-model.number="selectedElement.opacity" @change="pushHistory()" class="w-full" />
+                                        <input
+                                            type="file"
+                                            id="upload-image-input"
+                                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                            class="hidden"
+                                            @change="uploadCustomImage($event)"
+                                        />
+                                        <label
+                                            for="upload-image-input"
+                                            class="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/60 hover:bg-blue-100 text-blue-700 text-xs font-bold cursor-pointer transition shadow-xs"
+                                            :class="isUploadingImage ? 'opacity-50 pointer-events-none' : ''"
+                                        >
+                                            <svg x-show="!isUploadingImage" class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                                <polyline points="17 8 12 3 7 8"/>
+                                                <line x1="12" y1="3" x2="12" y2="15"/>
+                                            </svg>
+                                            <span x-show="isUploadingImage" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                                            <span x-text="isUploadingImage ? 'Mengunggah & Menyinkronkan ke GDrive...' : '📁 Unggah Gambar Bebas (Sinkron GDrive)'"></span>
+                                        </label>
+                                        <p x-show="imageUploadError" x-text="imageUploadError" class="text-[10px] text-rose-600 mt-1 font-medium"></p>
+                                        <p class="text-[10px] text-slate-400 mt-1">Mendukung format PNG transparan, JPG, WEBP, atau SVG (Maks. 10MB). Berkas otomatis diunggah & dicadangkan ke Google Drive.</p>
+                                    </div>
+
+                                    <!-- Sumber Gambar Manual / Tag -->
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tag Variabel atau URL Gambar</label>
+                                        <input type="text" x-model="selectedElement.src" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{asset.company.logo}} atau https://..." />
+                                        
+                                        <!-- Quick Asset Presets -->
+                                        <div class="mt-1.5 flex flex-wrap gap-1">
+                                            <button type="button" @click="selectedElement.src = '@{{asset.company.logo}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Logo Utama</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Stempel</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Tanda Tangan</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Pilihan Gambar Cepat dari Katalog Aset Sistem / Brand yang Tersedia -->
+                                    <template x-if="imageCatalog && imageCatalog.length > 0">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Cepat dari Aset Sistem / Brand</label>
+                                            <div class="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1 rounded border border-slate-200 bg-slate-50">
+                                                <template x-for="img in imageCatalog" :key="img.id">
+                                                    <button
+                                                        type="button"
+                                                        @click="selectedElement.src = img.url; pushHistory()"
+                                                        class="flex flex-col items-center justify-center p-1 rounded border bg-white hover:border-blue-500 hover:shadow-xs transition"
+                                                        :class="selectedElement.src === img.url ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-200'"
+                                                        :title="img.name"
+                                                    >
+                                                        <img :src="img.thumb || img.url" class="h-8 w-8 object-contain" :alt="img.name" />
+                                                        <span class="text-[9px] text-slate-600 truncate w-full text-center mt-0.5" x-text="img.name"></span>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Slider Opasitas / Transparansi -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-[11px] font-semibold text-slate-600">Opasitas / Transparansi</label>
+                                            <span class="text-[10px] font-mono text-slate-500" x-text="`${Math.round((selectedElement.opacity ?? 1.0) * 100)}%`"></span>
+                                        </div>
+                                        <input type="range" min="0.05" max="1" step="0.05" x-model.number="selectedElement.opacity" @change="pushHistory()" class="w-full accent-blue-600" />
                                     </div>
                                 </div>
                             </template>
@@ -790,27 +1049,167 @@
 
                             <!-- 6. Signature Group Properties -->
                             <template x-if="selectedElement.type === 'signature_group'">
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
-                                        <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
-                                        <input type="text" x-model="selectedElement.role_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
-                                        <input type="text" x-model="selectedElement.name_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-2">
+                                <div class="space-y-3.5">
+                                    <!-- Sub-Card 1: Format Teks & Penandatangan -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>✍️</span> Teks & Tipografi
+                                            </span>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-1">Perataan</label>
+                                                <select x-model="selectedElement.align" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <option value="center">Tengah (Center)</option>
+                                                    <option value="left">Rata Kiri (Left)</option>
+                                                    <option value="right">Rata Kanan (Right)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                                <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <optgroup label="🏛️ Serif Klasik & Formal">
+                                                        <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
+                                                        <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
+                                                        <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
+                                                        <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
+                                                        <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
+                                                        <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
+                                                        <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
+                                                        <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
+                                                    </optgroup>
+                                                    <optgroup label="✨ Modern Sans-Serif">
+                                                        <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
+                                                        <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
+                                                        <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
+                                                        <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
+                                                        <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
+                                                        <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
+                                                    </optgroup>
+                                                    <optgroup label="✍️ Kaligrafi & Script">
+                                                        <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik)</option>
+                                                        <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus)</option>
+                                                        <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal Prestisius)</option>
+                                                        <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
+                                                        <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
+                                                        <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
+                                                    </optgroup>
+                                                    <optgroup label="🔢 Monospace">
+                                                        <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
+                                                        <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
+                                                    </optgroup>
+                                                </select>
+                                            </div>
+                                        </div>
+
                                         <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Tanda Tangan</label>
-                                            <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Nomor Sertifikat (Opsional)</label>
+                                            <input type="text" x-model="selectedElement.cert_no_text" placeholder="Contoh: Nomor Sertifikat: @{{dokumen.nomor}}" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs font-mono focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Stempel</label>
-                                            <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
+                                            <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
+                                            <input type="text" x-model="selectedElement.role_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
+                                            <input type="text" x-model="selectedElement.name_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Sub-Card 2: Berkas Gambar TTD & Stempel -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>💮</span> Berkas Gambar TTD & Stempel
+                                            </span>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Tag Tanda Tangan</label>
+                                                <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 bg-white p-1 text-xs font-mono mb-1.5 focus:border-blue-500 focus:outline-none" />
+                                                <input type="file" id="sig-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomSignature($event)" />
+                                                <label for="sig-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-dashed border-blue-400 bg-blue-50/70 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                    <span x-text="isUploadingSig ? 'Mengunggah...' : '📁 Upload TTD'"></span>
+                                                </label>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Tag Stempel</label>
+                                                <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 bg-white p-1 text-xs font-mono mb-1.5 focus:border-blue-500 focus:outline-none" />
+                                                <input type="file" id="stamp-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomStamp($event)" />
+                                                <label for="stamp-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-dashed border-blue-400 bg-blue-50/70 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                    <span x-text="isUploadingStamp ? 'Mengunggah...' : '📁 Upload Stempel'"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex flex-wrap gap-1.5 pt-1">
+                                            <button type="button" @click="selectedElement.sig_image = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-white hover:bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-700 font-medium shadow-2xs transition active:scale-95">
+                                                + TTD Sistem
+                                            </button>
+                                            <button type="button" @click="selectedElement.stamp_image = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-white hover:bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-700 font-medium shadow-2xs transition active:scale-95">
+                                                + Stempel Sistem
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Sub-Card 3: Penyesuaian Presisi Posisi & Ukuran Stempel -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>📐</span> Posisi & Ukuran Stempel
+                                            </span>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (negatif = geser kiri, positif = geser kanan)">Offset X (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="10" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_offset_x', 5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_offset_x', -5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Posisi vertikal stempel relatif terhadap kotak tanda tangan (negatif = naik ke atas, positif = turun ke bawah)">Offset Y (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" step="5" x-model.number="selectedElement.stamp_offset_y" placeholder="-35" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_offset_y', 5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_offset_y', -5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Ukuran diameter stempel (default: 120px)">Ukuran Stempel (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" min="40" max="250" step="5" x-model.number="selectedElement.stamp_size_px" placeholder="120" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_size_px', 5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_size_px', -5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Ukuran tinggi tanda tangan (default: 50px, disarankan 40 - 120px)">Tinggi TTD (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" min="25" max="180" step="5" x-model.number="selectedElement.sig_height_px" placeholder="50" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('sig_height_px', 5, 25, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('sig_height_px', -5, 25, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -875,9 +1274,16 @@
                 </div>
 
                 <!-- Tab 3: Paper Setup & Canvas Background -->
-                <div x-show="activeDrawerTab === 'canvas'" class="p-4 space-y-4">
-                    <div class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Orientasi Kertas & Latar Belakang</div>
+                <div x-show="activeDrawerTab === 'canvas'" class="p-4 space-y-4 max-h-[750px] overflow-y-auto">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Kertas & Latar Belakang</span>
+                        <a href="{{ route('admin.system-assets.index') }}" target="_blank" class="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                            <span>Perpustakaan Drive</span>
+                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                        </a>
+                    </div>
 
+                    <!-- Orientasi Kertas -->
                     <div>
                         <label class="block text-[11px] font-semibold text-slate-600 mb-1">Orientasi Kertas Cetak</label>
                         <select x-model="layout.canvas.orientation" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
@@ -886,20 +1292,150 @@
                         </select>
                     </div>
 
+                    <!-- Peruntukan / Jenis Sertifikat -->
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+                        <label class="block text-[11px] font-semibold text-slate-700 mb-1">Peruntukan Sertifikat</label>
+                        <select x-model="certificateType" class="w-full rounded border border-slate-300 p-1.5 text-xs bg-white">
+                            <option value="magang">Sertifikat Magang (Kelulusan Pemagang)</option>
+                            <option value="webinar">Sertifikat Webinar (Event / Workshop)</option>
+                        </select>
+                        <p class="text-[10px] text-slate-500 mt-1">Pilih "Sertifikat Webinar" jika template ini ingin digunakan pada modul Webinar.</p>
+                    </div>
+
+                    <!-- Pilihan Background Gallery (Drive & Sistem Assets) -->
                     <div>
-                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Gambar Background</label>
-                        <div class="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                            @foreach ($assetCatalog['backgrounds'] ?? [] as $bg)
-                                <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
-                                    <input type="radio" name="bg_select" :checked="layout.canvas.background_image === '{{ $bg['url'] }}'" @change="layout.canvas.background_image = '{{ $bg['url'] }}'; pushHistory()" />
-                                    <img src="{{ $bg['thumb'] }}" class="h-8 w-12 object-cover rounded border" />
-                                    <span class="text-xs text-slate-700 truncate">{{ $bg['name'] }}</span>
-                                </label>
-                            @endforeach
-                            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
-                                <input type="radio" name="bg_select" :checked="!layout.canvas.background_image" @change="layout.canvas.background_image = ''; pushHistory()" />
-                                <span class="text-xs text-slate-500">Tanpa Gambar Background (Latar Polos)</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-[11px] font-semibold text-slate-700 uppercase">Pilih Gambar Background</label>
+                            <span class="text-[10px] text-slate-400" x-text="`${backgroundCatalog.length} Aset Tersedia`"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mb-2.5">Klik thumbnail untuk langsung mengganti latar belakang sertifikat di kanvas.</p>
+
+                        <!-- Grid Cards -->
+                        <div class="grid grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-1 p-0.5">
+                            <template x-for="(bg, idx) in backgroundCatalog" :key="bg.id || idx">
+                                <div
+                                    @click="selectBackground(bg.url)"
+                                    class="relative rounded-lg border-2 p-1.5 cursor-pointer transition flex flex-col justify-between group"
+                                    :class="isSelectedBg(bg.url) ? 'border-blue-600 ring-2 ring-blue-100 bg-blue-50/30' : 'border-slate-200 hover:border-blue-300 bg-white'"
+                                >
+                                    <div class="relative w-full h-16 rounded overflow-hidden bg-slate-100 border border-slate-200 mb-1">
+                                        <img :src="bg.thumb || bg.url" :alt="bg.name" class="w-full h-full object-cover" x-on:error="$event.target.src='/images/certificate/certificate-bg.png'" />
+                                        
+                                        <!-- Active Checkmark Indicator -->
+                                        <template x-if="isSelectedBg(bg.url)">
+                                            <div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                                <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                            </div>
+                                        </template>
+
+                                        <!-- Source Badge -->
+                                        <template x-if="bg.is_drive">
+                                            <span class="absolute top-1 right-1 inline-flex items-center gap-0.5 rounded bg-emerald-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+                                                Drive
+                                            </span>
+                                        </template>
+                                        <template x-if="!bg.is_drive && bg.source && bg.source.startsWith('Brand')">
+                                            <span class="absolute top-1 right-1 rounded bg-amber-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                Brand
+                                            </span>
+                                        </template>
+                                        <template x-if="!bg.is_drive && bg.is_real && (!bg.source || !bg.source.startsWith('Brand'))">
+                                            <span class="absolute top-1 right-1 rounded bg-indigo-600 text-white text-[8px] font-bold px-1 py-0.5 shadow">
+                                                Sistem
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="text-[10px] font-semibold text-slate-800 truncate" :title="bg.name" x-text="bg.name"></div>
+                                    <div class="text-[9px] text-slate-400 mt-0.5" x-text="bg.source || 'Bawaan'"></div>
+                                </div>
+                            </template>
+
+                            <!-- Option: Tanpa Background (Polos) -->
+                            <div
+                                @click="selectBackground('')"
+                                class="relative rounded-lg border-2 p-2 cursor-pointer transition flex flex-col justify-center items-center text-center group"
+                                :class="!layout?.canvas?.background_image ? 'border-blue-600 ring-2 ring-blue-100 bg-blue-50/30' : 'border-dashed border-slate-300 hover:border-blue-300 bg-white'"
+                            >
+                                <template x-if="!layout?.canvas?.background_image">
+                                    <div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                        <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </div>
+                                </template>
+                                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                                </div>
+                                <span class="text-[10px] font-bold text-slate-700">Latar Polos</span>
+                                <span class="text-[8px] text-slate-400">Tanpa Gambar</span>
+                            </div>
+                        </div>
+
+                        <!-- Upload Background Langsung dari Komputer / Drive -->
+                        <div class="mt-2.5 pt-2.5 border-t border-slate-100">
+                            <input
+                                type="file"
+                                id="upload-bg-input"
+                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                class="hidden"
+                                @change="uploadNewBackground($event)"
+                            />
+                            <label
+                                for="upload-bg-input"
+                                class="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100/60 text-blue-700 text-xs font-semibold cursor-pointer transition shadow-sm"
+                                :class="isUploadingBg ? 'opacity-50 pointer-events-none' : ''"
+                            >
+                                <svg x-show="!isUploadingBg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <span x-show="isUploadingBg" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                                <span x-text="isUploadingBg ? 'Mengunggah Background...' : '+ Unggah Gambar Background Baru'"></span>
                             </label>
+                            <p x-show="bgUploadError" x-text="bgUploadError" class="text-[10px] text-rose-600 mt-1 font-medium"></p>
+                        </div>
+
+                        <!-- Input URL / Link Eksternal -->
+                        <div class="mt-2">
+                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Atau Masukkan URL / Path Gambar:</label>
+                            <div class="flex gap-1.5">
+                                <input
+                                    type="text"
+                                    x-model="customBgUrl"
+                                    placeholder="Contoh: /images/certificate/bg-custom.png"
+                                    class="flex-1 rounded border border-slate-300 p-1 text-xs font-mono text-slate-800"
+                                    @keydown.enter.prevent="applyCustomBgUrl()"
+                                />
+                                <button
+                                    type="button"
+                                    @click="applyCustomBgUrl()"
+                                    class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded border"
+                                >
+                                    Terapkan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pengaturan Opasitas & Warna Dasar -->
+                    <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5 space-y-2">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-[10px] font-semibold text-slate-600">Opasitas Background</label>
+                                <span class="text-[10px] font-mono text-slate-500" x-text="`${Math.round((layout.canvas.background_opacity ?? 1.0) * 100)}%`"></span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.1"
+                                max="1.0"
+                                step="0.05"
+                                x-model.number="layout.canvas.background_opacity"
+                                @change="pushHistory()"
+                                class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                        </div>
+                        <div class="flex items-center justify-between pt-1 border-t border-slate-200">
+                            <label class="text-[10px] font-semibold text-slate-600">Warna Dasar Kertas</label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="color" x-model="layout.canvas.background_color" @change="pushHistory()" class="h-6 w-7 rounded border p-0.5 cursor-pointer" />
+                                <span class="text-[10px] font-mono text-slate-600" x-text="layout.canvas.background_color || '#ffffff'"></span>
+                            </div>
                         </div>
                     </div>
 
@@ -932,10 +1468,21 @@
 
 @push('scripts')
 <script>
+@php
+    $defaultLayout = \App\Models\DocumentTemplate::getDefaultCertificateCanvasLayout();
+    $dbLayout = $template->canvas_layout ?? [];
+    $mergedCanvas = array_merge($defaultLayout['canvas'] ?? [], $dbLayout['canvas'] ?? []);
+    $mergedElements = !empty($dbLayout['elements']) ? $dbLayout['elements'] : ($defaultLayout['elements'] ?? []);
+    $initialLayout = [
+        'canvas'   => $mergedCanvas,
+        'elements' => $mergedElements,
+    ];
+@endphp
 function certificateCanvasApp() {
     return {
         activeDrawerTab: 'element',
         templateName: @json($template->name),
+        certificateType: @json($template->certificate_type ?? 'magang'),
         templateDescription: @json($template->description ?? ''),
         changeSummary: '',
         isActive: {{ $template->is_active ? 'true' : 'false' }},
@@ -946,25 +1493,257 @@ function certificateCanvasApp() {
         zoomLevel: 1.0,
         saveAlert: { message: '', type: 'success' },
 
-        layout: @json(array_merge(\App\Models\DocumentTemplate::getDefaultCertificateCanvasLayout(), $template->canvas_layout ?? [])),
+        layout: @json($initialLayout),
         mockData: @json($mockData),
+        backgroundCatalog: @json($assetCatalog['backgrounds'] ?? []),
+        isUploadingBg: false,
+        customBgUrl: '',
+        bgUploadError: '',
+
+        // Katalog Gambar Bebas & State Upload Gambar ke Google Drive
+        imageCatalog: @json(array_values(array_merge($assetCatalog['logos'] ?? [], $assetCatalog['stamps'] ?? [], $assetCatalog['signatures'] ?? []))),
+        isUploadingImage: false,
+        imageUploadError: '',
+        isUploadingSig: false,
+        isUploadingStamp: false,
 
         // Undo / Redo history state stack
         historyStack: [],
         historyIndex: -1,
 
         init() {
-            // Ensure every element has normalized default fields
+            if (!this.layout) {
+                this.layout = { canvas: { orientation: 'landscape', background_color: '#ffffff', background_image: '/images/certificate/certificate-bg.png' }, elements: [] };
+            }
+            if (!this.layout.canvas) {
+                this.layout.canvas = { orientation: 'landscape', background_color: '#ffffff', background_image: '/images/certificate/certificate-bg.png' };
+            }
+            if (!Array.isArray(this.layout.elements)) {
+                this.layout.elements = [];
+            }
+            // Ensure every element has normalized default fields and sizes
             this.layout.elements.forEach(elem => {
                 if (elem.rotation === undefined) elem.rotation = 0;
                 if (elem.aspect_locked === undefined) elem.aspect_locked = (elem.type === 'image' || elem.type === 'qr_code');
                 if (elem.opacity === undefined) elem.opacity = 1.0;
+
+                // Normalisasi font family untuk keselarasan dropdown & render
+                if (elem.font_family) {
+                    elem.font_family = this.normalizeFontFamily(elem.font_family);
+                }
+
+                // Normalisasi proporsi ukuran gambar/logo agar seimbang antara kanvas visual studio dan output PDF
+                if (elem.type === 'image') {
+                    if (elem.width_percent === undefined || elem.width_percent === null) {
+                        elem.width_percent = elem.width_px ? Math.round((elem.width_px / 840) * 1000) / 10 : 16.5;
+                    }
+                    if (elem.height_percent === undefined || elem.height_percent === null) {
+                        elem.height_percent = elem.height_px ? Math.round((elem.height_px / 594) * 1000) / 10 : 10.0;
+                    }
+                }
+
+                // Normalisasi blok tanda tangan & stempel
+                if (elem.type === 'signature_group') {
+                    if (elem.width_percent === undefined || elem.width_percent === null) {
+                        elem.width_percent = 45.0;
+                    }
+                    if (!elem.align) elem.align = 'center';
+                    if (!elem.font_family) elem.font_family = 'Times New Roman';
+                    if (elem.stamp_offset_x === undefined || elem.stamp_offset_x === null) elem.stamp_offset_x = 10;
+                    if (elem.stamp_offset_y === undefined || elem.stamp_offset_y === null) elem.stamp_offset_y = -35;
+                    if (elem.stamp_size_px === undefined || elem.stamp_size_px === null) elem.stamp_size_px = 120;
+                    if (elem.sig_height_px === undefined || elem.sig_height_px === null) elem.sig_height_px = 50;
+                }
             });
+            if (!this.selectedElement && this.layout.elements.length > 0) {
+                this.selectedElementId = this.layout.elements[0].id;
+            }
             this.pushHistory();
         },
 
+        selectBackground(url) {
+            if (!this.layout.canvas) this.layout.canvas = {};
+            this.layout.canvas.background_image = url;
+            this.pushHistory();
+        },
+
+        isSelectedBg(bgUrl) {
+            const current = this.layout?.canvas?.background_image || '';
+            if (!bgUrl && !current) return true;
+            if (!bgUrl || !current) return false;
+            return current === bgUrl || current.includes(bgUrl) || bgUrl.includes(current);
+        },
+
+        applyCustomBgUrl() {
+            if (!this.customBgUrl) return;
+            this.selectBackground(this.customBgUrl.trim());
+            this.customBgUrl = '';
+        },
+
+        async uploadNewBackground(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingBg = true;
+            this.bgUploadError = '';
+
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-background") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: formData,
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    this.backgroundCatalog.unshift(data.asset);
+                    this.selectBackground(data.asset.url);
+                    this.saveAlert = { message: data.message || 'Background berhasil diunggah.', type: 'success' };
+                } else {
+                    this.bgUploadError = data.message || 'Gagal mengunggah file background.';
+                }
+            } catch (err) {
+                this.bgUploadError = 'Terjadi kesalahan jaringan: ' + err.message;
+            } finally {
+                this.isUploadingBg = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomImage(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            // Jika tidak ada elemen gambar yang aktif atau tipenya bukan gambar, buat baru
+            if (!this.selectedElement || this.selectedElement.type !== 'image') {
+                this.addImageElement();
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'logo');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingImage = true;
+            this.imageUploadError = '';
+
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: formData,
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'image') {
+                        this.selectedElement.src = data.asset.url;
+                        this.pushHistory();
+                    }
+                    if (!Array.isArray(this.imageCatalog)) {
+                        this.imageCatalog = [];
+                    }
+                    this.imageCatalog.unshift(data.asset);
+                    this.saveAlert = { 
+                        message: data.message || 'Gambar berhasil diunggah dan disinkronkan ke Google Drive.', 
+                        type: 'success' 
+                    };
+                } else {
+                    this.imageUploadError = data.message || 'Gagal mengunggah file gambar.';
+                }
+            } catch (err) {
+                this.imageUploadError = 'Terjadi kesalahan jaringan: ' + err.message;
+            } finally {
+                this.isUploadingImage = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomSignature(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', 'ttd_' + file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'signature');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingSig = true;
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'signature_group') {
+                        this.selectedElement.sig_image = data.asset.url;
+                        this.pushHistory();
+                    }
+                    this.saveAlert = { message: data.message || 'Tanda tangan berhasil diunggah dan disinkronkan ke Google Drive.', type: 'success' };
+                } else {
+                    alert(data.message || 'Gagal mengunggah tanda tangan.');
+                }
+            } catch (err) {
+                alert('Kesalahan jaringan: ' + err.message);
+            } finally {
+                this.isUploadingSig = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomStamp(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', 'stempel_' + file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'stamp');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingStamp = true;
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'signature_group') {
+                        this.selectedElement.stamp_image = data.asset.url;
+                        this.pushHistory();
+                    }
+                    this.saveAlert = { message: data.message || 'Stempel berhasil diunggah dan disinkronkan ke Google Drive.', type: 'success' };
+                } else {
+                    alert(data.message || 'Gagal mengunggah stempel.');
+                }
+            } catch (err) {
+                alert('Kesalahan jaringan: ' + err.message);
+            } finally {
+                this.isUploadingStamp = false;
+                event.target.value = '';
+            }
+        },
+
         get selectedElement() {
-            return this.layout.elements.find(e => e.id === this.selectedElementId);
+            if (!this.layout || !Array.isArray(this.layout.elements)) return null;
+            return this.layout.elements.find(e => e.id === this.selectedElementId) || null;
         },
 
         get canUndo() {
@@ -1006,6 +1785,50 @@ function certificateCanvasApp() {
             this.activeDrawerTab = 'element';
         },
 
+        getElementFriendlyTitle(elem) {
+            if (!elem) return 'Elemen';
+            const type = elem.type || '';
+            const id = (elem.id || '').toLowerCase();
+
+            if (type === 'signature_group' || id.includes('signature_block') || id.includes('signature_group') || id.includes('ttd')) {
+                return 'Blok Tanda Tangan & Stempel';
+            }
+            if (id === 'elem_intern_name' || id.includes('intern_name') || id.includes('peserta')) {
+                return 'Nama Peserta Magang';
+            }
+            if (id === 'elem_cert_no' || id.includes('cert_no') || id.includes('nomor')) {
+                return 'Nomor Sertifikat';
+            }
+            if (id === 'elem_title' || id.includes('title') || id.includes('judul')) {
+                return 'Judul Sertifikat';
+            }
+            if (id === 'elem_appreciation' || id.includes('appreciation') || id.includes('apresiasi')) {
+                return 'Teks Apresiasi / Pengantar';
+            }
+            if (id === 'elem_date' || id.includes('date') || id.includes('tanggal')) {
+                return 'Teks Tanggal Terbit';
+            }
+            if (type === 'qr_code' || id.includes('qr')) {
+                return 'QR Code Verifikasi';
+            }
+            if (type === 'image' || id.includes('logo')) {
+                return 'Logo / Gambar';
+            }
+            if (type === 'shape') {
+                return 'Bentuk (Shape)';
+            }
+            if (type === 'line') {
+                return 'Garis Pembatas';
+            }
+            if (type === 'competency_table' || id.includes('competency')) {
+                return 'Tabel Kompetensi & Nilai';
+            }
+            if (type === 'text') {
+                return 'Elemen Teks';
+            }
+            return (elem.name || type).replace(/_/g, ' ').toUpperCase();
+        },
+
         stepProp(prop, delta, minVal, maxVal) {
             if (!this.selectedElement) return;
             let current = parseFloat(this.selectedElement[prop] ?? 0);
@@ -1017,17 +1840,44 @@ function certificateCanvasApp() {
         },
 
         canvasStyle() {
-            const isLandscape = (this.layout.canvas.orientation !== 'portrait');
+            const orientation = this.layout?.canvas?.orientation || 'landscape';
+            const isLandscape = (orientation !== 'portrait');
             const width = isLandscape ? 840 : 594;
             const height = isLandscape ? 594 : 840;
-            return `width: ${width}px; height: ${height}px; background-color: ${this.layout.canvas.background_color || '#ffffff'};`;
+            const bgColor = this.layout?.canvas?.background_color || '#ffffff';
+            return `width: ${width}px; height: ${height}px; background-color: ${bgColor};`;
         },
 
         elementOuterStyle(elem) {
             const x = elem.x_percent ?? 50;
             const y = elem.y_percent ?? 50;
-            const width = elem.width_percent ?? 50;
-            const height = elem.height_percent ? `${elem.height_percent}%` : 'auto';
+
+            // Resolusi lebar proporsional: prioritaskan width_percent, fallback konversi width_px ke % kanvas 840px
+            let width;
+            if (elem.width_percent !== undefined && elem.width_percent !== null) {
+                width = `${elem.width_percent}%`;
+            } else if (elem.width_px) {
+                width = `${Math.round((elem.width_px / 840) * 1000) / 10}%`;
+            } else if (elem.type === 'image') {
+                width = '16.5%';
+            } else if (elem.type === 'qr_code') {
+                width = '14%';
+            } else if (elem.type === 'signature_group') {
+                width = '45%';
+            } else {
+                width = '50%';
+            }
+
+            // Resolusi tinggi: prioritaskan height_percent, fallback konversi height_px ke % kanvas 594px
+            let height = 'auto';
+            if (elem.height_percent !== undefined && elem.height_percent !== null) {
+                height = `${elem.height_percent}%`;
+            } else if (elem.height_px) {
+                height = `${Math.round((elem.height_px / 594) * 1000) / 10}%`;
+            } else if (elem.type === 'image') {
+                height = '10%';
+            }
+
             const align = elem.align ?? 'center';
             const rot = elem.rotation ?? 0;
 
@@ -1040,7 +1890,7 @@ function certificateCanvasApp() {
             return `
                 left: ${x}%;
                 top: ${y}%;
-                width: ${width}%;
+                width: ${width};
                 height: ${height};
                 transform: ${transform};
                 z-index: ${elem.z_index || 10};
@@ -1048,12 +1898,56 @@ function certificateCanvasApp() {
             `;
         },
 
+        formatFontFamily(font) {
+            if (!font) return "'Times New Roman', serif";
+            font = (font + '').trim();
+            if (font.includes(',')) {
+                return font;
+            }
+            const clean = font.replace(/^['"]|['"]$/g, '');
+            const scripts = ['Great Vibes', 'Alex Brush', 'Pinyon Script', 'Allura', 'Dancing Script', 'Parisienne'];
+            const sans = ['Montserrat', 'Poppins', 'Inter', 'Raleway', 'Oswald', 'Arial', 'Helvetica'];
+            const monos = ['Space Mono', 'Courier New', 'Courier'];
+            if (scripts.includes(clean)) return `'${clean}', cursive`;
+            if (sans.includes(clean)) return `'${clean}', sans-serif`;
+            if (monos.includes(clean)) return `'${clean}', monospace`;
+            return `'${clean}', serif`;
+        },
+
+        normalizeFontFamily(font) {
+            if (!font) return 'Times New Roman';
+            const fLower = (font + '').toLowerCase();
+            if (fLower.includes('great vibes')) return "'Great Vibes', cursive";
+            if (fLower.includes('alex brush')) return "'Alex Brush', cursive";
+            if (fLower.includes('pinyon script')) return "'Pinyon Script', cursive";
+            if (fLower.includes('allura')) return "'Allura', cursive";
+            if (fLower.includes('dancing script')) return "'Dancing Script', cursive";
+            if (fLower.includes('parisienne')) return "'Parisienne', cursive";
+            if (fLower.includes('playfair display')) return "'Playfair Display', serif";
+            if (fLower.includes('cinzel')) return "'Cinzel', serif";
+            if (fLower.includes('cormorant garamond')) return "'Cormorant Garamond', serif";
+            if (fLower.includes('lora')) return "'Lora', serif";
+            if (fLower.includes('merriweather')) return "'Merriweather', serif";
+            if (fLower.includes('prata')) return "'Prata', serif";
+            if (fLower.includes('georgia')) return "'Georgia', serif";
+            if (fLower.includes('montserrat')) return "'Montserrat', sans-serif";
+            if (fLower.includes('poppins')) return "'Poppins', sans-serif";
+            if (fLower.includes('inter')) return "'Inter', sans-serif";
+            if (fLower.includes('raleway')) return "'Raleway', sans-serif";
+            if (fLower.includes('oswald')) return "'Oswald', sans-serif";
+            if (fLower.includes('space mono')) return "'Space Mono', monospace";
+            if (fLower.includes('courier new')) return 'Courier New';
+            if (fLower.includes('arial')) return 'Arial';
+            if (fLower.includes('times new roman') || fLower.includes('times')) return 'Times New Roman';
+            return font;
+        },
+
         elementTextStyle(elem) {
             const align = elem.align ?? 'center';
             const underline = elem.underline ? 'text-decoration: underline;' : '';
             return `
                 text-align: ${align};
-                font-family: ${elem.font_family || 'Times New Roman'}, serif;
+                font-family: ${this.formatFontFamily(elem.font_family)};
                 font-size: ${elem.font_size_pt || 14}pt;
                 font-weight: ${elem.font_weight || 'normal'};
                 font-style: ${elem.font_style || 'normal'};
@@ -1106,10 +2000,22 @@ function certificateCanvasApp() {
 
         resolveImage(tagOrUrl) {
             if (!tagOrUrl) return '';
-            if (tagOrUrl.includes('asset.signature')) return this.mockData.asset.signature;
-            if (tagOrUrl.includes('asset.stamp')) return this.mockData.asset.stamp;
-            if (tagOrUrl.includes('asset.company.logo')) return this.mockData.asset.company.logo;
-            return tagOrUrl;
+            let resolved = tagOrUrl;
+            if (tagOrUrl.includes('asset.background')) {
+                resolved = this.mockData?.asset?.background || '/images/certificate/certificate-bg.png';
+            } else if (tagOrUrl.includes('asset.signature') || tagOrUrl.includes('signature')) {
+                resolved = this.mockData?.asset?.signature || '/images/mou/signature-sample.png';
+            } else if (tagOrUrl.includes('asset.stamp') || tagOrUrl.includes('stamp') || tagOrUrl.includes('stempel')) {
+                resolved = this.mockData?.asset?.stamp || '/images/mou/stamp-sample.png';
+            } else if (tagOrUrl.includes('company.logo') || tagOrUrl.includes('company_logo') || tagOrUrl.includes('asset.logo') || tagOrUrl.includes('brand.logo') || tagOrUrl.includes('logo')) {
+                resolved = this.mockData?.asset?.company?.logo || '/images/mou/seven-inc-logo.png';
+            } else if (tagOrUrl.includes('institution.logo') || tagOrUrl.includes('institusi.logo') || tagOrUrl.includes('institution_logo')) {
+                resolved = this.mockData?.asset?.institution?.logo || '/images/mou/institution-logo-placeholder.png';
+            }
+            if (typeof resolved === 'string' && resolved.startsWith('/storage/images/')) {
+                resolved = resolved.replace('/storage/images/', '/images/');
+            }
+            return resolved;
         },
 
         insertTagToSelected(tag) {
@@ -1152,9 +2058,11 @@ function certificateCanvasApp() {
                 type: 'image',
                 src: '@{{asset.company.logo}}',
                 x_percent: 50.0,
-                y_percent: 20.0,
-                width_percent: 20.0,
-                height_percent: 12.0,
+                y_percent: 10.0,
+                width_percent: 16.5,
+                height_percent: 10.0,
+                width_px: 140,
+                height_px: 60,
                 align: 'center',
                 rotation: 0,
                 aspect_locked: true,
@@ -1246,10 +2154,15 @@ function certificateCanvasApp() {
                 name_text: '@{{perusahaan.pimpinan}}',
                 sig_image: '@{{asset.signature}}',
                 stamp_image: '@{{asset.stamp}}',
+                stamp_offset_x: 10,
+                stamp_offset_y: -35,
+                stamp_size_px: 120,
+                sig_height_px: 50,
                 x_percent: 50.0,
-                y_percent: 78.0,
-                width_percent: 40.0,
+                y_percent: 72.0,
+                width_percent: 45.0,
                 height_percent: null,
+                font_family: 'Times New Roman',
                 align: 'center',
                 rotation: 0,
                 z_index: 20,
@@ -1385,8 +2298,8 @@ function certificateCanvasApp() {
             const startY = event.clientY;
             const zoom = this.zoomLevel || 1.0;
 
-            const initW = elem.width_percent ?? 40;
-            const initH = elem.height_percent ?? 20;
+            const initW = elem.width_percent ?? (elem.width_px ? Math.round((elem.width_px / 840) * 1000) / 10 : 16.5);
+            const initH = elem.height_percent ?? (elem.height_px ? Math.round((elem.height_px / 594) * 1000) / 10 : 10.0);
             const initX = elem.x_percent ?? 50;
             const initY = elem.y_percent ?? 50;
             const initFontSize = elem.font_size_pt ?? 16;
@@ -1423,8 +2336,13 @@ function certificateCanvasApp() {
                 }
 
                 elem.width_percent = Math.round(nextW * 10) / 10;
+                elem.width_px = Math.round((elem.width_percent / 100) * 840);
                 if (elem.type !== 'text') {
                     elem.height_percent = Math.round(nextH * 10) / 10;
+                    elem.height_px = Math.round((elem.height_percent / 100) * 594);
+                }
+                if (elem.type === 'qr_code') {
+                    elem.size_px = Math.round((elem.width_percent / 100) * 840);
                 } else {
                     // Scale font size proportionally on diagonal drag for text
                     const fontRatio = nextW / initW;
@@ -1489,6 +2407,7 @@ function certificateCanvasApp() {
                 _token: '{{ csrf_token() }}',
                 _method: 'PUT',
                 name: this.templateName,
+                certificate_type: this.certificateType,
                 description: this.templateDescription,
                 canvas_layout: this.layout,
                 page_config: {

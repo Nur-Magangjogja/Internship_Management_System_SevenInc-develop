@@ -7,26 +7,57 @@
   @php
     use Carbon\Carbon;
 
-    // helper: rel path (di DB) -> data URI "data:<mime>;base64,<...>"
-    $dataUri = function ($relPath) {
-        if (empty($relPath)) return '';
-        $abs = storage_path('app/public/'.$relPath);
-        if (!file_exists($abs)) return '';
-
-        // deteksi mime + encode
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mime  = finfo_file($finfo, $abs) ?: 'image/png';
-        finfo_close($finfo);
-
-        $base64 = base64_encode(file_get_contents($abs));
-        return "data:{$mime};base64,{$base64}";
+    // helper: rel path (di DB) atau public path -> data URI
+    $resolveDataUri = function ($path, $fallbacks = []) {
+        $candidates = array_filter(array_merge([$path], (array)$fallbacks));
+        foreach ($candidates as $cand) {
+            if (empty($cand)) continue;
+            if (str_starts_with($cand, 'data:image/')) return $cand;
+            $cleanCand = ltrim($cand, '/');
+            if (str_starts_with($cleanCand, 'storage/')) {
+                $cleanCand = substr($cleanCand, 8);
+            }
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanCand)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanCand);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanCand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+            if (file_exists($cand) && is_file($cand)) {
+                $mime = mime_content_type($cand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($cand));
+            }
+            $inPub = public_path(ltrim($cand, '/'));
+            if (file_exists($inPub) && is_file($inPub)) {
+                $mime = mime_content_type($inPub) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+            }
+            $inStorage = storage_path('app/public/' . ltrim($cand, '/'));
+            if (file_exists($inStorage) && is_file($inStorage)) {
+                $mime = mime_content_type($inStorage) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+            }
+        }
+        return '';
     };
 
-    // GANTI baris Storage::url(...) kamu dengan ini:
-    $bgUrl    = $dataUri($certificate->background_image_path ?? '');
-    $logo1Url = $dataUri($certificate->company_logo_path ?? '');
+    $brandModel = null;
+    if (isset($certificate->intern->brand)) {
+        $brandModel = \App\Models\Brand::where('code', $certificate->intern->brand)->first();
+    }
+    if (!$brandModel && isset($certificate->intern->brand_id)) {
+        $brandModel = \App\Models\Brand::find($certificate->intern->brand_id);
+    }
+    if (!$brandModel && !empty($certificate->company_name)) {
+        $brandModel = \App\Models\Brand::where('name', $certificate->company_name)->first();
+    }
+
+    $bgCandidate = $brandModel?->internship_certificate_bg 
+        ?: ($certificate->background_image_path ?: 'images/certificate/certificate-bg.png');
+    $bgUrl    = $resolveDataUri($bgCandidate, ['images/certificate/certificate-bg.png']);
+    $logo1Url = $resolveDataUri($brandModel?->logo ?: ($certificate->company_logo_path ?? ''), ['images/mou/seven-inc-logo.png']);
     $logo2Url = ''; // Not used in InternCertificate
-    $ttd1Url  = $dataUri($certificate->signature_image_path ?? '');
+    $ttd1Url  = $resolveDataUri($brandModel?->signature ?: ($certificate->signature_image_path ?? ''), ['images/mou/signature-sample.png']);
+    $stampUrl = $resolveDataUri($brandModel?->stamp ?: '', []);
     $ttd2Url  = ''; // Not used in InternCertificate
 
     // Apakah kolom kanan (penandatangan 2) perlu ditampilkan
@@ -166,12 +197,15 @@
       <!-- SIGNATURES -->
       <div class="signatures">
         <!-- Left (wajib) -->
-        <div class="sig sig-left">
+        <div class="sig sig-left" style="position: relative;">
           @if(!empty($certificate->signatory_position))
             <div class="role">{{ $certificate->signatory_position }}</div>
           @endif
+          @if($stampUrl)
+            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: 5px; top: -15px; width: 125px; height: 125px; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;" />
+          @endif
           @if($ttd1Url)
-            <div class="image" style="top:-10px; left:-24px; width:300px; height:140px;">
+            <div class="image" style="top:-10px; left:-24px; width:300px; height:140px; position: relative; z-index: 2;">
               <img src="{{ $ttd1Url }}" alt="Tanda tangan 1" />
             </div>
           @endif

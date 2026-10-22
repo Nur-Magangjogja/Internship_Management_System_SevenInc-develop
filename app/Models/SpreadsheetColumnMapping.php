@@ -15,7 +15,9 @@ class SpreadsheetColumnMapping extends Model
 
     protected $fillable = [
         'public_uuid',
+        'column_identity',
         'spreadsheet_schema_version_id',
+        'sheet_id',
         'column_order',
         'sheet_header',
         'target_entity',
@@ -24,6 +26,7 @@ class SpreadsheetColumnMapping extends Model
         'direction',
         'transform_key',
         'is_required',
+        'mapping_status',
     ];
 
     protected $casts = [

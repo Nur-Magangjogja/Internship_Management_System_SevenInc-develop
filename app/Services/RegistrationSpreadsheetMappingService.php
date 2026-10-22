@@ -129,7 +129,7 @@ class RegistrationSpreadsheetMappingService
     }
 
     /**
-     * Dapatkan schema version aktif untuk pendaftaran berdasarkan tahun canonical created_at.
+     * Dapatkan schema version aktif untuk pendaftaran berdasarkan tahun canonical created_at (Read-Only).
      */
     public function getSchemaForRegistration(InternshipRegistration $registration): ?SpreadsheetSchemaVersion
     {
@@ -148,15 +148,23 @@ class RegistrationSpreadsheetMappingService
             return null;
         }
 
-        if (!app()->runningUnitTests()) {
-            return $this->syncSpreadsheetSchemaWithFormSchema($year);
-        }
-
-        return SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+        // Cari schema version aktif untuk tahun pendaftaran
+        $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
             ->where('year', $year)
             ->where('is_active', true)
-            ->with('columnMappings')
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order')])
             ->first();
+
+        // Jika tidak ada versi yang aktif, gunakan versi terbaru untuk tahun tersebut (historis)
+        if (!$schemaVersion) {
+            $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+                ->where('year', $year)
+                ->latest('id')
+                ->with(['columnMappings' => fn($q) => $q->orderBy('column_order')])
+                ->first();
+        }
+
+        return $schemaVersion;
     }
 
     /**
@@ -218,37 +226,102 @@ class RegistrationSpreadsheetMappingService
 
         $mergedColumns = array_merge($coreCols, $customCols, $systemCols);
         $activeSchemaVersion = null;
+        $versionCode = $formSchema?->version_code ?: 'v1';
 
         foreach ($connections as $connection) {
             $schemaVersion = SpreadsheetSchemaVersion::updateOrCreate(
                 [
                     'spreadsheet_connection_id' => $connection->id,
                     'year'                      => $year,
-                    'schema_version'            => 'v1',
+                    'schema_version'            => $versionCode,
                 ],
                 [
                     'sheet_tab_name' => (string) $year,
                     'is_active'      => true,
-                    'notes'          => "Auto-synced Unified Registration Contract ({$year})",
+                    'notes'          => "Auto-synced Unified Registration Contract ({$year} {$versionCode})",
                 ]
             );
 
+            // Nonaktifkan versi skema lama untuk koneksi dan tahun ini
+            SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+                ->where('year', $year)
+                ->where('id', '!=', $schemaVersion->id)
+                ->update(['is_active' => false]);
+
+            // Reconcile kolom secara non-destruktif dengan perlindungan unique constraint
             \Illuminate\Support\Facades\DB::transaction(function () use ($schemaVersion, $mergedColumns) {
-                SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->delete();
+                $existingMappings = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->get();
+
+                // Tahap 1: Pindahkan column_order yang sudah ada ke rentang tinggi sementara (+10000)
+                // guna mencegah pelanggaran unique constraint (spreadsheet_schema_version_id, column_order) saat swap/reorder
+                if ($existingMappings->isNotEmpty()) {
+                    \Illuminate\Support\Facades\DB::table('spreadsheet_column_mappings')
+                        ->where('spreadsheet_schema_version_id', $schemaVersion->id)
+                        ->update(['column_order' => \Illuminate\Support\Facades\DB::raw('column_order + 10000')]);
+                }
+
+                $byField = [];
+                $byHeader = [];
+                foreach ($existingMappings as $m) {
+                    if (!empty($m->target_field)) {
+                        $byField[$m->target_field] = $m;
+                    }
+                    $byHeader[mb_strtolower(trim($m->sheet_header))] = $m;
+                }
+
+                $usedIds = [];
 
                 foreach ($mergedColumns as $idx => $col) {
                     $order = $idx + 1;
-                    SpreadsheetColumnMapping::create([
-                        'public_uuid'                   => (string) \Illuminate\Support\Str::uuid(),
-                        'spreadsheet_schema_version_id' => $schemaVersion->id,
-                        'column_order'                  => $order,
-                        'sheet_header'                  => $col['header'],
-                        'target_entity'                 => $col['entity'],
-                        'target_field'                  => $col['field'],
-                        'data_type'                     => $col['type'],
-                        'direction'                     => $col['direction'],
-                        'transform_key'                 => $col['transform'],
-                        'is_required'                   => $col['required'],
+                    $headerKey = mb_strtolower(trim($col['header']));
+                    $fieldKey = $col['field'] ?? null;
+
+                    $matched = null;
+                    if (isset($byHeader[$headerKey]) && !in_array($byHeader[$headerKey]->id, $usedIds, true)) {
+                        $matched = $byHeader[$headerKey];
+                    } elseif ($fieldKey && isset($byField[$fieldKey]) && !in_array($byField[$fieldKey]->id, $usedIds, true)) {
+                        $matched = $byField[$fieldKey];
+                    }
+
+                    if ($matched) {
+                        $usedIds[] = $matched->id;
+                        $matched->update([
+                            'column_order'   => $order,
+                            'sheet_header'   => $col['header'],
+                            'target_entity'  => $col['entity'],
+                            'target_field'   => $col['field'],
+                            'data_type'      => $col['type'],
+                            'direction'      => $matched->direction ?: $col['direction'],
+                            'transform_key'  => $col['transform'],
+                            'is_required'    => $col['required'],
+                            'mapping_status' => 'active',
+                        ]);
+                    } else {
+                        $newMapping = SpreadsheetColumnMapping::create([
+                            'public_uuid'                   => (string) \Illuminate\Support\Str::uuid(),
+                            'column_identity'               => $col['field'] ? 'col_' . $col['field'] : 'col_' . \Illuminate\Support\Str::slug($col['header'], '_'),
+                            'spreadsheet_schema_version_id' => $schemaVersion->id,
+                            'column_order'                  => $order,
+                            'sheet_header'                  => $col['header'],
+                            'target_entity'                 => $col['entity'],
+                            'target_field'                  => $col['field'],
+                            'data_type'                     => $col['type'],
+                            'direction'                     => $col['direction'],
+                            'transform_key'                 => $col['transform'],
+                            'is_required'                   => $col['required'],
+                            'mapping_status'                => 'active',
+                        ]);
+                        $usedIds[] = $newMapping->id;
+                    }
+                }
+
+                // Kolom dalam versi ini yang tidak lagi masuk dalam target tidak dihapus, melainkan ditandai unmapped
+                $unmatched = $existingMappings->filter(fn($m) => !in_array($m->id, $usedIds, true));
+                $nextOrder = count($mergedColumns) + 1;
+                foreach ($unmatched as $orphan) {
+                    $orphan->update([
+                        'column_order'   => $nextOrder++,
+                        'mapping_status' => 'unmapped',
                     ]);
                 }
             });
@@ -302,10 +375,29 @@ class RegistrationSpreadsheetMappingService
 
         foreach ($mappings as $mapping) {
             $value = $this->resolveColumnValue($registration, $mapping);
-            $payload[$mapping->sheet_header] = $value;
+            $payload[$mapping->sheet_header] = self::escapeFormulaInjection($value);
         }
 
         return $payload;
+    }
+
+    /**
+     * Mencegah formula injection (CWE-1236) pada saat menulis ke Spreadsheet.
+     * Jika string diawali karakter formula (=, +, -, @, \t, \r), escape dengan apostrof tunggal di depan.
+     */
+    public static function escapeFormulaInjection(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+        if ($value === '') {
+            return '';
+        }
+        $firstChar = $value[0];
+        if (in_array($firstChar, ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $value;
+        }
+        return $value;
     }
 
     /**
@@ -660,7 +752,7 @@ class RegistrationSpreadsheetMappingService
             if (is_string($val) && (str_starts_with($val, 'private/') || str_starts_with($val, 'uploads/'))) {
                 $sanitizedAnswers[$key] = basename($val);
             } else {
-                $sanitizedAnswers[$key] = $val;
+                $sanitizedAnswers[$key] = self::escapeFormulaInjection($val);
             }
         }
 

@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Models\FormField;
 use App\Models\FormFieldRegistry;
 use App\Models\FormSchema;
+use App\Models\IntegrationOutboxEvent;
 use App\Models\InternshipRegistration;
 use App\Models\RegistrationCustomAnswer;
 use App\Models\RegistrationFormSnapshot;
+use App\Models\SpreadsheetConnection;
 use App\Models\User;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -731,8 +733,49 @@ class FormBuilderService
             ->exists();
         $hasAnswers = RegistrationCustomAnswer::where('field_key', $field->field_key)->exists();
 
-        if ($isRegistered || $existsInPublishedSchema || $hasAnswers) {
-            throw new DomainException("Pertanyaan '{$field->label}' telah dipublikasikan atau memiliki jawaban historis dan tidak boleh dihapus sama sekali.");
+        // Guardrail tambahan F2: Cek dependensi snapshot historis, remote spreadsheet mapping, proposal disetujui, dan pending outbox
+        $hasSnapshot = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('registration_form_snapshots')) {
+                $hasSnapshot = RegistrationFormSnapshot::where('schema_snapshot', 'LIKE', '%"' . $field->field_key . '"%')->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasSpreadsheetMapping = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('spreadsheet_column_mappings')) {
+                $hasSpreadsheetMapping = \App\Models\SpreadsheetColumnMapping::where('target_field', $field->field_key)->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasApprovedProposal = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('sheet_mapping_proposal_items')) {
+                $hasApprovedProposal = \App\Models\SheetMappingProposalItem::where('field_key', $field->field_key)
+                    ->whereHas('proposal', function ($q) {
+                        $q->whereIn('status', [
+                            \App\Models\SheetMappingProposal::STATUS_APPROVED_TO_DRAFT,
+                            \App\Models\SheetMappingProposal::STATUS_APPLIED,
+                        ]);
+                    })
+                    ->exists();
+            }
+        } catch (\Throwable) {}
+
+        $hasPendingOutbox = false;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('integration_outbox_events')) {
+                $hasPendingOutbox = \App\Models\IntegrationOutboxEvent::whereIn('status', [
+                    \App\Models\IntegrationOutboxEvent::STATUS_PENDING,
+                    \App\Models\IntegrationOutboxEvent::STATUS_PROCESSING,
+                ])
+                ->where('payload', 'LIKE', '%"' . $field->field_key . '"%')
+                ->exists();
+            }
+        } catch (\Throwable) {}
+
+        if ($isRegistered || $existsInPublishedSchema || $hasAnswers || $hasSnapshot || $hasSpreadsheetMapping || $hasApprovedProposal || $hasPendingOutbox) {
+            throw new DomainException("Pertanyaan '{$field->label}' telah dipublikasikan, memiliki jawaban/snapshot historis, atau terhubung dengan integrasi spreadsheet/antrean sinkronisasi sehingga tidak boleh dihapus sama sekali.");
         }
 
         return (bool) $field->delete();
@@ -821,6 +864,42 @@ class FormBuilderService
 
             // Buat draf baru untuk iterasi admin berikutnya
             $this->clonePublishedToDraft($lockedDraft, $publisher);
+
+            // P1.2: Catat IntegrationOutboxEvent secara atomik dalam transaksi publikasi lokal
+            $regConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+            $idempotencyKey = 'publish_sync_' . $lockedDraft->id . '_' . $publishedVersionCode . '_' . substr($schemaHash, 0, 16);
+
+            $isConfigured = $regConnection && $regConnection->is_enabled && !empty($regConnection->spreadsheet_id);
+
+            $outboxEvent = IntegrationOutboxEvent::create([
+                'public_uuid'          => (string) \Illuminate\Support\Str::uuid(),
+                'event_type'           => 'form_schema.publish_sync',
+                'target_connection_id' => $regConnection?->id,
+                'aggregate_type'       => FormSchema::class,
+                'aggregate_id'         => (string) $lockedDraft->id,
+                'idempotency_key'      => $idempotencyKey,
+                'expected_schema_hash' => $schemaHash,
+                'status'               => $isConfigured ? IntegrationOutboxEvent::STATUS_PENDING : IntegrationOutboxEvent::STATUS_SKIPPED,
+                'attempt_count'        => 0,
+                'max_attempts'         => 5,
+                'payload'              => [
+                    'year'         => (int) $lockedDraft->year,
+                    'version_code' => $publishedVersionCode,
+                    'schema_id'    => $lockedDraft->id,
+                    'schema_hash'  => $schemaHash,
+                ],
+                'response_context'     => $isConfigured ? null : ['reason' => 'Target connection not configured or disabled'],
+            ]);
+
+            if ($isConfigured) {
+                DB::afterCommit(function () use ($outboxEvent) {
+                    try {
+                        \App\Jobs\ProcessIntegrationOutboxEventJob::dispatch($outboxEvent->id);
+                    } catch (\Throwable) {
+                        // Kegagalan dispatch setelah commit tetap mempertahankan outbox pending untuk dipulihkan oleh recovery worker
+                    }
+                });
+            }
 
             return $lockedDraft->fresh();
         });

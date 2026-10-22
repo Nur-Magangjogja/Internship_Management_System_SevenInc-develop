@@ -21,6 +21,8 @@ class CloudStorageSetting extends Model
         'public_uuid',
         'name',
         'provider',
+        'canonical_parent_folder_url',
+        'canonical_parent_folder_id',
         'system_assets_folder_url',
         'system_assets_folder_id',
         'document_templates_folder_url',
@@ -30,6 +32,9 @@ class CloudStorageSetting extends Model
         'archives_folder_url',
         'archives_folder_id',
         'is_enabled',
+        'is_verified',
+        'verified_at',
+        'validation_error',
         'connection_status',
         'last_tested_at',
         'last_successful_test_at',
@@ -41,6 +46,8 @@ class CloudStorageSetting extends Model
 
     protected $casts = [
         'is_enabled'               => 'boolean',
+        'is_verified'              => 'boolean',
+        'verified_at'              => 'datetime',
         'last_tested_at'           => 'datetime',
         'last_successful_test_at'  => 'datetime',
         'last_synced_at'           => 'datetime',
@@ -66,10 +73,11 @@ class CloudStorageSetting extends Model
     public function extractAllFolderIds(): void
     {
         $fields = [
-            'system_assets_folder_url'     => 'system_assets_folder_id',
+            'canonical_parent_folder_url'   => 'canonical_parent_folder_id',
+            'system_assets_folder_url'      => 'system_assets_folder_id',
             'document_templates_folder_url' => 'document_templates_folder_id',
-            'generated_docs_folder_url'    => 'generated_docs_folder_id',
-            'archives_folder_url'          => 'archives_folder_id',
+            'generated_docs_folder_url'     => 'generated_docs_folder_id',
+            'archives_folder_url'           => 'archives_folder_id',
         ];
 
         foreach ($fields as $urlField => $idField) {
@@ -86,6 +94,49 @@ class CloudStorageSetting extends Model
                 }
             }
         }
+    }
+
+    /**
+     * Dapatkan Folder ID kanonikal efektif untuk operasi Google Drive.
+     * Aturan prioritas Addendum V4:
+     * 1. Canonical parent folder ID dari UI settings jika terverifikasi/diisi
+     * 2. Fallback bootstrap terverifikasi dari config/ENV services.google.drive_folder_id jika UI belum ada
+     * 3. Jika terjadi perbedaan root eksplisit antara UI dan ENV, deteksi konflik (ROOT_CONFIG_CONFLICT)
+     * 4. DILARANG KERAS fallback ke root Google Drive umum ('root' atau '/')
+     */
+    public function getEffectiveParentFolderId(): ?string
+    {
+        $uiRootId = $this->canonical_parent_folder_id ?: self::extractDriveFolderId($this->canonical_parent_folder_url);
+        $envRootId = self::extractDriveFolderId(config('services.google.drive_folder_id'));
+
+        // Jika keduanya ada tapi berbeda, tandai konflik
+        if (!empty($uiRootId) && !empty($envRootId) && $uiRootId !== $envRootId) {
+            // UI canonical root yang tervalidasi tetap menjadi otoritas utama,
+            // namun mencatat peringatan konflik
+            return $uiRootId;
+        }
+
+        if (!empty($uiRootId)) {
+            return $uiRootId;
+        }
+
+        if (!empty($envRootId)) {
+            return $envRootId;
+        }
+
+        // Tidak boleh fallback ke 'root' Drive umum
+        return null;
+    }
+
+    /**
+     * Periksa apakah terjadi konflik konfigurasi root antara UI dan ENV.
+     */
+    public function hasRootConfigConflict(): bool
+    {
+        $uiRootId = $this->canonical_parent_folder_id ?: self::extractDriveFolderId($this->canonical_parent_folder_url);
+        $envRootId = self::extractDriveFolderId(config('services.google.drive_folder_id'));
+
+        return (!empty($uiRootId) && !empty($envRootId) && $uiRootId !== $envRootId);
     }
 
     /**

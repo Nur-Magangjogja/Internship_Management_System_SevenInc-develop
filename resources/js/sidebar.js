@@ -104,21 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return menu;
     };
 
-    const notificationMenu = toggleMenu(
-        'admin-notification-toggle',
-        'admin-notification-menu'
-    );
-
     const profileMenu = toggleMenu(
         'admin-profile-toggle',
         'admin-profile-menu'
     );
 
     document.addEventListener('click', (event) => {
-        if (!event.target.closest('#admin-notification-toggle')) {
-            notificationMenu?.classList.add('hidden');
-        }
-
         if (!event.target.closest('#admin-profile-toggle')) {
             profileMenu?.classList.add('hidden');
         }

@@ -132,12 +132,12 @@ class VariableResolverService
                 : '-';
         } else {
             $variables['dokumen.tanggal'] = now()->translatedFormat('d F Y');
-            $variables['dokumen.tempat'] = $brandModel?->city ?? 'Yogyakarta';
+            $variables['dokumen.tempat'] = $brandModel?->city ?? 'Sleman';
             $variables['dokumen.penandatangan_nama'] = $brandModel?->signatory_name ?? ($isLiveIssuance ? null : 'Rekario Danny Sanjaya, S.Kom.');
-            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Pimpinan');
+            $variables['dokumen.penandatangan_jabatan'] = $brandModel?->signatory_position ?? ($isLiveIssuance ? null : 'Direktur Utama');
 
             $variables['brand.nama'] = $brandModel?->name ?? 'SEVEN INC';
-            $variables['brand.alamat'] = $brandModel?->address ?? '-';
+            $variables['brand.alamat'] = $brandModel?->company_address ?? ($brandModel?->address ?? 'Jl. Janti Gg. Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198');
             $variables['brand.telepon'] = $brandModel?->phone ?? '-';
             $variables['brand.email'] = $brandModel?->email ?? '-';
             $variables['brand.penandatangan.nama'] = $variables['dokumen.penandatangan_nama'];
@@ -258,12 +258,13 @@ class VariableResolverService
                         allowGlobalFallback: false // Institusi dilarang fallback ke brand/global!
                     );
                 } elseif ($owner === 'brand') {
+                    // Addendum Final V4: Jika brand_id ditentukan, dilarang keras fallback ke logo Seven Inc global
                     $resolvedAsset = $this->assetService->resolveAsset(
                         category: $category,
                         assetCode: $tokenKey,
                         brandId: $brandId,
                         institutionId: null,
-                        allowGlobalFallback: true // Hanya logo/kop/background yang boleh fallback
+                        allowGlobalFallback: ($brandId === null)
                     );
                 } else {
                     // Global (cth: background sertifikat)
@@ -294,14 +295,15 @@ class VariableResolverService
             } else {
                 $missingAssets[] = $tokenKey;
 
-                // Fallback HANYA untuk preview mock, DILARANG KERAS untuk live issuance resmi (INV-05, INV-06, INV-14)
+                // Fallback HANYA untuk preview mock ketika brand belum ditentukan secara spesifik
+                // DILARANG KERAS untuk live issuance resmi atau fallback lintas-owner brand (Addendum V4 C14, C15)
                 if ($isPreviewMock && !$isLiveIssuance) {
                     $fallback = match ($category) {
                         SystemAsset::CATEGORY_LOGO       => ($owner === 'institution')
                             ? 'images/mou/institution-logo-placeholder.png'
-                            : 'images/logos/logo_seveninc.png',
-                        SystemAsset::CATEGORY_SIGNATURE  => 'images/signatures/ttd.png',
-                        SystemAsset::CATEGORY_STAMP      => 'images/stamps/stamp.png',
+                            : ($brandId ? null : 'images/logos/logo_seveninc.png'),
+                        SystemAsset::CATEGORY_SIGNATURE  => ($brandId ? null : 'images/signatures/ttd.png'),
+                        SystemAsset::CATEGORY_STAMP      => ($brandId ? null : 'images/stamps/stamp.png'),
                         SystemAsset::CATEGORY_BACKGROUND => 'images/backgrounds/cert_bg.png',
                         default                          => null,
                     };

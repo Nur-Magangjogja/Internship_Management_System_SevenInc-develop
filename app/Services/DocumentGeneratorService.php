@@ -191,7 +191,7 @@ class DocumentGeneratorService
      * Pastikan dokumen LOA (record database dan file PDF) telah digenerate untuk pemagang.
      * Sangat berguna saat pemagang masuk langsung berstatus aktif (misal dari Absen Djuragan).
      */
-    public function ensureLoaGenerated(InternshipRegistration $intern, ?User $actor = null): InternLoa
+    public function ensureLoaGenerated(InternshipRegistration $intern, ?User $actor = null, bool $forceRefresh = false): InternLoa
     {
         $intern->loadMissing(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
 
@@ -200,70 +200,114 @@ class DocumentGeneratorService
             ->orWhere('code', $brandCode)
             ->first();
 
-        $companyName       = $brandData->name ?? $brandCode ?? 'Seven Inc';
-        $companyAddress    = $brandData?->company_address;
-        $signatoryName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
-        $signatoryPosition = $brandData->signatory_position ?? 'HRD';
+        // 1. Dapatkan atau alokasikan nomor LOA
+        $internLoa = InternLoa::where('intern_id', $intern->id)->latest('id')->first();
+        $loaNumber = $internLoa?->loa_number ?: $this->generateUniqueLoaNumber($intern, $brandData);
 
-        // 1. Dapatkan atau buat data rekam InternLoa di database
+        // 2. Cek apakah berkas PDF valid sudah ada di disk local dan public
+        $safeLoaNumber = str_replace(['/', '\\'], '-', $loaNumber);
+        $safeName      = Str::slug($intern->fullname ?? 'intern', '-');
+        $fileName      = "{$safeLoaNumber}-{$safeName}.pdf";
+        $relPath       = 'documents/loa/' . $fileName;
+
+        $localSize     = Storage::disk('local')->exists($relPath) ? (int)Storage::disk('local')->size($relPath) : 0;
+        $publicSize    = Storage::disk('public')->exists($relPath) ? (int)Storage::disk('public')->size($relPath) : 0;
+
+        // Berkas PDF legacy berukuran ~3KB, template modern ~150KB+. Jika < 15KB atau dipaksa refresh, render ulang dari template.
+        $needsRegen    = $forceRefresh || $localSize < 15000 || $publicSize < 15000;
+
+        if ($needsRegen) {
+            /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+            $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+            $template = $issuanceService->resolveActiveTemplate('loa', failClosed: false);
+
+            if ($template && $template->exists) {
+                try {
+                    $context = $issuanceService->buildContext($intern, 'loa', ['document_number' => $loaNumber], isLiveIssuance: true);
+                    $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($template, $context['variables'], isLiveIssuance: true);
+
+                    Storage::disk('local')->put($relPath, $pdfBinary);
+                    Storage::disk('public')->put($relPath, $pdfBinary);
+
+                    $generatedDoc = $issuanceService->issueDocument(
+                        intern: $intern,
+                        documentType: 'loa',
+                        options: ['document_number' => $loaNumber, 'template_id' => $template->id],
+                        actor: $actor
+                    );
+
+                    if ($generatedDoc && Storage::disk('local')->exists($generatedDoc->file_path)) {
+                        Storage::disk('local')->put($generatedDoc->file_path, $pdfBinary);
+                        $generatedDoc->file_size_bytes = strlen($pdfBinary);
+                        $generatedDoc->checksum_sha256 = hash('sha256', $pdfBinary);
+                        $generatedDoc->save();
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal issue LOA via DocumentTemplate: " . $e->getMessage() . " — mencoba render langsung");
+                    try {
+                        $context = $issuanceService->buildContext($intern, 'loa', ['document_number' => $loaNumber], isLiveIssuance: true);
+                        $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($template, $context['variables'], isLiveIssuance: true);
+                        Storage::disk('local')->put($relPath, $pdfBinary);
+                        Storage::disk('public')->put($relPath, $pdfBinary);
+                    } catch (\Throwable $errRender) {
+                        \Illuminate\Support\Facades\Log::error("Gagal fallback render LOA: " . $errRender->getMessage());
+                    }
+                }
+            } else {
+                // Fallback legacy bila template aktif belum tersedia sama sekali
+                $companyName       = $brandData->name ?? $brandCode ?? 'Seven Inc';
+                $companyAddress    = $brandData?->company_address;
+                $signatoryName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
+                $signatoryPosition = $brandData->signatory_position ?? 'HRD';
+                $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
+                $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+                $rows      = $this->buildRows([$intern]);
+
+                $pdf = Pdf::loadView('user.loa', [
+                    'intern'          => $intern,
+                    'loaNumber'       => $loaNumber,
+                    'user'            => $intern->user,
+                    'loaSettings'     => (object)[
+                        'header_text'        => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+                        'footer_text'        => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+                        'company_name'       => $companyName,
+                        'company_address'    => $companyAddress,
+                        'signatory_name'     => $signatoryName,
+                        'signatory_position' => $signatoryPosition,
+                    ],
+                    'rows'            => $rows,
+                    'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
+                    'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
+                    'logoData'        => $logoData,
+                    'stampData'       => $stampData,
+                ])->setPaper('A4', 'portrait');
+
+                $pdf->setOptions(['isRemoteEnabled' => true, 'isPhpEnabled' => true]);
+                $pdfOutput = $pdf->output();
+
+                Storage::disk('local')->put($relPath, $pdfOutput);
+                Storage::disk('public')->put($relPath, $pdfOutput);
+            }
+        }
+
+        // 3. Pastikan record InternLoa selalu tersinkron
         $internLoa = InternLoa::where('intern_id', $intern->id)->latest('id')->first();
         if (!$internLoa) {
-            $loaNumber = $this->generateUniqueLoaNumber($intern, $brandData);
             $internLoa = InternLoa::create([
                 'intern_id'            => $intern->id,
                 'loa_number'           => $loaNumber,
                 'accepted_start_date'  => $intern->start_date ?? now(),
                 'accepted_end_date'    => $intern->end_date ?? now(),
-                'company_name'         => $companyName,
+                'company_name'         => $brandData?->name ?? 'Seven Inc',
                 'company_logo_path'    => $brandData?->logo,
-                'signatory_name'       => $signatoryName,
-                'signatory_position'   => $signatoryPosition,
+                'signatory_name'       => $brandData?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.',
+                'signatory_position'   => $brandData?->signatory_position ?? 'Direktur Utama',
                 'signature_image_path' => $brandData?->signature,
                 'created_at'           => now(),
             ]);
         }
 
-        // 2. Pastikan file PDF tersimpan di disk local dan public
-        $safeLoaNumber = str_replace(['/', '\\'], '-', $internLoa->loa_number);
-        $safeName      = Str::slug($intern->fullname ?? 'intern', '-');
-        $fileName      = "{$safeLoaNumber}-{$safeName}.pdf";
-        $relPath       = 'documents/loa/' . $fileName;
-
-        $hasLocalFile  = Storage::disk('local')->exists($relPath) && (int)Storage::disk('local')->size($relPath) > 0;
-        $hasPublicFile = Storage::disk('public')->exists($relPath) && (int)Storage::disk('public')->size($relPath) > 0;
-
-        if (!$hasLocalFile || !$hasPublicFile) {
-            $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-            $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
-            $rows      = $this->buildRows([$intern]);
-
-            $pdf = Pdf::loadView('user.loa', [
-                'intern'          => $intern,
-                'loaNumber'       => $internLoa->loa_number,
-                'user'            => $intern->user,
-                'loaSettings'     => (object)[
-                    'header_text'        => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                    'footer_text'        => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                    'company_name'       => $companyName,
-                    'company_address'    => $companyAddress,
-                    'signatory_name'     => $signatoryName,
-                    'signatory_position' => $signatoryPosition,
-                ],
-                'rows'            => $rows,
-                'openingGreeting' => 'Dengan ini kami mengonfirmasi bahwa pendaftar di bawah ini telah diterima untuk mengikuti program magang.',
-                'closingGreeting' => 'Harap konfirmasi kehadiran Anda melalui email atau telepon yang tertera.',
-                'logoData'        => $logoData,
-                'stampData'       => $stampData,
-            ])->setPaper('A4', 'portrait');
-
-            $pdf->setOptions(['isRemoteEnabled' => true, 'isPhpEnabled' => true]);
-            $pdfOutput = $pdf->output();
-
-            Storage::disk('local')->put($relPath, $pdfOutput);
-            Storage::disk('public')->put($relPath, $pdfOutput);
-        }
-
-        // 3. Catat audit log jika actor diberikan
+        // 4. Catat audit log jika actor diberikan
         if ($actor && in_array($actor->role, self::PRIVILEGED_ROLES, true)) {
             $this->logDocumentAccess('loa', $intern, $actor, 'generated');
         }

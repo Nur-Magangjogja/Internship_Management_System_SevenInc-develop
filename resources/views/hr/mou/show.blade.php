@@ -16,47 +16,6 @@
             </svg>
             Kembali ke Daftar Dokumen MOU
         </a>
-
-        <div class="flex flex-wrap items-center gap-2">
-            <button
-                type="button"
-                onclick="handleMouPrint()"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 6 2 18 2 18 9"/>
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                    <rect x="6" y="14" width="12" height="8"/>
-                </svg>
-                Cetak Browser
-            </button>
-
-            <a
-                href="{{ route($routePrefix . '.download-pdf', $mou) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
-            >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Unduh Draf PDF (A4)
-            </a>
-
-            @if($mou->has_signed_file)
-                <a
-                    href="{{ route($routePrefix . '.download-signed', $mou) }}"
-                    class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Unduh Dokumen Bertandatangan (PDF)
-                </a>
-            @endif
-        </div>
     </div>
 
     <!-- Alert Notifications -->
@@ -161,6 +120,19 @@
                 @endif
 
                 @if($mou->has_signed_file || $mou->signed_file_path)
+                    <a
+                        href="{{ route($routePrefix . '.download-signed', $mou) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
+                        title="Unduh berkas naskah PDF yang sudah bertandatangan resmi"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        <span>Unduh Naskah Sah (PDF)</span>
+                    </a>
+
                     @if($mou->is_drive_synced)
                         <a
                             href="{{ $mou->drive_web_view_link }}"
@@ -290,9 +262,19 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 no-print">
         <!-- Pihak Pertama -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 pb-2 border-b border-slate-100">
-                Pihak Pertama (Institusi Mitra)
-            </h3>
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Pihak Pertama (Institusi Mitra)
+                </h3>
+                @php
+                    $instLogo = $mou->render_data_snapshot['institution_logo_path'] ?? ($mou->institution?->logo_url ?: null);
+                @endphp
+                @if($instLogo)
+                    <div class="h-8 w-14 shrink-0 flex items-center justify-center p-0.5 border border-slate-200 rounded bg-slate-50 overflow-hidden shadow-2xs">
+                        <img src="{{ $instLogo }}" alt="Logo Institusi" class="max-h-full max-w-full object-contain">
+                    </div>
+                @endif
+            </div>
             <table class="w-full text-xs">
                 <tr class="border-b border-slate-50">
                     <td class="py-2 text-slate-400 w-36">Nama Institusi</td>
@@ -323,9 +305,19 @@
 
         <!-- Pihak Kedua -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 pb-2 border-b border-slate-100">
-                Pihak Kedua (Seven Inc)
-            </h3>
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Pihak Kedua (Seven Inc)
+                </h3>
+                @php
+                    $compLogo = $mou->render_data_snapshot['company_logo_path'] ?? ($mou->brand?->logo_url ?: null);
+                @endphp
+                @if($compLogo)
+                    <div class="h-8 w-16 shrink-0 flex items-center justify-center p-0.5 border border-slate-200 rounded bg-slate-50 overflow-hidden shadow-2xs">
+                        <img src="{{ $compLogo }}" alt="Logo Perusahaan" class="max-h-full max-w-full object-contain">
+                    </div>
+                @endif
+            </div>
             <table class="w-full text-xs">
                 <tr class="border-b border-slate-50">
                     <td class="py-2 text-slate-400 w-36">Nama Perusahaan</td>
@@ -1065,6 +1057,43 @@
             // Bersihkan style internal atau layer watermark bawaan dari snapshot mentah agar tidak terduplikasi
             const cloneRoot = innerRoot.cloneNode(true);
             cloneRoot.querySelectorAll('style, .mou-watermark-layer').forEach(el => el.remove());
+
+            // Satukan dua tabel korespondensi berurutan (PIHAK KESATU & PIHAK KEDUA) jika snapshot lama menyimpannya terpisah
+            const corrTables = Array.from(cloneRoot.querySelectorAll('.mou-correspondence-table'));
+            for (let cIdx = 0; cIdx < corrTables.length - 1; cIdx++) {
+                const curT = corrTables[cIdx];
+                const nextT = curT.nextElementSibling;
+                if (nextT && nextT.classList.contains('mou-correspondence-table')) {
+                    const tb1 = curT.querySelector('tbody');
+                    const tb2 = nextT.querySelector('tbody');
+                    if (tb1 && tb2) {
+                        while (tb2.firstElementChild) {
+                            tb1.appendChild(tb2.firstElementChild);
+                        }
+                        nextT.remove();
+                    }
+                }
+            }
+
+            // Normalisasi proporsi kolom tabel korespondensi agar rapat dan tidak berjarak jauh
+            cloneRoot.querySelectorAll('.mou-correspondence-table').forEach(t => {
+                t.style.width = '100%';
+                t.style.tableLayout = 'fixed';
+                t.style.marginTop = '4pt';
+                t.style.marginBottom = '6pt';
+                t.querySelectorAll('tr').forEach(tr => {
+                    const tds = Array.from(tr.children);
+                    if (tds.length === 3) {
+                        tds[0].style.width = '22%';
+                        tds[0].style.padding = '2pt 5pt 2pt 14pt';
+                        tds[1].style.width = '4%';
+                        tds[1].style.textAlign = 'center';
+                        tds[1].style.padding = '2pt 2pt';
+                        tds[2].style.width = '74%';
+                        tds[2].style.padding = '2pt 5pt';
+                    }
+                });
+            });
 
             const rawBlocks = Array.from(cloneRoot.children).filter(el => {
                 return !el.classList.contains('mou-a4-page-header') &&

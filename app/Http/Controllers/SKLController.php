@@ -153,6 +153,25 @@ class SKLController extends Controller
                     ]
                 );
 
+                /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+                $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+                $activeTemplate = $issuanceService->resolveActiveTemplate('skl', failClosed: false);
+                if ($activeTemplate && $activeTemplate->exists) {
+                    try {
+                        $issuanceService->issueDocument(
+                            intern: $intern,
+                            documentType: 'skl',
+                            options: [
+                                'document_number' => $letterNumber,
+                                'template_id'     => $activeTemplate->id,
+                            ],
+                            actor: $request->user()
+                        );
+                    } catch (\Throwable $eIssue) {
+                        Log::warning("Gagal issue SKL template di batch: " . $eIssue->getMessage());
+                    }
+                }
+
                 $generatedFiles[$intern->id] = [
                     'fullname' => $participantName,
                     'path'     => '', // Removed physical path
@@ -212,18 +231,42 @@ class SKLController extends Controller
             return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($file->getRealPath()));
         }
 
-        if ($savedPath) {
-            $fullPath = storage_path('app/public/' . $savedPath);
-            if (file_exists($fullPath)) {
-                $mime = mime_content_type($fullPath);
-                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($fullPath));
-            }
-        }
+        $candidates = array_filter([
+            $savedPath,
+            $fallbackRelative,
+            'images/mou/seven-inc-logo.png',
+            'images/mou/signature-sample.png',
+            'images/mou/stamp-sample.png',
+            'images/logos/logo_seveninc.png',
+            'images/signature/ttd_arisetiahusbana.png',
+        ]);
 
-        $fallbackPath = storage_path('app/public/' . $fallbackRelative);
-        if (file_exists($fallbackPath)) {
-            $mime = mime_content_type($fallbackPath);
-            return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($fallbackPath));
+        foreach ($candidates as $cand) {
+            if (empty($cand)) continue;
+            if (str_starts_with($cand, 'data:image/')) return $cand;
+            $cleanCand = ltrim($cand, '/');
+            if (str_starts_with($cleanCand, 'storage/')) {
+                $cleanCand = substr($cleanCand, 8);
+            }
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanCand)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanCand);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanCand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+            if (file_exists($cand) && is_file($cand)) {
+                $mime = mime_content_type($cand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($cand));
+            }
+            $inPub = public_path(ltrim($cand, '/'));
+            if (file_exists($inPub) && is_file($inPub)) {
+                $mime = mime_content_type($inPub) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+            }
+            $inStorage = storage_path('app/public/' . ltrim($cand, '/'));
+            if (file_exists($inStorage) && is_file($inStorage)) {
+                $mime = mime_content_type($inStorage) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+            }
         }
 
         return null;
@@ -263,26 +306,17 @@ class SKLController extends Controller
         $letterNumber  = 'SKL/'.Carbon::parse($endAt)->format('Y').'/DEMO';
 
         // Assets
-        $logoFile  = public_path('storage/images/logos/logo_seveninc.png');
-        $stampFile = public_path('storage/images/signature/ttd_arisetiahusbana.png');
-
-        // Fallback stamp ke file TTD lain yang ada
-        if (!file_exists($stampFile)) {
-            $candidates = glob(public_path('storage/images/signature/*.{png,jpg,jpeg}'), GLOB_BRACE);
-            $stampFile  = !empty($candidates) ? $candidates[0] : null;
-        }
-
-        $logoPath  = $logoFile;
-        $stampPath = $stampFile;
+        $logoData  = $this->resolveBase64Image($request, 'logo',  null, 'images/mou/seven-inc-logo.png');
+        $stampData = $this->resolveBase64Image($request, 'stamp', null, 'images/mou/stamp-sample.png');
+        $sigData   = $this->resolveBase64Image($request, 'sig',   null, 'images/mou/signature-sample.png');
 
         // Mendapatkan data dari request atau menggunakan default value
         $activityDescription = $request->get('activity_description', '');
         $participantAchievement = $request->get('participant_achievement', '');
 
-
         return view('user.skl', compact(
             'companyName','companyAddress','companyCity','leaderName','leaderTitle',
-            'letterNumber','logoPath','stampPath',
+            'letterNumber','logoData','stampData','sigData',
             'participantName','participantId','participantMajor','participantInstitute','divisionName',
             'startStr','endStr','letterDateStr','activityDescription', 'participantAchievement'
         ));
@@ -306,6 +340,15 @@ class SKLController extends Controller
     public function rawPreview(Request $request, $id)
     {
         $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $template = $issuanceService->resolveActiveTemplate('skl', failClosed: false);
+
+        if ($template && $template->exists) {
+            $preview = $issuanceService->previewDocument($intern, 'skl', ['template_id' => $template->id]);
+            return response($preview['html'], 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        }
 
         $brandCode = $intern->brandRel?->code ?? $intern->brand;
         $brandData = $intern->brandRel ?? \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim((string)$brandCode))])
@@ -332,19 +375,16 @@ class SKLController extends Controller
         $letterDateStr = Carbon::parse($endAt)->isoFormat('D MMMM Y');
         $letterNumber  = 'SKL/' . Carbon::parse($endAt)->format('Y') . '/' . str_pad($intern->id, 3, '0', STR_PAD_LEFT);
 
-        $logoPath  = public_path('storage/images/logos/logo_seveninc.png');
-        $stampPath = public_path('storage/images/signature/ttd_arisetiahusbana.png');
-        if (!file_exists($stampPath)) {
-            $candidates = glob(public_path('storage/images/signature/*.{png,jpg,jpeg}'), GLOB_BRACE);
-            $stampPath  = !empty($candidates) ? $candidates[0] : null;
-        }
+        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $brandData?->logo,      'images/mou/seven-inc-logo.png');
+        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,     'images/mou/stamp-sample.png');
+        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $brandData?->signature, 'images/mou/signature-sample.png');
 
         $activityDescription = 'Telah menyelesaikan seluruh rangkaian kegiatan program magang sesuai dengan ketentuan yang berlaku.';
         $participantAchievement = 'Sangat Baik';
 
         return view('user.skl', compact(
             'companyName','companyAddress','companyCity','leaderName','leaderTitle',
-            'letterNumber','logoPath','stampPath',
+            'letterNumber','logoData','stampData','sigData',
             'participantName','participantId','participantMajor','participantInstitute','divisionName',
             'startStr','endStr','letterDateStr','activityDescription', 'participantAchievement'
         ));
@@ -372,11 +412,80 @@ class SKLController extends Controller
 
         // Ambil data magang (multi-period aware: utamakan completed internship)
         $lifecycle     = app(\App\Services\RegistrationLifecycleService::class);
-        $specificRegId = $request->query('registration_id');
+        $specificRegId = $request->query('registration_id') ?? $request->get('intern_id');
         $ir            = $lifecycle->resolveRegistrationForDocuments($targetUser, $specificRegId ? (int) $specificRegId : null);
+
+        if (!$ir && $request->get('intern_id')) {
+            $ir = IR::find($request->get('intern_id'));
+        }
 
         if (!$ir || $ir->internship_status !== 'completed') {
             abort(403, 'SKL hanya dapat diunduh setelah status magang completed.');
+        }
+
+        $safeName = preg_replace('/[^a-z0-9\-_]+/i', '_', $ir->fullname ?? $targetUser->name);
+        $fileName = "SKL_{$safeName}.pdf";
+
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('skl', failClosed: false);
+
+        if ($activeTemplate && $activeTemplate->exists) {
+            $genDoc = \App\Models\GeneratedDocument::select(['id', 'file_path', 'file_name'])
+                ->where('internship_registration_id', $ir->id)
+                ->where('document_type', 'skl')
+                ->latest('id')
+                ->first();
+
+            // Cek apakah berkas fisik yang valid dan berukuran penuh (> 260KB) sudah tersedia
+            if ($genDoc && Storage::disk('local')->exists($genDoc->file_path)) {
+                $fullPath = Storage::disk('local')->path($genDoc->file_path);
+                if (filesize($fullPath) > 260000) {
+                    return response()->download($fullPath, $fileName, ['Content-Type' => 'application/pdf']);
+                }
+            }
+
+            // Jika belum ada atau berkas lama belum memuat gambar, render PDF dari template aktif
+            try {
+                $context = $issuanceService->buildContext($ir, 'skl', ['template_id' => $activeTemplate->id], isLiveIssuance: true);
+                $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                if ($genDoc && !empty($genDoc->file_path)) {
+                    Storage::disk('local')->put($genDoc->file_path, $pdfBinary);
+                    $fullPath = Storage::disk('local')->path($genDoc->file_path);
+                    return response()->download($fullPath, $fileName, ['Content-Type' => 'application/pdf']);
+                }
+
+                $issued = $issuanceService->issueDocument(
+                    intern: $ir,
+                    documentType: 'skl',
+                    options: ['template_id' => $activeTemplate->id],
+                    actor: $authUser
+                );
+
+                if ($issued && Storage::disk('local')->exists($issued->file_path)) {
+                    Storage::disk('local')->put($issued->file_path, $pdfBinary);
+                    $fullPath = Storage::disk('local')->path($issued->file_path);
+                    return response()->download($fullPath, $fileName, ['Content-Type' => 'application/pdf']);
+                }
+            } catch (\Throwable $e) {
+                Log::warning("Gagal issue SKL: " . $e->getMessage() . " — mencoba render template langsung");
+                try {
+                    $context = $issuanceService->buildContext($ir, 'skl', ['template_id' => $activeTemplate->id], isLiveIssuance: true);
+                    $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                    $tmpPath = storage_path('app/tmp/' . $fileName);
+                    if (!is_dir(dirname($tmpPath))) {
+                        mkdir(dirname($tmpPath), 0775, true);
+                    }
+                    file_put_contents($tmpPath, $pdfBinary);
+
+                    return response()->download($tmpPath, $fileName, ['Content-Type' => 'application/pdf'])
+                        ->deleteFileAfterSend(true);
+                } catch (\Throwable $errRender) {
+                    Log::error("Gagal fallback render SKL: " . $errRender->getMessage());
+                }
+            }
         }
 
         // Cari rekam SKL di database
@@ -385,9 +494,6 @@ class SKLController extends Controller
             return back()->with('error', 'SKL belum tersedia. Hubungi admin untuk mendapatkan SKL Anda.');
         }
 
-        $safeName = preg_replace('/[^a-z0-9\-_]+/i', '_', $ir->fullname ?? $targetUser->name);
-        $fileName = "SKL_{$safeName}.pdf";
-        
         $brandData = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower(trim($ir->brand))])
             ->orWhere('code', $ir->brand)
             ->first();
@@ -407,8 +513,9 @@ class SKLController extends Controller
         $endStr        = $ir->end_date   ? Carbon::parse($ir->end_date)->isoFormat('D MMMM Y')   : '-';
         $letterDateStr = $ir->end_date   ? Carbon::parse($ir->end_date)->isoFormat('D MMMM Y')   : now()->translatedFormat('d F Y');
 
-        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $sklRecord->company_logo_path,  'images/logos/logo_seveninc.png');
-        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $sklRecord->signature_image_path, 'images/signature/ttd_arisetiahusbana.png');
+        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $sklRecord->company_logo_path,  'images/mou/seven-inc-logo.png');
+        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,            'images/mou/stamp-sample.png');
+        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $sklRecord->signature_image_path, 'images/mou/signature-sample.png');
 
         $data = [
             'companyName'            => $companyName,
@@ -419,6 +526,7 @@ class SKLController extends Controller
             'letterNumber'           => $sklRecord->skl_number,
             'logoData'               => $logoData,
             'stampData'              => $stampData,
+            'sigData'                => $sigData,
             'participantName'        => $ir->fullname ?? '-',
             'participantId'          => $ir->student_id ?? '-',
             'participantMajor'       => $ir->study_program ?? '-',

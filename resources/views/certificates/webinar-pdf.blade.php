@@ -6,22 +6,63 @@
   @php
     use Carbon\Carbon;
 
-    // Helper: relative path → data URI
-    $dataUri = function ($relPath) {
-        if (empty($relPath)) return '';
-        $abs = storage_path('app/public/' . $relPath);
-        if (!file_exists($abs)) return '';
-        $finfo  = finfo_open(FILEINFO_MIME_TYPE);
-        $mime   = finfo_file($finfo, $abs) ?: 'image/png';
-        finfo_close($finfo);
-        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($abs));
+    // Helper: relative/absolute path or fallback → data URI
+    $resolveDataUri = function ($path, $fallbacks = []) {
+        $candidates = array_filter(array_merge([$path], (array)$fallbacks));
+        foreach ($candidates as $cand) {
+            if (empty($cand)) continue;
+            if (str_starts_with($cand, 'data:image/')) return $cand;
+            $cleanCand = ltrim($cand, '/');
+            if (str_starts_with($cleanCand, 'storage/')) {
+                $cleanCand = substr($cleanCand, 8);
+            }
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($cleanCand)) {
+                $content = \Illuminate\Support\Facades\Storage::disk('public')->get($cleanCand);
+                $mime = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($cleanCand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode($content);
+            }
+            if (file_exists($cand) && is_file($cand)) {
+                $mime = mime_content_type($cand) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($cand));
+            }
+            $inPub = public_path(ltrim($cand, '/'));
+            if (file_exists($inPub) && is_file($inPub)) {
+                $mime = mime_content_type($inPub) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inPub));
+            }
+            $inStorage = storage_path('app/public/' . ltrim($cand, '/'));
+            if (file_exists($inStorage) && is_file($inStorage)) {
+                $mime = mime_content_type($inStorage) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($inStorage));
+            }
+        }
+        return '';
     };
 
-    $bgUrl    = $dataUri($certificate->background_image_path ?? $certificate->background_image ?? '');
-    $logo1Url = $dataUri($certificate->company_logo_path ?? $certificate->logo1 ?? '');
-    $logo2Url = $dataUri($certificate->logo2 ?? '');
-    $ttd1Url  = $dataUri($certificate->signature_image_path ?? $certificate->signature_image1 ?? '');
-    $ttd2Url  = $dataUri($certificate->signature_image2 ?? '');
+    $brandModel = $certificate->attendance?->webinar?->brand;
+    if (!$brandModel && !empty($certificate->company_name)) {
+        $brandModel = \App\Models\Brand::where('name', $certificate->company_name)->first();
+    }
+
+    $bgCandidate = $brandModel?->webinar_certificate_bg 
+        ?: ($certificate->background_image_path ?? $certificate->background_image ?? '');
+
+    $bgUrl    = $resolveDataUri($bgCandidate, [
+        'images/certificate/certificate-bg.png',
+        'images/backgrounds/cert_bg.png',
+    ]);
+    $logo1Url = $resolveDataUri($brandModel?->logo ?: ($certificate->company_logo_path ?? $certificate->logo1 ?? ''), [
+        'images/mou/seven-inc-logo.png',
+        'images/logos/logo_seveninc.png',
+    ]);
+    $logo2Url = $resolveDataUri($certificate->logo2 ?? '');
+    $ttd1Url  = $resolveDataUri($brandModel?->signature ?: ($certificate->signature_image_path ?? $certificate->signature_image1 ?? ''), [
+        'images/mou/signature-sample.png',
+        'images/signature/ttd_arisetiahusbana.png',
+        'images/signatures/ttd.png',
+    ]);
+    $ttd2Url  = $resolveDataUri($certificate->signature_image2 ?? '');
+    $stampUrl = $resolveDataUri($brandModel?->stamp ?: '', []);
 
     $hasRightSig = $ttd2Url || !empty($certificate->name_signatory2) || !empty($certificate->role2);
 
@@ -291,9 +332,12 @@
         @else
           <div class="sig-role">&nbsp;</div>
         @endif
-        <div class="sig-ttd">
+        <div class="sig-ttd" style="position: relative;">
+          @if(!empty($stampUrl))
+            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: -14mm; top: -8mm; height: 28mm; width: 28mm; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;">
+          @endif
           @if($ttd1Url)
-            <img src="{{ $ttd1Url }}" alt="TTD">
+            <img src="{{ $ttd1Url }}" alt="TTD" style="position: relative; z-index: 2;">
           @endif
         </div>
         <div class="sig-line"></div>

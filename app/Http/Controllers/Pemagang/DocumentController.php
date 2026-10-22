@@ -154,6 +154,11 @@ class DocumentController extends Controller
             ? InternExtra::where('intern_id', $registration->id)->first()
             : null;
 
+        // Tandai bahwa pemagang telah melihat seluruh dokumen yang tersedia saat ini
+        if ($user && method_exists($user, 'markDocumentsAsViewed')) {
+            $user->markDocumentsAsViewed();
+        }
+
         return view('pemagang.documents.index', compact(
             'user',
             'registration',

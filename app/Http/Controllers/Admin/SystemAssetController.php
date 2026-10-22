@@ -164,6 +164,52 @@ class SystemAssetController extends Controller
     }
 
     /**
+     * Sinkronisasikan seluruh aset aktif ke Google Drive secara otomatis per folder.
+     */
+    public function syncAllDrive()
+    {
+        // Pastikan seluruh aset brand dan institusi mitra terdaftar di SystemAsset
+        try {
+            foreach (\App\Models\Brand::all() as $brand) {
+                $this->assetService->syncBrandAssets($brand, Auth::user());
+            }
+            foreach (\App\Models\Institution::whereNotNull('logo')->get() as $inst) {
+                $this->assetService->syncInstitutionLogo($inst, Auth::user());
+            }
+        } catch (\Throwable $e) {
+            // Lanjutkan sinkronisasi aset yang ada
+        }
+
+        $assets = SystemAsset::where('is_active', true)->get();
+        $successCount = 0;
+        $failCount = 0;
+        $lastError = null;
+
+        foreach ($assets as $asset) {
+            try {
+                $this->assetService->syncAssetToDrive($asset, Auth::user());
+                $successCount++;
+            } catch (\Throwable $e) {
+                $failCount++;
+                $lastError = $e->getMessage();
+            }
+        }
+
+        if ($failCount > 0 && $successCount === 0) {
+            return redirect()->route('admin.system-assets.index')
+                ->with('error', "Gagal menyinkronkan seluruh aset ke Google Drive: " . $lastError);
+        }
+
+        $msg = "Sinkronisasi selesai: {$successCount} aset berhasil disinkronkan ke folder Google Drive.";
+        if ($failCount > 0) {
+            $msg .= " ({$failCount} aset dilewati/terkendala: {$lastError}).";
+            return redirect()->route('admin.system-assets.index')->with('warning', $msg);
+        }
+
+        return redirect()->route('admin.system-assets.index')->with('success', $msg);
+    }
+
+    /**
      * Arsipkan / hapus lunak aset.
      */
     public function destroy(SystemAsset $systemAsset)

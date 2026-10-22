@@ -203,27 +203,7 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
         $response = null;
 
         try {
-            if ($fileSize > 5 * 1024 * 1024 && $hasDirectDriveDriver) {
-                // Direct Drive API for large files (> 5 MB) - Finding E: upload without DB write
-                $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
-                $driveFileId = $uploadResult['file_id'] ?? null;
-                $driveViewLink = $uploadResult['web_view_link'] ?? null;
-            } elseif ($transport instanceof GoogleAppsScriptTransport) {
-                $response = $transport->uploadAttachment($connection, $attachment, $localPath);
-
-                if (!$response->success) {
-                    $this->releaseLeaseAndFail(
-                        $attachment,
-                        $response->errorMessage,
-                        isRetryable: $response->isRetryable
-                    );
-                    return;
-                }
-
-                $driveFileId = $response->rawResponse['file_id'] ?? $response->rawResponse['data']['file_id'] ?? null;
-                $driveViewLink = $response->rawResponse['web_view_link'] ?? $response->rawResponse['data']['web_view_link'] ?? null;
-            } elseif ($hasDirectDriveDriver) {
-                // Direct Drive API - Finding E: upload without DB write
+            if ($hasDirectDriveDriver || $transport instanceof GoogleAppsScriptTransport) {
                 $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
                 $driveFileId = $uploadResult['file_id'] ?? null;
                 $driveViewLink = $uploadResult['web_view_link'] ?? null;

@@ -66,11 +66,6 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'payload'        => $sanitizedPayload,
         ];
 
-        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
-            $innerPayload['auto_sync_headers'] = true;
-            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
-        }
-
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }
 
@@ -105,11 +100,6 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'sync_id'        => $syncId,
             'payload'        => $sanitizedPayload,
         ];
-
-        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
-            $innerPayload['auto_sync_headers'] = true;
-            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
-        }
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }
@@ -275,8 +265,24 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
 
     /**
      * Upload an attachment file to Google Drive via Apps Script.
+     * DEPRECATED per Master Plan V1 Addendum Final V4 (F6 Cutover, C27).
+     * Seluruh penyimpanan berkas dialihkan eksklusif ke UniversalFileService (Laravel Google Drive API).
      */
     public function uploadAttachment(
+        SpreadsheetConnection $connection,
+        RegistrationAttachment $attachment,
+        string $localFullPath
+    ): SpreadsheetTransportResponse {
+        Log::info("GoogleAppsScriptTransport::uploadAttachment dipanggil namun telah dipensiunkan (F6 Cutover). Mengembalikan ACTION_DEPRECATED_USE_DRIVE_GATEWAY.");
+
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Aksi upload_attachment pada Apps Script telah dipensiunkan. Gunakan UniversalFileService melalui Google Drive API Laravel.',
+            errorCode: 'ACTION_DEPRECATED_USE_DRIVE_GATEWAY',
+            isRetryable: false
+        );
+    }
+
+    public function uploadAttachmentLegacy(
         SpreadsheetConnection $connection,
         RegistrationAttachment $attachment,
         string $localFullPath
@@ -386,6 +392,139 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $response = $this->dispatchSignedRequest($endpoint, $innerPayload, 'PING');
 
         return $response->success;
+    }
+
+    /**
+     * List all tabs in the remote spreadsheet (Read-Only).
+     */
+    public function listTabs(SpreadsheetConnection $connection): SpreadsheetTransportResponse
+    {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'list_tabs',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'LIST_TABS');
+    }
+
+    /**
+     * Inspect schema, headers, and masked sample data for a specific tab (Read-Only).
+     */
+    public function inspectSchema(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'inspect_schema',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+        ];
+
+        if ($headerRow !== null) {
+            $innerPayload['header_row'] = $headerRow;
+        }
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'INSPECT_SCHEMA');
+    }
+
+    /**
+     * Read a bounded page of rows from a specific tab (Read-Only).
+     */
+    public function readRowsPage(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null,
+        int $page = 1,
+        int $pageSize = 20,
+        bool $maskPii = true
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $clampedPage = max(1, $page);
+        $clampedPageSize = min(100, max(1, $pageSize));
+
+        $innerPayload = [
+            'action'         => 'read_rows_page',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'page'           => $clampedPage,
+            'page_size'      => $clampedPageSize,
+            'mask_pii'       => $maskPii,
+        ];
+
+        if ($headerRow !== null) {
+            $innerPayload['header_row'] = $headerRow;
+        }
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'READ_ROWS');
+    }
+
+    /**
+     * Perform an isolated, heavily audited safe deletion of a proven unused and completely empty remote column.
+     * Strictly fails-closed if any cell contains data, formulas, merged cells, or if schema has drifted.
+     */
+    public function deleteEmptyColumn(
+        SpreadsheetConnection $connection,
+        int $sheetId,
+        string $tabName,
+        string $columnIdentity,
+        string $expectedSchemaHash,
+        ?string $idempotencyKey = null
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'               => 'delete_empty_column',
+            'connection_key'       => $connection->connection_key,
+            'spreadsheet_id'       => $connection->spreadsheet_id,
+            'sheet_id'             => $sheetId,
+            'tab_name'             => $tabName,
+            'column_identity'      => $columnIdentity,
+            'expected_schema_hash' => $expectedSchemaHash,
+            'idempotency_key'      => $idempotencyKey ?: (string) Str::uuid(),
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'DELETE_COLUMN_' . $columnIdentity);
     }
 
     /**

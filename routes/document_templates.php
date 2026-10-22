@@ -20,6 +20,8 @@ if (!Route::has('admin.document-templates.index')) {
         ->group(function () {
         // Katalog dan API pendukung editor
         Route::get('/api/assets', [DocumentTemplateController::class, 'apiAssets'])->name('api-assets');
+        Route::post('/api/upload-background', [DocumentTemplateController::class, 'uploadBackground'])->name('api-upload-background');
+        Route::post('/api/upload-image', [DocumentTemplateController::class, 'uploadImage'])->name('api-upload-image');
 
         // CRUD Template Dokumen
         Route::get('/', [DocumentTemplateController::class, 'index'])->name('index');

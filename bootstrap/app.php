@@ -12,10 +12,20 @@
 */
 
 \Illuminate\Support\Env::disablePutenv();
-if (class_exists(\Dotenv\Dotenv::class) && is_file(dirname(__DIR__) . '/.env')) {
+
+$isTesting = ($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? null) === 'testing'
+    || defined('PHPUNIT_COMPOSER_INSTALL')
+    || defined('__PHPUNIT_PHAR__');
+
+$envFile = ($isTesting && is_file(dirname(__DIR__) . '/.env.testing'))
+    ? '.env.testing'
+    : '.env';
+
+if (class_exists(\Dotenv\Dotenv::class) && is_file(dirname(__DIR__) . '/' . $envFile)) {
     \Dotenv\Dotenv::create(
         \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters()->make(),
-        dirname(__DIR__)
+        dirname(__DIR__),
+        $envFile
     )->safeLoad();
 }
 

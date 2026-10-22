@@ -44,37 +44,6 @@
                 <span class="hidden sm:inline">Kembali ke Web Absen</span>
                 <span class="sm:hidden">Web Absen</span>
             </a>
-            <div class="relative">
-                <button
-                    id="admin-notification-toggle"
-                    type="button"
-                    class="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-admin-border text-admin-text-mid transition hover:bg-admin-secondary"
-                    aria-label="Notifikasi"
-                >
-                    <svg class="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>
-                    </svg>
-                    <span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-admin-accent ring-2 ring-white"></span>
-                </button>
-
-                <div id="admin-notification-menu" class="absolute right-0 mt-2 hidden w-80 overflow-hidden rounded-xl border border-admin-border bg-white shadow-[0_12px_32px_rgba(27,58,52,0.14)]">
-                    <div class="flex items-center justify-between border-b border-admin-border px-4 py-3">
-                        <p class="text-sm font-bold text-admin-text-dark">Notifikasi</p>
-                        <button type="button" class="text-xs font-semibold text-admin-primary">Tandai dibaca</button>
-                    </div>
-
-                    <div class="divide-y divide-admin-border">
-                        <div class="px-4 py-3">
-                            <p class="text-sm font-semibold text-admin-text-dark">Pendaftaran baru masuk</p>
-                            <p class="mt-1 text-xs leading-5 text-admin-text-mid">Ada pendaftar baru yang menunggu review.</p>
-                        </div>
-                        <div class="px-4 py-3">
-                            <p class="text-sm font-semibold text-admin-text-dark">Sistem berjalan normal</p>
-                            <p class="mt-1 text-xs leading-5 text-admin-text-mid">Tidak ada pemberitahuan penting.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <div class="relative">
                 <button

@@ -1807,14 +1807,9 @@ document.addEventListener('DOMContentLoaded', () => {
         function renderEditField(f, it) {
             const rawVal  = it[f.field_key] !== undefined ? it[f.field_key] : '';
             const v       = (fmtStr(rawVal) === '-') ? '' : fmtStr(rawVal);
-            const spanClass = (f.column_span === 1) ? 'sm:col-span-2' : '';
+            const spanClass = (f.column_span === 1 || f.field_type === 'file') ? 'sm:col-span-2' : '';
             const reqMark = f.is_required ? '<span class="text-red-500 ml-0.5">*</span>' : '';
             const inputClass = 'w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition';
-
-            // Jangan render input file di modal edit teks profil pemagang
-            if (f.field_type === 'file') {
-                return '';
-            }
 
             // Penanganan khusus untuk Divisi / Minat Magang
             if (f.field_key === 'internship_interest') {
@@ -1950,8 +1945,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 case 'file': {
                     let fileInfo = '';
-                    const attObj = (it.attachments && it.attachments[f.field_key]) ? it.attachments[f.field_key] : null;
-                    const fileUrl = attObj?.url || (typeof rawVal === 'string' && (rawVal.startsWith('http') || rawVal.includes('.')) ? rawVal : null);
+                    const attObj = (it.attachments && (it.attachments[f.field_key] || it.attachments[f.field_key.toLowerCase()])) || (it[f.field_key] && typeof it[f.field_key] === 'object' ? it[f.field_key] : null);
+                    const fileUrl = attObj?.url || attObj?.drive_link || (typeof rawVal === 'string' && (rawVal.startsWith('http') || rawVal.includes('.')) ? rawVal : null);
                     const fileName = attObj?.name || 'Berkas Terlampir';
 
                     if (fileUrl) {

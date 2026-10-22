@@ -22,8 +22,12 @@ class CloudSyncManager
             $this->driver = $driver;
         } else {
             $googleDriver = new GoogleDriveStorageDriver();
+            $gasDriver = new GoogleAppsScriptDriveDriver();
+
             if ($googleDriver->isConfigured()) {
                 $this->driver = $googleDriver;
+            } elseif ($gasDriver->isConfigured()) {
+                $this->driver = $gasDriver;
             } else {
                 $this->driver = new LocalStorageFallbackDriver();
             }
@@ -48,41 +52,84 @@ class CloudSyncManager
     {
         $mou->loadMissing('institution');
 
-        $relativeFilePath = $mou->signed_file_path ?: $mou->generated_file_path;
-        if (empty($relativeFilePath)) {
-            throw new InvalidArgumentException("MOU {$mou->company_mou_number} belum memiliki berkas fisik yang dapat disinkronkan.");
-        }
+        $institutionSlug = Str::slug($mou->institution?->name ?? 'institusi-umum', '-');
+        $safeNumber = Str::slug(str_replace('/', '-', $mou->company_mou_number), '-');
+        $remoteFolder = "Institusi/{$institutionSlug}/MOU";
 
-        $localDisk = $mou->signed_file_path ? 'public' : 'local';
-        if (!Storage::disk($localDisk)->exists($relativeFilePath)) {
-            // Cek di disk sebaliknya sebagai fallback
-            $fallbackDisk = $localDisk === 'public' ? 'local' : 'public';
-            if (Storage::disk($fallbackDisk)->exists($relativeFilePath)) {
-                $localDisk = $fallbackDisk;
-            } else {
-                throw new RuntimeException("Berkas fisik MOU tidak ditemukan di server: {$relativeFilePath}");
+        // Pastikan juga logo institusi mitra disinkronkan ke folder khusus institusi (Institusi/{slug}/Logo)
+        if ($mou->institution && $mou->institution->logo) {
+            try {
+                app(\App\Services\SystemAssetService::class)->syncInstitutionLogo($mou->institution, $actor);
+            } catch (\Throwable $logoEx) {
+                \Illuminate\Support\Facades\Log::warning("Gagal auto-sync logo institusi {$mou->institution->name}: " . $logoEx->getMessage());
             }
         }
 
-        $fullPath = Storage::disk($localDisk)->path($relativeFilePath);
+        $fullPath = null;
+        $customFileName = null;
 
-        // Struktur folder hierarkis: Institusi/{institution-slug}/MOU
-        $institutionSlug = Str::slug($mou->institution?->name ?? 'institusi-umum');
-        $remoteFolder = "Institusi/{$institutionSlug}/MOU";
+        if (!empty($mou->signed_file_path)) {
+            if (Storage::disk('public')->exists($mou->signed_file_path)) {
+                $fullPath = Storage::disk('public')->path($mou->signed_file_path);
+            } elseif (Storage::disk('local')->exists($mou->signed_file_path)) {
+                $fullPath = Storage::disk('local')->path($mou->signed_file_path);
+            }
+            $customFileName = "MOU-{$safeNumber}-signed.pdf";
+        }
 
-        $customFileName = Str::slug($mou->company_mou_number) . '-signed.pdf';
+        if (!$fullPath) {
+            // Cek atau buat draf PDF dari rendered_document_html
+            $draftPdfRelative = "documents/mou/generated/MOU-DRAFT-{$safeNumber}.pdf";
+
+            if (!Storage::disk('public')->exists($draftPdfRelative) && !empty($mou->rendered_document_html)) {
+                try {
+                    $pageConfig = $mou->render_data_snapshot['_page_config'] ?? \App\Models\MouTemplate::getDefaultPageConfig();
+                    $pageConfig['institution_logo'] = $mou->render_data_snapshot['institution_logo_path']
+                        ?? ($mou->institution?->logo_url ?: ($mou->institution?->logo ? ('/storage/' . $mou->institution->logo) : '/images/mou/institution-logo-placeholder.png'));
+                    $pageConfig['company_logo'] = $mou->render_data_snapshot['company_logo_path']
+                        ?? ($mou->render_data_snapshot['company_logo']
+                        ?? ($mou->render_data_snapshot['_media_assets']['company_logo']
+                        ?? '/images/mou/seven-inc-logo.png'));
+
+                    $pdfBinary = \App\Services\MouDocumentRenderer::renderPdfBinary(
+                        $mou->rendered_document_html,
+                        $pageConfig,
+                        $mou->company_mou_number . ' - ' . $mou->first_party_institution_name
+                    );
+                    Storage::disk('public')->put($draftPdfRelative, $pdfBinary);
+                } catch (\Throwable $pdfEx) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal generate draf PDF untuk MOU {$mou->company_mou_number}: " . $pdfEx->getMessage());
+                }
+            }
+
+            if (Storage::disk('public')->exists($draftPdfRelative)) {
+                $fullPath = Storage::disk('public')->path($draftPdfRelative);
+                $customFileName = "MOU-{$safeNumber}-draf.pdf";
+            } elseif (!empty($mou->generated_file_path)) {
+                if (Storage::disk('public')->exists($mou->generated_file_path)) {
+                    $fullPath = Storage::disk('public')->path($mou->generated_file_path);
+                } elseif (Storage::disk('local')->exists($mou->generated_file_path)) {
+                    $fullPath = Storage::disk('local')->path($mou->generated_file_path);
+                }
+                $customFileName = "MOU-{$safeNumber}-draf.html";
+            }
+        }
+
+        if (!$fullPath || !file_exists($fullPath)) {
+            throw new RuntimeException("Berkas fisik MOU tidak ditemukan di server: " . ($mou->signed_file_path ?: $mou->generated_file_path));
+        }
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $customFileName);
+
+        $isRealDrive = in_array($this->driver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
+            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
+            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
         $mou->update([
             'drive_file_id'       => $uploadResult['file_id'],
             'drive_web_view_link' => $uploadResult['web_view_link'],
-            'drive_synced_at'     => now(),
+            'drive_synced_at'     => $isRealDrive ? now() : null,
         ]);
-
-        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
-            && !str_starts_with($uploadResult['file_id'], 'local_sim_')
-            && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
         $genDoc = \App\Models\GeneratedDocument::where('document_type', \App\Models\GeneratedDocument::TYPE_MOU)
             ->where('document_number', $mou->company_mou_number)
@@ -107,6 +154,7 @@ class CloudSyncManager
                 'drive_file_id'       => $uploadResult['file_id'],
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'folder'              => $remoteFolder,
+                'file_name'           => $customFileName,
                 'driver'              => $uploadResult['driver'],
             ]
         );
@@ -116,40 +164,20 @@ class CloudSyncManager
 
     /**
      * Sinkronisasikan paket berkas arsip tahunan ZIP ke cloud storage.
+     * CATATAN ADDENDUM FINAL V4: Pembuatan arsip tahunan baru ke Google Drive dinonaktifkan.
+     * Berkas historis yang sudah ada tetap aman dan dipertahankan.
      */
     public function syncArchiveExport(ArchiveExport $archive, ?User $actor = null): array
     {
-        if (!Storage::disk('local')->exists($archive->file_path)) {
-            throw new RuntimeException("Berkas arsip ZIP tidak ditemukan di server: {$archive->file_path}");
-        }
+        Log::info("syncArchiveExport: Pembuatan arsip tahunan baru ke Cloud Storage dinonaktifkan per Addendum Final V4. Berkas arsip historis tetap utuh.");
 
-        $fullPath = Storage::disk('local')->path($archive->file_path);
-
-        // Struktur folder hierarkis: Arsip/{year}
-        $remoteFolder = "Arsip/{$archive->archive_year}";
-
-        $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $archive->file_name);
-
-        $archive->update([
-            'drive_file_id'       => $uploadResult['file_id'],
-            'drive_web_view_link' => $uploadResult['web_view_link'],
-            'drive_synced_at'     => now(),
-        ]);
-
-        ActivityLogger::log(
-            action: 'archive_drive_synced',
-            description: "Paket arsip tahun {$archive->archive_year} ({$archive->file_name}) berhasil disinkronkan ke Cloud Storage ({$uploadResult['driver']})",
-            subject: $archive,
-            actor: $actor,
-            metadata: [
-                'drive_file_id'       => $uploadResult['file_id'],
-                'drive_web_view_link' => $uploadResult['web_view_link'],
-                'folder'              => $remoteFolder,
-                'driver'              => $uploadResult['driver'],
-            ]
-        );
-
-        return $uploadResult;
+        return [
+            'success'       => true,
+            'driver'        => 'deactivated',
+            'file_id'       => $archive->drive_file_id,
+            'web_view_link' => $archive->drive_web_view_link,
+            'message'       => 'Penyimpanan paket arsip tahunan baru ke cloud storage telah dinonaktifkan. Arsip historis dipertahankan.',
+        ];
     }
 
     /**
@@ -215,7 +243,7 @@ class CloudSyncManager
     {
         $uploadResult = $this->uploadRegistrationAttachment($attachment);
 
-        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+        $isRealDrive = in_array($this->driver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
             && !str_starts_with($uploadResult['file_id'], 'local_sim_')
             && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
@@ -394,7 +422,7 @@ class CloudSyncManager
         $fileName = Str::slug($asset->name, '_') . "_v{$asset->version}." . pathinfo($asset->local_path, PATHINFO_EXTENSION);
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $fileName);
 
-        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+        $isRealDrive = in_array($this->driver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
             && !str_starts_with($uploadResult['file_id'], 'local_sim_')
             && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
@@ -468,7 +496,7 @@ class CloudSyncManager
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $doc->file_name);
 
-        $isRealDrive = $this->driver->getDriverName() === 'google_drive'
+        $isRealDrive = in_array($this->driver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
             && !str_starts_with($uploadResult['file_id'], 'local_sim_')
             && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 

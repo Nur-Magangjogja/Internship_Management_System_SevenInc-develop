@@ -112,10 +112,19 @@
         </p>
       </div>
       <div class="mt-4">
-        <a href="{{ route('pemagang.documents.sertifikat_webinar', $wc->id) }}"
-           class="flex items-center justify-center gap-2 w-full py-2 text-sm font-medium text-white rounded-lg"
+        @php
+          $webinarObj = $wc->attendance?->webinar;
+          $isGdriveWc = ($webinarObj && $webinarObj->isGdriveCertificate()) || !empty($wc->gdrive_link);
+          $wcHref = $isGdriveWc
+            ? ($wc->gdrive_link ?: $webinarObj?->gdrive_certificate_link)
+            : route('pemagang.documents.sertifikat_webinar', $wc->id);
+        @endphp
+        <a href="{{ $wcHref }}"
+           {{ $isGdriveWc ? 'target="_blank"' : '' }}
+           class="flex items-center justify-center gap-2 w-full py-2 text-sm font-medium text-white rounded-lg transition hover:opacity-90"
            style="background-color:#1a5c38;">
-          <i class="fas fa-download text-xs"></i> Unduh Sertifikat
+          <i class="{{ $isGdriveWc ? 'fab fa-google-drive' : 'fas fa-download' }} text-xs"></i>
+          {{ $isGdriveWc ? 'Buka di Google Drive' : 'Unduh Sertifikat' }}
         </a>
       </div>
     </div>

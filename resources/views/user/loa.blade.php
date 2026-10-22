@@ -25,6 +25,19 @@
       background-color: #ffffff;
     }
 
+    @if(request()->routeIs('*.raw') || request()->is('*/raw/*') || request()->has('preview') || ($isScreenPreview ?? false))
+    @media screen {
+      html {
+        background-color: #f8fafc;
+      }
+      body {
+        padding: 12mm 18mm !important;
+        box-sizing: border-box !important;
+        background-color: #ffffff;
+      }
+    }
+    @endif
+
     .wrap {
       width: 100%;
       margin: 0 auto;
@@ -164,9 +177,10 @@
     }
     .signature-img-container img.stamp {
       position: absolute;
-      max-height: 90px;
-      opacity: 0.3;
-      filter: blur(0.5px);
+      max-height: 125px;
+      max-width: 125px;
+      opacity: 0.45;
+      filter: blur(0.3px);
       z-index: 1;
       left: 50%;
       top: 50%;
@@ -287,8 +301,16 @@
         <p>Yogyakarta, {{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}</p>
         <p>Hormat kami,</p>
         <div class="signature-img-container">
-          <img src="{{ $logoData ?? asset('storage/images/logos/logo_seveninc.png') }}" class="stamp" alt="Cap Perusahaan">
-          <img src="{{ $stampData ?? asset('storage/images/signature/ttd_arisetiahusbana.png') }}" class="ttd" alt="Tanda Tangan">
+          @if(!empty($stampData))
+          <img src="{{ $stampData }}" class="stamp" alt="Cap Perusahaan">
+          @endif
+          @if(!empty($sigData))
+          <img src="{{ $sigData }}" class="ttd" alt="Tanda Tangan">
+          @elseif(!empty($stampData))
+          {{-- Jika hanya stempel tanpa ttd --}}
+          @else
+          <img src="{{ asset('storage/images/signature/ttd_arisetiahusbana.png') }}" class="ttd" alt="Tanda Tangan">
+          @endif
         </div>
         <p class="signatory-name">{{ $loaSettings->signatory_name ?? 'Ari Setia Husbana' }}</p>
         <p>{{ $loaSettings->signatory_position ?? 'HRD' }} {{ $loaSettings->company_name ?? 'SEVEN INC.' }}</p>

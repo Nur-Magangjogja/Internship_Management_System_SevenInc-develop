@@ -3,89 +3,113 @@
 @php
     $typeLabel = $template->getTypeLabel($template->type);
     $typeBadgeClass = $template->getTypeBadgeClass($template->type);
-    $backUrl = route('admin.document-templates.index', ['type' => $template->type]);
+    $backUrl = route('admin.document-templates.index');
 @endphp
 
 @section('content')
 <div class="px-6 py-6 max-w-[1600px] mx-auto">
     <!-- Top Action Bar -->
-    <div class="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
-        <div class="flex items-center gap-3">
+    <div class="mb-5 flex flex-col gap-3.5 xl:flex-row xl:items-center xl:justify-between border-b border-slate-200 pb-4">
+        <!-- Left: Navigation & Document Meta -->
+        <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ $backUrl }}"
-                class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
                 title="Kembali ke Katalog Dokumen"
             >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
             </a>
-            <div>
+            <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {{ $typeBadgeClass }}">
-                        {{ $typeLabel }}
-                    </span>
-                    <span id="docVersionBadge" class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">
-                        Versi {{ $template->version_number }}
-                    </span>
+                    <h1 class="text-base font-bold text-slate-800 truncate" title="{{ $template->name }}">
+                        <span id="docHeadingName">{{ $template->name }}</span>
+                    </h1>
                     @if ($template->is_default)
-                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                            DEFAULT
+                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+                            Default
                         </span>
                     @endif
                 </div>
-                <h1 class="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
-                    <span id="docHeadingName">{{ $template->name }}</span>
-                </h1>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium border {{ $typeBadgeClass }}">
+                        {{ $typeLabel }}
+                    </span>
+                    <span class="text-slate-300">•</span>
+                    <span id="docVersionBadge" class="font-mono text-[11px] text-slate-600">v{{ $template->version_number }}</span>
+                    <span class="text-slate-300">•</span>
+                    <span class="text-[11px] text-slate-400">Editor Dokumen</span>
+                </div>
             </div>
         </div>
 
+        <!-- Right: Actions & Preview -->
         <div class="flex flex-wrap items-center gap-2">
             <!-- Versions History -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                title="Histori Versi Dokumen"
             >
-                <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12 6 12 12 14 14"/>
                 </svg>
-                <span>Histori Versi ({{ $template->versions_count ?? 1 }})</span>
+                <span>Versi ({{ $template->versions_count ?? 1 }})</span>
             </a>
 
-            <!-- Live Browser Preview Modal Button -->
-            <button
-                type="button"
-                id="btnOpenBrowserPreview"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span>Preview Browser</span>
-            </button>
-
-            <!-- Real DomPDF Preview Button -->
-            <a
-                href="{{ route('admin.document-templates.preview-pdf', $template) }}"
-                target="_blank"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-            >
-                <svg class="h-4 w-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <span>Preview PDF Asli</span>
-            </a>
+            <!-- Grouped Preview Actions (Browser Modal, Full Page, PDF) -->
+            <div class="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                <!-- Live Browser Preview Modal Button -->
+                <button
+                    type="button"
+                    id="btnOpenBrowserPreview"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition"
+                    title="Pratinjau Cepat di Browser"
+                >
+                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>Pratinjau</span>
+                </button>
+                <span class="h-4 w-px bg-slate-200"></span>
+                <!-- Halaman Preview Resmi Link -->
+                <a
+                    href="{{ route('admin.document-templates.preview', $template) }}"
+                    class="inline-flex items-center p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition"
+                    title="Buka Halaman Pratinjau Penuh"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                </a>
+                <span class="h-4 w-px bg-slate-200"></span>
+                <!-- Real DomPDF Preview Button -->
+                <a
+                    href="{{ route('admin.document-templates.preview-pdf', $template) }}"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-700 bg-rose-50/50 hover:bg-rose-50 transition"
+                    title="Buka Pratinjau PDF Cetak Asli di Tab Baru"
+                >
+                    <svg class="h-3.5 w-3.5 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>PDF</span>
+                </a>
+            </div>
 
             <!-- Save Changes Button -->
             <button
                 type="button"
                 id="btnSaveDocumentTemplate"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition disabled:opacity-50"
             >
-                <svg id="iconSaveNormal" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg id="iconSaveNormal" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                     <polyline points="17 21 17 13 7 13 7 21"/>
                     <polyline points="7 3 7 8 15 8"/>
@@ -305,7 +329,7 @@
 
                 if (data.version) {
                     const badge = document.getElementById('docVersionBadge');
-                    if (badge) badge.textContent = `Versi ${data.version}`;
+                    if (badge) badge.textContent = `v${data.version}`;
                 }
 
                 const heading = document.getElementById('docHeadingName');
@@ -344,18 +368,19 @@
     const btnClosePreview = document.getElementById('btnCloseBrowserPreview');
     const previewContainer = document.getElementById('browserPreviewContainer');
 
-    btnPreview?.addEventListener('click', async () => {
+    btnPreview?.addEventListener('click', () => {
         modalPreview?.classList.remove('hidden');
         if (!previewContainer) return;
-        previewContainer.innerHTML = '<div class="text-center p-12 text-slate-500 text-xs">Memuat pratinjau dokumen...</div>';
-
-        try {
-            const res = await fetch('{{ route("admin.document-templates.preview", $template) }}?raw=1');
-            const html = await res.text();
-            previewContainer.innerHTML = html;
-        } catch (err) {
-            previewContainer.innerHTML = `<div class="p-6 text-rose-600 text-xs">Gagal memuat pratinjau: ${err.message}</div>`;
-        }
+        previewContainer.innerHTML = `
+            <div class="flex flex-col items-center w-full py-2">
+                <iframe id="modalPreviewIframe"
+                        src="{{ route('admin.document-templates.preview', $template) }}?raw=1&_t=${Date.now()}"
+                        class="w-[215mm] max-w-full rounded-xl shadow-2xl border border-slate-300 bg-white"
+                        style="height: 75vh;"
+                        title="Pratinjau Lembar Dokumen">
+                </iframe>
+            </div>
+        `;
     });
 
     btnClosePreview?.addEventListener('click', () => {

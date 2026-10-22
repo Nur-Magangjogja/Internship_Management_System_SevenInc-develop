@@ -94,11 +94,31 @@ class MailMergePlaceholderContract
             $flatValues['company_mou_number'] = $flatValues['dokumen.nomor'];
         }
 
+        // Normalisasi path aset lokal agar tidak ada prefix /storage/images/
+        foreach ($flatValues as $k => $v) {
+            if (is_string($v) && str_starts_with($v, '/storage/images/')) {
+                $flatValues[$k] = substr($v, strlen('/storage'));
+            }
+        }
+
         // Resolusi aset gambar
         $compLogo   = $flatValues['asset.brand.logo'] ?? ($flatValues['asset.company.logo'] ?? null);
         $instLogo   = $flatValues['asset.institusi.logo'] ?? ($flatValues['asset.institution.logo'] ?? null);
         $sigImage   = $flatValues['asset.brand.tanda_tangan'] ?? ($flatValues['asset.signature'] ?? null);
         $stampImage = $flatValues['asset.brand.stempel'] ?? ($flatValues['asset.stamp'] ?? null);
+
+        if (is_string($compLogo) && str_starts_with($compLogo, '/storage/images/')) {
+            $compLogo = substr($compLogo, strlen('/storage'));
+        }
+        if (is_string($instLogo) && str_starts_with($instLogo, '/storage/images/')) {
+            $instLogo = substr($instLogo, strlen('/storage'));
+        }
+        if (is_string($sigImage) && str_starts_with($sigImage, '/storage/images/')) {
+            $sigImage = substr($sigImage, strlen('/storage'));
+        }
+        if (is_string($stampImage) && str_starts_with($stampImage, '/storage/images/')) {
+            $stampImage = substr($stampImage, strlen('/storage'));
+        }
 
         // Fallback hanya untuk preview mock (INV-05, INV-06, INV-14)
         if (!$isLiveIssuance) {
@@ -143,7 +163,7 @@ class MailMergePlaceholderContract
             if (!$stampImage) {
                 return '';
             }
-            return '<img src="' . htmlspecialchars($stampImage, ENT_QUOTES, 'UTF-8') . '" alt="Stempel Resmi" style="height: 70px; width: auto; vertical-align: middle;" />';
+            return '<img src="' . htmlspecialchars($stampImage, ENT_QUOTES, 'UTF-8') . '" alt="Stempel Resmi" style="height: 105px; width: auto; vertical-align: middle;" />';
         }, $resolved);
 
         // 3. Substitusi seluruh variabel skalar (teks, tanggal, nomor)

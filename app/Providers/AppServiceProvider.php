@@ -34,6 +34,12 @@ class AppServiceProvider extends ServiceProvider
         // S17.18G.4R Fix 3: Scoped binding — fresh per request/job cycle, avoiding cross-request state leakage
         $this->app->scoped(\App\Services\FormBuilderService::class);
 
+        // DB-SAFETY-P1: verified SQL backup used by the manual reset gate
+        $this->app->bind(
+            \App\Support\DatabaseSafety\DatabaseBackupper::class,
+            \App\Support\DatabaseSafety\MysqlDumpBackupper::class
+        );
+
         // Phase C.3B.1 & C.3B.3A: Absen Outbound Transport binding with fail-closed default
         $this->app->bind(
             \App\Services\AbsenIntegration\Transports\AbsenOutboundTransportInterface::class,
@@ -51,6 +57,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // HOTFIX DB-SAFETY-P0: Register fail-closed destructive command guard
+        \App\Support\DatabaseSafetyGuard::registerArtisanGuard();
+
         if (request()->isSecure() || config('app.env') === 'production' || str_starts_with(config('app.url'), 'https://')) {
             URL::forceScheme('https');
         }
@@ -145,10 +154,16 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            $hasNewDocuments = false;
+            if ($user && method_exists($user, 'hasUnreadDocuments')) {
+                $hasNewDocuments = $user->hasUnreadDocuments();
+            }
+
             $view->with([
                 'notifications'          => $notifications,
                 'notificationCount'      => $notifications->count(),
                 'notificationWebinarCount' => $notifications->filter(fn($n) => str_contains($n['url'] ?? '', 'webinar'))->count(),
+                'hasNewDocuments'        => $hasNewDocuments,
             ]);
         });
     }

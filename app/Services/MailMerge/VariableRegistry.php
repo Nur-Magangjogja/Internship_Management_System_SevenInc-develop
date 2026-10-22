@@ -62,8 +62,8 @@ class VariableRegistry
             // =========================================================================
             'pemagang.nama' => [
                 'token'                  => 'pemagang.nama',
-                'aliases'                => ['student_name', 'intern_name', 'fullname', 'nama_siswa', 'nama_pemagang', 'nama'],
-                'label'                  => 'Nama Lengkap Pemagang',
+                'aliases'                => ['student_name', 'intern_name', 'fullname', 'nama_siswa', 'nama_pemagang', 'nama', 'peserta.nama', 'participant_name', 'attendee_name', 'nama_peserta'],
+                'label'                  => 'Nama Lengkap Pemagang / Peserta',
                 'category'               => 'Data Pemagang',
                 'data_type'              => self::TYPE_STRING,
                 'type'                   => 'text',
@@ -881,12 +881,50 @@ class VariableRegistry
             ],
 
             // =========================================================================
-            // 7. ASET GRAFIS & TANDA TANGAN DUA PIHAK (OWNER ISOLATION STRICT)
+            // 7. DATA KEGIATAN WEBINAR (SERTIFIKAT WEBINAR)
+            // =========================================================================
+            'webinar.judul' => [
+                'token'                  => 'webinar.judul',
+                'aliases'                => ['webinar_title', 'judul_webinar', 'title', 'nama_webinar'],
+                'label'                  => 'Judul / Topik Kegiatan Webinar',
+                'category'               => 'Kegiatan Webinar',
+                'data_type'              => self::TYPE_STRING,
+                'type'                   => 'text',
+                'sample'                 => 'Workshop UI/UX Design & Front-End Development Modern',
+                'scope'                  => ['admin', 'hr_staff', 'pemagang'],
+                'allowed_document_types' => [self::DOC_TYPE_CERTIFICATE],
+                'required_policy'        => self::POLICY_OPTIONAL,
+                'source'                 => 'webinars.title',
+                'source_owner_policy'    => self::OWNER_GLOBAL,
+                'null_policy'            => self::NULL_POLICY_EMPTY,
+                'sensitive'              => false,
+                'can_override'           => true,
+            ],
+            'webinar.tanggal' => [
+                'token'                  => 'webinar.tanggal',
+                'aliases'                => ['webinar_date', 'tanggal_webinar', 'event_date', 'tanggal_pelaksanaan'],
+                'label'                  => 'Tanggal Penyelenggaraan Webinar',
+                'category'               => 'Kegiatan Webinar',
+                'data_type'              => self::TYPE_STRING,
+                'type'                   => 'text',
+                'sample'                 => '25 Oktober 2026',
+                'scope'                  => ['admin', 'hr_staff', 'pemagang'],
+                'allowed_document_types' => [self::DOC_TYPE_CERTIFICATE],
+                'required_policy'        => self::POLICY_OPTIONAL,
+                'source'                 => 'webinars.event_date',
+                'source_owner_policy'    => self::OWNER_GLOBAL,
+                'null_policy'            => self::NULL_POLICY_EMPTY,
+                'sensitive'              => false,
+                'can_override'           => true,
+            ],
+
+            // =========================================================================
+            // 8. ASET GRAFIS & TANDA TANGAN DUA PIHAK (OWNER ISOLATION STRICT)
             // =========================================================================
             'asset.brand.logo' => [
                 'token'                  => 'asset.brand.logo',
-                'aliases'                => ['asset.company.logo', 'company_logo', 'brand_logo', 'logo_perusahaan', 'logo_brand', 'logo_seveninc', 'asset.logo_perusahaan', 'asset.logo_brand'],
-                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara',
+                'aliases'                => ['brand_logo', 'logo_perusahaan', 'logo_brand', 'asset.logo_perusahaan', 'asset.logo_brand'],
+                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara Terpilih',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -903,8 +941,8 @@ class VariableRegistry
             ],
             'asset.company.logo' => [
                 'token'                  => 'asset.company.logo',
-                'aliases'                => ['asset.brand.logo', 'company_logo', 'brand_logo', 'logo_perusahaan', 'logo_brand', 'logo_seveninc', 'asset.logo_perusahaan', 'asset.logo_brand'],
-                'label'                  => 'Logo Resmi Perusahaan (Seven Inc)',
+                'aliases'                => ['company_logo', 'logo_seveninc'],
+                'label'                  => 'Logo Resmi Brand / Perusahaan Penyelenggara (Legacy Alias)',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -921,8 +959,8 @@ class VariableRegistry
             ],
             'asset.institusi.logo' => [
                 'token'                  => 'asset.institusi.logo',
-                'aliases'                => ['asset.institution.logo', 'institution_logo', 'logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
-                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra',
+                'aliases'                => ['logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
+                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra Terpilih',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -939,8 +977,8 @@ class VariableRegistry
             ],
             'asset.institution.logo' => [
                 'token'                  => 'asset.institution.logo',
-                'aliases'                => ['asset.institusi.logo', 'institution_logo', 'logo_institusi', 'logo_kampus', 'logo_sekolah', 'asset.logo_institusi'],
-                'label'                  => 'Logo Resmi Institusi / Kampus / Sekolah Mitra',
+                'aliases'                => ['institution_logo'],
+                'label'                  => 'Logo Resmi Institusi Mitra (Legacy Alias)',
                 'category'               => 'Aset Grafis & Visual',
                 'data_type'              => self::TYPE_IMAGE,
                 'type'                   => 'image',
@@ -1330,5 +1368,30 @@ class VariableRegistry
         }
 
         return $grouped;
+    }
+
+    /**
+     * Dapatkan seluruh token sebagai kamus token => metadata (C17, C29).
+     */
+    public static function getAllTokens(): array
+    {
+        $tokens = [];
+        foreach (static::getDefinitions() as $canonical => $def) {
+            $tokens[$canonical] = $def;
+        }
+        return $tokens;
+    }
+
+    /**
+     * Dapatkan peta alias legacy untuk backward compatibility (C15).
+     */
+    public static function buildLegacyAliasesMap(): array
+    {
+        return [
+            'asset.company.logo'     => 'asset.brand.logo',
+            'asset.institution.logo' => 'asset.institusi.logo',
+            'company_logo'           => 'asset.brand.logo',
+            'institution_logo'       => 'asset.institusi.logo',
+        ];
     }
 }

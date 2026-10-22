@@ -11,6 +11,7 @@ class TemplateCatalogItem
     public int|string $id;
     public string $uuid;
     public string $type;
+    public ?string $certificate_type = null;
     public string $name;
     public ?string $description;
     public string $editor_type;
@@ -41,6 +42,7 @@ class TemplateCatalogItem
         $item->id                = $doc->id;
         $item->uuid              = (string) $doc->uuid;
         $item->type              = $doc->type;
+        $item->certificate_type  = $doc->certificate_type ?? 'magang';
         $item->name              = $doc->name;
         $item->description       = $doc->description;
         $item->editor_type       = $doc->editor_type ?? 'visual_doc';
@@ -103,12 +105,20 @@ class TemplateCatalogItem
 
     public function getTypeLabel(?string $type = null): string
     {
-        return DocumentTemplate::getTypeLabel($type ?? $this->type);
+        return DocumentTemplate::getTypeLabel($type ?? $this->type, $this->certificate_type);
     }
 
     public function getTypeBadgeClass(?string $type = null): string
     {
-        return DocumentTemplate::getTypeBadgeClass($type ?? $this->type);
+        return DocumentTemplate::getTypeBadgeClass($type ?? $this->type, $this->certificate_type);
+    }
+
+    public function getSubtypeBadge(): ?string
+    {
+        if ($this->type === 'certificate') {
+            return $this->certificate_type === 'webinar' ? 'Webinar' : 'Magang';
+        }
+        return null;
     }
 
     public function __get(string $name)

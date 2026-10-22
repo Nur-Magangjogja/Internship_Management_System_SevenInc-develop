@@ -123,9 +123,17 @@
             @elseif($att->status === 'approved')
               <span class="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">✓ Approved</span>
               @if($att->certificate_id)
-                <a href="{{ route('admin.certificate.pdf', $att->certificate_id) }}"
-                   class="block text-xs text-[#2D8659] hover:underline mt-1">
-                  <i class="fas fa-file-pdf text-xs mr-1"></i>Sertifikat
+                @php
+                  $isGdriveCert = ($webinar->isGdriveCertificate()) || !empty($att->certificate?->gdrive_link);
+                  $certHref = $isGdriveCert 
+                    ? ($att->certificate?->gdrive_link ?: $webinar->gdrive_certificate_link)
+                    : route('admin.certificate.pdf', $att->certificate_id);
+                @endphp
+                <a href="{{ $certHref }}"
+                   {{ $isGdriveCert ? 'target="_blank"' : '' }}
+                   class="block text-xs {{ $isGdriveCert ? 'text-blue-600 hover:text-blue-800' : 'text-[#2D8659] hover:underline' }} mt-1 font-medium">
+                  <i class="{{ $isGdriveCert ? 'fab fa-google-drive' : 'fas fa-file-pdf' }} text-xs mr-1"></i>
+                  {{ $isGdriveCert ? 'Buka GDrive' : 'Sertifikat' }}
                 </a>
               @endif
             @else

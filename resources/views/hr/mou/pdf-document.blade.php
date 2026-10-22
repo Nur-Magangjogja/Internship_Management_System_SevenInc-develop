@@ -68,7 +68,7 @@
 
         $paperWidthMm = $paperSize === 'legal' ? 215.9 : ($paperSize === 'letter' ? 215.9 : 210.0);
         $contentWidthPt = ($paperWidthMm - $leftMm - $rightMm) * 2.83465;
-        $logoSizePt = 58.0;
+        $logoSizePt = 65.0;
         $logoRightLeftPt = round($contentWidthPt - $logoSizePt, 2);
     @endphp
     <style>

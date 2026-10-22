@@ -14,6 +14,8 @@ class WebinarCertificate extends Model
 
     protected $fillable = [
         'attendance_id',
+        'document_template_id',
+        'gdrive_link',
         'certificate_number',
         'company_name',
         'background_image_path',
@@ -31,5 +33,10 @@ class WebinarCertificate extends Model
     public function attendance()
     {
         return $this->belongsTo(WebinarAttendance::class, 'attendance_id');
+    }
+
+    public function documentTemplate()
+    {
+        return $this->belongsTo(DocumentTemplate::class, 'document_template_id');
     }
 }
