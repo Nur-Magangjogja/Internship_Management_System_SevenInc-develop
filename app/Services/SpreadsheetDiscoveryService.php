@@ -908,7 +908,7 @@ class SpreadsheetDiscoveryService
     /**
      * Retrieve all available form fields from active/published FormSchemas and Registry.
      */
-    protected function getAvailableFormFields(?FormSchema $targetSchema = null): array
+    public function getAvailableFormFields(?FormSchema $targetSchema = null): array
     {
         $fields = [];
         $seenKeys = [];

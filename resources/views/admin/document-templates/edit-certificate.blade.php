@@ -10,88 +10,97 @@
 </style>
 <div class="px-6 py-6" x-data="certificateCanvasApp()" @keydown.window="handleKeyboard($event)">
     <!-- Top Action & Navigation Bar -->
-    <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
-        <div class="flex items-center gap-3">
+    <div class="mb-5 flex flex-col gap-3.5 xl:flex-row xl:items-center xl:justify-between border-b border-slate-200 pb-4">
+        <!-- Left: Navigation & Document Meta -->
+        <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ route('admin.document-templates.index') }}"
-                class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm"
-                title="Kembali ke Daftar Template"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                title="Kembali ke Katalog Template"
             >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
             </a>
-            <div>
+            <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 border-amber-200">
-                        Kanvas Desain Sertifikat (Visual Studio)
-                    </span>
-                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold"
-                          :class="certificateType === 'webinar' ? 'bg-teal-100 text-teal-800 border-teal-200' : 'bg-amber-100 text-amber-800 border-amber-200'"
-                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
-                    </span>
-                    <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
-                        Versi {{ $template->version_number }}
-                    </span>
+                    <h1 class="text-base font-bold text-slate-800 truncate" title="{{ $template->name }}">
+                        {{ $template->name }}
+                    </h1>
                     @if ($template->is_default)
-                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                            DEFAULT
+                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+                            Default
                         </span>
                     @endif
                 </div>
-                <h1 class="text-xl font-bold text-slate-800 mt-1">
-                    {{ $template->name }}
-                </h1>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium border"
+                          :class="certificateType === 'webinar' ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
+                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
+                    </span>
+                    <span class="text-slate-300">•</span>
+                    <span class="font-mono text-[11px] text-slate-600">v{{ $template->version_number }}</span>
+                    <span class="text-slate-300">•</span>
+                    <span class="text-[11px] text-slate-400">Visual Studio</span>
+                </div>
             </div>
         </div>
 
+        <!-- Right: Canvas Controls & Actions -->
         <div class="flex flex-wrap items-center gap-2">
-            <!-- Undo / Redo Toolbar -->
-            <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
-                <button
-                    type="button"
-                    @click="undo()"
-                    :disabled="!canUndo"
-                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                    title="Urungkan Perubahan (Ctrl+Z)"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v6h6"/>
-                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    @click="redo()"
-                    :disabled="!canRedo"
-                    class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                    title="Ulangi Perubahan (Ctrl+Y)"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 7v6h-6"/>
-                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
-                    </svg>
-                </button>
-            </div>
+            <!-- Canvas Controls: Undo/Redo & Zoom -->
+            <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                <!-- Undo / Redo -->
+                <div class="flex items-center">
+                    <button
+                        type="button"
+                        @click="undo()"
+                        :disabled="!canUndo"
+                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                        title="Urungkan (Ctrl+Z)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6"/>
+                            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        @click="redo()"
+                        :disabled="!canRedo"
+                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                        title="Ulangi (Ctrl+Y)"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6"/>
+                            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+                        </svg>
+                    </button>
+                </div>
 
-            <!-- Zoom Controls -->
-            <div class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm text-xs font-semibold text-slate-600 gap-1">
-                <span class="text-slate-400 text-[10px] mr-1">ZOOM:</span>
-                <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 0.75 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">75%</button>
-                <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.0 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">100%</button>
-                <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded transition" :class="zoomLevel === 1.25 ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'">125%</button>
+                <span class="h-4 w-px bg-slate-200"></span>
+
+                <!-- Zoom Controls -->
+                <div class="flex items-center gap-0.5 text-slate-600 px-1">
+                    <svg class="h-3.5 w-3.5 text-slate-400 mr-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 0.75 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">75%</button>
+                    <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.0 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">100%</button>
+                    <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.25 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">125%</button>
+                </div>
             </div>
 
             <!-- Toggle Sample / Placeholder -->
             <button
                 type="button"
                 @click="showMockData = !showMockData"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition shadow-sm"
-                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition shadow-2xs"
+                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+                :title="showMockData ? 'Mode Simulasi aktif: menampilkan data contoh pemagang (klik untuk beralih ke kode token)' : 'Mode Token aktif: menampilkan placeholder mentah (klik untuk beralih ke simulasi)'"
             >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                 </svg>
                 <span x-text="showMockData ? 'Data Simulasi' : 'Token Mentah'"></span>
             </button>
@@ -99,49 +108,49 @@
             <!-- Histori Versi -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 shadow-sm"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                title="Histori Versi Dokumen"
             >
-                <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 14 14"/>
+                <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>
                 </svg>
                 <span>Versi ({{ $template->versions_count ?? 1 }})</span>
             </a>
 
-            <!-- Halaman Preview Resmi (Tab Sama) -->
-            <a
-                href="{{ route('admin.document-templates.preview', $template) }}"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 shadow-sm"
-                title="Buka Halaman Pratinjau Resmi"
-            >
-                <svg class="h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span>Halaman Preview</span>
-            </a>
-
-            <!-- Real DomPDF Preview Button -->
-            <a
-                href="{{ route('admin.document-templates.preview-pdf', $template) }}"
-                target="_blank"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 shadow-sm"
-            >
-                <svg class="h-4 w-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <span>Preview PDF</span>
-            </a>
+            <!-- Grouped Preview Actions (Web & PDF) -->
+            <div class="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                <a
+                    href="{{ route('admin.document-templates.preview', $template) }}"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition"
+                    title="Buka Halaman Pratinjau Resmi"
+                >
+                    <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>Pratinjau</span>
+                </a>
+                <span class="h-4 w-px bg-slate-200"></span>
+                <a
+                    href="{{ route('admin.document-templates.preview-pdf', $template) }}"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-700 bg-rose-50/50 hover:bg-rose-50 transition"
+                    title="Buka Pratinjau PDF Cetak Asli di Tab Baru"
+                >
+                    <svg class="h-3.5 w-3.5 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>PDF</span>
+                </a>
+            </div>
 
             <!-- Save Changes Button -->
             <button
                 type="button"
                 @click="saveTemplate()"
                 :disabled="isSaving"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition disabled:opacity-50"
             >
-                <svg x-show="!isSaving" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg x-show="!isSaving" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                     <polyline points="17 21 17 13 7 13 7 21"/>
                     <polyline points="7 3 7 8 15 8"/>
@@ -533,26 +542,90 @@
                     <template x-if="selectedElement">
                         <div class="space-y-4">
                             
-                            <!-- Header & Type Badge -->
-                            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                                <div class="flex items-center gap-1.5">
-                                    <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 uppercase" x-text="selectedElement.type"></span>
-                                    <span class="text-xs font-bold text-slate-800 truncate max-w-[130px]" x-text="selectedElement.id"></span>
+                            <!-- Header & Type Badge & Action Card -->
+                            <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-xs space-y-2.5">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <!-- Dynamic Icon Indicator -->
+                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 shadow-2xs">
+                                            <template x-if="selectedElement.type === 'signature_group'">
+                                                <svg class="h-4.5 w-4.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                                                    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                                                    <path d="M2 2l7.586 7.586"/>
+                                                    <circle cx="11" cy="11" r="2"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'qr_code'">
+                                                <svg class="h-4.5 w-4.5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'image'">
+                                                <svg class="h-4.5 w-4.5 text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="selectedElement.type === 'shape' || selectedElement.type === 'line'">
+                                                <svg class="h-4.5 w-4.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/>
+                                                </svg>
+                                            </template>
+                                            <template x-if="!['signature_group', 'qr_code', 'image', 'shape', 'line'].includes(selectedElement.type)">
+                                                <svg class="h-4.5 w-4.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>
+                                                </svg>
+                                            </template>
+                                        </div>
+
+                                        <!-- Friendly Name & Details -->
+                                        <div class="min-w-0">
+                                            <h4 class="text-xs font-bold text-slate-800 truncate leading-tight" x-text="getElementFriendlyTitle(selectedElement)"></h4>
+                                            <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                <span class="rounded bg-slate-100 border border-slate-200/80 px-1.5 py-0.2 text-[9px] font-mono font-bold text-slate-600 uppercase" x-text="selectedElement.type"></span>
+                                                <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]" :title="selectedElement.id" x-text="selectedElement.id"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Quick Layer Badge -->
+                                    <div class="shrink-0">
+                                        <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-mono font-semibold text-slate-600 shadow-2xs" title="Tingkat Layer (Z-Index)">
+                                            <span class="text-slate-400 text-[9px]">Z:</span>
+                                            <span class="text-slate-800 font-bold" x-text="selectedElement.z_index || 1"></span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-2">
+
+                                <!-- Action Buttons (Duplikat & Hapus) -->
+                                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                                     <button
                                         type="button"
                                         @click="duplicateSelected()"
-                                        class="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                                        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 active:scale-95 transition cursor-pointer"
+                                        title="Duplikat Elemen Ini (Ctrl+D)"
                                     >
-                                        Duplikat
+                                        <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                        <span>Duplikat</span>
                                     </button>
+
                                     <button
                                         type="button"
                                         @click="deleteElement(selectedElement.id)"
-                                        class="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                                        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 active:scale-95 transition cursor-pointer"
+                                        title="Hapus Elemen Ini (Delete / Backspace)"
                                     >
-                                        Hapus
+                                        <svg class="h-3.5 w-3.5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18"/>
+                                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                            <line x1="10" y1="11" x2="10" y2="17"/>
+                                            <line x1="14" y1="11" x2="14" y2="17"/>
+                                        </svg>
+                                        <span>Hapus</span>
                                     </button>
                                 </div>
                             </div>
@@ -976,109 +1049,168 @@
 
                             <!-- 6. Signature Group Properties -->
                             <template x-if="selectedElement.type === 'signature_group'">
-                                <div class="space-y-3">
-                                    <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-3.5">
+                                    <!-- Sub-Card 1: Format Teks & Penandatangan -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>✍️</span> Teks & Tipografi
+                                            </span>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-1">Perataan</label>
+                                                <select x-model="selectedElement.align" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <option value="center">Tengah (Center)</option>
+                                                    <option value="left">Rata Kiri (Left)</option>
+                                                    <option value="right">Rata Kanan (Right)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                                <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none">
+                                                    <optgroup label="🏛️ Serif Klasik & Formal">
+                                                        <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
+                                                        <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
+                                                        <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
+                                                        <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
+                                                        <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
+                                                        <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
+                                                        <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
+                                                        <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
+                                                    </optgroup>
+                                                    <optgroup label="✨ Modern Sans-Serif">
+                                                        <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
+                                                        <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
+                                                        <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
+                                                        <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
+                                                        <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
+                                                        <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
+                                                    </optgroup>
+                                                    <optgroup label="✍️ Kaligrafi & Script">
+                                                        <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik)</option>
+                                                        <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus)</option>
+                                                        <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal Prestisius)</option>
+                                                        <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
+                                                        <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
+                                                        <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
+                                                    </optgroup>
+                                                    <optgroup label="🔢 Monospace">
+                                                        <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
+                                                        <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
+                                                    </optgroup>
+                                                </select>
+                                            </div>
+                                        </div>
+
                                         <div>
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Perataan</label>
-                                            <select x-model="selectedElement.align" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                                                <option value="center">Tengah (Center)</option>
-                                                <option value="left">Rata Kiri (Left)</option>
-                                                <option value="right">Rata Kanan (Right)</option>
-                                            </select>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Nomor Sertifikat (Opsional)</label>
+                                            <input type="text" x-model="selectedElement.cert_no_text" placeholder="Contoh: Nomor Sertifikat: @{{dokumen.nomor}}" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs font-mono focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div>
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
-                                            <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                                                <optgroup label="🏛️ Serif Klasik & Formal">
-                                                    <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
-                                                    <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
-                                                    <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
-                                                    <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
-                                                    <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
-                                                    <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
-                                                    <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
-                                                    <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
-                                                </optgroup>
-                                                <optgroup label="✨ Modern Sans-Serif">
-                                                    <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
-                                                    <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
-                                                    <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
-                                                    <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
-                                                    <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
-                                                    <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
-                                                </optgroup>
-                                                <optgroup label="✍️ Kaligrafi & Script">
-                                                    <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik)</option>
-                                                    <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus)</option>
-                                                    <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal Prestisius)</option>
-                                                    <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
-                                                    <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
-                                                    <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
-                                                </optgroup>
-                                                <optgroup label="🔢 Monospace">
-                                                    <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
-                                                    <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
-                                                </optgroup>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nomor Sertifikat (Opsional)</label>
-                                        <input type="text" x-model="selectedElement.cert_no_text" placeholder="Contoh: Nomor Sertifikat: @{{dokumen.nomor}}" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
-                                        <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
-                                        <input type="text" x-model="selectedElement.role_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
-                                        <input type="text" x-model="selectedElement.name_text" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs" />
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Tanda Tangan</label>
-                                            <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono mb-1" />
-                                            <input type="file" id="sig-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomSignature($event)" />
-                                            <label for="sig-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
-                                                <span x-text="isUploadingSig ? 'Mengunggah...' : '📁 Upload TTD (GDrive)'"></span>
-                                            </label>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Teks Tanggal & Tempat</label>
+                                            <input type="text" x-model="selectedElement.date_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Stempel</label>
-                                            <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono mb-1" />
-                                            <input type="file" id="stamp-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomStamp($event)" />
-                                            <label for="stamp-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
-                                                <span x-text="isUploadingStamp ? 'Mengunggah...' : '📁 Upload Stempel (GDrive)'"></span>
-                                            </label>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Jabatan & Perusahaan</label>
+                                            <input type="text" x-model="selectedElement.role_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Nama Penandatangan</label>
+                                            <input type="text" x-model="selectedElement.name_text" @change="pushHistory()" class="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 focus:outline-none" />
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (negatif = geser kiri, positif = geser kanan)">Offset Stempel X (px)</label>
-                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="10" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+
+                                    <!-- Sub-Card 2: Berkas Gambar TTD & Stempel -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>💮</span> Berkas Gambar TTD & Stempel
+                                            </span>
                                         </div>
-                                        <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi vertikal stempel relatif terhadap kotak tanda tangan (negatif = naik ke atas, positif = turun ke bawah)">Offset Stempel Y (px)</label>
-                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_y" placeholder="-35" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Tag Tanda Tangan</label>
+                                                <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 bg-white p-1 text-xs font-mono mb-1.5 focus:border-blue-500 focus:outline-none" />
+                                                <input type="file" id="sig-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomSignature($event)" />
+                                                <label for="sig-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-dashed border-blue-400 bg-blue-50/70 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                    <span x-text="isUploadingSig ? 'Mengunggah...' : '📁 Upload TTD'"></span>
+                                                </label>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Tag Stempel</label>
+                                                <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 bg-white p-1 text-xs font-mono mb-1.5 focus:border-blue-500 focus:outline-none" />
+                                                <input type="file" id="stamp-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomStamp($event)" />
+                                                <label for="stamp-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-dashed border-blue-400 bg-blue-50/70 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                    <span x-text="isUploadingStamp ? 'Mengunggah...' : '📁 Upload Stempel'"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex flex-wrap gap-1.5 pt-1">
+                                            <button type="button" @click="selectedElement.sig_image = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-white hover:bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-700 font-medium shadow-2xs transition active:scale-95">
+                                                + TTD Sistem
+                                            </button>
+                                            <button type="button" @click="selectedElement.stamp_image = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-white hover:bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-700 font-medium shadow-2xs transition active:scale-95">
+                                                + Stempel Sistem
+                                            </button>
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Ukuran diameter stempel (default: 120px)">Ukuran Stempel (px)</label>
-                                            <input type="number" min="40" max="250" step="5" x-model.number="selectedElement.stamp_size_px" placeholder="120" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+
+                                    <!-- Sub-Card 3: Penyesuaian Presisi Posisi & Ukuran Stempel -->
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+                                        <div class="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>📐</span> Posisi & Ukuran Stempel
+                                            </span>
                                         </div>
-                                        <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Ukuran tinggi tanda tangan (default: 50px, disarankan 40 - 120px)">Ukuran TTD / Tinggi (px)</label>
-                                            <input type="number" min="25" max="180" step="5" x-model.number="selectedElement.sig_height_px" placeholder="50" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (negatif = geser kiri, positif = geser kanan)">Offset X (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="10" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_offset_x', 5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_offset_x', -5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Posisi vertikal stempel relatif terhadap kotak tanda tangan (negatif = naik ke atas, positif = turun ke bawah)">Offset Y (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" step="5" x-model.number="selectedElement.stamp_offset_y" placeholder="-35" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_offset_y', 5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_offset_y', -5)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="flex flex-wrap gap-1 pt-0.5">
-                                        <button type="button" @click="selectedElement.sig_image = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ TTD Sistem</button>
-                                        <button type="button" @click="selectedElement.stamp_image = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Stempel Sistem</button>
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Ukuran diameter stempel (default: 120px)">Ukuran Stempel (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" min="40" max="250" step="5" x-model.number="selectedElement.stamp_size_px" placeholder="120" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('stamp_size_px', 5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('stamp_size_px', -5, 40, 250)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Ukuran tinggi tanda tangan (default: 50px, disarankan 40 - 120px)">Tinggi TTD (px)</label>
+                                                <div class="flex rounded border border-slate-300 bg-white shadow-2xs overflow-hidden">
+                                                    <input type="number" min="25" max="180" step="5" x-model.number="selectedElement.sig_height_px" placeholder="50" @change="pushHistory()" class="w-full border-none p-1 text-xs text-slate-800 focus:ring-0" />
+                                                    <div class="flex flex-col border-l border-slate-200 bg-slate-100">
+                                                        <button type="button" @click="stepProp('sig_height_px', 5, 25, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▲</button>
+                                                        <button type="button" @click="stepProp('sig_height_px', -5, 25, 180)" class="px-1 text-[9px] hover:bg-slate-200 text-slate-600">▼</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -1651,6 +1783,50 @@ function certificateCanvasApp() {
         selectElement(id) {
             this.selectedElementId = id;
             this.activeDrawerTab = 'element';
+        },
+
+        getElementFriendlyTitle(elem) {
+            if (!elem) return 'Elemen';
+            const type = elem.type || '';
+            const id = (elem.id || '').toLowerCase();
+
+            if (type === 'signature_group' || id.includes('signature_block') || id.includes('signature_group') || id.includes('ttd')) {
+                return 'Blok Tanda Tangan & Stempel';
+            }
+            if (id === 'elem_intern_name' || id.includes('intern_name') || id.includes('peserta')) {
+                return 'Nama Peserta Magang';
+            }
+            if (id === 'elem_cert_no' || id.includes('cert_no') || id.includes('nomor')) {
+                return 'Nomor Sertifikat';
+            }
+            if (id === 'elem_title' || id.includes('title') || id.includes('judul')) {
+                return 'Judul Sertifikat';
+            }
+            if (id === 'elem_appreciation' || id.includes('appreciation') || id.includes('apresiasi')) {
+                return 'Teks Apresiasi / Pengantar';
+            }
+            if (id === 'elem_date' || id.includes('date') || id.includes('tanggal')) {
+                return 'Teks Tanggal Terbit';
+            }
+            if (type === 'qr_code' || id.includes('qr')) {
+                return 'QR Code Verifikasi';
+            }
+            if (type === 'image' || id.includes('logo')) {
+                return 'Logo / Gambar';
+            }
+            if (type === 'shape') {
+                return 'Bentuk (Shape)';
+            }
+            if (type === 'line') {
+                return 'Garis Pembatas';
+            }
+            if (type === 'competency_table' || id.includes('competency')) {
+                return 'Tabel Kompetensi & Nilai';
+            }
+            if (type === 'text') {
+                return 'Elemen Teks';
+            }
+            return (elem.name || type).replace(/_/g, ' ').toUpperCase();
         },
 
         stepProp(prop, delta, minVal, maxVal) {
