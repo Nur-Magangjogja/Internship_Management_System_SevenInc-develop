@@ -140,6 +140,19 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         );
     }
 
+    public function syncSheetSchema(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        array $headers
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['connection_key' => $connection->connection_key]
+        );
+    }
+
     public function deleteEmptyColumn(
         SpreadsheetConnection $connection,
         int $sheetId,

@@ -134,27 +134,11 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync) {
-                    if (!app()->runningUnitTests()) {
-                        try {
-                            $this->processSyncRecord($rowSync->fresh() ?? $rowSync, force: false);
-                            return;
-                        } catch (Throwable) {
-                            // Fallback to queue dispatch if immediate sync fails
-                        }
-                    }
                     ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
                 });
             }
         } else {
             DB::afterCommit(function () use ($rowSync) {
-                if (!app()->runningUnitTests()) {
-                    try {
-                        $this->processSyncRecord($rowSync->fresh() ?? $rowSync, force: false);
-                        return;
-                    } catch (Throwable) {
-                        // Fallback to queue dispatch if immediate sync fails
-                    }
-                }
                 ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
             });
         }
@@ -217,27 +201,11 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync) {
-                    if (!app()->runningUnitTests()) {
-                        try {
-                            $this->processSyncRecord($rowSync->fresh() ?? $rowSync, force: false);
-                            return;
-                        } catch (Throwable) {
-                            // Fallback to queue dispatch if immediate sync fails
-                        }
-                    }
                     ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
                 });
             }
         } else {
             DB::afterCommit(function () use ($rowSync) {
-                if (!app()->runningUnitTests()) {
-                    try {
-                        $this->processSyncRecord($rowSync->fresh() ?? $rowSync, force: false);
-                        return;
-                    } catch (Throwable) {
-                        // Fallback to queue dispatch if immediate sync fails
-                    }
-                }
                 ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
             });
         }

@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Models\FormField;
 use App\Models\FormFieldRegistry;
 use App\Models\FormSchema;
+use App\Models\IntegrationOutboxEvent;
 use App\Models\InternshipRegistration;
 use App\Models\RegistrationCustomAnswer;
 use App\Models\RegistrationFormSnapshot;
+use App\Models\SpreadsheetConnection;
 use App\Models\User;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -862,6 +864,42 @@ class FormBuilderService
 
             // Buat draf baru untuk iterasi admin berikutnya
             $this->clonePublishedToDraft($lockedDraft, $publisher);
+
+            // P1.2: Catat IntegrationOutboxEvent secara atomik dalam transaksi publikasi lokal
+            $regConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+            $idempotencyKey = 'publish_sync_' . $lockedDraft->id . '_' . $publishedVersionCode . '_' . substr($schemaHash, 0, 16);
+
+            $isConfigured = $regConnection && $regConnection->is_enabled && !empty($regConnection->spreadsheet_id);
+
+            $outboxEvent = IntegrationOutboxEvent::create([
+                'public_uuid'          => (string) \Illuminate\Support\Str::uuid(),
+                'event_type'           => 'form_schema.publish_sync',
+                'target_connection_id' => $regConnection?->id,
+                'aggregate_type'       => FormSchema::class,
+                'aggregate_id'         => (string) $lockedDraft->id,
+                'idempotency_key'      => $idempotencyKey,
+                'expected_schema_hash' => $schemaHash,
+                'status'               => $isConfigured ? IntegrationOutboxEvent::STATUS_PENDING : IntegrationOutboxEvent::STATUS_SKIPPED,
+                'attempt_count'        => 0,
+                'max_attempts'         => 5,
+                'payload'              => [
+                    'year'         => (int) $lockedDraft->year,
+                    'version_code' => $publishedVersionCode,
+                    'schema_id'    => $lockedDraft->id,
+                    'schema_hash'  => $schemaHash,
+                ],
+                'response_context'     => $isConfigured ? null : ['reason' => 'Target connection not configured or disabled'],
+            ]);
+
+            if ($isConfigured) {
+                DB::afterCommit(function () use ($outboxEvent) {
+                    try {
+                        \App\Jobs\ProcessIntegrationOutboxEventJob::dispatch($outboxEvent->id);
+                    } catch (\Throwable) {
+                        // Kegagalan dispatch setelah commit tetap mempertahankan outbox pending untuk dipulihkan oleh recovery worker
+                    }
+                });
+            }
 
             return $lockedDraft->fresh();
         });

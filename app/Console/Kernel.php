@@ -12,7 +12,11 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Recovery outbox sinkronisasi spreadsheet setiap 5 menit
+        $schedule->command('spreadsheet:process-outbox')->everyFiveMinutes()->withoutOverlapping();
+
+        // Recovery baris data dan berkas Drive setiap 10 menit
+        $schedule->command('sertif:spreadsheet-sync:recover')->everyTenMinutes()->withoutOverlapping();
     }
 
     /**

@@ -113,6 +113,52 @@ class SpreadsheetDiscoveryService
     }
 
     /**
+     * Resolve tab identity against remote tab list, verifying sheetId and updating tabName if renamed.
+     *
+     * @throws DomainException if sheetId is provided but not found on remote spreadsheet
+     */
+    public function resolveRemoteTabIdentity(
+        SpreadsheetConnection $connection,
+        ?int $sheetId,
+        string $tabName
+    ): array {
+        if ($sheetId === null) {
+            return ['sheet_id' => null, 'tab_name' => $tabName];
+        }
+
+        $tabsResult = $this->listTabs($connection);
+        if (!$tabsResult['success'] || empty($tabsResult['tabs'])) {
+            return ['sheet_id' => $sheetId, 'tab_name' => $tabName];
+        }
+
+        $matchedTab = null;
+        foreach ($tabsResult['tabs'] as $t) {
+            if (isset($t['id']) && (int) $t['id'] === (int) $sheetId) {
+                $matchedTab = $t;
+                break;
+            }
+        }
+
+        if (!$matchedTab && !empty($tabName)) {
+            foreach ($tabsResult['tabs'] as $t) {
+                if (isset($t['name']) && $t['name'] === $tabName) {
+                    $matchedTab = $t;
+                    break;
+                }
+            }
+        }
+
+        if (!$matchedTab) {
+            throw new DomainException("INVALID_SHEET_IDENTITY: Tab dengan Sheet ID {$sheetId} tidak ditemukan pada remote Spreadsheet.");
+        }
+
+        return [
+            'sheet_id' => (int) $matchedTab['id'],
+            'tab_name' => !empty($matchedTab['name']) ? $matchedTab['name'] : $tabName,
+        ];
+    }
+
+    /**
      * Inspect schema, headers, inferred types, and masked samples for a tab (Read-Only).
      */
     public function inspectTabSchema(
@@ -129,6 +175,21 @@ class SpreadsheetDiscoveryService
                 'message'    => 'Nama tab spreadsheet tidak boleh kosong.',
                 'columns'    => [],
             ];
+        }
+
+        if ($sheetId !== null) {
+            try {
+                $resolved = $this->resolveRemoteTabIdentity($connection, $sheetId, $cleanTab);
+                $cleanTab = $resolved['tab_name'];
+                $sheetId = $resolved['sheet_id'];
+            } catch (DomainException $e) {
+                return [
+                    'success'    => false,
+                    'error_code' => 'INVALID_SHEET_IDENTITY',
+                    'message'    => $e->getMessage(),
+                    'columns'    => [],
+                ];
+            }
         }
 
         // Check if an explicit profile exists for this tab/sheetId
@@ -178,6 +239,14 @@ class SpreadsheetDiscoveryService
         ?int $sheetId = null,
         ?User $user = null
     ): SheetDiscoverySnapshot {
+        if ($sheetId === null) {
+            throw new DomainException("INVALID_SHEET_IDENTITY: sheet_id wajib disertakan untuk snapshot.");
+        }
+
+        $resolved = $this->resolveRemoteTabIdentity($connection, $sheetId, $tabName);
+        $tabName = $resolved['tab_name'];
+        $sheetId = $resolved['sheet_id'];
+
         $inspection = $this->inspectTabSchema($connection, $tabName, $headerRow, $sheetId);
 
         if (!$inspection['success']) {
@@ -188,7 +257,7 @@ class SpreadsheetDiscoveryService
             $snapshot = SheetDiscoverySnapshot::create([
                 'spreadsheet_connection_id' => $connection->id,
                 'spreadsheet_id'            => $connection->spreadsheet_id,
-                'sheet_id'                  => $sheetId ?? 0,
+                'sheet_id'                  => (int) $sheetId,
                 'tab_name'                  => $tabName,
                 'header_row'                => $inspection['header_row'],
                 'data_start_row'            => $inspection['data_start_row'],
@@ -503,30 +572,15 @@ class SpreadsheetDiscoveryService
 
             if ($item->action === SheetMappingProposalItem::ACTION_LINK_EXISTING && $item->field_key) {
                 $coveredFieldKeys[$item->field_key] = true;
-                $existingField = $schemaFields->get($item->field_key);
-
-                if ($existingField && trim($existingField->label) !== trim($item->observed_label)) {
-                    $counts['rename']++;
-                    $diffItems[] = [
-                        'diff_type'      => 'RENAME_DISPLAY',
-                        'col_letter'     => $item->col_letter,
-                        'observed_label' => $item->observed_label,
-                        'current_label'  => $existingField->label,
-                        'field_key'      => $item->field_key,
-                        'reason'         => "Label tampilan disesuaikan ('{$existingField->label}' -> '{$item->observed_label}') tanpa mengubah field_key.",
-                        'action'         => $item->action,
-                    ];
-                } else {
-                    $counts['link']++;
-                    $diffItems[] = [
-                        'diff_type'      => 'LINK_EXISTING',
-                        'col_letter'     => $item->col_letter,
-                        'observed_label' => $item->observed_label,
-                        'field_key'      => $item->field_key,
-                        'reason'         => 'Terhubung dengan field Form Builder yang sudah ada.',
-                        'action'         => $item->action,
-                    ];
-                }
+                $counts['link']++;
+                $diffItems[] = [
+                    'diff_type'      => 'LINK_EXISTING',
+                    'col_letter'     => $item->col_letter,
+                    'observed_label' => $item->observed_label,
+                    'field_key'      => $item->field_key,
+                    'reason'         => 'Terhubung dengan field Form Builder yang sudah ada (label Form Builder tetap dipertahankan).',
+                    'action'         => $item->action,
+                ];
             }
         }
 
@@ -574,8 +628,18 @@ class SpreadsheetDiscoveryService
         }
 
         // Schema Drift Guard: Verify expected schema hash
+        if (empty($proposal->expected_schema_hash)) {
+            throw new DomainException("SCHEMA_CONFLICT: expected_schema_hash tidak boleh kosong.");
+        }
+
         $latestSnapshot = SheetDiscoverySnapshot::where('spreadsheet_connection_id', $proposal->spreadsheet_connection_id)
-            ->where('tab_name', $proposal->snapshot->tab_name)
+            ->where(function ($q) use ($proposal) {
+                if ($proposal->snapshot && $proposal->snapshot->sheet_id !== null) {
+                    $q->where('sheet_id', $proposal->snapshot->sheet_id);
+                } else {
+                    $q->where('tab_name', $proposal->snapshot?->tab_name);
+                }
+            })
             ->latest('scanned_at')
             ->first();
 
@@ -606,13 +670,18 @@ class SpreadsheetDiscoveryService
                 if ($item->action === SheetMappingProposalItem::ACTION_CREATE_DRAFT) {
                     $fieldKey = $item->field_key ?: Str::slug($item->observed_label, '_');
                     
+                    $fieldType = $item->suggested_field_type ?: 'text';
+                    if (!array_key_exists($fieldType, FormField::supportedTypes())) {
+                        $fieldType = 'text';
+                    }
+
                     // Ensure unique key in draft schema
                     $existing = $draftSchema->fields()->where('field_key', $fieldKey)->first();
                     if (!$existing) {
                         FormField::create([
                             'form_schema_id'   => $draftSchema->id,
                             'field_key'        => $fieldKey,
-                            'field_type'       => $item->suggested_field_type ?: 'text',
+                            'field_type'       => $fieldType,
                             'label'            => $item->suggested_label ?: $item->observed_label,
                             'group_name'       => 'Pendaftaran',
                             'is_system'        => false,
@@ -627,13 +696,10 @@ class SpreadsheetDiscoveryService
 
                 if ($item->action === SheetMappingProposalItem::ACTION_LINK_EXISTING && $item->field_key) {
                     $field = $draftSchema->fields()->where('field_key', $item->field_key)->first();
-                    if ($field && !empty($item->observed_label)) {
-                        // Safe label update without changing key or type
-                        $field->update([
-                            'label' => $item->suggested_label ?: $item->observed_label,
-                        ]);
+                    if ($field) {
+                        // P1.4: link_existing hanya membentuk relasi ke field_key sah, label Form Builder tidak diubah
+                        $appliedCount++;
                     }
-                    $appliedCount++;
                 }
             }
 

@@ -1744,6 +1744,14 @@ class InternController extends Controller
 
         $formBuilderService->saveCustomAnswers($intern, $validation['cleaned'], $schema, auth()->user());
 
+        // P2.1: Enqueue sync baris ke Google Spreadsheet secara asinkron pasca-commit
+        try {
+            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+            $syncEngine->queueSyncForRegistration($intern);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal enqueue sync spreadsheet setelah update custom answers untuk registrasi ID {$intern->id}: " . $e->getMessage());
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Jawaban dinamis pendaftaran berhasil diperbarui.',

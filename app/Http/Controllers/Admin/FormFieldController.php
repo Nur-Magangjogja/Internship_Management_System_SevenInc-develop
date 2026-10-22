@@ -336,57 +336,16 @@ class FormFieldController extends Controller
                 ->with('error', "Gagal mempublikasikan versi formulir: {$e->getMessage()}");
         }
 
-        // Decouple Local DB Publish from Remote Sync (F2 P0: Published Locally vs Remote Sync Status)
-        $remoteSyncStatus = 'pending';
-        $remoteSyncMessage = 'Sinkronisasi Spreadsheet dijadwalkan melalui antrean outbox terverifikasi.';
+        // Ambil status outbox event yang dibuat secara atomik dalam transaksi publikasi
+        $outboxEvent = \App\Models\IntegrationOutboxEvent::where('aggregate_type', \App\Models\FormSchema::class)
+            ->where('aggregate_id', (string) $published->id)
+            ->latest('id')
+            ->first();
 
-        try {
-            $regConnection = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)->first();
-            $idempotencyKey = 'publish_sync_' . $published->id . '_' . $published->version_code;
-
-            $outboxEvent = \App\Models\IntegrationOutboxEvent::firstOrCreate(
-                ['idempotency_key' => $idempotencyKey],
-                [
-                    'event_type'           => 'form_schema.publish_sync',
-                    'target_connection_id' => $regConnection?->id,
-                    'aggregate_type'       => \App\Models\FormSchema::class,
-                    'aggregate_id'         => (string) $published->id,
-                    'expected_schema_hash' => $published->schema_hash ?? null,
-                    'status'               => \App\Models\IntegrationOutboxEvent::STATUS_PENDING,
-                    'attempt_count'        => 0,
-                    'payload'              => [
-                        'year'         => $year,
-                        'version_code' => $published->version_code,
-                        'schema_id'    => $published->id,
-                    ],
-                ]
-            );
-
-            if (!app()->runningUnitTests()) {
-                try {
-                    $syncResult = app(\App\Services\SpreadsheetSyncEngineService::class)->syncSpreadsheetColumnsAndRowsForYear($year, $published);
-                    $isVerified = is_array($syncResult) ? (!empty($syncResult['schema_synced'])) : (bool) $syncResult;
-                    if ($isVerified) {
-                        $remoteSyncStatus = 'verified';
-                        $remoteSyncMessage = 'Spreadsheet Google berhasil disinkronkan secara remote.';
-                        $outboxEvent->update(['status' => \App\Models\IntegrationOutboxEvent::STATUS_VERIFIED]);
-                    } else {
-                        $remoteSyncStatus = 'failed';
-                        $remoteSyncMessage = 'Sinkronisasi remote Google ditunda atau gagal diverifikasi.';
-                        $outboxEvent->update(['status' => \App\Models\IntegrationOutboxEvent::STATUS_FAILED]);
-                    }
-                } catch (\Throwable $remoteErr) {
-                    $remoteSyncStatus = 'failed';
-                    $remoteSyncMessage = 'Koneksi remote Google gagal (' . $remoteErr->getMessage() . '). Formulir tetap berhasil terbit lokal.';
-                    $outboxEvent->update([
-                        'status'     => \App\Models\IntegrationOutboxEvent::STATUS_FAILED,
-                        'last_error' => $remoteErr->getMessage(),
-                    ]);
-                }
-            }
-        } catch (\Throwable) {
-            // Outbox error does not revert published local database state
-        }
+        $remoteSyncStatus = $outboxEvent ? $outboxEvent->status : 'pending';
+        $remoteSyncMessage = $remoteSyncStatus === \App\Models\IntegrationOutboxEvent::STATUS_SKIPPED
+            ? 'Koneksi Google Spreadsheet belum dikonfigurasi atau dinonaktifkan.'
+            : 'Sinkronisasi Spreadsheet dijadwalkan secara asinkron melalui antrean outbox terverifikasi.';
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([

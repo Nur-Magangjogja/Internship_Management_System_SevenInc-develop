@@ -90,6 +90,20 @@ interface SpreadsheetTransportInterface
     ): SpreadsheetTransportResponse;
 
     /**
+     * Synchronize main sheet headers (Row 12) and realign existing data rows automatically via Apps Script.
+     *
+     * @param SpreadsheetConnection $connection
+     * @param string $tabName
+     * @param array<string> $headers
+     * @return SpreadsheetTransportResponse
+     */
+    public function syncSheetSchema(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        array $headers
+    ): SpreadsheetTransportResponse;
+
+    /**
      * Perform an isolated, heavily audited safe deletion of a proven unused and completely empty remote column.
      * Strictly fails-closed if any cell contains data, formulas, merged cells, or if schema has drifted.
      *

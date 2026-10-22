@@ -60,19 +60,33 @@ class SpreadsheetTabProfile extends Model
     ): self {
         $numericSheetId = (int) $sheetId;
 
+        if ($explicitHeaderRow !== null && $explicitHeaderRow < 1) {
+            throw new \InvalidArgumentException('header_row harus lebih besar atau sama dengan 1.');
+        }
+
+        if ($explicitHeaderRow !== null && $explicitDataStartRow !== null && $explicitDataStartRow <= $explicitHeaderRow) {
+            throw new \InvalidArgumentException('data_start_row harus lebih besar dari header_row.');
+        }
+
         $profile = static::where('spreadsheet_connection_id', $connection->id)
             ->where('sheet_id', $numericSheetId)
             ->first();
 
         if ($profile) {
             $dirty = false;
-            if ($profile->tab_name !== $tabName) {
+            if ($tabName !== '' && $profile->tab_name !== $tabName) {
                 $profile->tab_name = $tabName;
                 $dirty = true;
             }
             if ($explicitHeaderRow !== null && $profile->header_row !== $explicitHeaderRow) {
                 $profile->header_row = $explicitHeaderRow;
-                $profile->data_start_row = $explicitDataStartRow ?? ($explicitHeaderRow + 1);
+                $dirty = true;
+            }
+            if ($explicitDataStartRow !== null && $profile->data_start_row !== $explicitDataStartRow) {
+                if ($explicitDataStartRow <= $profile->header_row) {
+                    throw new \InvalidArgumentException('data_start_row harus lebih besar dari header_row.');
+                }
+                $profile->data_start_row = $explicitDataStartRow;
                 $dirty = true;
             }
             if ($dirty) {
@@ -83,6 +97,10 @@ class SpreadsheetTabProfile extends Model
 
         $headerRow = $explicitHeaderRow ?? static::defaultHeaderRowSuggestion($tabName, $connection->connection_key);
         $dataStartRow = $explicitDataStartRow ?? ($headerRow + 1);
+
+        if ($dataStartRow <= $headerRow) {
+            throw new \InvalidArgumentException('data_start_row harus lebih besar dari header_row.');
+        }
 
         return static::create([
             'spreadsheet_connection_id' => $connection->id,

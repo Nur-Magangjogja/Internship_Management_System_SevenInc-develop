@@ -682,8 +682,12 @@
                                 </div>
                             </td>
                             <td class="px-3 py-2.5 text-[11px]">
-                                <div class="text-emerald-700 font-medium">Sheet: <span class="font-mono">{{ $stg->normalized_remote_value ?: '(kosong)' }}</span></div>
-                                <div class="text-slate-500">DB: <span class="font-mono">{{ $stg->current_db_value ?: '(kosong)' }}</span></div>
+                                @php
+                                    $maskedRemote = app(\App\Services\SpreadsheetInboundSyncService::class)->maskPiiValue($stg->header_name, (string)$stg->normalized_remote_value);
+                                    $maskedDb = app(\App\Services\SpreadsheetInboundSyncService::class)->maskPiiValue($stg->header_name, (string)$stg->current_db_value);
+                                @endphp
+                                <div class="text-emerald-700 font-medium">Sheet: <span class="font-mono">{{ $maskedRemote ?: '(kosong)' }}</span></div>
+                                <div class="text-slate-500">DB: <span class="font-mono">{{ $maskedDb ?: '(kosong)' }}</span></div>
                             </td>
                             <td class="px-3 py-2.5">
                                 @php
@@ -1251,6 +1255,14 @@ document.addEventListener('DOMContentLoaded', function () {
         return headerRowInput.value.trim();
     }
 
+    function getSelectedSheetId() {
+        const selected = tabSelect.options[tabSelect.selectedIndex];
+        if (selected && selected.dataset.sheetId !== undefined && selected.dataset.sheetId !== '') {
+            return parseInt(selected.dataset.sheetId);
+        }
+        return null;
+    }
+
     // 1. Fetch Tabs List
     btnFetchTabs.addEventListener('click', async function () {
         showLoading('Mengambil daftar seluruh tab dari Google Spreadsheet...');
@@ -1278,7 +1290,9 @@ document.addEventListener('DOMContentLoaded', function () {
             data.tabs.forEach(tab => {
                 const opt = document.createElement('option');
                 opt.value = tab.name;
+                opt.dataset.sheetId = (tab.id !== undefined && tab.id !== null) ? tab.id : '';
                 opt.dataset.headerRow = tab.header_row || 1;
+                opt.dataset.dataStartRow = tab.data_start_row || (parseInt(tab.header_row || 1) + 1);
                 opt.textContent = `${tab.name} (${tab.last_row || tab.row_count} baris, default header: baris ${tab.header_row})`;
                 tabSelect.appendChild(opt);
             });
@@ -1313,8 +1327,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
 
         const headerRow = getHeaderRow();
+        const sheetId = getSelectedSheetId();
         let query = `?tab_name=${encodeURIComponent(tab)}`;
         if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
+        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
 
         showLoading(`Menginspeksi schema tab '${tab}' (Baris ${headerRow || 'Auto'})...`);
         try {
@@ -1406,8 +1422,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
 
         const headerRow = getHeaderRow();
+        const sheetId = getSelectedSheetId();
         let query = `?tab_name=${encodeURIComponent(tab)}&page=${page}&page_size=15`;
         if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
+        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
 
         showLoading(`Membaca baris data tab '${tab}' (Halaman ${page})...`);
         try {
@@ -1519,8 +1537,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
 
         const headerRow = getHeaderRow();
+        const sheetId = getSelectedSheetId();
         let query = `?tab_name=${encodeURIComponent(tab)}`;
         if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
+        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
 
         showLoading(`Menganalisis draft rekomendasi pemetaan kolom tab '${tab}' ke Form Builder...`);
         try {
@@ -1630,7 +1650,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Tab Profile Modal
     window.openTabProfileModal = function () {
-        document.getElementById('input-sheet-id').value = '';
+        const sheetId = getSelectedSheetId();
+        document.getElementById('input-sheet-id').value = (sheetId !== null) ? sheetId : '';
         document.getElementById('input-tab-name').value = getSelectedTab() || '';
         document.getElementById('input-header-row').value = getHeaderRow() || '1';
         document.getElementById('input-data-start-row').value = (parseInt(getHeaderRow() || '1') + 1);
@@ -1692,6 +1713,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btnCreateProposal.disabled = true;
             btnCreateProposal.innerHTML = 'Membuat usulan...';
 
+            const sheetId = getSelectedSheetId();
             try {
                 const resp = await fetch(proposalsStoreUrl, {
                     method: 'POST',
@@ -1702,6 +1724,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     },
                     body: JSON.stringify({
                         tab_name: tabName,
+                        sheet_id: sheetId,
                         header_row: headerRow ? parseInt(headerRow) : null,
                         year: tabName.match(/\d{4}/) ? parseInt(tabName.match(/\d{4}/)[0]) : 2026
                     })

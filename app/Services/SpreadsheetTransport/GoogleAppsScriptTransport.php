@@ -66,11 +66,6 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'payload'        => $sanitizedPayload,
         ];
 
-        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
-            $innerPayload['auto_sync_headers'] = true;
-            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
-        }
-
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }
 
@@ -105,11 +100,6 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'sync_id'        => $syncId,
             'payload'        => $sanitizedPayload,
         ];
-
-        if (!app()->runningUnitTests() && $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
-            $innerPayload['auto_sync_headers'] = true;
-            $innerPayload['schema_headers']    = array_keys($sanitizedPayload);
-        }
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }

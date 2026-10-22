@@ -55,6 +55,8 @@ class StabilizationPhaseS9ATest extends TestCase
             'is_banned' => false,
             'banned_at' => null,
         ]);
+
+        $this->seed(\Database\Seeders\SpreadsheetConnectionSeeder::class);
     }
 
     /**

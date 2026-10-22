@@ -27,48 +27,17 @@ class SpreadsheetConnectionController extends Controller
      */
     public function index()
     {
-        // Pastikan canonical connections terinisialisasi
-        $this->service->getConnectionByKey(SpreadsheetConnection::KEY_REGISTRATION);
-        $this->service->getConnectionByKey(SpreadsheetConnection::KEY_FOLLOWUP);
-
         $connections = $this->service->getAllConnections();
 
         return view('admin.spreadsheet-connections.index', compact('connections'));
     }
 
     /**
-     * Tampilkan detail konfigurasi, riwayat versi schema, pemetaan kolom, dan status sync baris.
+     * Tampilkan detail konfigurasi, riwayat versi schema, pemetaan kolom, dan status sync baris (Read-Only).
      */
-    public function show(Request $request, SpreadsheetConnection $spreadsheetConnection, SpreadsheetSyncEngineService $syncEngine)
+    public function show(Request $request, SpreadsheetConnection $spreadsheetConnection)
     {
-        SpreadsheetConnection::ensureDriveFolderColumns();
         $spreadsheetConnection->refresh()->load(['schemaVersions.columnMappings', 'createdByUser', 'updatedByUser']);
-
-        if (!app()->runningUnitTests()) {
-            if ($spreadsheetConnection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) {
-                app(\App\Services\RegistrationSpreadsheetMappingService::class)
-                    ->syncSpreadsheetSchemaWithFormSchema((int) now()->year);
-                $spreadsheetConnection->load(['schemaVersions.columnMappings']);
-            }
-
-            $syncedRows = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
-                ->whereIn('sync_status', [
-                    SpreadsheetRowSync::STATUS_SYNCED,
-                    SpreadsheetRowSync::STATUS_PENDING,
-                    SpreadsheetRowSync::STATUS_RETRYING,
-                ])
-                ->limit(15)
-                ->get();
-
-            foreach ($syncedRows as $syncedRow) {
-                try {
-                    // processSyncRecord without force will no-op if checksum matches, and auto-update remote if payload changed
-                    $syncEngine->processSyncRecord($syncedRow, force: false);
-                } catch (\Throwable) {
-                    // Ignore auto-refresh errors on view load
-                }
-            }
-        }
 
         $rowSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
             ->latest('id')
@@ -105,12 +74,10 @@ class SpreadsheetConnectionController extends Controller
     }
 
     /**
-     * Form edit konfigurasi koneksi spreadsheet.
+     * Form edit konfigurasi koneksi spreadsheet (Read-Only).
      */
     public function edit(SpreadsheetConnection $spreadsheetConnection)
     {
-        SpreadsheetConnection::ensureDriveFolderColumns();
-
         return view('admin.spreadsheet-connections.edit', [
             'connection' => $spreadsheetConnection->fresh(),
         ]);
@@ -383,8 +350,9 @@ class SpreadsheetConnectionController extends Controller
     ) {
         $tabName = $request->query('tab_name', '');
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
+        $sheetId = $request->has('sheet_id') && $request->query('sheet_id') !== null && $request->query('sheet_id') !== '' ? (int) $request->query('sheet_id') : null;
 
-        $result = $discoveryService->inspectTabSchema($spreadsheetConnection, $tabName, $headerRow);
+        $result = $discoveryService->inspectTabSchema($spreadsheetConnection, $tabName, $headerRow, $sheetId);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
@@ -399,6 +367,7 @@ class SpreadsheetConnectionController extends Controller
     ) {
         $tabName = $request->query('tab_name', '');
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
+        $sheetId = $request->has('sheet_id') && $request->query('sheet_id') !== null && $request->query('sheet_id') !== '' ? (int) $request->query('sheet_id') : null;
         $page = (int) $request->query('page', 1);
         $pageSize = (int) $request->query('page_size', 20);
 
@@ -417,6 +386,7 @@ class SpreadsheetConnectionController extends Controller
     ) {
         $tabName = $request->query('tab_name', '');
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
+        $sheetId = $request->has('sheet_id') && $request->query('sheet_id') !== null && $request->query('sheet_id') !== '' ? (int) $request->query('sheet_id') : null;
 
         $result = $discoveryService->generateDraftMappingProposals($spreadsheetConnection, $tabName, $headerRow);
 
@@ -438,19 +408,33 @@ class SpreadsheetConnectionController extends Controller
             'data_start_row' => 'nullable|integer|min:2|max:200',
         ]);
 
-        $profile = $discoveryService->resolveTabHeaderProfile(
-            $spreadsheetConnection,
-            $validated['sheet_id'],
-            $validated['tab_name'],
-            $validated['header_row'],
-            $validated['data_start_row'] ?? ($validated['header_row'] + 1)
-        );
+        if (isset($validated['data_start_row']) && $validated['data_start_row'] <= $validated['header_row']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'data_start_row harus lebih besar dari header_row.',
+            ], 422);
+        }
 
-        return response()->json([
-            'success' => true,
-            'message' => "Profil header untuk tab '{$profile->tab_name}' berhasil disimpan.",
-            'profile' => $profile,
-        ]);
+        try {
+            $profile = $discoveryService->resolveTabHeaderProfile(
+                $spreadsheetConnection,
+                $validated['sheet_id'],
+                $validated['tab_name'],
+                $validated['header_row'],
+                $validated['data_start_row'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Profil header untuk tab '{$profile->tab_name}' berhasil disimpan.",
+                'profile' => $profile,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     /**
@@ -463,7 +447,7 @@ class SpreadsheetConnectionController extends Controller
     ) {
         $validated = $request->validate([
             'tab_name'   => 'required|string|max:150',
-            'sheet_id'   => 'nullable|integer',
+            'sheet_id'   => 'required|integer',
             'header_row' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -472,7 +456,7 @@ class SpreadsheetConnectionController extends Controller
                 $spreadsheetConnection,
                 $validated['tab_name'],
                 $validated['header_row'] ?? null,
-                $validated['sheet_id'] ?? null,
+                $validated['sheet_id'],
                 Auth::user()
             );
 
@@ -482,10 +466,11 @@ class SpreadsheetConnectionController extends Controller
                 'snapshot' => $snapshot,
             ]);
         } catch (\Throwable $e) {
+            $status = str_contains($e->getMessage(), 'INVALID_SHEET_IDENTITY') ? 422 : 422;
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyimpan snapshot skema: ' . $e->getMessage(),
-            ], 422);
+            ], $status);
         }
     }
 
@@ -616,10 +601,12 @@ class SpreadsheetConnectionController extends Controller
             abort(404);
         }
 
+        $supportedTypes = implode(',', array_keys(\App\Models\FormField::supportedTypes()));
         $validated = $request->validate([
-            'action'          => 'required|in:link_existing,create_draft_field,external_only,ignore',
-            'field_key'       => 'nullable|string|max:100',
-            'suggested_label' => 'nullable|string|max:255',
+            'action'               => 'required|in:link_existing,create_draft_field,external_only,ignore',
+            'field_key'            => 'nullable|string|max:100',
+            'suggested_label'      => 'nullable|string|max:255',
+            'suggested_field_type' => "nullable|string|in:{$supportedTypes}",
         ]);
 
         // Guardrail: Reserved system fields cannot be overwritten
@@ -631,10 +618,11 @@ class SpreadsheetConnectionController extends Controller
         }
 
         $item->update([
-            'action'          => $validated['action'],
-            'field_key'       => $validated['field_key'] ?? $item->field_key,
-            'suggested_label' => $validated['suggested_label'] ?? $item->suggested_label,
-            'has_collision'   => false, // Resolved by admin manual intervention
+            'action'               => $validated['action'],
+            'field_key'            => $validated['field_key'] ?? $item->field_key,
+            'suggested_label'      => $validated['suggested_label'] ?? $item->suggested_label,
+            'suggested_field_type' => $validated['suggested_field_type'] ?? $item->suggested_field_type,
+            'has_collision'        => false, // Resolved by admin manual intervention
         ]);
 
         return response()->json([

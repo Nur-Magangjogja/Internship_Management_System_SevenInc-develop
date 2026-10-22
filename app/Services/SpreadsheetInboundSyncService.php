@@ -15,6 +15,7 @@ use App\Models\SpreadsheetTabProfile;
 use App\Models\User;
 use App\Services\SpreadsheetTransport\SpreadsheetTransportInterface;
 use App\Services\SpreadsheetTransport\SpreadsheetTransportResponse;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -68,18 +69,25 @@ class SpreadsheetInboundSyncService
         // 1. Resolve Tab Profile & Baris Header
         $profile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
             ->where(function ($q) use ($sheetId, $tabName) {
-                if ($sheetId !== null && $sheetId > 0) {
-                    $q->where('sheet_id', $sheetId);
+                if ($sheetId !== null) {
+                    $q->where('sheet_id', (int) $sheetId);
                 } else {
                     $q->where('tab_name', $tabName);
                 }
             })
             ->first();
 
-        $isYearTab = (bool) preg_match('/^\d{4}$/', $tabName);
-        $headerRow = $profile?->header_row ?? ($isYearTab ? 12 : 1);
+        // Resolve year without (int) truncation ambiguities (e.g., '[2026]' should not become 0)
+        $tabYear = null;
+        if (preg_match('/(\d{4})/', $tabName, $ym)) {
+            $tabYear = (int) $ym[1];
+        } elseif ($profile?->year) {
+            $tabYear = (int) $profile->year;
+        }
+
+        $headerRow = $profile?->header_row ?? ($tabYear !== null ? 12 : 1);
         $dataStartRow = $profile?->data_start_row ?? ($headerRow + 1);
-        $effectiveSheetId = (int) ($profile?->sheet_id ?? ($sheetId ?? 0));
+        $effectiveSheetId = (int) ($profile?->sheet_id ?? ($sheetId !== null ? (int) $sheetId : 0));
 
         // 2. Preflight Schema Inspection & Drift Check
         $schemaRes = $this->transport->inspectSchema($connection, $tabName, $headerRow);
@@ -107,11 +115,16 @@ class SpreadsheetInboundSyncService
         }
 
         // 3. Bangun Peta Kolom dari SpreadsheetColumnMapping aktif dan Remote Columns
-        $activeMappings = SpreadsheetColumnMapping::whereHas('schemaVersion', function ($q) use ($connection, $tabName) {
+        $activeMappings = SpreadsheetColumnMapping::whereHas('schemaVersion', function ($q) use ($connection, $tabName, $tabYear, $effectiveSheetId) {
             $q->where('spreadsheet_connection_id', $connection->id)
-              ->where(function ($sub) use ($tabName) {
-                  $sub->where('sheet_tab_name', $tabName)
-                      ->orWhere('year', (int) $tabName);
+              ->where(function ($sub) use ($tabName, $tabYear, $effectiveSheetId) {
+                  $sub->where('sheet_tab_name', $tabName);
+                  if ($tabYear !== null) {
+                      $sub->orWhere('year', $tabYear);
+                  }
+                  if ($effectiveSheetId !== null) {
+                      $sub->orWhere('sheet_id', $effectiveSheetId);
+                  }
               })
               ->where('is_active', true);
         })->get()->keyBy(fn ($m) => mb_strtolower(trim($m->sheet_header)));
@@ -128,23 +141,42 @@ class SpreadsheetInboundSyncService
             $mapping   = $activeMappings->get($normHeader);
 
             if ($mapping) {
-                $fieldKey = (string) $mapping->target_field;
-                if ($mapping->target_entity === 'internship_registration') {
-                    $classification = $this->classifyField($hName, $fieldKey);
-                    if ($classification === SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER) {
-                        $classification = SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE;
-                    }
+                $direction = strtolower(trim((string) $mapping->direction));
+                $mappingStatus = strtolower(trim((string) ($mapping->mapping_status ?? 'approved')));
+
+                // Hanya mapping aktif/approved dengan direction inbound atau bidirectional yang diizinkan
+                $isAllowedInbound = in_array($direction, ['inbound', 'bidirectional'], true)
+                    && in_array($mappingStatus, ['approved', 'active', ''], true)
+                    && !$mapping->is_formula;
+
+                if (!$isAllowedInbound) {
+                    $classification = SheetInboundChangeStaging::CLASSIFICATION_UNMAPPED;
+                    $fieldKey = (string) $mapping->target_field;
                 } else {
-                    $classification = SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+                    $fieldKey = (string) $mapping->target_field;
+                    if ($mapping->target_entity === 'internship_registration') {
+                        $classification = $this->classifyField($hName, $fieldKey);
+                        if ($classification === SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER) {
+                            $classification = SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE;
+                        }
+                    } else {
+                        $classification = SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+                    }
                 }
+                $columnIdentity = $mapping->column_identity ?: $hName;
             } else {
                 $derivedKey = Str::slug($hName, '_');
                 $classification = $this->classifyField($hName, $derivedKey);
-                $fieldKey = $derivedKey;
-            }
 
-            // Generate deterministic column identity (cid_..., max 20 chars)
-            $columnIdentity = 'cid_' . substr(hash('sha256', "col_{$effectiveSheetId}_{$colLetter}_{$colIndex}_" . Str::slug($hName, '_')), 0, 16);
+                // Jika sudah ada mapping aktif terdaftar untuk tab ini, kolom tanpa mapping tidak boleh di-sync
+                // kecuali kolom sistem terlindungi agar dapat dideteksi dan ditolak secara aman
+                if ($activeMappings->isNotEmpty() && $classification !== SheetInboundChangeStaging::CLASSIFICATION_SYSTEM_PROTECTED) {
+                    $classification = SheetInboundChangeStaging::CLASSIFICATION_UNMAPPED;
+                }
+
+                $fieldKey = $derivedKey;
+                $columnIdentity = $hName;
+            }
 
             $columnMap[$hName] = [
                 'header_name'     => $hName,
@@ -301,10 +333,12 @@ class SpreadsheetInboundSyncService
                         $stagingStatus = SheetInboundChangeStaging::STATUS_REJECTED;
                         $resolutionPolicy = SheetInboundChangeStaging::POLICY_KEEP_LOCAL;
                     } elseif ($classification === SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE) {
-                        // Data inti memerlukan persetujuan eksplisit
+                        // Data inti memerlukan persetujuan eksplisit (mask PII jika phone/email)
                         $conflictsCount++;
                         $conflictStatus = SheetInboundChangeStaging::CONFLICT_CORE_REQUIRES_APPROVAL;
-                        $conflictReason = "Perubahan data inti '{$headerName}' dari '{$normalizedCurrentDbValue}' ke '{$normalizedRemoteValue}' memerlukan review dan persetujuan Admin.";
+                        $maskedCurrent = $this->maskPiiValue($headerName, (string)$normalizedCurrentDbValue);
+                        $maskedRemote  = $this->maskPiiValue($headerName, (string)$normalizedRemoteValue);
+                        $conflictReason = "Perubahan data inti '{$headerName}' dari '{$maskedCurrent}' ke '{$maskedRemote}' memerlukan review dan persetujuan Admin.";
                     } else {
                         // Custom answer: Cek concurrent divergence
                         if ($priorRowSync && $priorRowSync->last_synced_at && $registration->updated_at &&
@@ -317,31 +351,61 @@ class SpreadsheetInboundSyncService
                         }
                     }
 
-                    // Simpan / perbarui ke sheet_inbound_change_staging
-                    SheetInboundChangeStaging::updateOrCreate([
-                        'spreadsheet_connection_id' => $connection->id,
-                        'tab_name'                  => $tabName,
-                        'sync_id'                   => $effectiveSyncId,
-                        'column_identity'           => $colMeta['column_identity'],
-                    ], [
-                        'public_uuid'               => (string) Str::uuid(),
-                        'sheet_id'                  => $effectiveSheetId,
-                        'row_index'                 => $rowNumber,
-                        'registration_id'           => $registration->id,
-                        'header_name'               => mb_substr($headerName, 0, 255),
-                        'field_key'                 => mb_substr($fieldKey, 0, 100),
-                        'field_classification'      => $classification,
-                        'raw_remote_value'          => $rawRemoteValue,
-                        'normalized_remote_value'   => $normalizedRemoteValue,
-                        'current_db_value'          => $normalizedCurrentDbValue,
-                        'old_checksum'              => hash('sha256', (string) $normalizedCurrentDbValue),
-                        'new_checksum'              => hash('sha256', (string) $normalizedRemoteValue),
-                        'conflict_status'           => $conflictStatus,
-                        'conflict_reason'           => $conflictReason,
-                        'staging_status'            => $stagingStatus,
-                        'resolution_policy'         => $resolutionPolicy,
-                        'is_formula'                => $isFormula,
-                    ]);
+                    // Simpan / perbarui ke sheet_inbound_change_staging tanpa menimpa baseline atau data yang sudah di-review
+                    $existingStaging = SheetInboundChangeStaging::where('spreadsheet_connection_id', $connection->id)
+                        ->where('tab_name', $tabName)
+                        ->where('sync_id', $effectiveSyncId)
+                        ->where('column_identity', $colMeta['column_identity'])
+                        ->first();
+
+                    if ($existingStaging) {
+                        // Jangan overwrite data staging yang sudah pernah di-apply, rejected, atau ignored
+                        if (in_array($existingStaging->staging_status, [
+                            SheetInboundChangeStaging::STATUS_APPLIED,
+                            SheetInboundChangeStaging::STATUS_REJECTED,
+                            SheetInboundChangeStaging::STATUS_IGNORED,
+                        ], true)) {
+                            continue;
+                        }
+
+                        // Jaga baseline current_db_value selama siklus approval; hanya update remote jika nilai remote berubah
+                        if (!$this->valuesAreEqual($existingStaging->normalized_remote_value, $normalizedRemoteValue)) {
+                            $existingStaging->update([
+                                'raw_remote_value'        => $rawRemoteValue,
+                                'normalized_remote_value' => $normalizedRemoteValue,
+                                'new_checksum'            => hash('sha256', (string) $normalizedRemoteValue),
+                                'conflict_status'         => $conflictStatus,
+                                'conflict_reason'         => $conflictReason,
+                                'is_formula'              => $isFormula,
+                                'source_revision'         => $currentSchemaHash ?: null,
+                            ]);
+                        }
+                    } else {
+                        SheetInboundChangeStaging::create([
+                            'public_uuid'               => (string) Str::uuid(),
+                            'spreadsheet_connection_id' => $connection->id,
+                            'tab_name'                  => $tabName,
+                            'sheet_id'                  => $effectiveSheetId,
+                            'row_index'                 => $rowNumber,
+                            'sync_id'                   => $effectiveSyncId,
+                            'registration_id'           => $registration->id,
+                            'column_identity'           => $colMeta['column_identity'],
+                            'header_name'               => mb_substr($headerName, 0, 255),
+                            'field_key'                 => mb_substr($fieldKey, 0, 100),
+                            'field_classification'      => $classification,
+                            'raw_remote_value'          => $rawRemoteValue,
+                            'normalized_remote_value'   => $normalizedRemoteValue,
+                            'current_db_value'          => $normalizedCurrentDbValue,
+                            'old_checksum'              => hash('sha256', (string) $normalizedCurrentDbValue),
+                            'new_checksum'              => hash('sha256', (string) $normalizedRemoteValue),
+                            'conflict_status'           => $conflictStatus,
+                            'conflict_reason'           => $conflictReason,
+                            'staging_status'            => $stagingStatus,
+                            'resolution_policy'         => $resolutionPolicy,
+                            'is_formula'                => $isFormula,
+                            'source_revision'           => $currentSchemaHash ?: null,
+                        ]);
+                    }
                 }
             }
 
@@ -364,6 +428,7 @@ class SpreadsheetInboundSyncService
 
     /**
      * Terapkan perubahan inbound yang telah distaging ke database lokal via domain service.
+     * Menggunakan transaksi atomik, row locking (anti-race/anti-stale), dan audit outbox terlindungi PII.
      *
      * @param SheetInboundChangeStaging $staging
      * @param User $actor
@@ -371,6 +436,15 @@ class SpreadsheetInboundSyncService
      */
     public function applyStagedChange(SheetInboundChangeStaging $staging, User $actor): array
     {
+        // RBAC Check: Hanya Admin atau HR Staff yang berwenang
+        if (!($actor->isAdmin() ?? false) && !($actor->isHrStaff() ?? false) && ($actor->role ?? '') !== 'admin') {
+            return [
+                'success'    => false,
+                'error_code' => 'UNAUTHORIZED',
+                'message'    => 'Hanya Administrator atau HR Staff yang memiliki wewenang untuk menyetujui perubahan inbound.',
+            ];
+        }
+
         if ($staging->isProtected()) {
             return [
                 'success'    => false,
@@ -379,45 +453,112 @@ class SpreadsheetInboundSyncService
             ];
         }
 
-        if ($staging->staging_status === SheetInboundChangeStaging::STATUS_APPLIED) {
-            return [
-                'success'    => false,
-                'error_code' => 'ALREADY_APPLIED',
-                'message'    => 'Perubahan staging ini sudah pernah diterapkan sebelumnya.',
-            ];
-        }
+        return DB::transaction(function () use ($staging, $actor) {
+            // 1. Lock staging record untuk mencegah concurrent double-apply
+            $lockedStaging = SheetInboundChangeStaging::where('id', $staging->id)
+                ->lockForUpdate()
+                ->first();
 
-        $registration = $staging->registration;
-        if (!$registration) {
-            return [
-                'success'    => false,
-                'error_code' => 'REGISTRATION_NOT_FOUND',
-                'message'    => "Data pendaftaran magang ID '{$staging->registration_id}' tidak ditemukan.",
-            ];
-        }
+            if (!$lockedStaging) {
+                return [
+                    'success'    => false,
+                    'error_code' => 'STAGING_NOT_FOUND',
+                    'message'    => 'Data staging tidak ditemukan.',
+                ];
+            }
 
-        $val = $staging->normalized_remote_value;
+            if ($lockedStaging->staging_status === SheetInboundChangeStaging::STATUS_APPLIED) {
+                return [
+                    'success'    => false,
+                    'error_code' => 'ALREADY_APPLIED',
+                    'message'    => 'Perubahan staging ini sudah pernah diterapkan sebelumnya.',
+                ];
+            }
 
-        // Strip dangerous leading formula characters if any
-        if (is_string($val) && in_array($val[0] ?? '', ['=', '+', '-', '@'], true)) {
-            $val = ltrim($val, "=+-@'");
-        }
+            if (in_array($lockedStaging->staging_status, [
+                SheetInboundChangeStaging::STATUS_REJECTED,
+                SheetInboundChangeStaging::STATUS_IGNORED,
+            ], true)) {
+                return [
+                    'success'    => false,
+                    'error_code' => 'INVALID_STAGING_STATUS',
+                    'message'    => "Perubahan staging berstatus '{$lockedStaging->staging_status}' dan tidak dapat diterapkan.",
+                ];
+            }
 
-        return DB::transaction(function () use ($staging, $registration, $actor, $val) {
-            if ($staging->field_classification === SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER) {
+            // 2. Lock model pendaftaran
+            $registration = InternshipRegistration::where('id', $lockedStaging->registration_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$registration) {
+                return [
+                    'success'    => false,
+                    'error_code' => 'REGISTRATION_NOT_FOUND',
+                    'message'    => "Data pendaftaran magang ID '{$lockedStaging->registration_id}' tidak ditemukan.",
+                ];
+            }
+
+            // 3. Anti-Stale Verification: Re-read nilai aktual database lokal dan bandingkan dengan baseline saat scan
+            $freshDbValue = $this->getCurrentDatabaseValue(
+                $registration,
+                $lockedStaging->field_classification,
+                $lockedStaging->header_name,
+                $lockedStaging->field_key
+            );
+            $normalizedFreshDbValue = $this->normalizeCellValue($freshDbValue);
+
+            if (!$this->valuesAreEqual($normalizedFreshDbValue, $lockedStaging->current_db_value)) {
+                // Terdeteksi pembaruan lokal konkuren sejak scan. Batalkan apply dan tandai konflik.
+                $lockedStaging->update([
+                    'conflict_status'   => SheetInboundChangeStaging::CONFLICT_DIVERGENT,
+                    'conflict_reason'   => 'Data lokal database telah diperbarui sejak pemindaian (stale approval terdeteksi). Penerapan dibatalkan demi keamanan data.',
+                    'staging_status'    => SheetInboundChangeStaging::STATUS_STAGED,
+                    'resolution_policy' => SheetInboundChangeStaging::POLICY_PENDING,
+                ]);
+
+                return [
+                    'success'    => false,
+                    'error_code' => 'STALE_DATA_CONFLICT',
+                    'message'    => 'Data database lokal telah berubah sejak pemindaian staging. Perubahan dibatalkan demi mencegah penimpaan data terbaru.',
+                ];
+            }
+
+            // 4. Bersihkan nilai remote dari formula injection prefix
+            $val = $lockedStaging->normalized_remote_value;
+            if (is_string($val) && in_array($val[0] ?? '', ['=', '+', '-', '@'], true)) {
+                $val = ltrim($val, "=+-@'");
+            }
+
+            // 5. Terapkan pembaruan sesuai klasifikasi field
+            if ($lockedStaging->field_classification === SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER) {
                 // Terapkan ke RegistrationCustomAnswer
                 RegistrationCustomAnswer::updateOrCreate([
                     'registration_id' => $registration->id,
-                    'field_key'       => $staging->field_key,
+                    'field_key'       => $lockedStaging->field_key,
                 ], [
                     'answer_value'    => $val,
                 ]);
-            } elseif ($staging->field_classification === SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE) {
-                // Terapkan ke atribut core InternshipRegistration
-                $this->applyCoreFieldUpdate($registration, $staging->field_key, $val);
+            } elseif ($lockedStaging->field_classification === SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE) {
+                // Terapkan ke atribut core InternshipRegistration melalui whitelist eksplisit
+                $applied = $this->applyCoreFieldUpdate($registration, $lockedStaging->field_key, $val);
+                if (!$applied) {
+                    return [
+                        'success'    => false,
+                        'error_code' => 'CORE_FIELD_UPDATE_FAILED',
+                        'message'    => "Field '{$lockedStaging->field_key}' tidak diizinkan atau gagal divalidasi.",
+                    ];
+                }
+            } else {
+                return [
+                    'success'    => false,
+                    'error_code' => 'UNALLOWED_FIELD_CLASSIFICATION',
+                    'message'    => "Klasifikasi field '{$lockedStaging->field_classification}' tidak diizinkan untuk diterapkan ke database.",
+                ];
             }
 
-            $staging->update([
+            // 6. Mutasikan status staging menjadi applied
+            $lockedStaging->update([
                 'staging_status'    => SheetInboundChangeStaging::STATUS_APPLIED,
                 'resolution_policy' => SheetInboundChangeStaging::POLICY_ACCEPT_REMOTE,
                 'conflict_status'   => SheetInboundChangeStaging::CONFLICT_NONE,
@@ -426,30 +567,30 @@ class SpreadsheetInboundSyncService
                 'applied_at'        => now(),
             ]);
 
-            // Audit outbox event
+            // 7. Audit outbox event dengan masking PII
             IntegrationOutboxEvent::create([
                 'idempotency_key'      => (string) Str::uuid(),
                 'event_type'           => 'inbound_change_applied',
-                'target_connection_id' => $staging->spreadsheet_connection_id,
+                'target_connection_id' => $lockedStaging->spreadsheet_connection_id,
                 'aggregate_type'       => 'internship_registration',
                 'aggregate_id'         => (string) $registration->id,
                 'status'               => IntegrationOutboxEvent::STATUS_VERIFIED,
                 'payload'              => [
-                    'staging_id'      => $staging->id,
-                    'header_name'     => $staging->header_name,
-                    'field_key'       => $staging->field_key,
-                    'old_value'       => $staging->current_db_value,
-                    'new_value'       => $val,
+                    'staging_id'      => $lockedStaging->id,
+                    'header_name'     => $lockedStaging->header_name,
+                    'field_key'       => $lockedStaging->field_key,
+                    'old_value'       => $this->maskPiiValue($lockedStaging->header_name, (string) $lockedStaging->current_db_value),
+                    'new_value'       => $this->maskPiiValue($lockedStaging->header_name, (string) $val),
                     'actor_id'        => $actor->id,
-                    'actor_email'     => $actor->email,
+                    'actor_email'     => $this->maskEmail($actor->email),
                     'applied_at'      => now()->toIso8601String(),
                 ],
             ]);
 
             return [
                 'success'        => true,
-                'message'        => "Perubahan kolom '{$staging->header_name}' berhasil diterapkan ke database.",
-                'staging_id'     => $staging->id,
+                'message'        => "Perubahan kolom '{$lockedStaging->header_name}' berhasil diterapkan ke database.",
+                'staging_id'     => $lockedStaging->id,
                 'applied_value'  => $val,
                 'actor'          => $actor->name,
             ];
@@ -466,6 +607,23 @@ class SpreadsheetInboundSyncService
      */
     public function rejectStagedChange(SheetInboundChangeStaging $staging, User $actor, ?string $reason = null): array
     {
+        // RBAC Check
+        if (!($actor->isAdmin() ?? false) && !($actor->isHrStaff() ?? false) && ($actor->role ?? '') !== 'admin') {
+            return [
+                'success'    => false,
+                'error_code' => 'UNAUTHORIZED',
+                'message'    => 'Hanya Administrator atau HR Staff yang memiliki wewenang untuk menolak perubahan inbound.',
+            ];
+        }
+
+        if ($staging->staging_status === SheetInboundChangeStaging::STATUS_APPLIED) {
+            return [
+                'success'    => false,
+                'error_code' => 'ALREADY_APPLIED',
+                'message'    => 'Perubahan staging ini sudah pernah diterapkan dan tidak dapat ditolak.',
+            ];
+        }
+
         $staging->update([
             'staging_status'    => SheetInboundChangeStaging::STATUS_REJECTED,
             'resolution_policy' => SheetInboundChangeStaging::POLICY_KEEP_LOCAL,
@@ -502,7 +660,7 @@ class SpreadsheetInboundSyncService
             return SheetInboundChangeStaging::CLASSIFICATION_SYSTEM_PROTECTED;
         }
 
-        if (str_starts_with($hClean, 'sertif_') || str_starts_with($hClean, 'status_') || str_contains($hClean, 'nomor_')) {
+        if (str_starts_with($hClean, 'sertif_') || str_starts_with($hClean, 'status_') || str_contains($hClean, 'nomor_id')) {
             return SheetInboundChangeStaging::CLASSIFICATION_SYSTEM_PROTECTED;
         }
 
@@ -511,14 +669,14 @@ class SpreadsheetInboundSyncService
             'nama_lengkap', 'fullname', 'nama', 'nomor_telepon', 'phone_number',
             'telepon', 'no_hp', 'no_whatsapp', 'tanggal_lahir', 'born_date',
             'jenis_kelamin', 'gender', 'asal_sekolah_kampus', 'institusi', 'institution_name',
-            'divisi', 'division', 'pilihan_divisi', 'internship_interest'
+            'divisi', 'division', 'pilihan_divisi', 'internship_interest', 'supervisor_info'
         ];
 
         if (in_array($hClean, $coreAdminKeys, true) || in_array($kClean, $coreAdminKeys, true)) {
             return SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE;
         }
 
-        // 3. Custom Answer Fields (Jika ada di FormFieldRegistry atau FormField)
+        // 3. Custom Answer Fields (Jika ada di FormFieldRegistry, FormField, atau RegistrationCustomAnswer)
         $hasCustomField = FormFieldRegistry::where('field_key', $kClean)
             ->orWhere('canonical_label', $headerName)
             ->exists();
@@ -535,7 +693,16 @@ class SpreadsheetInboundSyncService
             return SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
         }
 
-        return SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+        if (RegistrationCustomAnswer::where('field_key', $kClean)->exists()) {
+            return SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+        }
+
+        if (str_starts_with($kClean, 'pilihan_') || str_starts_with($kClean, 'custom_') || str_starts_with($kClean, 'catatan_')) {
+            return SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+        }
+
+        // Default: UNMAPPED (bukan custom answer)
+        return SheetInboundChangeStaging::CLASSIFICATION_UNMAPPED;
     }
 
     /**
@@ -661,30 +828,100 @@ class SpreadsheetInboundSyncService
     }
 
     /**
-     * Terapkan update atribut data inti pada InternshipRegistration.
+     * Terapkan update atribut data inti pada InternshipRegistration via explicit allowlist (C08).
+     * Mencegah mass-assignment / update liar pada atribut administratif, status, atau akun.
      */
-    protected function applyCoreFieldUpdate(InternshipRegistration $registration, string $fieldKey, ?string $value): void
+    protected function applyCoreFieldUpdate(InternshipRegistration $registration, string $fieldKey, ?string $value): bool
     {
-        if (in_array($fieldKey, ['fullname', 'nama_lengkap', 'nama'], true)) {
+        $key = strtolower(trim($fieldKey));
+
+        if (in_array($key, ['fullname', 'nama_lengkap', 'nama'], true)) {
+            if (empty(trim((string) $value))) {
+                return false;
+            }
             $registration->fullname = (string) $value;
-        } elseif (in_array($fieldKey, ['phone_number', 'nomor_telepon', 'telepon', 'no_hp'], true)) {
-            $registration->phone_number = $value;
-        } elseif (in_array($fieldKey, ['born_date', 'tanggal_lahir'], true)) {
-            $registration->born_date = $value;
-        } elseif (in_array($fieldKey, ['gender', 'jenis_kelamin'], true)) {
-            $registration->gender = $value;
-        } elseif ($fieldKey === 'supervisor_info' && $value) {
+        } elseif (in_array($key, ['phone_number', 'nomor_telepon', 'telepon', 'no_hp', 'no_whatsapp'], true)) {
+            $cleanPhone = preg_replace('/[^\d+]/', '', (string) $value);
+            if (strlen($cleanPhone) < 8 || strlen($cleanPhone) > 20) {
+                return false;
+            }
+            $registration->phone_number = $cleanPhone;
+        } elseif (in_array($key, ['born_date', 'tanggal_lahir'], true)) {
+            try {
+                $parsed = Carbon::parse($value);
+                $registration->born_date = $parsed->format('Y-m-d');
+            } catch (\Throwable) {
+                return false;
+            }
+        } elseif (in_array($key, ['gender', 'jenis_kelamin'], true)) {
+            $valLower = strtolower(trim((string) $value));
+            if (in_array($valLower, ['l', 'laki-laki', 'male', 'pria'], true)) {
+                $registration->gender = 'male';
+            } elseif (in_array($valLower, ['p', 'perempuan', 'female', 'wanita'], true)) {
+                $registration->gender = 'female';
+            } else {
+                $registration->gender = $valLower;
+            }
+        } elseif ($key === 'supervisor_info' && $value) {
             if (preg_match('/^(.*?)\s*\((.*?)\)$/', trim($value), $matches)) {
                 $registration->supervisor_name = trim($matches[1]);
                 $registration->supervisor_contact = trim($matches[2]);
             } else {
                 $registration->supervisor_name = trim($value);
             }
-        } elseif ($registration->isFillable($fieldKey)) {
-            $registration->{$fieldKey} = $value;
+        } elseif (in_array($key, ['internship_interest', 'pilihan_divisi', 'divisi', 'division'], true)) {
+            $registration->internship_interest = (string) $value;
+        } elseif (in_array($key, ['asal_sekolah_kampus', 'institusi', 'institution_name'], true)) {
+            if (isset($registration->institution_name)) {
+                $registration->institution_name = (string) $value;
+            }
+        } else {
+            // Field administratif / fillable lainnya ditolak keras dari sinkronisasi inbound otomatis
+            return false;
         }
 
         $registration->save();
+        return true;
+    }
+
+    /**
+     * Mask nilai PII (Personal Identifiable Information) agar log/audit/alasan konflik tidak bocor.
+     */
+    public function maskPiiValue(string $headerName, string $val): string
+    {
+        if (empty($val)) {
+            return $val;
+        }
+
+        $h = strtolower($headerName);
+        if (str_contains($h, 'telepon') || str_contains($h, 'phone') || str_contains($h, 'hp') || str_contains($h, 'wa')) {
+            $digitsOnly = preg_replace('/[^\d+]/', '', $val);
+            if (strlen($digitsOnly) > 4) {
+                return substr($digitsOnly, 0, 3) . '***' . substr($digitsOnly, -2);
+            }
+            return '***';
+        }
+
+        if (str_contains($h, 'email') || str_contains($val, '@')) {
+            return $this->maskEmail($val);
+        }
+
+        return $val;
+    }
+
+    /**
+     * Mask alamat email untuk log dan outbox.
+     */
+    public function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email);
+        if (count($parts) === 2) {
+            $name = $parts[0];
+            $domain = $parts[1];
+            $maskedName = strlen($name) > 2 ? substr($name, 0, 2) . '***' : substr($name, 0, 1) . '***';
+            return $maskedName . '@' . $domain;
+        }
+        return '***@***';
     }
 
     protected function valuesAreEqual(?string $a, ?string $b): bool
