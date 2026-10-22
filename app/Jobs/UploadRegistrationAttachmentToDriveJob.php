@@ -204,28 +204,9 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
 
         try {
             if ($hasDirectDriveDriver || $transport instanceof GoogleAppsScriptTransport) {
-                // Master Plan V1 Addendum Final V4 Cutover: Seluruh berkas diarahkan ke UniversalFileService (Laravel Google Drive API)
-                $universalService = app(\App\Services\UniversalFileService::class);
-                $category = match ($attachment->type ?? '') {
-                    'cv'             => \App\Models\CloudFileRegistry::CATEGORY_CV,
-                    'identity', 'ktp', 'ktm' => \App\Models\CloudFileRegistry::CATEGORY_IDENTITY,
-                    'portfolio'      => \App\Models\CloudFileRegistry::CATEGORY_PORTFOLIO,
-                    'recommendation' => \App\Models\CloudFileRegistry::CATEGORY_RECOMMENDATION_LETTER,
-                    'proposal'       => \App\Models\CloudFileRegistry::CATEGORY_PROPOSAL,
-                    default          => \App\Models\CloudFileRegistry::CATEGORY_CV,
-                };
-
-                $regRecord = $universalService->put(
-                    fileOrContent: $localPath,
-                    category: $category,
-                    ownerType: 'registration',
-                    ownerId: $attachment->registration_id,
-                    customFileName: $attachment->original_name,
-                    customMimeType: $attachment->mime_type
-                );
-
-                $driveFileId = $regRecord->drive_file_id;
-                $driveViewLink = "https://drive.google.com/file/d/{$driveFileId}/view";
+                $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
+                $driveFileId = $uploadResult['file_id'] ?? null;
+                $driveViewLink = $uploadResult['web_view_link'] ?? null;
             } else {
                 // Test transport / Mock transport handling
                 $response = $transport->sendRowUpsert($connection, 'Drive', 'ATT-' . $attachment->id, [

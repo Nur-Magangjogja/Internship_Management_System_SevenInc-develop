@@ -506,7 +506,7 @@ class InternController extends Controller
                     default               => $fKey,
                 };
                 if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
-                    \App\Models\RegistrationAttachment::updateOrCreate(
+                    $att = \App\Models\RegistrationAttachment::updateOrCreate(
                         ['internship_registration_id' => $intern->id, 'attachment_type' => $attType],
                         [
                             'category'          => \App\Models\RegistrationAttachment::getCategoryLabel($attType),
@@ -517,6 +517,13 @@ class InternController extends Controller
                             'drive_sync_status' => \App\Models\RegistrationAttachment::STATUS_PENDING,
                         ]
                     );
+
+                    try {
+                        app(\App\Services\CloudStorage\CloudSyncManager::class)->syncRegistrationAttachment($att, \Illuminate\Support\Facades\Auth::user());
+                    } catch (\Throwable $driveEx) {
+                        \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$att->id}: " . $driveEx->getMessage());
+                        \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($att->id);
+                    }
                 }
                 if ($fKey === 'profile_photo' && \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'profile_photo')) {
                     $intern->profile_photo = $path;
