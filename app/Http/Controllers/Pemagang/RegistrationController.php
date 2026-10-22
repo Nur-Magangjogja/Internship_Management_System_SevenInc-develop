@@ -710,6 +710,7 @@ class RegistrationController extends Controller
         // Submisi Atomik via Database Transaction (termasuk resolusi master data)
         $intern = null;
         $storedRegistrationFiles = [];
+        $createdAttachments = [];
         $schemaAdjustedNotice = null;
 
         try {
@@ -717,7 +718,7 @@ class RegistrationController extends Controller
                 $user, $isDraft, $validated, $existing, $infoSourcesArr,
                 $request, $boundSchema, $cleanedCustomAnswers, $formBuilder,
                 $isDraftYearChanged, $targetYear,
-                &$intern, &$storedRegistrationFiles, &$schemaAdjustedNotice
+                &$intern, &$storedRegistrationFiles, &$createdAttachments, &$schemaAdjustedNotice
             ) {
                 $getRelationId = function($modelClass, $name, $extra = []) {
                     if (empty($name)) return null;
@@ -877,7 +878,7 @@ class RegistrationController extends Controller
                         if ($file->isValid()) {
                             $path = $this->storePrivateFile($file, $baseDir);
                             $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'cv',
                                 'category'          => 'cv',
                                 'file_path'         => $path,
@@ -895,7 +896,7 @@ class RegistrationController extends Controller
                         if ($file->isValid()) {
                             $path = $this->storePrivateFile($file, $baseDir);
                             $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'identity',
                                 'category'          => 'identity',
                                 'file_path'         => $path,
@@ -914,7 +915,7 @@ class RegistrationController extends Controller
                             if ($file && $file->isValid()) {
                                 $path = $this->storePrivateFile($file, $baseDir);
                                 $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                                $this->createAttachmentSafely($intern, [
+                                $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                     'attachment_type'   => 'portfolio',
                                     'category'          => 'portfolio',
                                     'file_path'         => $path,
@@ -933,7 +934,7 @@ class RegistrationController extends Controller
                         if ($file->isValid()) {
                             $path = $this->storePrivateFile($file, $baseDir);
                             $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'cover_letter',
                                 'category'          => 'cover_letter',
                                 'file_path'         => $path,
@@ -951,7 +952,7 @@ class RegistrationController extends Controller
                         if ($file->isValid()) {
                             $path = $this->storePrivateFile($file, $baseDir);
                             $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'proposal',
                                 'category'          => 'proposal',
                                 'file_path'         => $path,
@@ -970,7 +971,7 @@ class RegistrationController extends Controller
                             if ($file && $file->isValid()) {
                                 $path = $this->storePrivateFile($file, $baseDir);
                                 $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                                $this->createAttachmentSafely($intern, [
+                                $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                     'attachment_type'   => 'supporting_document',
                                     'category'          => 'supporting_document',
                                     'file_path'         => $path,
@@ -991,7 +992,7 @@ class RegistrationController extends Controller
                             $storedRegistrationFiles[] = ['disk' => 'public', 'path' => $path];
                             $intern->profile_photo = $path;
                             $intern->save();
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'profile_photo',
                                 'category'          => 'profile_photo',
                                 'file_path'         => $path,
@@ -1009,7 +1010,7 @@ class RegistrationController extends Controller
                         if ($file->isValid()) {
                             $path = $this->storePrivateFile($file, $baseDir);
                             $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $this->createAttachmentSafely($intern, [
+                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
                                 'attachment_type'   => 'cv_ktp_portofolio',
                                 'category'          => 'legacy_bundle',
                                 'file_path'         => $path,
@@ -1088,6 +1089,22 @@ class RegistrationController extends Controller
         // Flash pesan penyesuaian skema HANYA SETELAH transaksi commit sukses (Fix 3)
         if ($schemaAdjustedNotice !== null) {
             session()->flash('schema_adjusted', $schemaAdjustedNotice);
+        }
+
+        // Sinkronisasi berkas pendaftaran ke Google Drive (CloudSyncManager)
+        if (!empty($createdAttachments)) {
+            $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
+            foreach ($createdAttachments as $createdAtt) {
+                if (!$createdAtt) {
+                    continue;
+                }
+                try {
+                    $syncManager->syncRegistrationAttachment($createdAtt, $user);
+                } catch (\Throwable $driveEx) {
+                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$createdAtt->id}: " . $driveEx->getMessage());
+                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($createdAtt->id);
+                }
+            }
         }
 
         if ($intern && in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE], true)) {
