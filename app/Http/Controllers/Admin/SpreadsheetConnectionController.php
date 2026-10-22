@@ -87,8 +87,8 @@ class SpreadsheetConnectionController extends Controller
         $recentProposals = $spreadsheetConnection->mappingProposals()->with(['items', 'formSchema'])->limit(5)->get();
         $outboxEvents = $spreadsheetConnection->outboxEvents()->limit(10)->get();
         $formFields = \App\Models\FormField::query()
-            ->select('id', 'field_key', 'field_label', 'field_type', 'is_active', 'is_archived')
-            ->orderBy('field_order')
+            ->select('id', 'field_key', 'label', 'label as field_label', 'field_type', 'is_active', 'is_archived')
+            ->orderBy('sort_order')
             ->get();
 
         return view('admin.spreadsheet-connections.show', [

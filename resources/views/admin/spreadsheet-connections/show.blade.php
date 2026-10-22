@@ -462,7 +462,7 @@
                                                 <option value="">-- Pilih Field Form Builder --</option>
                                                 @foreach ($formFields as $ff)
                                                     <option value="{{ $ff->field_key }}" {{ $item->field_key === $ff->field_key ? 'selected' : '' }}>
-                                                        {{ $ff->field_label }} ({{ $ff->field_key }}) [{{ $ff->field_type }}]
+                                                        {{ $ff->label ?? $ff->field_label }} ({{ $ff->field_key }}) [{{ $ff->field_type }}]
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -1623,9 +1623,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // ==========================================
     const tabProfileSaveUrl = @json(route('admin.spreadsheet-connections.tab-profile.save', $connection));
     const proposalsStoreUrl = @json(route('admin.spreadsheet-connections.proposals.store', $connection));
-    const diffUrlTemplate = @json(route('admin.spreadsheet-connections.proposals.diff', [$connection, 999999]));
-    const applyUrlTemplate = @json(route('admin.spreadsheet-connections.proposals.apply', [$connection, 999999]));
-    const itemUpdateUrlTemplate = @json(route('admin.spreadsheet-connections.proposals.items.update', [$connection, 999999, 888888]));
+    const diffUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.diff', [$connection, 999999]) !!}';
+    const applyUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.apply', [$connection, 999999]) !!}';
+    const itemUpdateUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.items.update', [$connection, 999999, 888888]) !!}';
     const csrfToken = '{{ csrf_token() }}';
 
     // Tab Profile Modal
