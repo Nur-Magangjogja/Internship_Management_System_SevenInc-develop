@@ -144,9 +144,10 @@
   }
   .signature-img-container img.stamp {
     position: absolute;
-    max-height: 90px;
-    opacity: 0.3;
-    filter: blur(0.5px);
+    max-height: 125px;
+    max-width: 125px;
+    opacity: 0.45;
+    filter: blur(0.3px);
     z-index: 1;
     left: 50%;
     top: 50%;

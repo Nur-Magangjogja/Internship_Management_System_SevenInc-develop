@@ -303,17 +303,17 @@ class DocumentTemplate extends Model
         }
 
         $bg = '/images/certificate/certificate-bg.png';
-        if ($certificateType === self::CERT_TYPE_WEBINAR && !empty($brand?->webinar_certificate_bg)) {
-            $bg = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
-        } elseif (!empty($brand?->internship_certificate_bg)) {
-            $bg = '/storage/' . ltrim($brand->internship_certificate_bg, '/');
-        } elseif (!empty($brand?->webinar_certificate_bg)) {
-            $bg = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+        if ($certificateType === self::CERT_TYPE_WEBINAR && !empty($brand?->webinar_certificate_bg_url)) {
+            $bg = $brand->webinar_certificate_bg_url;
+        } elseif (!empty($brand?->internship_certificate_bg_url)) {
+            $bg = $brand->internship_certificate_bg_url;
+        } elseif (!empty($brand?->webinar_certificate_bg_url)) {
+            $bg = $brand->webinar_certificate_bg_url;
         }
 
-        $logo = !empty($brand?->logo) ? ('/storage/' . ltrim($brand->logo, '/')) : '/images/mou/seven-inc-logo.png';
-        $sig  = !empty($brand?->signature) ? ('/storage/' . ltrim($brand->signature, '/')) : '/images/mou/signature-sample.png';
-        $stamp = !empty($brand?->stamp) ? ('/storage/' . ltrim($brand->stamp, '/')) : '/images/mou/stamp-sample.png';
+        $logo = $brand?->logo_url ?: '/images/mou/seven-inc-logo.png';
+        $sig  = $brand?->signature_url ?: '/images/mou/signature-sample.png';
+        $stamp = $brand?->stamp_url ?: '/images/mou/stamp-sample.png';
         $companyName = $brand?->name ?? 'SEVEN INC';
         $signatory = $brand?->signatory_name ?? 'Rekario Danny Sanjaya, S.Kom.';
         $position = $brand?->signatory_position ?? 'Direktur Utama';
@@ -914,7 +914,7 @@ HTML,
                     'type'        => 'text',
                     'content'     => 'Nomor Sertifikat: {{dokumen.nomor}}',
                     'x_percent'   => 50.0,
-                    'y_percent'   => 62.0,
+                    'y_percent'   => 61.0,
                     'width_percent' => 50.0,
                     'font_family' => 'Courier New',
                     'font_size_pt'=> 11,
@@ -927,7 +927,7 @@ HTML,
                     'id'          => 'elem_signature_block',
                     'type'        => 'signature_group',
                     'x_percent'   => 50.0,
-                    'y_percent'   => 72.0,
+                    'y_percent'   => 78.0,
                     'width_percent' => 45.0,
                     'date_text'   => '{{dokumen.tempat}}, {{dokumen.tanggal}}',
                     'role_text'   => '{{perusahaan.jabatan}} {{perusahaan.nama}}',
@@ -1050,7 +1050,7 @@ HTML,
                     'type'        => 'text',
                     'content'     => 'Nomor Sertifikat: {{dokumen.nomor}}',
                     'x_percent'   => 50.0,
-                    'y_percent'   => 62.0,
+                    'y_percent'   => 61.0,
                     'width_percent' => 50.0,
                     'font_family' => 'Courier New',
                     'font_size_pt'=> 11,
@@ -1063,7 +1063,7 @@ HTML,
                     'id'          => 'elem_signature_block',
                     'type'        => 'signature_group',
                     'x_percent'   => 50.0,
-                    'y_percent'   => 72.0,
+                    'y_percent'   => 78.0,
                     'width_percent' => 45.0,
                     'date_text'   => '{{dokumen.tempat}}, {{dokumen.tanggal}}',
                     'role_text'   => '{{perusahaan.jabatan}} {{perusahaan.nama}}',

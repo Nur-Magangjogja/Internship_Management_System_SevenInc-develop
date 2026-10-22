@@ -8,6 +8,7 @@ use App\Models\SystemAsset;
 use App\Models\User;
 use App\Services\CloudStorage\CloudStorageInterface;
 use App\Services\CloudStorage\CloudSyncManager;
+use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
 use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\CloudStorage\SystemStorageConfigService;
@@ -31,7 +32,15 @@ class SystemAssetService
             $this->cloudDriver = $cloudDriver;
         } else {
             $googleDriver = new GoogleDriveStorageDriver();
-            $this->cloudDriver = $googleDriver->isConfigured() ? $googleDriver : new LocalStorageFallbackDriver();
+            $gasDriver = new GoogleAppsScriptDriveDriver();
+
+            if ($googleDriver->isConfigured()) {
+                $this->cloudDriver = $googleDriver;
+            } elseif ($gasDriver->isConfigured()) {
+                $this->cloudDriver = $gasDriver;
+            } else {
+                $this->cloudDriver = new LocalStorageFallbackDriver();
+            }
         }
     }
 
@@ -102,7 +111,7 @@ class SystemAssetService
 
         // Jika auto-sync diaktifkan, coba lakukan sinkronisasi Drive di background
         try {
-            $this->syncAssetToDrive($asset, $actor);
+            $this->syncAssetToDrive($asset, $actor, false);
         } catch (\Throwable $e) {
             // Biarkan status pending jika belum berhasil connect
         }
@@ -153,7 +162,7 @@ class SystemAssetService
         );
 
         try {
-            $this->syncAssetToDrive($asset, $actor);
+            $this->syncAssetToDrive($asset, $actor, false);
         } catch (\Throwable $e) {
             // Abaikan kegagalan upload awal
         }
@@ -164,21 +173,29 @@ class SystemAssetService
     /**
      * Sinkronisasikan berkas aset ke Google Drive.
      */
-    public function syncAssetToDrive(SystemAsset $asset, ?User $actor = null): array
+    public function syncAssetToDrive(SystemAsset $asset, ?User $actor = null, bool $markFailedOnException = true): array
     {
-        if (!Storage::disk('local')->exists($asset->local_path)) {
+        $fullPath = null;
+        if (Storage::disk('local')->exists($asset->local_path)) {
+            $fullPath = Storage::disk('local')->path($asset->local_path);
+        } elseif (Storage::disk('public')->exists($asset->local_path)) {
+            $fullPath = Storage::disk('public')->path($asset->local_path);
+        } elseif (file_exists(public_path(ltrim($asset->local_path, '/')))) {
+            $fullPath = public_path(ltrim($asset->local_path, '/'));
+        }
+
+        if (!$fullPath || !file_exists($fullPath)) {
             throw new RuntimeException("Berkas fisik lokal aset tidak ditemukan: {$asset->local_path}");
         }
 
-        $fullPath = Storage::disk('local')->path($asset->local_path);
         $settings = $this->storageConfigService->getSettings();
 
-        // Tentukan remote folder
+        // Tentukan remote folder terstruktur: per Brand untuk brand, per Institusi untuk institusi mitra, dan per bagian/kategori untuk perpustakaan
         $categoryDir = Str::plural(Str::studly($asset->category));
         $remoteFolder = match ($asset->scope) {
-            SystemAsset::SCOPE_BRAND       => "System_Assets/Brands/" . Str::slug($asset->brand?->name ?? 'brand', '_'),
-            SystemAsset::SCOPE_INSTITUTION => "System_Assets/Institutions/" . Str::slug($asset->institution?->name ?? 'institution', '_'),
-            default                        => "System_Assets/Global/{$categoryDir}",
+            SystemAsset::SCOPE_BRAND       => "SYSTEM-ASSETS/BRANDS/" . Str::slug($asset->brand?->name ?? 'brand', '-'),
+            SystemAsset::SCOPE_INSTITUTION => "Institusi/" . Str::slug($asset->institution?->name ?? 'institusi', '-') . "/Logo",
+            default                        => "SYSTEM-ASSETS/{$categoryDir}",
         };
 
         // Konfigurasikan root folder sistem jika ada
@@ -186,17 +203,23 @@ class SystemAssetService
             $this->cloudDriver->setRootFolderId($settings->system_assets_folder_id);
         }
 
-        $fileName = Str::slug($asset->name, '_') . "_v{$asset->version}." . pathinfo($asset->local_path, PATHINFO_EXTENSION);
+        $extension = pathinfo($fullPath, PATHINFO_EXTENSION) ?: 'png';
+        if ($asset->scope === SystemAsset::SCOPE_INSTITUTION) {
+            $fileName = 'logo-' . Str::slug($asset->institution?->name ?? 'institusi', '-') . '.' . $extension;
+        } else {
+            $fileName = Str::slug($asset->name, '_') . "_v{$asset->version}." . $extension;
+        }
 
         try {
             $uploadResult = $this->cloudDriver->uploadFile($fullPath, $remoteFolder, $fileName);
 
-            $isRealDrive = $this->cloudDriver->getDriverName() === 'google_drive'
+            $isRealDrive = in_array($this->cloudDriver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
                 && !str_starts_with($uploadResult['file_id'], 'local_sim_')
                 && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 
             $asset->update([
                 'drive_file_id'       => $uploadResult['file_id'],
+                'drive_folder_id'     => $uploadResult['folder_id'] ?? null,
                 'drive_web_view_link' => $uploadResult['web_view_link'],
                 'sync_status'         => $isRealDrive ? SystemAsset::SYNC_STATUS_SYNCED : SystemAsset::SYNC_STATUS_PENDING,
                 'drive_synced_at'     => $isRealDrive ? now() : null,
@@ -218,10 +241,12 @@ class SystemAssetService
 
             return $uploadResult;
         } catch (Exception $e) {
-            $asset->update([
-                'sync_status'        => SystemAsset::SYNC_STATUS_FAILED,
-                'sync_error_message' => Str::limit($e->getMessage(), 500),
-            ]);
+            if ($markFailedOnException) {
+                $asset->update([
+                    'sync_status'        => SystemAsset::SYNC_STATUS_FAILED,
+                    'sync_error_message' => Str::limit($e->getMessage(), 500),
+                ]);
+            }
             throw $e;
         }
     }
@@ -324,16 +349,35 @@ class SystemAssetService
      */
     public function getAssetFileBinary(SystemAsset $asset): array
     {
-        if (!Storage::disk('local')->exists($asset->local_path)) {
-            throw new RuntimeException("Berkas aset fisik tidak ditemukan di server: {$asset->local_path}");
+        if (Storage::disk('local')->exists($asset->local_path)) {
+            return [
+                'content'   => Storage::disk('local')->get($asset->local_path),
+                'mime_type' => $asset->mime_type,
+                'size'      => $asset->file_size_bytes,
+                'filename'  => basename($asset->local_path),
+            ];
         }
 
-        return [
-            'content'   => Storage::disk('local')->get($asset->local_path),
-            'mime_type' => $asset->mime_type,
-            'size'      => $asset->file_size_bytes,
-            'filename'  => basename($asset->local_path),
-        ];
+        if (Storage::disk('public')->exists($asset->local_path)) {
+            return [
+                'content'   => Storage::disk('public')->get($asset->local_path),
+                'mime_type' => $asset->mime_type,
+                'size'      => $asset->file_size_bytes,
+                'filename'  => basename($asset->local_path),
+            ];
+        }
+
+        $cleanPublic = ltrim($asset->local_path, '/');
+        if (file_exists(public_path($cleanPublic))) {
+            return [
+                'content'   => file_get_contents(public_path($cleanPublic)),
+                'mime_type' => $asset->mime_type ?: (mime_content_type(public_path($cleanPublic)) ?: 'image/png'),
+                'size'      => filesize(public_path($cleanPublic)),
+                'filename'  => basename($cleanPublic),
+            ];
+        }
+
+        throw new RuntimeException("Berkas aset fisik tidak ditemukan di server: {$asset->local_path}");
     }
 
     /**
@@ -347,9 +391,20 @@ class SystemAssetService
             $asset = $this->getAssetByUuid($asset) ?? SystemAsset::where('asset_code', $asset)->first();
         }
 
-        if ($asset && Storage::disk('local')->exists($asset->local_path)) {
-            $content = Storage::disk('local')->get($asset->local_path);
-            return 'data:' . $asset->mime_type . ';base64,' . base64_encode($content);
+        if ($asset) {
+            if (Storage::disk('local')->exists($asset->local_path)) {
+                $content = Storage::disk('local')->get($asset->local_path);
+                return 'data:' . $asset->mime_type . ';base64,' . base64_encode($content);
+            }
+            if (Storage::disk('public')->exists($asset->local_path)) {
+                $content = Storage::disk('public')->get($asset->local_path);
+                return 'data:' . $asset->mime_type . ';base64,' . base64_encode($content);
+            }
+            $cleanPublic = ltrim($asset->local_path, '/');
+            if (file_exists(public_path($cleanPublic))) {
+                $mime = mime_content_type(public_path($cleanPublic)) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents(public_path($cleanPublic)));
+            }
         }
 
         if ($fallbackRelativePath) {
@@ -361,6 +416,170 @@ class SystemAssetService
         }
 
         return null;
+    }
+
+    /**
+     * Sinkronisasikan berkas-berkas aset gambar dari Brand ke Perpustakaan Aset (SystemAsset).
+     */
+    public function syncBrandAssets(\App\Models\Brand $brand, ?User $actor = null): array
+    {
+        $brandMappings = [
+            'logo' => [
+                'category'   => SystemAsset::CATEGORY_LOGO,
+                'name'       => "Logo {$brand->name}",
+                'code_suffix'=> 'logo',
+                'is_default' => true,
+            ],
+            'signature' => [
+                'category'   => SystemAsset::CATEGORY_SIGNATURE,
+                'name'       => "Tanda Tangan {$brand->name}",
+                'code_suffix'=> 'signature',
+                'is_default' => true,
+            ],
+            'stamp' => [
+                'category'   => SystemAsset::CATEGORY_STAMP,
+                'name'       => "Stempel {$brand->name}",
+                'code_suffix'=> 'stamp',
+                'is_default' => true,
+            ],
+            'internship_certificate_bg' => [
+                'category'   => SystemAsset::CATEGORY_BACKGROUND,
+                'name'       => "Background Sertifikat Magang - {$brand->name}",
+                'code_suffix'=> 'bg_internship',
+                'is_default' => false,
+            ],
+            'webinar_certificate_bg' => [
+                'category'   => SystemAsset::CATEGORY_BACKGROUND,
+                'name'       => "Background Sertifikat Webinar - {$brand->name}",
+                'code_suffix'=> 'bg_webinar',
+                'is_default' => false,
+            ],
+            'membercard_bg' => [
+                'category'   => SystemAsset::CATEGORY_BACKGROUND,
+                'name'       => "Background Membercard - {$brand->name}",
+                'code_suffix'=> 'bg_membercard',
+                'is_default' => false,
+            ],
+        ];
+
+        $syncedAssets = [];
+
+        foreach ($brandMappings as $field => $cfg) {
+            $filePath = $brand->{$field};
+            $assetCode = "asset.brand.{$brand->id}.{$cfg['code_suffix']}";
+
+            if (empty($filePath)) {
+                // Jika gambar dikosongkan/dihapus pada brand, nonaktifkan asset di SystemAsset
+                SystemAsset::where('asset_code', $assetCode)->update([
+                    'is_active'  => false,
+                    'updated_by' => $actor?->id,
+                ]);
+                continue;
+            }
+
+            // Tentukan disk / full path tempat berkas tersimpan
+            $fullPath = null;
+            if (Storage::disk('public')->exists($filePath)) {
+                $fullPath = Storage::disk('public')->path($filePath);
+            } elseif (Storage::disk('local')->exists($filePath)) {
+                $fullPath = Storage::disk('local')->path($filePath);
+            } elseif (file_exists(public_path(ltrim($filePath, '/')))) {
+                $fullPath = public_path(ltrim($filePath, '/'));
+            }
+
+            $fileSize = $fullPath && file_exists($fullPath) ? filesize($fullPath) : 0;
+            $checksum = $fullPath && file_exists($fullPath) ? hash_file('sha256', $fullPath) : hash('sha256', $filePath);
+            $mimeType = $fullPath && file_exists($fullPath) ? (mime_content_type($fullPath) ?: 'image/png') : 'image/png';
+
+            $asset = SystemAsset::updateOrCreate(
+                [
+                    'asset_code' => $assetCode,
+                ],
+                [
+                    'name'            => $cfg['name'],
+                    'category'        => $cfg['category'],
+                    'scope'           => SystemAsset::SCOPE_BRAND,
+                    'brand_id'        => $brand->id,
+                    'mime_type'       => $mimeType,
+                    'file_size_bytes' => $fileSize,
+                    'checksum_sha256' => $checksum,
+                    'local_path'      => $filePath,
+                    'version'         => 1,
+                    'is_active'       => true,
+                    'is_default'      => $cfg['is_default'],
+                    'sync_status'     => SystemAsset::SYNC_STATUS_PENDING,
+                    'created_by'      => $actor?->id,
+                    'updated_by'      => $actor?->id,
+                ]
+            );
+
+            $syncedAssets[] = $asset;
+        }
+
+        return $syncedAssets;
+    }
+
+    /**
+     * Sinkronisasikan logo institusi mitra ke modul SystemAsset dan Google Drive.
+     * Logo institusi disimpan dalam folder tersendiri per institusi (Institusi/{nama-institusi}/Logo).
+     */
+    public function syncInstitutionLogo(\App\Models\Institution $institution, ?User $actor = null): ?SystemAsset
+    {
+        $filePath = $institution->logo;
+        $assetCode = "asset.institution.{$institution->id}.logo";
+
+        if (empty($filePath)) {
+            SystemAsset::where('asset_code', $assetCode)->update([
+                'is_active'  => false,
+                'updated_by' => $actor?->id,
+            ]);
+            return null;
+        }
+
+        $fullPath = null;
+        if (Storage::disk('public')->exists($filePath)) {
+            $fullPath = Storage::disk('public')->path($filePath);
+        } elseif (Storage::disk('local')->exists($filePath)) {
+            $fullPath = Storage::disk('local')->path($filePath);
+        } elseif (file_exists(public_path(ltrim($filePath, '/')))) {
+            $fullPath = public_path(ltrim($filePath, '/'));
+        }
+
+        $fileSize = $fullPath && file_exists($fullPath) ? filesize($fullPath) : 0;
+        $checksum = $fullPath && file_exists($fullPath) ? hash_file('sha256', $fullPath) : hash('sha256', $filePath);
+        $mimeType = $fullPath && file_exists($fullPath) ? (mime_content_type($fullPath) ?: 'image/png') : 'image/png';
+
+        $asset = SystemAsset::updateOrCreate(
+            [
+                'asset_code' => $assetCode,
+            ],
+            [
+                'name'            => "Logo {$institution->name}",
+                'category'        => SystemAsset::CATEGORY_LOGO,
+                'scope'           => SystemAsset::SCOPE_INSTITUTION,
+                'institution_id'  => $institution->id,
+                'brand_id'        => null,
+                'mime_type'       => $mimeType,
+                'file_size_bytes' => $fileSize,
+                'checksum_sha256' => $checksum,
+                'local_path'      => $filePath,
+                'version'         => 1,
+                'is_active'       => true,
+                'is_default'      => true,
+                'sync_status'     => SystemAsset::SYNC_STATUS_PENDING,
+                'created_by'      => $actor?->id,
+                'updated_by'      => $actor?->id,
+            ]
+        );
+
+        // Coba sinkronisasi langsung ke Google Drive jika cloud gateway siap
+        try {
+            $this->syncAssetToDrive($asset, $actor, false);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal auto-sync logo institusi {$institution->name} ke Drive: " . $e->getMessage());
+        }
+
+        return $asset->fresh();
     }
 
     /**

@@ -603,4 +603,80 @@ class DocumentTemplateController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Unggah berkas gambar/logo bebas secara asinkron dari editor sertifikat dan sinkronkan ke Google Drive.
+     */
+    public function uploadImage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file'     => 'required|file|mimes:png,jpg,jpeg,webp,svg|max:10240', // Maks 10MB
+            'name'     => 'nullable|string|max:255',
+            'category' => 'nullable|string|in:logo,attachment,other,stamp,signature',
+        ]);
+
+        $file = $request->file('file');
+        $fileName = $request->input('name') ?: pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $category = $request->input('category') ?: \App\Models\SystemAsset::CATEGORY_LOGO;
+
+        try {
+            // Simpan sebagai SystemAsset resmi (otomatis tersinkron ke Google Drive via SystemAssetService)
+            if (class_exists(\App\Services\SystemAssetService::class) && \Illuminate\Support\Facades\Schema::hasTable('system_assets')) {
+                $service = app(\App\Services\SystemAssetService::class);
+                $asset = $service->storeAsset($file, [
+                    'name'       => $fileName,
+                    'category'   => $category,
+                    'scope'      => \App\Models\SystemAsset::SCOPE_GLOBAL,
+                    'is_default' => false,
+                ], auth()->user());
+
+                $previewUrl = route('admin.system-assets.preview', $asset);
+                $isDrive = !empty($asset->drive_file_id);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $isDrive
+                        ? "Gambar '{$asset->name}' berhasil diunggah dan disinkronkan ke Google Drive."
+                        : "Gambar '{$asset->name}' berhasil disimpan ke Penyimpanan Sistem.",
+                    'asset'   => [
+                        'id'         => 'asset_' . $asset->id,
+                        'asset_id'   => $asset->id,
+                        'name'       => $asset->name,
+                        'url'        => $previewUrl,
+                        'thumb'      => $previewUrl,
+                        'tag'        => '{{' . ($asset->asset_code ?: 'asset.' . $category) . '}}',
+                        'source'     => $isDrive ? 'Google Drive' : 'Penyimpanan Sistem',
+                        'is_drive'   => $isDrive,
+                        'is_real'    => true,
+                    ],
+                ]);
+            }
+
+            // Fallback penyimpanan lokal jika tabel SystemAsset belum aktif
+            $ext = $file->getClientOriginalExtension() ?: 'png';
+            $safeName = 'img_' . time() . '_' . Str::random(6) . '.' . $ext;
+            $path = $file->storeAs('certificate_images', $safeName, 'public');
+            $url = '/storage/' . $path;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Gambar berhasil diunggah ke penyimpanan lokal.',
+                'asset'   => [
+                    'id'       => 'asset_img_' . time(),
+                    'name'     => $fileName,
+                    'url'      => $url,
+                    'thumb'    => $url,
+                    'tag'      => $url,
+                    'source'   => 'Penyimpanan Lokal',
+                    'is_drive' => false,
+                    'is_real'  => true,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengunggah gambar: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }

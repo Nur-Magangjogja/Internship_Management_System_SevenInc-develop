@@ -69,8 +69,8 @@ class AssetLibraryContract
                 $brands = \App\Models\Brand::all();
                 foreach ($brands as $brand) {
                     // Background Sertifikat Magang Brand
-                    if (!empty($brand->internship_certificate_bg)) {
-                        $url = '/storage/' . ltrim($brand->internship_certificate_bg, '/');
+                    if (!empty($brand->internship_certificate_bg_url)) {
+                        $url = $brand->internship_certificate_bg_url;
                         $realAssets['backgrounds'][] = [
                             'id'         => 'brand_bg_magang_' . $brand->id,
                             'name'       => "Background Sertifikat Magang — {$brand->name}",
@@ -84,8 +84,8 @@ class AssetLibraryContract
                         ];
                     }
                     // Background Sertifikat Webinar Brand
-                    if (!empty($brand->webinar_certificate_bg)) {
-                        $url = '/storage/' . ltrim($brand->webinar_certificate_bg, '/');
+                    if (!empty($brand->webinar_certificate_bg_url)) {
+                        $url = $brand->webinar_certificate_bg_url;
                         $realAssets['backgrounds'][] = [
                             'id'         => 'brand_bg_webinar_' . $brand->id,
                             'name'       => "Background Sertifikat Webinar — {$brand->name}",
@@ -99,8 +99,8 @@ class AssetLibraryContract
                         ];
                     }
                     // Logo Brand
-                    if (!empty($brand->logo)) {
-                        $url = '/storage/' . ltrim($brand->logo, '/');
+                    if (!empty($brand->logo_url)) {
+                        $url = $brand->logo_url;
                         $realAssets['logos'][] = [
                             'id'         => 'brand_logo_' . $brand->id,
                             'name'       => "Logo Brand — {$brand->name}",
@@ -114,8 +114,8 @@ class AssetLibraryContract
                         ];
                     }
                     // Tanda Tangan Brand
-                    if (!empty($brand->signature)) {
-                        $url = '/storage/' . ltrim($brand->signature, '/');
+                    if (!empty($brand->signature_url)) {
+                        $url = $brand->signature_url;
                         $realAssets['signatures'][] = [
                             'id'         => 'brand_sig_' . $brand->id,
                             'name'       => "Tanda Tangan {$brand->signatory_name} ({$brand->name})",
@@ -129,8 +129,8 @@ class AssetLibraryContract
                         ];
                     }
                     // Stempel Brand
-                    if (!empty($brand->stamp)) {
-                        $url = '/storage/' . ltrim($brand->stamp, '/');
+                    if (!empty($brand->stamp_url)) {
+                        $url = $brand->stamp_url;
                         $realAssets['stamps'][] = [
                             'id'         => 'brand_stamp_' . $brand->id,
                             'name'       => "Stempel Resmi ({$brand->name})",

@@ -171,7 +171,10 @@
                                 @if($brand->internship_certificate_bg)
                                     <img src="{{ Storage::url($brand->internship_certificate_bg) }}" alt="BG Magang" class="max-h-full max-w-full object-contain">
                                 @else
-                                    <span class="text-xs text-[#4B5F5A] italic">Belum ada background</span>
+                                    <div class="text-center">
+                                        <span class="inline-block text-xs font-semibold text-[#2D8659]">Default Sistem</span>
+                                        <p class="text-[10px] text-[#4B5F5A] mt-0.5">Border Emas Klasik</p>
+                                    </div>
                                 @endif
                             </div>
                         </div>
@@ -188,7 +191,10 @@
                                 @if($brand->webinar_certificate_bg)
                                     <img src="{{ Storage::url($brand->webinar_certificate_bg) }}" alt="BG Webinar" class="max-h-full max-w-full object-contain">
                                 @else
-                                    <span class="text-xs text-[#4B5F5A] italic">Belum ada background</span>
+                                    <div class="text-center">
+                                        <span class="inline-block text-xs font-semibold text-[#2D8659]">Default Sistem</span>
+                                        <p class="text-[10px] text-[#4B5F5A] mt-0.5">Border Emas Klasik</p>
+                                    </div>
                                 @endif
                             </div>
                         </div>

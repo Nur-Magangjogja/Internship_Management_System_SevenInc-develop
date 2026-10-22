@@ -217,9 +217,30 @@ class MouController extends Controller
                 $payload['institution_logo_path'] = $institution->logo_url ?? ('/storage/' . $institution->logo);
             }
 
+            // Daftarkan dan sinkronkan logo institusi ke Google Drive di folder khusus institusi
+            if ($institution && $institution->logo) {
+                try {
+                    app(\App\Services\SystemAssetService::class)->syncInstitutionLogo($institution, auth()->user());
+                } catch (\Throwable $logoEx) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal auto-sync logo institusi {$institution->name}: " . $logoEx->getMessage());
+                }
+            }
+
             if ($request->hasFile('company_logo')) {
                 $compLogoPath = $request->file('company_logo')->store('brands', 'public');
                 $payload['company_logo_path'] = '/storage/' . $compLogoPath;
+
+                if ($request->filled('brand_id')) {
+                    $brand = \App\Models\Brand::find($request->brand_id);
+                    if ($brand) {
+                        $brand->update(['logo' => $compLogoPath]);
+                        try {
+                            app(\App\Services\SystemAssetService::class)->syncBrandAssets($brand, auth()->user());
+                        } catch (\Throwable $brandEx) {
+                            \Illuminate\Support\Facades\Log::warning("Gagal auto-sync brand assets: " . $brandEx->getMessage());
+                        }
+                    }
+                }
             } elseif ($request->filled('brand_id')) {
                 $brand = \App\Models\Brand::find($request->brand_id);
                 if ($brand && $brand->logo_url) {
@@ -231,10 +252,24 @@ class MouController extends Controller
 
             $mou = $this->mouService->generateMou($payload, auth()->user());
 
+            // Otomatis sinkronisasi naskah dokumen MOU ke Google Drive pada folder institusi mitra
+            $driveSynced = false;
+            try {
+                $syncRes = app(\App\Services\CloudStorage\CloudSyncManager::class)->syncMou($mou, auth()->user());
+                $driveSynced = !empty($syncRes['file_id']) && !str_starts_with($syncRes['file_id'], 'local_sim_');
+            } catch (\Throwable $syncEx) {
+                \Illuminate\Support\Facades\Log::warning("Auto-sync MOU {$mou->company_mou_number} ke Google Drive: " . $syncEx->getMessage());
+            }
+
             $routePrefix = request()->routeIs('hr.*') ? 'hr.mous' : 'admin.mous';
 
+            $successMsg = "Dokumen MOU {$mou->company_mou_number} berhasil dibuat dan disimpan.";
+            if ($driveSynced) {
+                $successMsg .= " Naskah dan logo mitra telah berhasil disinkronkan ke Google Drive.";
+            }
+
             return redirect()->route($routePrefix . '.show', $mou)
-                ->with('success', "Dokumen MOU {$mou->company_mou_number} berhasil dibuat dan disimpan.");
+                ->with('success', $successMsg);
         } catch (\InvalidArgumentException|\RuntimeException|\DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
@@ -357,7 +392,23 @@ class MouController extends Controller
                 auth()->user()
             );
 
-            return back()->with('success', "Berkas bertandatangan berhasil diunggah. Dokumen MOU {$mou->company_mou_number} kini berstatus AKTIF.");
+            // Otomatis sinkronkan naskah bertandatangan resmi ke Google Drive
+            $signedSynced = false;
+            try {
+                $syncRes = app(\App\Services\CloudStorage\CloudSyncManager::class)->syncMou($mou->fresh(), auth()->user());
+                $signedSynced = !empty($syncRes['file_id']) && !str_starts_with($syncRes['file_id'], 'local_sim_');
+            } catch (\Throwable $syncEx) {
+                \Illuminate\Support\Facades\Log::warning("Auto-sync signed MOU {$mou->company_mou_number} ke Google Drive: " . $syncEx->getMessage());
+            }
+
+            $successMsg = "Berkas bertandatangan berhasil diunggah. Dokumen MOU {$mou->company_mou_number} kini berstatus AKTIF";
+            if ($signedSynced) {
+                $successMsg .= " dan telah disinkronkan ke Google Drive.";
+            } else {
+                $successMsg .= ".";
+            }
+
+            return back()->with('success', $successMsg);
         } catch (\InvalidArgumentException|\DomainException|\RuntimeException $e) {
             return back()->withErrors(['signed_file' => $e->getMessage()]);
         }

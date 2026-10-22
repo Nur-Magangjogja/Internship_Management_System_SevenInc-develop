@@ -334,7 +334,7 @@
         @endif
         <div class="sig-ttd" style="position: relative;">
           @if(!empty($stampUrl))
-            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: -10mm; top: -4mm; height: 18mm; width: 18mm; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;">
+            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: -14mm; top: -8mm; height: 28mm; width: 28mm; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;">
           @endif
           @if($ttd1Url)
             <img src="{{ $ttd1Url }}" alt="TTD" style="position: relative; z-index: 2;">

@@ -262,9 +262,19 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 no-print">
         <!-- Pihak Pertama -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 pb-2 border-b border-slate-100">
-                Pihak Pertama (Institusi Mitra)
-            </h3>
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Pihak Pertama (Institusi Mitra)
+                </h3>
+                @php
+                    $instLogo = $mou->render_data_snapshot['institution_logo_path'] ?? ($mou->institution?->logo_url ?: null);
+                @endphp
+                @if($instLogo)
+                    <div class="h-8 w-14 shrink-0 flex items-center justify-center p-0.5 border border-slate-200 rounded bg-slate-50 overflow-hidden shadow-2xs">
+                        <img src="{{ $instLogo }}" alt="Logo Institusi" class="max-h-full max-w-full object-contain">
+                    </div>
+                @endif
+            </div>
             <table class="w-full text-xs">
                 <tr class="border-b border-slate-50">
                     <td class="py-2 text-slate-400 w-36">Nama Institusi</td>
@@ -295,9 +305,19 @@
 
         <!-- Pihak Kedua -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 pb-2 border-b border-slate-100">
-                Pihak Kedua (Seven Inc)
-            </h3>
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Pihak Kedua (Seven Inc)
+                </h3>
+                @php
+                    $compLogo = $mou->render_data_snapshot['company_logo_path'] ?? ($mou->brand?->logo_url ?: null);
+                @endphp
+                @if($compLogo)
+                    <div class="h-8 w-16 shrink-0 flex items-center justify-center p-0.5 border border-slate-200 rounded bg-slate-50 overflow-hidden shadow-2xs">
+                        <img src="{{ $compLogo }}" alt="Logo Perusahaan" class="max-h-full max-w-full object-contain">
+                    </div>
+                @endif
+            </div>
             <table class="w-full text-xs">
                 <tr class="border-b border-slate-50">
                     <td class="py-2 text-slate-400 w-36">Nama Perusahaan</td>

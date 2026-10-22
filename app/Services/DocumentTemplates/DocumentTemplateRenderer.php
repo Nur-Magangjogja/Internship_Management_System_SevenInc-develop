@@ -84,12 +84,15 @@ class DocumentTemplateRenderer
             $layoutBg = MailMergePlaceholderContract::resolve($layoutBg, $data, $isLiveIssuance);
         }
 
-        // Tentukan background image: gunakan aset background dari brand ($data['asset.background'])
-        // jika layout masih default atau jika memang diisi oleh konteks brand
-        if (!empty($data['asset.background']) && ($layoutBg === $defaultBg || str_ends_with($layoutBg, 'certificate-bg.png') || empty($layoutBg) || str_contains($layoutBg, 'asset.background'))) {
+        // Tentukan background image:
+        // 1. Jika force_brand_background aktif atau (live issuance dan template menggunakan default / tag dinamis), gunakan aset brand
+        if (!empty($data['asset.background']) && !empty($data['force_brand_background'])) {
             $rawBg = $data['asset.background'];
-        } elseif (!empty($data['asset.background']) && !empty($data['force_brand_background'])) {
+        } elseif ($isLiveIssuance && !empty($data['asset.background']) && ($layoutBg === $defaultBg || str_ends_with($layoutBg, 'certificate-bg.png') || empty($layoutBg) || str_contains($layoutBg, 'asset.background'))) {
             $rawBg = $data['asset.background'];
+        } elseif (!$isLiveIssuance && !empty($layoutBg)) {
+            // Mode preview/desain template admin: hormati latar belakang kanvas yang dipilih (misal Border Emas Klasik bawaan)
+            $rawBg = $layoutBg;
         } else {
             $rawBg = !empty($layoutBg) ? $layoutBg : (!empty($data['asset.background']) ? $data['asset.background'] : $defaultBg);
         }
@@ -208,7 +211,7 @@ class DocumentTemplateRenderer
             if ($type === 'text') {
                 $rawContent = $elem['content'] ?? '';
                 $resolved = MailMergePlaceholderContract::resolve($rawContent, $data, $isLiveIssuance);
-                $fontFamily = htmlspecialchars($elem['font_family'] ?? 'Times New Roman', ENT_QUOTES, 'UTF-8');
+                $fontFamilyCss = static::formatFontFamily($elem['font_family'] ?? 'Times New Roman');
                 $fontSize = (int) ($elem['font_size_pt'] ?? 14);
                 $fontWeight = htmlspecialchars($elem['font_weight'] ?? 'normal', ENT_QUOTES, 'UTF-8');
                 $fontStyle = htmlspecialchars($elem['font_style'] ?? 'normal', ENT_QUOTES, 'UTF-8');
@@ -218,7 +221,7 @@ class DocumentTemplateRenderer
                 $lineHeight = isset($elem['line_height']) ? "line-height: {$elem['line_height']};" : 'line-height: 1.3;';
                 $letterSpacing = isset($elem['letter_spacing_px']) ? "letter-spacing: {$elem['letter_spacing_px']}px;" : '';
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; text-align: {$align}; font-family: '{$fontFamily}', serif; font-size: {$fontSize}pt; font-weight: {$fontWeight}; font-style: {$fontStyle}; color: {$color}; z-index: {$zIndex}; {$width} {$underline} {$lineHeight} {$letterSpacing} {$opacityStyle} word-wrap: break-word;\">\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; text-align: {$align}; font-family: {$fontFamilyCss}; font-size: {$fontSize}pt; font-weight: {$fontWeight}; font-style: {$fontStyle}; color: {$color}; z-index: {$zIndex}; {$width} {$underline} {$lineHeight} {$letterSpacing} {$opacityStyle} word-wrap: break-word;\">\n";
                 $out .= $resolved . "\n";
                 $out .= "</div>\n";
             } elseif ($type === 'image') {
@@ -319,7 +322,7 @@ class DocumentTemplateRenderer
                 if (preg_match('/src="([^"]+)"/i', $stampImg, $m)) $stampImg = $m[1];
 
                 $width = isset($elem['width_percent']) ? "width: {$elem['width_percent']}%;" : 'width: 45%;';
-                $fontFamily = htmlspecialchars($elem['font_family'] ?? 'Times New Roman', ENT_QUOTES, 'UTF-8');
+                $sigFontCss = static::formatFontFamily($elem['font_family'] ?? 'Times New Roman');
                 $color = htmlspecialchars($elem['color'] ?? '#000000', ENT_QUOTES, 'UTF-8');
 
                 $stackMargin = match ($align) {
@@ -332,20 +335,23 @@ class DocumentTemplateRenderer
                     'right' => 'margin: 0 0 0 auto;',
                     default => 'margin: 0 auto;',
                 };
-                $stampX = isset($elem['stamp_offset_x']) && is_numeric($elem['stamp_offset_x']) ? (int) $elem['stamp_offset_x'] : 15;
+                $stampSize = isset($elem['stamp_size_px']) && is_numeric($elem['stamp_size_px']) ? (int) $elem['stamp_size_px'] : 120;
+                $sigHeight = isset($elem['sig_height_px']) && is_numeric($elem['sig_height_px']) ? (int) $elem['sig_height_px'] : 50;
+                $stampX = isset($elem['stamp_offset_x']) && is_numeric($elem['stamp_offset_x']) ? (int) $elem['stamp_offset_x'] : 10;
+                $stampY = isset($elem['stamp_offset_y']) && is_numeric($elem['stamp_offset_y']) ? (int) $elem['stamp_offset_y'] : -35;
                 $stampStyle = match ($align) {
-                    'left'  => 'position: absolute; left: 0; top: -18px;',
-                    'right' => 'position: absolute; right: 0; top: -18px;',
-                    default => "position: absolute; left: {$stampX}px; top: -18px;",
+                    'left'  => "position: absolute; left: {$stampX}px; top: {$stampY}px;",
+                    'right' => "position: absolute; right: {$stampX}px; top: {$stampY}px;",
+                    default => "position: absolute; left: {$stampX}px; top: {$stampY}px;",
                 };
 
-                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: '{$fontFamily}', serif; color: {$color}; {$width} {$opacityStyle}\">\n";
+                $out .= "<div style=\"position: absolute; left: {$x}%; top: {$y}%; transform: {$transform}; z-index: {$zIndex}; text-align: {$align}; font-family: {$sigFontCss}; color: {$color}; {$width} {$opacityStyle}\">\n";
                 if ($certNoText) $out .= "<p style=\"margin: 0 0 2px 0; font-size: 11pt; line-height: 1.3;\">{$certNoText}</p>\n";
                 if ($dateText) $out .= "<p style=\"margin: 0; font-size: 11pt; line-height: 1.3;\">{$dateText}</p>\n";
                 if ($roleText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 11pt; line-height: 1.3;\">{$roleText}</p>\n";
-                $out .= "<div style=\"height: 50px; {$stackMargin} position: relative; width: 220px;\">\n";
-                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: 85px; width: 85px; {$stampStyle} opacity: 0.65; mix-blend-mode: multiply; z-index: 5; pointer-events: none;\" alt=\"Stempel\" />\n";
-                if ($sigImg) $out .= "<img src=\"{$sigImg}\" style=\"height: 50px; width: auto; position: relative; z-index: 10; display: block; {$sigMargin}\" alt=\"Tanda Tangan\" />\n";
+                $out .= "<div style=\"height: {$sigHeight}px; {$stackMargin} position: relative; width: 220px;\">\n";
+                if ($stampImg) $out .= "<img src=\"{$stampImg}\" style=\"height: {$stampSize}px; width: {$stampSize}px; {$stampStyle} opacity: 0.70; mix-blend-mode: multiply; z-index: 5; pointer-events: none;\" alt=\"Stempel\" />\n";
+                if ($sigImg) $out .= "<img src=\"{$sigImg}\" style=\"height: {$sigHeight}px; width: auto; position: relative; z-index: 10; display: block; {$sigMargin}\" alt=\"Tanda Tangan\" />\n";
                 $out .= "</div>\n";
                 if ($nameText) $out .= "<p style=\"margin: 2px 0 0 0; font-size: 12pt; font-weight: bold; text-decoration: underline; position: relative; z-index: 10; line-height: 1.3;\">{$nameText}</p>\n";
                 $out .= "</div>\n";
@@ -626,7 +632,11 @@ HTML;
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>{$title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
         @page {
             size: a4 {$orientation};
             margin: 0;
@@ -674,7 +684,11 @@ HTML;
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>{$title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
         @page {
             size: a4 {$orientation};
             margin: 0;
@@ -739,6 +753,43 @@ HTML;
 </body>
 </html>
 HTML;
+    }
+
+    /**
+     * Format CSS font-family secara aman dengan generic fallback tanpa broken nested quotes.
+     */
+    public static function formatFontFamily(?string $fontFamily): string
+    {
+        if (empty($fontFamily)) {
+            return "'Times New Roman', serif";
+        }
+
+        $fontFamily = trim(html_entity_decode((string) $fontFamily, ENT_QUOTES, 'UTF-8'));
+        if ($fontFamily === '') {
+            return "'Times New Roman', serif";
+        }
+
+        // Jika sudah memuat fallback dengan koma, misal "'Playfair Display', serif" atau "Arial, sans-serif"
+        if (str_contains($fontFamily, ',')) {
+            return $fontFamily;
+        }
+
+        $clean = trim($fontFamily, "'\" ");
+        $scripts = ['Great Vibes', 'Alex Brush', 'Pinyon Script', 'Allura', 'Dancing Script', 'Parisienne'];
+        $sans = ['Montserrat', 'Poppins', 'Inter', 'Raleway', 'Oswald', 'Arial', 'Helvetica'];
+        $monos = ['Space Mono', 'Courier New', 'Courier'];
+
+        if (in_array($clean, $scripts, true)) {
+            return "'{$clean}', cursive";
+        }
+        if (in_array($clean, $sans, true)) {
+            return "'{$clean}', sans-serif";
+        }
+        if (in_array($clean, $monos, true)) {
+            return "'{$clean}', monospace";
+        }
+
+        return "'{$clean}', serif";
     }
 
     /**
@@ -853,6 +904,10 @@ HTML;
     {
         if (empty($src)) {
             return null;
+        }
+
+        if (str_starts_with($src, '/storage/images/')) {
+            $src = substr($src, strlen('/storage'));
         }
 
         if (str_starts_with($src, 'data:image/')) {

@@ -250,7 +250,7 @@
                                 onchange="previewInstitutionLogoFile(this)"
                             >
                             <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                                Format: PNG, JPG, atau WEBP (Maksimal 2MB, latar transparan direkomendasikan). Logo ini akan tersimpan ke data institusi dan disematkan secara tetap (posisi tetap / watermark) pada header naskah MOU.
+                                Format: PNG, JPG, atau WEBP (Maksimal 2MB, latar transparan direkomendasikan). Logo ini akan tersimpan ke data institusi, disematkan pada header naskah MOU, dan <strong>otomatis disinkronkan ke Google Drive dalam folder khusus institusi</strong> (<span class="font-mono text-blue-600">Institusi/{Nama-Institusi}/Logo</span>).
                             </p>
                             @if($existingLogo)
                                 <p class="text-[11px] text-emerald-600 font-medium mt-0.5">
@@ -468,7 +468,7 @@
                                 onchange="previewCompanyLogoFile(this)"
                             >
                             <p class="text-[11px] text-slate-500 mt-1">
-                                Logo ini otomatis terisi saat Anda memilih brand. Anda juga dapat mengunggah berkas logo pengganti (PNG/JPG/WEBP, maks 2MB, latar transparan direkomendasikan). Logo ini akan disematkan di posisi kanan atas header naskah dan watermark lembar MOU.
+                                Logo ini otomatis terisi saat Anda memilih brand. Anda juga dapat mengunggah berkas logo pengganti (PNG/JPG/WEBP, maks 2MB, latar transparan direkomendasikan). Logo ini akan disematkan di header naskah MOU dan <strong>otomatis disinkronkan ke Google Drive per folder brand</strong>.
                             </p>
                         </div>
                     </div>

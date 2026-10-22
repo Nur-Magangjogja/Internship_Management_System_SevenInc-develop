@@ -136,7 +136,73 @@ class SystemStorageConfigService
         $driver = new GoogleDriveStorageDriver();
 
         if (!$driver->isConfigured()) {
-            $errorSummary = "Kredensial Google Drive belum lengkap pada konfigurasi layanan server (Client ID / Secret / Refresh Token).";
+            // Cek apakah Google Apps Script Gateway tersedia sebagai verifikator folder Google Drive
+            $spreadsheetConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
+                ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
+
+            $appsScriptEndpoint = $spreadsheetConn?->apps_script_endpoint_url
+                ?: config('services.google_apps_script.endpoint_url');
+
+            if (!empty($appsScriptEndpoint)) {
+                try {
+                    $transport = app(\App\Services\SpreadsheetTransport\GoogleAppsScriptTransport::class);
+                    $reflection = new \ReflectionClass($transport);
+                    $dispatchMethod = $reflection->getMethod('dispatchSignedRequest');
+                    $dispatchMethod->setAccessible(true);
+
+                    $response = $dispatchMethod->invoke(
+                        $transport,
+                        $appsScriptEndpoint,
+                        [
+                            'action'          => 'ping',
+                            'connection_key'  => $spreadsheetConn?->connection_key ?? 'registration',
+                            'spreadsheet_id'  => $spreadsheetConn?->spreadsheet_id,
+                            'drive_folder_id' => $canonicalFolderId,
+                        ],
+                        'DRIVE_GATEWAY_PING'
+                    );
+
+                    $driveAccessible = $response->context['status']['drive_folder'] ?? false;
+
+                    if ($response->success && $driveAccessible === true) {
+                        $successMsg = "Koneksi Google Drive berhasil terhubung dan diverifikasi via Google Apps Script Gateway (Folder ID: {$canonicalFolderId}).";
+                        $setting->update([
+                            'connection_status'       => CloudStorageSetting::STATUS_CONNECTED,
+                            'is_verified'             => true,
+                            'verified_at'             => now(),
+                            'validation_error'        => null,
+                            'last_tested_at'          => now(),
+                            'last_successful_test_at' => now(),
+                            'last_error_summary'      => null,
+                        ]);
+
+                        ActivityLogger::log(
+                            action: 'cloud_storage_connection_tested',
+                            description: $successMsg,
+                            subject: $setting,
+                            actor: $actor,
+                            metadata: [
+                                'gateway'          => 'google_apps_script',
+                                'canonical_folder' => $canonicalFolderId,
+                            ]
+                        );
+
+                        return [
+                            'success' => true,
+                            'message' => $successMsg,
+                            'details' => [
+                                'gateway'        => 'google_apps_script',
+                                'canonical_root' => ['status' => 'accessible', 'id' => $canonicalFolderId],
+                                'drive_folder'   => true,
+                            ],
+                        ];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Gagal verifikasi Google Drive via Apps Script Gateway: " . $e->getMessage());
+                }
+            }
+
+            $errorSummary = "Koneksi Google Drive gagal: Tidak dapat memverifikasi akses folder Google Drive melalui Google Apps Script Gateway maupun konfigurasi server.";
             $setting->update([
                 'connection_status' => CloudStorageSetting::STATUS_ERROR,
                 'last_tested_at'    => now(),

@@ -61,7 +61,13 @@ class BrandController extends Controller
             }
         }
 
-        Brand::create($data);
+        $brand = Brand::create($data);
+
+        try {
+            app(\App\Services\SystemAssetService::class)->syncBrandAssets($brand, \Illuminate\Support\Facades\Auth::user());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal sinkronisasi aset brand ke SystemAsset: " . $e->getMessage());
+        }
 
         return redirect()->route('admin.brands.index')->with('success', 'Brand berhasil ditambahkan.');
     }
@@ -108,17 +114,26 @@ class BrandController extends Controller
         ], $messages);
 
         $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature', 'stamp'];
-        $data = $request->except($fileFields);
+        $removeFields = array_map(fn($f) => 'remove_' . $f, $fileFields);
+        $data = $request->except(array_merge($fileFields, $removeFields));
 
         foreach ($fileFields as $fileField) {
             if ($request->hasFile($fileField)) {
                 // Addendum Final V4: Jangan langsung delete file lama agar issued document snapshots & histori tetap utuh
                 $path = $request->file($fileField)->store('brands', 'public');
                 $data[$fileField] = $path;
+            } elseif ($request->boolean('remove_' . $fileField) || $request->input('remove_' . $fileField) === '1') {
+                $data[$fileField] = null;
             }
         }
 
         $brand->update($data);
+
+        try {
+            app(\App\Services\SystemAssetService::class)->syncBrandAssets($brand, \Illuminate\Support\Facades\Auth::user());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal sinkronisasi aset brand ke SystemAsset: " . $e->getMessage());
+        }
 
         return redirect()->route('admin.brands.index')->with('success', 'Brand berhasil diperbarui.');
     }

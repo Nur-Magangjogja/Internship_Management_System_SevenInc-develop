@@ -420,6 +420,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/{systemAsset}/toggle-active', [\App\Http\Controllers\Admin\SystemAssetController::class, 'toggleActive'])->name('toggle-active');
         Route::post('/{systemAsset}/set-default', [\App\Http\Controllers\Admin\SystemAssetController::class, 'setDefault'])->name('set-default');
         Route::post('/{systemAsset}/sync-drive', [\App\Http\Controllers\Admin\SystemAssetController::class, 'syncDrive'])->name('sync-drive');
+        Route::post('/sync-all-drive', [\App\Http\Controllers\Admin\SystemAssetController::class, 'syncAllDrive'])->name('sync-all-drive');
         Route::delete('/{systemAsset}', [\App\Http\Controllers\Admin\SystemAssetController::class, 'destroy'])->name('destroy');
     });
 

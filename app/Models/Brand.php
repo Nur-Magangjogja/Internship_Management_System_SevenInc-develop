@@ -43,6 +43,23 @@ class Brand extends Model
         return \Illuminate\Support\Facades\Storage::url($this->stamp);
     }
 
+    public function getSignatureUrlAttribute(): ?string
+    {
+        if (!$this->signature) {
+            return null;
+        }
+
+        if (str_starts_with($this->signature, 'http://') || str_starts_with($this->signature, 'https://') || str_starts_with($this->signature, '/')) {
+            return $this->signature;
+        }
+
+        if (str_starts_with($this->signature, 'images/')) {
+            return '/' . $this->signature;
+        }
+
+        return \Illuminate\Support\Facades\Storage::url($this->signature);
+    }
+
     public function getLogoUrlAttribute(): ?string
     {
         if (!$this->logo) {
@@ -58,6 +75,40 @@ class Brand extends Model
         }
 
         return \Illuminate\Support\Facades\Storage::url($this->logo);
+    }
+
+    public function getInternshipCertificateBgUrlAttribute(): ?string
+    {
+        if (!$this->internship_certificate_bg) {
+            return null;
+        }
+
+        if (str_starts_with($this->internship_certificate_bg, 'http://') || str_starts_with($this->internship_certificate_bg, 'https://') || str_starts_with($this->internship_certificate_bg, '/')) {
+            return $this->internship_certificate_bg;
+        }
+
+        if (str_starts_with($this->internship_certificate_bg, 'images/')) {
+            return '/' . $this->internship_certificate_bg;
+        }
+
+        return \Illuminate\Support\Facades\Storage::url($this->internship_certificate_bg);
+    }
+
+    public function getWebinarCertificateBgUrlAttribute(): ?string
+    {
+        if (!$this->webinar_certificate_bg) {
+            return null;
+        }
+
+        if (str_starts_with($this->webinar_certificate_bg, 'http://') || str_starts_with($this->webinar_certificate_bg, 'https://') || str_starts_with($this->webinar_certificate_bg, '/')) {
+            return $this->webinar_certificate_bg;
+        }
+
+        if (str_starts_with($this->webinar_certificate_bg, 'images/')) {
+            return '/' . $this->webinar_certificate_bg;
+        }
+
+        return \Illuminate\Support\Facades\Storage::url($this->webinar_certificate_bg);
     }
 
     public function getMembercardBgUrlAttribute(): ?string

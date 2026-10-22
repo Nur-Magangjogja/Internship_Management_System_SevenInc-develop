@@ -202,7 +202,7 @@
             <div class="role">{{ $certificate->signatory_position }}</div>
           @endif
           @if($stampUrl)
-            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: 15px; top: 0px; width: 95px; height: 95px; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;" />
+            <img src="{{ $stampUrl }}" alt="Stempel" style="position: absolute; left: 5px; top: -15px; width: 125px; height: 125px; opacity: 0.78; object-fit: contain; pointer-events: none; z-index: 1;" />
           @endif
           @if($ttd1Url)
             <div class="image" style="top:-10px; left:-24px; width:300px; height:140px; position: relative; z-index: 2;">

@@ -1,6 +1,13 @@
 @extends('layouts.dashboard', ['title' => 'Editor Sertifikat Visual: ' . $template->name])
 
 @section('content')
+<!-- Google Fonts for Certificate Typography -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+</style>
 <div class="px-6 py-6" x-data="certificateCanvasApp()" @keydown.window="handleKeyboard($event)">
     <!-- Top Action & Navigation Bar -->
     <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
@@ -317,7 +324,7 @@
                                             class="max-w-full max-h-full w-auto h-auto object-contain pointer-events-none"
                                             :style="`opacity: ${elem.opacity ?? 1.0};`"
                                             alt="Gambar Sertifikat"
-                                            x-on:error="$event.target.style.display = 'none'"
+                                            x-on:error="if ($event.target.src.includes('/storage/images/')) { $event.target.src = $event.target.src.replace('/storage/images/', '/images/'); } else { $event.target.style.display = 'none'; }"
                                         />
                                     </div>
                                 </template>
@@ -380,7 +387,7 @@
                                         :style="`
                                             opacity: ${elem.opacity ?? 1.0};
                                             text-align: ${elem.align ?? 'center'};
-                                            font-family: ${elem.font_family || '\'Times New Roman\''}, serif;
+                                            font-family: ${formatFontFamily(elem.font_family)};
                                             color: ${elem.color || '#000000'};
                                         `"
                                     >
@@ -393,7 +400,7 @@
                                         <!-- Sig & Stamp Stack (Presisi tengah 1:1 dengan pratinjau & PDF) -->
                                         <div
                                             :style="`
-                                                height: 50px;
+                                                height: ${(elem.sig_height_px || 50)}px;
                                                 position: relative;
                                                 width: 220px;
                                                 margin: ${elem.align === 'left' ? '4px 0' : (elem.align === 'right' ? '4px 0 4px auto' : '4px auto')};
@@ -403,16 +410,16 @@
                                                 <img
                                                     :src="resolveImage(elem.stamp_image)"
                                                     :style="`
-                                                        height: 85px;
-                                                        width: 85px;
+                                                        height: ${(elem.stamp_size_px || 120)}px;
+                                                        width: ${(elem.stamp_size_px || 120)}px;
                                                         position: absolute;
-                                                        opacity: 0.65;
+                                                        opacity: 0.70;
                                                         mix-blend-mode: multiply;
                                                         z-index: 5;
                                                         pointer-events: none;
-                                                        top: -18px;
-                                                        left: ${elem.align === 'left' ? '0' : (elem.align === 'right' ? 'auto' : (elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 15) + 'px')};
-                                                        right: ${elem.align === 'right' ? '0' : 'auto'};
+                                                        top: ${(elem.stamp_offset_y !== undefined && elem.stamp_offset_y !== null ? elem.stamp_offset_y : -35)}px;
+                                                        left: ${elem.align === 'left' ? ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px') : (elem.align === 'right' ? 'auto' : ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px'))};
+                                                        right: ${elem.align === 'right' ? ((elem.stamp_offset_x !== undefined && elem.stamp_offset_x !== null ? elem.stamp_offset_x : 10) + 'px') : 'auto'};
                                                     `"
                                                     alt="Stempel"
                                                     x-on:error="$event.target.style.display = 'none'"
@@ -422,7 +429,7 @@
                                                 <img
                                                     :src="resolveImage(elem.sig_image)"
                                                     :style="`
-                                                        height: 50px;
+                                                        height: ${(elem.sig_height_px || 50)}px;
                                                         width: auto;
                                                         position: relative;
                                                         z-index: 10;
@@ -663,15 +670,38 @@
                                     </div>
 
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family (Tipografi)</label>
                                         <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                                            <option value="Times New Roman">Times New Roman (Klasik Resmi)</option>
-                                            <option value="'Great Vibes', cursive">Great Vibes (Kaligrafi / Script)</option>
-                                            <option value="'Playfair Display', serif">Playfair Display (Elegan Modern)</option>
-                                            <option value="'Cinzel', serif">Cinzel (Roman Formal)</option>
-                                            <option value="'Montserrat', sans-serif">Montserrat (Modern Sans)</option>
-                                            <option value="Arial">Arial (Sans Serif)</option>
-                                            <option value="Courier New">Courier New (Monospace)</option>
+                                            <optgroup label="✍️ Kaligrafi & Script (Nama Penerima)">
+                                                <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik Mewah)</option>
+                                                <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus & Resmi)</option>
+                                                <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal & Prestisius)</option>
+                                                <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
+                                                <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
+                                                <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
+                                            </optgroup>
+                                            <optgroup label="🏛️ Serif Klasik & Formal (Judul & Legal)">
+                                                <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
+                                                <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
+                                                <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
+                                                <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
+                                                <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
+                                                <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
+                                                <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
+                                                <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
+                                            </optgroup>
+                                            <optgroup label="✨ Modern Sans-Serif (Webinar, Subtitle, Divisi)">
+                                                <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
+                                                <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
+                                                <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
+                                                <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
+                                                <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
+                                                <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
+                                            </optgroup>
+                                            <optgroup label="🔢 Monospace (Nomor Seri / Kode Dokumen)">
+                                                <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
+                                                <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
+                                            </optgroup>
                                         </select>
                                     </div>
 
@@ -726,24 +756,100 @@
                                 </div>
                             </template>
 
-                            <!-- 2. Image Properties -->
+                            <!-- 2. Image Properties (Mendukung Upload Bebas & Sinkron Google Drive) -->
                             <template x-if="selectedElement.type === 'image'">
                                 <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sumber Gambar / Aset</label>
-                                        <input type="text" x-model="selectedElement.src" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{asset.company.logo}} atau URL" />
-                                        
-                                        <!-- Quick Asset Presets -->
-                                        <div class="mt-1.5 flex flex-wrap gap-1">
-                                            <button type="button" @click="selectedElement.src = '@{{asset.company.logo}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Logo Perusahaan</button>
-                                            <button type="button" @click="selectedElement.src = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Stempel</button>
-                                            <button type="button" @click="selectedElement.src = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border">+ Tanda Tangan</button>
+                                    <!-- Live Preview Thumbnail of Selected Image -->
+                                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2 flex items-center gap-3">
+                                        <div class="h-14 w-14 rounded border border-slate-300 bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-2xs">
+                                            <img
+                                                :src="resolveImage(selectedElement.src)"
+                                                class="max-h-full max-w-full object-contain"
+                                                alt="Preview Aset"
+                                                x-on:error="$event.target.style.display = 'none'"
+                                            />
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="text-[11px] font-bold text-slate-800 truncate" x-text="selectedElement.src?.startsWith('http') || selectedElement.src?.startsWith('/') ? 'Gambar Kustom / Upload' : (selectedElement.src || 'Aset Gambar')"></span>
+                                            </div>
+                                            <p class="text-[10px] text-slate-500 font-mono truncate mt-0.5" x-text="selectedElement.src || '-'"></p>
+                                            <div class="mt-1 flex items-center gap-1 text-[10px]">
+                                                <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-semibold" title="Tersinkronisasi dengan penyimpanan awan Google Drive">
+                                                    <svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                                                    Tersinkron Google Drive
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 
+                                    <!-- Unggah Berkas Gambar Bebas Langsung -->
                                     <div>
-                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1" x-text="`Opasitas / Transparansi: ${Math.round((selectedElement.opacity ?? 1.0) * 100)}%`"></label>
-                                        <input type="range" min="0.1" max="1" step="0.05" x-model.number="selectedElement.opacity" @change="pushHistory()" class="w-full" />
+                                        <input
+                                            type="file"
+                                            id="upload-image-input"
+                                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                            class="hidden"
+                                            @change="uploadCustomImage($event)"
+                                        />
+                                        <label
+                                            for="upload-image-input"
+                                            class="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/60 hover:bg-blue-100 text-blue-700 text-xs font-bold cursor-pointer transition shadow-xs"
+                                            :class="isUploadingImage ? 'opacity-50 pointer-events-none' : ''"
+                                        >
+                                            <svg x-show="!isUploadingImage" class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                                <polyline points="17 8 12 3 7 8"/>
+                                                <line x1="12" y1="3" x2="12" y2="15"/>
+                                            </svg>
+                                            <span x-show="isUploadingImage" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                                            <span x-text="isUploadingImage ? 'Mengunggah & Menyinkronkan ke GDrive...' : '📁 Unggah Gambar Bebas (Sinkron GDrive)'"></span>
+                                        </label>
+                                        <p x-show="imageUploadError" x-text="imageUploadError" class="text-[10px] text-rose-600 mt-1 font-medium"></p>
+                                        <p class="text-[10px] text-slate-400 mt-1">Mendukung format PNG transparan, JPG, WEBP, atau SVG (Maks. 10MB). Berkas otomatis diunggah & dicadangkan ke Google Drive.</p>
+                                    </div>
+
+                                    <!-- Sumber Gambar Manual / Tag -->
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tag Variabel atau URL Gambar</label>
+                                        <input type="text" x-model="selectedElement.src" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs font-mono" placeholder="@{{asset.company.logo}} atau https://..." />
+                                        
+                                        <!-- Quick Asset Presets -->
+                                        <div class="mt-1.5 flex flex-wrap gap-1">
+                                            <button type="button" @click="selectedElement.src = '@{{asset.company.logo}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Logo Utama</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.stamp}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Stempel</button>
+                                            <button type="button" @click="selectedElement.src = '@{{asset.signature}}'; pushHistory()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border text-slate-700">+ Tanda Tangan</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Pilihan Gambar Cepat dari Katalog Aset Sistem / Brand yang Tersedia -->
+                                    <template x-if="imageCatalog && imageCatalog.length > 0">
+                                        <div>
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Cepat dari Aset Sistem / Brand</label>
+                                            <div class="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1 rounded border border-slate-200 bg-slate-50">
+                                                <template x-for="img in imageCatalog" :key="img.id">
+                                                    <button
+                                                        type="button"
+                                                        @click="selectedElement.src = img.url; pushHistory()"
+                                                        class="flex flex-col items-center justify-center p-1 rounded border bg-white hover:border-blue-500 hover:shadow-xs transition"
+                                                        :class="selectedElement.src === img.url ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-200'"
+                                                        :title="img.name"
+                                                    >
+                                                        <img :src="img.thumb || img.url" class="h-8 w-8 object-contain" :alt="img.name" />
+                                                        <span class="text-[9px] text-slate-600 truncate w-full text-center mt-0.5" x-text="img.name"></span>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Slider Opasitas / Transparansi -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-[11px] font-semibold text-slate-600">Opasitas / Transparansi</label>
+                                            <span class="text-[10px] font-mono text-slate-500" x-text="`${Math.round((selectedElement.opacity ?? 1.0) * 100)}%`"></span>
+                                        </div>
+                                        <input type="range" min="0.05" max="1" step="0.05" x-model.number="selectedElement.opacity" @change="pushHistory()" class="w-full accent-blue-600" />
                                     </div>
                                 </div>
                             </template>
@@ -883,11 +989,36 @@
                                         <div>
                                             <label class="block text-[11px] font-semibold text-slate-600 mb-1">Font Family</label>
                                             <select x-model="selectedElement.font_family" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1.5 text-xs">
-                                                <option value="Times New Roman">Times New Roman (Resmi)</option>
-                                                <option value="'Playfair Display', serif">Playfair Display (Elegan)</option>
-                                                <option value="'Cinzel', serif">Cinzel (Roman Formal)</option>
-                                                <option value="'Montserrat', sans-serif">Montserrat (Modern)</option>
-                                                <option value="Arial">Arial (Sans Serif)</option>
+                                                <optgroup label="🏛️ Serif Klasik & Formal">
+                                                    <option value="Times New Roman" style="font-family: 'Times New Roman', serif;">Times New Roman (Standar Resmi)</option>
+                                                    <option value="'Playfair Display', serif" style="font-family: 'Playfair Display', serif;">Playfair Display (Mewah Modern)</option>
+                                                    <option value="'Cinzel', serif" style="font-family: 'Cinzel', serif;">Cinzel (Roman / Huruf Kapital Klasik)</option>
+                                                    <option value="'Cormorant Garamond', serif" style="font-family: 'Cormorant Garamond', serif;">Cormorant Garamond (Elegansi Kerajaan)</option>
+                                                    <option value="'Lora', serif" style="font-family: 'Lora', serif;">Lora (Serif Kontemporer)</option>
+                                                    <option value="'Merriweather', serif" style="font-family: 'Merriweather', serif;">Merriweather (Kokoh & Berwibawa)</option>
+                                                    <option value="'Prata', serif" style="font-family: 'Prata', serif;">Prata (Klasik Teardrop Elegan)</option>
+                                                    <option value="'Georgia', serif" style="font-family: Georgia, serif;">Georgia (Serif Tradisional)</option>
+                                                </optgroup>
+                                                <optgroup label="✨ Modern Sans-Serif">
+                                                    <option value="'Montserrat', sans-serif" style="font-family: 'Montserrat', sans-serif;">Montserrat (Geometrik Profesional)</option>
+                                                    <option value="'Poppins', sans-serif" style="font-family: 'Poppins', sans-serif;">Poppins (Bulat Modern Populer)</option>
+                                                    <option value="'Inter', sans-serif" style="font-family: Inter, sans-serif;">Inter (Kompak & Netral)</option>
+                                                    <option value="'Raleway', sans-serif" style="font-family: 'Raleway', sans-serif;">Raleway (Tipis & Elegan)</option>
+                                                    <option value="'Oswald', sans-serif" style="font-family: 'Oswald', sans-serif;">Oswald (Tegas & Berani)</option>
+                                                    <option value="Arial" style="font-family: Arial, sans-serif;">Arial (Standar Bersih)</option>
+                                                </optgroup>
+                                                <optgroup label="✍️ Kaligrafi & Script">
+                                                    <option value="'Great Vibes', cursive" style="font-family: 'Great Vibes', cursive; font-size: 15px;">Great Vibes (Kaligrafi Klasik)</option>
+                                                    <option value="'Alex Brush', cursive" style="font-family: 'Alex Brush', cursive; font-size: 15px;">Alex Brush (Elegan Halus)</option>
+                                                    <option value="'Pinyon Script', cursive" style="font-family: 'Pinyon Script', cursive; font-size: 15px;">Pinyon Script (Royal Prestisius)</option>
+                                                    <option value="'Allura', cursive" style="font-family: 'Allura', cursive; font-size: 15px;">Allura (Luwes & Bersih)</option>
+                                                    <option value="'Dancing Script', cursive" style="font-family: 'Dancing Script', cursive; font-size: 15px;">Dancing Script (Modern Kasual)</option>
+                                                    <option value="'Parisienne', cursive" style="font-family: 'Parisienne', cursive; font-size: 15px;">Parisienne (Artistik Romantis)</option>
+                                                </optgroup>
+                                                <optgroup label="🔢 Monospace">
+                                                    <option value="Courier New" style="font-family: 'Courier New', monospace;">Courier New (Mesin Tik Klasik)</option>
+                                                    <option value="'Space Mono', monospace" style="font-family: 'Space Mono', monospace;">Space Mono (Teknologi Modern)</option>
+                                                </optgroup>
                                             </select>
                                         </div>
                                     </div>
@@ -910,17 +1041,39 @@
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
                                             <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Tanda Tangan</label>
-                                            <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            <input type="text" x-model="selectedElement.sig_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono mb-1" />
+                                            <input type="file" id="sig-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomSignature($event)" />
+                                            <label for="sig-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                <span x-text="isUploadingSig ? 'Mengunggah...' : '📁 Upload TTD (GDrive)'"></span>
+                                            </label>
                                         </div>
                                         <div>
                                             <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Tag Stempel</label>
-                                            <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono" />
+                                            <input type="text" x-model="selectedElement.stamp_image" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs font-mono mb-1" />
+                                            <input type="file" id="stamp-upload-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="uploadCustomStamp($event)" />
+                                            <label for="stamp-upload-input" class="w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded border border-dashed border-blue-400 bg-blue-50/50 hover:bg-blue-100 text-[10px] text-blue-700 font-semibold cursor-pointer transition">
+                                                <span x-text="isUploadingStamp ? 'Mengunggah...' : '📁 Upload Stempel (GDrive)'"></span>
+                                            </label>
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (default: 20px = sedikit ke kiri tanda tangan)">Offset Stempel X (px)</label>
-                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="20 (Geser Kiri)" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi horizontal stempel relatif terhadap kotak tanda tangan (negatif = geser kiri, positif = geser kanan)">Offset Stempel X (px)</label>
+                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_x" placeholder="10" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Posisi vertikal stempel relatif terhadap kotak tanda tangan (negatif = naik ke atas, positif = turun ke bawah)">Offset Stempel Y (px)</label>
+                                            <input type="number" step="5" x-model.number="selectedElement.stamp_offset_y" placeholder="-35" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Ukuran diameter stempel (default: 120px)">Ukuran Stempel (px)</label>
+                                            <input type="number" min="40" max="250" step="5" x-model.number="selectedElement.stamp_size_px" placeholder="120" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-semibold text-slate-500 mb-0.5" title="Ukuran tinggi tanda tangan (default: 50px, disarankan 40 - 120px)">Ukuran TTD / Tinggi (px)</label>
+                                            <input type="number" min="25" max="180" step="5" x-model.number="selectedElement.sig_height_px" placeholder="50" @change="pushHistory()" class="w-full rounded border border-slate-300 p-1 text-xs" />
                                         </div>
                                     </div>
                                     <div class="flex flex-wrap gap-1 pt-0.5">
@@ -1215,6 +1368,13 @@ function certificateCanvasApp() {
         customBgUrl: '',
         bgUploadError: '',
 
+        // Katalog Gambar Bebas & State Upload Gambar ke Google Drive
+        imageCatalog: @json(array_values(array_merge($assetCatalog['logos'] ?? [], $assetCatalog['stamps'] ?? [], $assetCatalog['signatures'] ?? []))),
+        isUploadingImage: false,
+        imageUploadError: '',
+        isUploadingSig: false,
+        isUploadingStamp: false,
+
         // Undo / Redo history state stack
         historyStack: [],
         historyIndex: -1,
@@ -1235,6 +1395,11 @@ function certificateCanvasApp() {
                 if (elem.aspect_locked === undefined) elem.aspect_locked = (elem.type === 'image' || elem.type === 'qr_code');
                 if (elem.opacity === undefined) elem.opacity = 1.0;
 
+                // Normalisasi font family untuk keselarasan dropdown & render
+                if (elem.font_family) {
+                    elem.font_family = this.normalizeFontFamily(elem.font_family);
+                }
+
                 // Normalisasi proporsi ukuran gambar/logo agar seimbang antara kanvas visual studio dan output PDF
                 if (elem.type === 'image') {
                     if (elem.width_percent === undefined || elem.width_percent === null) {
@@ -1252,6 +1417,10 @@ function certificateCanvasApp() {
                     }
                     if (!elem.align) elem.align = 'center';
                     if (!elem.font_family) elem.font_family = 'Times New Roman';
+                    if (elem.stamp_offset_x === undefined || elem.stamp_offset_x === null) elem.stamp_offset_x = 10;
+                    if (elem.stamp_offset_y === undefined || elem.stamp_offset_y === null) elem.stamp_offset_y = -35;
+                    if (elem.stamp_size_px === undefined || elem.stamp_size_px === null) elem.stamp_size_px = 120;
+                    if (elem.sig_height_px === undefined || elem.sig_height_px === null) elem.sig_height_px = 50;
                 }
             });
             if (!this.selectedElement && this.layout.elements.length > 0) {
@@ -1313,6 +1482,129 @@ function certificateCanvasApp() {
                 this.bgUploadError = 'Terjadi kesalahan jaringan: ' + err.message;
             } finally {
                 this.isUploadingBg = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomImage(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            // Jika tidak ada elemen gambar yang aktif atau tipenya bukan gambar, buat baru
+            if (!this.selectedElement || this.selectedElement.type !== 'image') {
+                this.addImageElement();
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'logo');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingImage = true;
+            this.imageUploadError = '';
+
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: formData,
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'image') {
+                        this.selectedElement.src = data.asset.url;
+                        this.pushHistory();
+                    }
+                    if (!Array.isArray(this.imageCatalog)) {
+                        this.imageCatalog = [];
+                    }
+                    this.imageCatalog.unshift(data.asset);
+                    this.saveAlert = { 
+                        message: data.message || 'Gambar berhasil diunggah dan disinkronkan ke Google Drive.', 
+                        type: 'success' 
+                    };
+                } else {
+                    this.imageUploadError = data.message || 'Gagal mengunggah file gambar.';
+                }
+            } catch (err) {
+                this.imageUploadError = 'Terjadi kesalahan jaringan: ' + err.message;
+            } finally {
+                this.isUploadingImage = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomSignature(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', 'ttd_' + file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'signature');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingSig = true;
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'signature_group') {
+                        this.selectedElement.sig_image = data.asset.url;
+                        this.pushHistory();
+                    }
+                    this.saveAlert = { message: data.message || 'Tanda tangan berhasil diunggah dan disinkronkan ke Google Drive.', type: 'success' };
+                } else {
+                    alert(data.message || 'Gagal mengunggah tanda tangan.');
+                }
+            } catch (err) {
+                alert('Kesalahan jaringan: ' + err.message);
+            } finally {
+                this.isUploadingSig = false;
+                event.target.value = '';
+            }
+        },
+
+        async uploadCustomStamp(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', 'stempel_' + file.name.replace(/\.[^/.]+$/, ''));
+            formData.append('category', 'stamp');
+            formData.append('_token', '{{ csrf_token() }}');
+
+            this.isUploadingStamp = true;
+            try {
+                const res = await fetch('{{ route("admin.document-templates.api-upload-image") }}', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok && data.success && data.asset) {
+                    if (this.selectedElement && this.selectedElement.type === 'signature_group') {
+                        this.selectedElement.stamp_image = data.asset.url;
+                        this.pushHistory();
+                    }
+                    this.saveAlert = { message: data.message || 'Stempel berhasil diunggah dan disinkronkan ke Google Drive.', type: 'success' };
+                } else {
+                    alert(data.message || 'Gagal mengunggah stempel.');
+                }
+            } catch (err) {
+                alert('Kesalahan jaringan: ' + err.message);
+            } finally {
+                this.isUploadingStamp = false;
                 event.target.value = '';
             }
         },
@@ -1430,12 +1722,56 @@ function certificateCanvasApp() {
             `;
         },
 
+        formatFontFamily(font) {
+            if (!font) return "'Times New Roman', serif";
+            font = (font + '').trim();
+            if (font.includes(',')) {
+                return font;
+            }
+            const clean = font.replace(/^['"]|['"]$/g, '');
+            const scripts = ['Great Vibes', 'Alex Brush', 'Pinyon Script', 'Allura', 'Dancing Script', 'Parisienne'];
+            const sans = ['Montserrat', 'Poppins', 'Inter', 'Raleway', 'Oswald', 'Arial', 'Helvetica'];
+            const monos = ['Space Mono', 'Courier New', 'Courier'];
+            if (scripts.includes(clean)) return `'${clean}', cursive`;
+            if (sans.includes(clean)) return `'${clean}', sans-serif`;
+            if (monos.includes(clean)) return `'${clean}', monospace`;
+            return `'${clean}', serif`;
+        },
+
+        normalizeFontFamily(font) {
+            if (!font) return 'Times New Roman';
+            const fLower = (font + '').toLowerCase();
+            if (fLower.includes('great vibes')) return "'Great Vibes', cursive";
+            if (fLower.includes('alex brush')) return "'Alex Brush', cursive";
+            if (fLower.includes('pinyon script')) return "'Pinyon Script', cursive";
+            if (fLower.includes('allura')) return "'Allura', cursive";
+            if (fLower.includes('dancing script')) return "'Dancing Script', cursive";
+            if (fLower.includes('parisienne')) return "'Parisienne', cursive";
+            if (fLower.includes('playfair display')) return "'Playfair Display', serif";
+            if (fLower.includes('cinzel')) return "'Cinzel', serif";
+            if (fLower.includes('cormorant garamond')) return "'Cormorant Garamond', serif";
+            if (fLower.includes('lora')) return "'Lora', serif";
+            if (fLower.includes('merriweather')) return "'Merriweather', serif";
+            if (fLower.includes('prata')) return "'Prata', serif";
+            if (fLower.includes('georgia')) return "'Georgia', serif";
+            if (fLower.includes('montserrat')) return "'Montserrat', sans-serif";
+            if (fLower.includes('poppins')) return "'Poppins', sans-serif";
+            if (fLower.includes('inter')) return "'Inter', sans-serif";
+            if (fLower.includes('raleway')) return "'Raleway', sans-serif";
+            if (fLower.includes('oswald')) return "'Oswald', sans-serif";
+            if (fLower.includes('space mono')) return "'Space Mono', monospace";
+            if (fLower.includes('courier new')) return 'Courier New';
+            if (fLower.includes('arial')) return 'Arial';
+            if (fLower.includes('times new roman') || fLower.includes('times')) return 'Times New Roman';
+            return font;
+        },
+
         elementTextStyle(elem) {
             const align = elem.align ?? 'center';
             const underline = elem.underline ? 'text-decoration: underline;' : '';
             return `
                 text-align: ${align};
-                font-family: ${elem.font_family || 'Times New Roman'}, serif;
+                font-family: ${this.formatFontFamily(elem.font_family)};
                 font-size: ${elem.font_size_pt || 14}pt;
                 font-weight: ${elem.font_weight || 'normal'};
                 font-style: ${elem.font_style || 'normal'};
@@ -1488,15 +1824,22 @@ function certificateCanvasApp() {
 
         resolveImage(tagOrUrl) {
             if (!tagOrUrl) return '';
-            if (tagOrUrl.includes('asset.background')) return this.mockData?.asset?.background || '/images/certificate/certificate-bg.png';
-            if ((tagOrUrl === '/images/certificate/certificate-bg.png' || tagOrUrl.endsWith('certificate-bg.png')) && this.mockData?.asset?.background) {
-                return this.mockData.asset.background;
+            let resolved = tagOrUrl;
+            if (tagOrUrl.includes('asset.background')) {
+                resolved = this.mockData?.asset?.background || '/images/certificate/certificate-bg.png';
+            } else if (tagOrUrl.includes('asset.signature') || tagOrUrl.includes('signature')) {
+                resolved = this.mockData?.asset?.signature || '/images/mou/signature-sample.png';
+            } else if (tagOrUrl.includes('asset.stamp') || tagOrUrl.includes('stamp') || tagOrUrl.includes('stempel')) {
+                resolved = this.mockData?.asset?.stamp || '/images/mou/stamp-sample.png';
+            } else if (tagOrUrl.includes('company.logo') || tagOrUrl.includes('company_logo') || tagOrUrl.includes('asset.logo') || tagOrUrl.includes('brand.logo') || tagOrUrl.includes('logo')) {
+                resolved = this.mockData?.asset?.company?.logo || '/images/mou/seven-inc-logo.png';
+            } else if (tagOrUrl.includes('institution.logo') || tagOrUrl.includes('institusi.logo') || tagOrUrl.includes('institution_logo')) {
+                resolved = this.mockData?.asset?.institution?.logo || '/images/mou/institution-logo-placeholder.png';
             }
-            if (tagOrUrl.includes('asset.signature')) return this.mockData?.asset?.signature || '/images/mou/signature-sample.png';
-            if (tagOrUrl.includes('asset.stamp')) return this.mockData?.asset?.stamp || '/images/mou/stamp-sample.png';
-            if (tagOrUrl.includes('asset.company.logo')) return this.mockData?.asset?.company?.logo || '/images/mou/seven-inc-logo.png';
-            if (tagOrUrl.includes('asset.institution.logo')) return this.mockData?.asset?.institution?.logo || '/images/mou/institution-logo-placeholder.png';
-            return tagOrUrl;
+            if (typeof resolved === 'string' && resolved.startsWith('/storage/images/')) {
+                resolved = resolved.replace('/storage/images/', '/images/');
+            }
+            return resolved;
         },
 
         insertTagToSelected(tag) {
@@ -1635,6 +1978,10 @@ function certificateCanvasApp() {
                 name_text: '@{{perusahaan.pimpinan}}',
                 sig_image: '@{{asset.signature}}',
                 stamp_image: '@{{asset.stamp}}',
+                stamp_offset_x: 10,
+                stamp_offset_y: -35,
+                stamp_size_px: 120,
+                sig_height_px: 50,
                 x_percent: 50.0,
                 y_percent: 72.0,
                 width_percent: 45.0,

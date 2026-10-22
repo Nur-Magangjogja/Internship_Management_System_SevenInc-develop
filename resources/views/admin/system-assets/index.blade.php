@@ -9,6 +9,21 @@
             <p class="text-sm text-slate-500">Pusat repositori logo, kop surat, tanda tangan, stempel, dan background terpusat untuk dokumen SERTIF.</p>
         </div>
         <div class="flex items-center gap-3">
+            <form action="{{ route('admin.system-assets.sync-all-drive') }}" method="POST" onsubmit="return confirm('Mulai sinkronisasi seluruh aset ke folder Google Drive?')">
+                @csrf
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Sinkronkan Semua ke Drive
+                </button>
+            </form>
+
             <button
                 type="button"
                 @click="uploadModalOpen = true"

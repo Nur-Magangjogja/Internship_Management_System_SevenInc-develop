@@ -99,6 +99,14 @@ class InstitutionController extends Controller
             after: $institution->only(['name', 'phone', 'email', 'correspondence_unit', 'address'])
         );
 
+        if ($institution->logo) {
+            try {
+                app(\App\Services\SystemAssetService::class)->syncInstitutionLogo($institution, auth()->user());
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal sync logo institusi {$institution->name}: " . $e->getMessage());
+            }
+        }
+
         return redirect()->route('admin.institutions.index')
             ->with('success', 'Institusi berhasil ditambahkan.');
     }
@@ -194,6 +202,14 @@ class InstitutionController extends Controller
             before: $before,
             after: $institution->only(['name', 'address', 'phone', 'email', 'fax', 'correspondence_unit'])
         );
+
+        if ($institution->logo) {
+            try {
+                app(\App\Services\SystemAssetService::class)->syncInstitutionLogo($institution, auth()->user());
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal sync logo institusi {$institution->name}: " . $e->getMessage());
+            }
+        }
 
         return redirect()->route('admin.institutions.index')
             ->with('success', 'Data institusi berhasil diperbarui.');

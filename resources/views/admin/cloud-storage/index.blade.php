@@ -83,9 +83,17 @@
                 <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                 </svg>
-                <p class="text-base font-bold text-slate-800 uppercase">{{ $settings->provider }}</p>
+                <p class="text-base font-bold text-slate-800 uppercase">Google Drive</p>
             </div>
-            <p class="mt-2 text-xs text-slate-500">Kredensial OAuth2 server (.env)</p>
+            <p class="mt-2 text-xs {{ $settings->connection_status === 'connected' ? 'text-emerald-600 font-semibold' : 'text-slate-500' }}">
+                @if (!empty($isDriverConfigured))
+                    ✓ Direct OAuth2 API
+                @elseif ($settings->connection_status === 'connected')
+                    ✓ Terhubung via Apps Script
+                @else
+                    Mode Apps Script Gateway
+                @endif
+            </p>
         </div>
 
         <!-- Uji Sukses Terakhir -->
@@ -119,6 +127,75 @@
                 <div>
                     <h3 class="font-bold text-rose-950">Catatan Diagnosa Koneksi</h3>
                     <p class="mt-1 text-xs text-rose-800">{{ $settings->last_error_summary }}</p>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($settings->connection_status === 'connected')
+        <!-- Status Terhubung Sukses -->
+        <div class="mb-8 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-sm">
+            <div class="flex items-start gap-3">
+                <div class="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <div class="space-y-1 text-sm text-emerald-950">
+                    <h3 class="font-bold text-base">Google Drive Berhasil Terhubung</h3>
+                    <p class="text-xs text-emerald-800">
+                        Folder Google Drive sistem (<strong>{{ $settings->canonical_parent_folder_id }}</strong>) telah berhasil terverifikasi aktif melalui <strong>Google Apps Script Gateway</strong>. Anda tidak perlu membuka Google Cloud Console lagi. Seluruh sinkronisasi data dan penyimpanan berkas berjalan secara otomatis.
+                    </p>
+                </div>
+            </div>
+        </div>
+    @else
+        <!-- Komparasi Integrasi: Spreadsheet vs Penyimpanan Cloud jika belum terhubung -->
+        <div class="mb-8 rounded-xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm">
+            <div class="flex items-start gap-3">
+                <div class="rounded-lg bg-amber-100 p-2 text-amber-700">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                </div>
+                <div class="space-y-3 flex-1 text-sm text-slate-800">
+                    <div>
+                        <h3 class="font-bold text-amber-950 text-base">Panduan Integrasi: Google Drive &amp; Apps Script</h3>
+                        <p class="text-xs text-amber-800 mt-0.5">Sistem memverifikasi folder Google Drive secara langsung melalui Google Apps Script Gateway.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div class="rounded-lg border border-emerald-200 bg-white p-3.5 shadow-xs">
+                            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span class="font-bold text-slate-800">1. Integrasi Spreadsheet (Sheets Gateway)</span>
+                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                    {{ ($spreadsheetConn?->connection_status === 'connected') ? 'Terhubung' : 'Dikonfigurasi' }}
+                                </span>
+                            </div>
+                            <ul class="mt-2 space-y-1.5 text-slate-600">
+                                <li><strong>Media:</strong> Google Apps Script Web App (<code>/exec</code>)</li>
+                                <li><strong>Fungsi:</strong> Sinkronisasi data pendaftaran pemagang &amp; guru/dosen ke Google Sheets.</li>
+                                <li><strong>Status:</strong> Link Apps Script Anda sudah aktif di menu <em>Integrasi Spreadsheet</em>.</li>
+                            </ul>
+                        </div>
+
+                        <div class="rounded-lg border {{ !empty($isDriverConfigured) ? 'border-emerald-200 bg-white' : 'border-amber-300 bg-white' }} p-3.5 shadow-xs">
+                            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span class="font-bold text-slate-800">2. Penyimpanan Folder Google Drive</span>
+                                <span class="inline-flex items-center gap-1 rounded-full {{ $settings->connection_status === 'connected' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }} px-2 py-0.5 text-[11px] font-bold">
+                                    <span class="h-1.5 w-1.5 rounded-full {{ $settings->connection_status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500' }}"></span>
+                                    {{ $settings->connection_status === 'connected' ? 'Terverifikasi Aktif' : 'Menunggu Uji Koneksi' }}
+                                </span>
+                            </div>
+                            <ul class="mt-2 space-y-1.5 text-slate-600">
+                                <li><strong>Folder ID:</strong> <code>{{ $settings->canonical_parent_folder_id ?: 'Belum disetel' }}</code></li>
+                                <li><strong>Jalur Akses:</strong> Terhubung otomatis menggunakan izin Google Apps Script yang sudah Anda deploy.</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

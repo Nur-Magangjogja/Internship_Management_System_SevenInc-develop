@@ -106,22 +106,54 @@ class SpreadsheetInboundSyncService
             ];
         }
 
-        // 3. Bangun Peta Kolom (Header Name / Col Letter -> Field Classification & Key)
+        // 3. Bangun Peta Kolom dari SpreadsheetColumnMapping aktif dan Remote Columns
+        $activeMappings = SpreadsheetColumnMapping::whereHas('schemaVersion', function ($q) use ($connection, $tabName) {
+            $q->where('spreadsheet_connection_id', $connection->id)
+              ->where(function ($sub) use ($tabName) {
+                  $sub->where('sheet_tab_name', $tabName)
+                      ->orWhere('year', (int) $tabName);
+              })
+              ->where('is_active', true);
+        })->get()->keyBy(fn ($m) => mb_strtolower(trim($m->sheet_header)));
+
         $columnMap = [];
         foreach ($remoteColumns as $col) {
             $hName = (string) ($col['header_name'] ?? '');
             if (empty(trim($hName))) {
                 continue;
             }
-            $derivedKey = Str::slug($hName, '_');
-            $classification = $this->classifyField($hName, $derivedKey);
+            $colLetter = (string) ($col['col_letter'] ?? '');
+            $colIndex  = (int) ($col['col_index'] ?? 0);
+            $normHeader = mb_strtolower(trim($hName));
+            $mapping   = $activeMappings->get($normHeader);
+
+            if ($mapping) {
+                $fieldKey = (string) $mapping->target_field;
+                if ($mapping->target_entity === 'internship_registration') {
+                    $classification = $this->classifyField($hName, $fieldKey);
+                    if ($classification === SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER) {
+                        $classification = SheetInboundChangeStaging::CLASSIFICATION_CORE_ADMINISTRATIVE;
+                    }
+                } else {
+                    $classification = SheetInboundChangeStaging::CLASSIFICATION_CUSTOM_ANSWER;
+                }
+            } else {
+                $derivedKey = Str::slug($hName, '_');
+                $classification = $this->classifyField($hName, $derivedKey);
+                $fieldKey = $derivedKey;
+            }
+
+            // Generate deterministic column identity (cid_..., max 20 chars)
+            $columnIdentity = 'cid_' . substr(hash('sha256', "col_{$effectiveSheetId}_{$colLetter}_{$colIndex}_" . Str::slug($hName, '_')), 0, 16);
 
             $columnMap[$hName] = [
-                'header_name'    => $hName,
-                'col_letter'     => (string) ($col['col_letter'] ?? ''),
-                'col_index'      => (int) ($col['col_index'] ?? 0),
-                'field_key'      => $derivedKey,
-                'classification' => $classification,
+                'header_name'     => $hName,
+                'col_letter'      => $colLetter,
+                'col_index'       => $colIndex,
+                'column_identity' => $columnIdentity,
+                'field_key'       => mb_substr($fieldKey, 0, 100),
+                'classification'  => $classification,
+                'mapping'         => $mapping,
             ];
         }
 
@@ -245,7 +277,7 @@ class SpreadsheetInboundSyncService
                     $isFormula = $this->isFormulaValue($rawRemoteValue);
 
                     // Ambil nilai saat ini di database
-                    $currentDbValue = $this->getCurrentDatabaseValue($registration, $classification, $headerName, $fieldKey);
+                    $currentDbValue = $this->getCurrentDatabaseValue($registration, $classification, $headerName, $fieldKey, $colMeta['mapping'] ?? null);
                     $normalizedCurrentDbValue = $this->normalizeCellValue($currentDbValue);
 
                     // Jika nilai sama, tidak ada perubahan
@@ -290,14 +322,14 @@ class SpreadsheetInboundSyncService
                         'spreadsheet_connection_id' => $connection->id,
                         'tab_name'                  => $tabName,
                         'sync_id'                   => $effectiveSyncId,
-                        'column_identity'           => $headerName,
+                        'column_identity'           => $colMeta['column_identity'],
                     ], [
                         'public_uuid'               => (string) Str::uuid(),
                         'sheet_id'                  => $effectiveSheetId,
                         'row_index'                 => $rowNumber,
                         'registration_id'           => $registration->id,
-                        'header_name'               => $headerName,
-                        'field_key'                 => $fieldKey,
+                        'header_name'               => mb_substr($headerName, 0, 255),
+                        'field_key'                 => mb_substr($fieldKey, 0, 100),
                         'field_classification'      => $classification,
                         'raw_remote_value'          => $rawRemoteValue,
                         'normalized_remote_value'   => $normalizedRemoteValue,
@@ -558,8 +590,21 @@ class SpreadsheetInboundSyncService
         InternshipRegistration $registration,
         string $classification,
         string $headerName,
-        string $fieldKey
+        string $fieldKey,
+        ?SpreadsheetColumnMapping $mapping = null
     ): ?string {
+        if ($mapping) {
+            try {
+                $mappingService = app(\App\Services\RegistrationSpreadsheetMappingService::class);
+                $resolved = $mappingService->resolveColumnValue($registration, $mapping);
+                if ($resolved !== null && $resolved !== '-') {
+                    return (string) $resolved;
+                }
+            } catch (\Throwable) {
+                // fallback below
+            }
+        }
+
         if ($classification === SheetInboundChangeStaging::CLASSIFICATION_SYSTEM_PROTECTED) {
             if (str_contains($fieldKey, 'status')) {
                 return (string) $registration->internship_status;
@@ -591,6 +636,17 @@ class SpreadsheetInboundSyncService
             if (in_array($fieldKey, ['divisi', 'division', 'pilihan_divisi'], true)) {
                 return (string) ($registration->division?->name ?? $registration->internship_interest);
             }
+            if ($fieldKey === 'supervisor_info') {
+                $name = trim((string) $registration->supervisor_name);
+                $contact = trim((string) $registration->supervisor_contact);
+                if (!empty($name) && !empty($contact)) {
+                    return "{$name} ({$contact})";
+                }
+                return $name ?: ($contact ?: null);
+            }
+            if (isset($registration->{$fieldKey})) {
+                return (string) $registration->{$fieldKey};
+            }
         }
 
         // Custom Answer lookup
@@ -617,6 +673,15 @@ class SpreadsheetInboundSyncService
             $registration->born_date = $value;
         } elseif (in_array($fieldKey, ['gender', 'jenis_kelamin'], true)) {
             $registration->gender = $value;
+        } elseif ($fieldKey === 'supervisor_info' && $value) {
+            if (preg_match('/^(.*?)\s*\((.*?)\)$/', trim($value), $matches)) {
+                $registration->supervisor_name = trim($matches[1]);
+                $registration->supervisor_contact = trim($matches[2]);
+            } else {
+                $registration->supervisor_name = trim($value);
+            }
+        } elseif ($registration->isFillable($fieldKey)) {
+            $registration->{$fieldKey} = $value;
         }
 
         $registration->save();

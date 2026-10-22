@@ -25,8 +25,42 @@ function clearBrandClientError(fieldName) {
 
 function triggerBrandFileInput(fieldName) {
     clearBrandClientError(fieldName);
+    const removeFlag = document.getElementById('remove_flag_' + fieldName);
+    if (removeFlag) removeFlag.value = '0';
+    const removalNotice = document.getElementById('removal_notice_' + fieldName);
+    if (removalNotice) removalNotice.classList.add('hidden');
+
     const input = document.getElementById('file_input_' + fieldName);
     if (input) input.click();
+}
+
+function markBrandFileForRemoval(fieldName) {
+    clearBrandClientError(fieldName);
+    const removeFlag = document.getElementById('remove_flag_' + fieldName);
+    if (removeFlag) removeFlag.value = '1';
+
+    const currentBox = document.getElementById('current_box_' + fieldName);
+    if (currentBox) currentBox.classList.add('hidden');
+
+    const removalNotice = document.getElementById('removal_notice_' + fieldName);
+    if (removalNotice) removalNotice.classList.remove('hidden');
+
+    const input = document.getElementById('file_input_' + fieldName);
+    if (input) input.value = '';
+
+    const previewBox = document.getElementById('preview_box_' + fieldName);
+    if (previewBox) previewBox.classList.add('hidden');
+}
+
+function cancelBrandFileRemoval(fieldName) {
+    const removeFlag = document.getElementById('remove_flag_' + fieldName);
+    if (removeFlag) removeFlag.value = '0';
+
+    const removalNotice = document.getElementById('removal_notice_' + fieldName);
+    if (removalNotice) removalNotice.classList.add('hidden');
+
+    const currentBox = document.getElementById('current_box_' + fieldName);
+    if (currentBox) currentBox.classList.remove('hidden');
 }
 
 function cancelBrandFileInput(fieldName, hasCurrent) {
@@ -39,9 +73,16 @@ function cancelBrandFileInput(fieldName, hasCurrent) {
 
     const currentBox = document.getElementById('current_box_' + fieldName);
     const dropzone = document.getElementById('dropzone_' + fieldName);
+    const removeFlag = document.getElementById('remove_flag_' + fieldName);
+    const isRemoval = removeFlag && removeFlag.value === '1';
+    const removalNotice = document.getElementById('removal_notice_' + fieldName);
 
-    if (hasCurrent && currentBox) {
-        currentBox.classList.remove('hidden');
+    if (hasCurrent) {
+        if (isRemoval && removalNotice) {
+            removalNotice.classList.remove('hidden');
+        } else if (currentBox) {
+            currentBox.classList.remove('hidden');
+        }
         if (dropzone) dropzone.classList.add('hidden');
     } else if (dropzone) {
         dropzone.classList.remove('hidden');
@@ -94,6 +135,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (imgPreview) imgPreview.src = e.target.result;
                 if (filenameEl) filenameEl.textContent = file.name;
                 if (filesizeEl) filesizeEl.textContent = formatBytes(file.size);
+
+                const removeFlag = document.getElementById('remove_flag_' + fieldName);
+                if (removeFlag) removeFlag.value = '0';
+                const removalNotice = document.getElementById('removal_notice_' + fieldName);
+                if (removalNotice) removalNotice.classList.add('hidden');
 
                 if (dropzone) dropzone.classList.add('hidden');
                 if (currentBox) currentBox.classList.add('hidden');

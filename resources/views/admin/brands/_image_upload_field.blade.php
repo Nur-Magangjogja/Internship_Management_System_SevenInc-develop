@@ -68,6 +68,7 @@
 
         {{-- 1. Blok Aset Saat Ini (Edit Mode) --}}
         @if($hasCurrent)
+            <input type="hidden" name="remove_{{ $name }}" id="remove_flag_{{ $name }}" value="0">
             <div id="{{ $currentBoxId }}" class="border border-[#DCE7E1] bg-[#F8FAF9] rounded-xl p-3 mb-1 transition">
                 <div class="flex items-center justify-between mb-2">
                     <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#2D8659] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full border border-[#2D8659]/20">
@@ -84,14 +85,48 @@
                 <div class="h-28 w-full bg-white rounded-lg border border-[#DCE7E1] p-2 flex items-center justify-center overflow-hidden mb-2.5 relative {{ $isTransparent ? 'bg-[radial-gradient(#d1d5db_1px,transparent_1px)] [background-size:10px_10px]' : '' }}">
                     <img src="{{ $currentUrl }}" alt="{{ $label }}" class="max-h-full max-w-full object-contain">
                 </div>
-                <button type="button"
-                        onclick="triggerBrandFileInput('{{ $name }}')"
-                        class="w-full py-2 px-3 rounded-lg border border-[#DCE7E1] bg-white text-xs font-semibold text-[#1B3A34] hover:bg-[#2D8659] hover:text-white hover:border-[#2D8659] transition flex items-center justify-center gap-1.5 shadow-2xs">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button"
+                            onclick="triggerBrandFileInput('{{ $name }}')"
+                            class="py-2 px-2.5 rounded-lg border border-[#DCE7E1] bg-white text-xs font-semibold text-[#1B3A34] hover:bg-[#2D8659] hover:text-white hover:border-[#2D8659] transition flex items-center justify-center gap-1 shadow-2xs">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Ganti Berkas
+                    </button>
+                    <button type="button"
+                            onclick="markBrandFileForRemoval('{{ $name }}')"
+                            class="py-2 px-2.5 rounded-lg border border-red-200 bg-red-50/70 text-xs font-semibold text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition flex items-center justify-center gap-1 shadow-2xs">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Hapus (Bawaan)
+                    </button>
+                </div>
+            </div>
+
+            {{-- Kotak konfirmasi hapus / kembali ke bawaan sistem --}}
+            <div id="removal_notice_{{ $name }}" class="hidden border border-amber-300 bg-amber-50/70 rounded-xl p-3 mb-1 transition text-center">
+                <div class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 mx-auto mb-1.5">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Ganti Berkas Gambar
-                </button>
+                </div>
+                <p class="text-xs font-bold text-amber-900">Aset Ditandai untuk Dihapus</p>
+                <p class="text-[11px] text-amber-700 mt-0.5 leading-snug">
+                    @if(str_contains($name, 'certificate_bg'))
+                        Sertifikat akan kembali menggunakan <strong>Border Emas Klasik (Bawaan)</strong> saat disimpan.
+                    @else
+                        Aset akan dihapus dan kembali menggunakan format bawaan sistem saat disimpan.
+                    @endif
+                </p>
+                <div class="mt-2.5 flex items-center justify-center gap-2">
+                    <button type="button"
+                            onclick="cancelBrandFileRemoval('{{ $name }}')"
+                            class="px-3 py-1 text-xs font-semibold rounded-md border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition shadow-2xs">
+                        Batalkan Penghapusan
+                    </button>
+                </div>
             </div>
         @endif
 

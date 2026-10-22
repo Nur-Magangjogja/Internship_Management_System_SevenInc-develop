@@ -489,6 +489,10 @@ function doPost(e) {
       case "upload_attachment":
         return handleUploadAttachmentAction(payload);
 
+      case "upload_file":
+      case "upload_asset":
+        return handleUploadFileAction(payload);
+
       case "ensure_extension_columns":
         return handleEnsureExtensionColumnsAction(payload);
 
@@ -1453,6 +1457,94 @@ function handleLookupRowAction(payload) {
       error_code: "LOOKUP_ERROR",
       is_retryable: true,
       message: "Gagal melakukan lookup baris: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle File Upload to Google Drive via Apps Script Gateway
+ * Mendukung pembentukan folder hierarkis otomatis (misal: SYSTEM-ASSETS/BRANDS/SEVEN-INC atau SYSTEM-ASSETS/Logos)
+ */
+function handleUploadFileAction(payload) {
+  var props = PropertiesService.getScriptProperties();
+  var rootFolderId = (payload.drive_folder_id || (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "").toString().trim();
+
+  if (!rootFolderId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DRIVE_FOLDER_NOT_CONFIGURED",
+      is_retryable: false,
+      message: "Folder ID Google Drive induk belum ditentukan."
+    }, 400);
+  }
+
+  var fileName = (payload.file_name || "file_" + new Date().getTime()).toString().trim();
+  var mimeType = (payload.mime_type || "application/octet-stream").toString().trim();
+  var base64Content = payload.file_content || "";
+  var folderPath = (payload.folder_path || "").toString().trim();
+
+  if (!base64Content) {
+    return createJsonResponse({
+      success: false,
+      error_code: "EMPTY_FILE_CONTENT",
+      is_retryable: false,
+      message: "Konten berkas base64 kosong."
+    }, 400);
+  }
+
+  try {
+    var rootFolder = DriveApp.getFolderById(rootFolderId);
+    var targetFolder = rootFolder;
+
+    if (folderPath) {
+      var parts = folderPath.replace(/\\/g, "/").split("/");
+      for (var i = 0; i < parts.length; i++) {
+        var partName = parts[i].trim();
+        if (!partName) continue;
+        var subFolders = targetFolder.getFoldersByName(partName);
+        if (subFolders.hasNext()) {
+          targetFolder = subFolders.next();
+        } else {
+          targetFolder = targetFolder.createFolder(partName);
+        }
+      }
+    }
+
+    var decodedBytes = Utilities.base64Decode(base64Content);
+    var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
+
+    // Idempotency: Bersihkan berkas usang dengan nama sama jika ada di folder target
+    var existingFiles = targetFolder.getFilesByName(fileName);
+    while (existingFiles.hasNext()) {
+      var oldFile = existingFiles.next();
+      oldFile.setTrashed(true);
+    }
+
+    var createdFile = targetFolder.createFile(blob);
+
+    try {
+      createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (permErr) {}
+
+    return createJsonResponse({
+      success: true,
+      file_id: createdFile.getId(),
+      file_name: createdFile.getName(),
+      web_view_link: createdFile.getUrl(),
+      download_url: createdFile.getDownloadUrl(),
+      folder_id: targetFolder.getId(),
+      folder_name: targetFolder.getName(),
+      folder_path: folderPath,
+      size_bytes: createdFile.getSize(),
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DRIVE_UPLOAD_FAILED",
+      is_retryable: false,
+      message: "Gagal mengunggah berkas ke Google Drive: " + err.toString()
     }, 500);
   }
 }
@@ -3533,6 +3625,7 @@ if (typeof module !== "undefined" && module.exports) {
     isReservedExtensionKey: isReservedExtensionKey,
     resolveMainSheetHeaderAndIndices: resolveMainSheetHeaderAndIndices,
     handleUploadAttachmentAction: handleUploadAttachmentAction,
+    handleUploadFileAction: handleUploadFileAction,
     createJsonResponse: createJsonResponse,
     bytesToHex: bytesToHex,
     handleListTabsAction: handleListTabsAction,

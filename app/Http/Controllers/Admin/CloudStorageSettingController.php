@@ -21,10 +21,30 @@ class CloudStorageSettingController extends Controller
     {
         $settings = $this->storageService->getSettings();
         $registrationRef = $this->storageService->getRegistrationFolderReference();
+        $driver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
+        $isDriverConfigured = $driver->isConfigured();
+        $spreadsheetConn = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)->first();
+
+        $missingEnvKeys = [];
+        if (!config('services.google_drive.enabled')) {
+            $missingEnvKeys[] = 'GOOGLE_DRIVE_ENABLED';
+        }
+        if (empty(config('services.google_drive.client_id'))) {
+            $missingEnvKeys[] = 'GOOGLE_DRIVE_CLIENT_ID';
+        }
+        if (empty(config('services.google_drive.client_secret'))) {
+            $missingEnvKeys[] = 'GOOGLE_DRIVE_CLIENT_SECRET';
+        }
+        if (empty(config('services.google_drive.refresh_token'))) {
+            $missingEnvKeys[] = 'GOOGLE_DRIVE_REFRESH_TOKEN';
+        }
 
         return view('admin.cloud-storage.index', [
-            'settings'        => $settings,
-            'registrationRef' => $registrationRef,
+            'settings'           => $settings,
+            'registrationRef'    => $registrationRef,
+            'isDriverConfigured' => $isDriverConfigured,
+            'spreadsheetConn'    => $spreadsheetConn,
+            'missingEnvKeys'     => $missingEnvKeys,
         ]);
     }
 
