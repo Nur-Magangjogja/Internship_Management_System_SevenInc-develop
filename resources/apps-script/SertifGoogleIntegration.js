@@ -493,6 +493,31 @@ function doPost(e) {
       case "upload_asset":
         return handleUploadFileAction(payload);
 
+      // ── SERTIF PRIVATE GOOGLE DRIVE GATEWAY ACTIONS (Addendum Final V4 & GAS-03) ──
+      case "drive_ping":
+        return handleDrivePingAction(payload);
+
+      case "drive_resolve_folder":
+        return handleDriveResolveFolderAction(payload);
+
+      case "drive_upload":
+        return handleDriveUploadAction(payload);
+
+      case "drive_get_metadata":
+        return handleDriveGetMetadataAction(payload);
+
+      case "drive_download_chunk":
+        return handleDriveDownloadChunkAction(payload);
+
+      case "drive_list_children":
+        return handleDriveListChildrenAction(payload);
+
+      case "drive_search_files":
+        return handleDriveSearchFilesAction(payload);
+
+      case "drive_trash":
+        return handleDriveTrashAction(payload);
+
       case "ensure_extension_columns":
         return handleEnsureExtensionColumnsAction(payload);
 
@@ -1465,16 +1490,211 @@ function handleLookupRowAction(payload) {
  * Handle File Upload to Google Drive via Apps Script Gateway
  * Mendukung pembentukan folder hierarkis otomatis (misal: SYSTEM-ASSETS/BRANDS/SEVEN-INC atau SYSTEM-ASSETS/Logos)
  */
-function handleUploadFileAction(payload) {
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * SERTIF PRIVATE GOOGLE DRIVE GATEWAY — HELPER UTILITIES & SECURITY GUARDS
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Hitung checksum SHA-256 dalam representasi heksadesimal lowercase.
+ */
+function computeSha256Hex(bytes) {
+  var rawDigest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  var hex = "";
+  for (var i = 0; i < rawDigest.length; i++) {
+    var val = rawDigest[i];
+    if (val < 0) val += 256;
+    var str = val.toString(16);
+    if (str.length === 1) str = "0" + str;
+    hex += str;
+  }
+  return hex;
+}
+
+/**
+ * Validasi dan dapatkan objek Folder Induk Google Drive kanonikal.
+ * Memastikan request terikat pada root folder yang sah dan terdaftar.
+ */
+function getAndVerifyCanonicalRoot(payload) {
   var props = PropertiesService.getScriptProperties();
   var rootFolderId = (payload.drive_folder_id || (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "").toString().trim();
 
   if (!rootFolderId) {
+    return {
+      valid: false,
+      error: "DRIVE_ROOT_NOT_CONFIGURED",
+      message: "Folder ID Google Drive induk kanonikal belum ditentukan."
+    };
+  }
+
+  try {
+    var rootFolder = DriveApp.getFolderById(rootFolderId);
+    return {
+      valid: true,
+      rootFolder: rootFolder,
+      rootFolderId: rootFolderId
+    };
+  } catch (e) {
+    return {
+      valid: false,
+      error: "DRIVE_ROOT_INACCESSIBLE",
+      message: "Folder induk kanonikal (" + rootFolderId + ") tidak dapat diakses atau izin ditolak: " + e.toString()
+    };
+  }
+}
+
+/**
+ * Verifikasi apakah folder atau file berada dalam hierarki subtree rootFolderId yang sah.
+ * Menolak akses ke file sembarangan di luar cakupan SERTIF.
+ */
+function isWithinRootHierarchy(item, rootFolderId) {
+  if (!item || !rootFolderId) return false;
+  try {
+    if (item.getId() === rootFolderId) return true;
+    var current = item;
+    var depth = 0;
+    while (current && depth < 25) {
+      if (current.getId() === rootFolderId) {
+        return true;
+      }
+      var parents = current.getParents();
+      if (!parents || !parents.hasNext()) {
+        break;
+      }
+      current = parents.next();
+      depth++;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Resolusi path folder bertingkat di bawah folder induk kanonikal.
+ * Dilengkapi pencegahan Directory Traversal ('..').
+ */
+function resolveFolderPathUnderRoot(rootFolder, folderPath) {
+  var cleanPath = (folderPath || "").toString().replace(/\\/g, "/").trim();
+  cleanPath = cleanPath.replace(/^\/+|\/+$/g, "");
+
+  if (!cleanPath) {
+    return { folder: rootFolder, path: "" };
+  }
+
+  var parts = cleanPath.split("/");
+  var currentFolder = rootFolder;
+  var resolvedParts = [];
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i].trim();
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      throw new Error("PATH_TRAVERSAL_DETECTED: Jalur folder tidak boleh memuat '..'");
+    }
+    resolvedParts.push(part);
+    var subFolders = currentFolder.getFoldersByName(part);
+    if (subFolders.hasNext()) {
+      currentFolder = subFolders.next();
+    } else {
+      currentFolder = currentFolder.createFolder(part);
+    }
+  }
+
+  return { folder: currentFolder, path: resolvedParts.join("/") };
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * SERTIF PRIVATE GOOGLE DRIVE GATEWAY — ACTIONS HANDLER
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Aksi: drive_ping
+ * Memverifikasi keterjangkauan dan validitas Folder Induk Kanonikal Google Drive pribadi.
+ */
+function handleDrivePingAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
     return createJsonResponse({
       success: false,
-      error_code: "DRIVE_FOLDER_NOT_CONFIGURED",
+      error_code: rootRes.error,
       is_retryable: false,
-      message: "Folder ID Google Drive induk belum ditentukan."
+      message: rootRes.message
+    }, 400);
+  }
+
+  var rootFolder = rootRes.rootFolder;
+  var rootName = "";
+  try {
+    rootName = rootFolder.getName();
+  } catch (e) {
+    rootName = "Unknown";
+  }
+
+  return createJsonResponse({
+    success: true,
+    action: "drive_ping",
+    root_folder_id: rootRes.rootFolderId,
+    root_folder_name: rootName,
+    accessible: true,
+    timestamp: new Date().toISOString()
+  }, 200);
+}
+
+/**
+ * Aksi: drive_resolve_folder
+ * Menemukan atau membuat struktur folder hierarkis di bawah root kanonikal.
+ */
+function handleDriveResolveFolderAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var folderPath = (payload.folder_path || "").toString();
+  try {
+    var resolved = resolveFolderPathUnderRoot(rootRes.rootFolder, folderPath);
+    return createJsonResponse({
+      success: true,
+      action: "drive_resolve_folder",
+      folder_id: resolved.folder.getId(),
+      folder_name: resolved.folder.getName(),
+      folder_path: resolved.path,
+      timestamp: new Date().toISOString()
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "FOLDER_RESOLUTION_FAILED",
+      is_retryable: false,
+      message: err.toString()
+    }, 400);
+  }
+}
+
+/**
+ * Aksi: drive_upload
+ * Mengunggah berkas secara aman:
+ * 1. Default PRIVATE (tidak mempublikasikan ke ANYONE_WITH_LINK).
+ * 2. Idempotensi non-destruktif (tidak menghapus file lama sebelum upload baru sukses).
+ * 3. Verifikasi integritas Checksum SHA-256.
+ */
+function handleDriveUploadAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
     }, 400);
   }
 
@@ -1482,6 +1702,8 @@ function handleUploadFileAction(payload) {
   var mimeType = (payload.mime_type || "application/octet-stream").toString().trim();
   var base64Content = payload.file_content || "";
   var folderPath = (payload.folder_path || "").toString().trim();
+  var expectedSha256 = (payload.checksum_sha256 || "").toString().trim().toLowerCase();
+  var allowReplace = payload.allow_replace === true;
 
   if (!base64Content) {
     return createJsonResponse({
@@ -1493,49 +1715,94 @@ function handleUploadFileAction(payload) {
   }
 
   try {
-    var rootFolder = DriveApp.getFolderById(rootFolderId);
-    var targetFolder = rootFolder;
+    var resolved = resolveFolderPathUnderRoot(rootRes.rootFolder, folderPath);
+    var targetFolder = resolved.folder;
 
-    if (folderPath) {
-      var parts = folderPath.replace(/\\/g, "/").split("/");
-      for (var i = 0; i < parts.length; i++) {
-        var partName = parts[i].trim();
-        if (!partName) continue;
-        var subFolders = targetFolder.getFoldersByName(partName);
-        if (subFolders.hasNext()) {
-          targetFolder = subFolders.next();
-        } else {
-          targetFolder = targetFolder.createFolder(partName);
+    var decodedBytes = Utilities.base64Decode(base64Content);
+    var actualSha256 = computeSha256Hex(decodedBytes);
+
+    // Verifikasi checksum SHA-256
+    if (expectedSha256 && expectedSha256 !== actualSha256) {
+      return createJsonResponse({
+        success: false,
+        error_code: "CHECKSUM_MISMATCH",
+        is_retryable: false,
+        message: "Integritas berkas gagal: Checksum SHA-256 payload (" + actualSha256 + ") tidak cocok dengan yang diharapkan (" + expectedSha256 + ")."
+      }, 400);
+    }
+
+    // Idempotensi: Cek apakah file dengan nama yang sama dan checksum yang sama sudah ada
+    var existingFiles = targetFolder.getFilesByName(fileName);
+    var existingMatch = null;
+    var otherDuplicates = [];
+
+    while (existingFiles.hasNext()) {
+      var f = existingFiles.next();
+      if (!f.isTrashed()) {
+        try {
+          var fBytes = f.getBlob().getBytes();
+          if (fBytes.length === decodedBytes.length) {
+            var fSha = computeSha256Hex(fBytes);
+            if (fSha === actualSha256) {
+              existingMatch = f;
+              break;
+            } else {
+              otherDuplicates.push(f);
+            }
+          } else {
+            otherDuplicates.push(f);
+          }
+        } catch (ex) {
+          otherDuplicates.push(f);
         }
       }
     }
 
-    var decodedBytes = Utilities.base64Decode(base64Content);
-    var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
-
-    // Idempotency: Bersihkan berkas usang dengan nama sama jika ada di folder target
-    var existingFiles = targetFolder.getFilesByName(fileName);
-    while (existingFiles.hasNext()) {
-      var oldFile = existingFiles.next();
-      oldFile.setTrashed(true);
+    if (existingMatch) {
+      return createJsonResponse({
+        success: true,
+        action: "drive_upload",
+        file_id: existingMatch.getId(),
+        file_name: existingMatch.getName(),
+        web_view_link: "https://drive.google.com/file/d/" + existingMatch.getId() + "/view",
+        folder_id: targetFolder.getId(),
+        folder_name: targetFolder.getName(),
+        folder_path: resolved.path,
+        size_bytes: existingMatch.getSize(),
+        checksum_sha256: actualSha256,
+        operation: "reused_idempotent",
+        timestamp: new Date().toISOString()
+      }, 200);
     }
 
+    // Buat file baru TERLEBIH DAHULU (tanpa menyentuh file lain)
+    var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
     var createdFile = targetFolder.createFile(blob);
 
-    try {
-      createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (permErr) {}
+    // KETENTUAN UTAMA: Dokumen disimpan secara PRIVATE.
+    // Tidak pernah memanggil createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, ...).
+
+    // Jika penggantian disetujui (allowReplace), baru pindahkan versi usang ke tempat sampah
+    if (allowReplace && otherDuplicates.length > 0) {
+      for (var d = 0; d < otherDuplicates.length; d++) {
+        try {
+          otherDuplicates[d].setTrashed(true);
+        } catch (trashErr) {}
+      }
+    }
 
     return createJsonResponse({
       success: true,
+      action: "drive_upload",
       file_id: createdFile.getId(),
       file_name: createdFile.getName(),
-      web_view_link: createdFile.getUrl(),
-      download_url: createdFile.getDownloadUrl(),
+      web_view_link: "https://drive.google.com/file/d/" + createdFile.getId() + "/view",
       folder_id: targetFolder.getId(),
       folder_name: targetFolder.getName(),
-      folder_path: folderPath,
+      folder_path: resolved.path,
       size_bytes: createdFile.getSize(),
+      checksum_sha256: actualSha256,
+      operation: "created",
       timestamp: new Date().toISOString()
     }, 200);
 
@@ -1543,10 +1810,366 @@ function handleUploadFileAction(payload) {
     return createJsonResponse({
       success: false,
       error_code: "DRIVE_UPLOAD_FAILED",
-      is_retryable: false,
+      is_retryable: true,
       message: "Gagal mengunggah berkas ke Google Drive: " + err.toString()
     }, 500);
   }
+}
+
+/**
+ * Aksi: drive_get_metadata
+ * Mengambil metadata berkas secara privat dengan validasi batas subtree root kanonikal.
+ */
+function handleDriveGetMetadataAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas (" + fileId + ") berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_get_metadata",
+      metadata: {
+        id: file.getId(),
+        name: file.getName(),
+        size_bytes: file.getSize(),
+        mime_type: file.getMimeType(),
+        trashed: file.isTrashed(),
+        created_time: file.getDateCreated().toISOString(),
+        last_updated: file.getLastUpdated().toISOString()
+      },
+      file_id: file.getId(),
+      file_name: file.getName(),
+      size_bytes: file.getSize(),
+      mime_type: file.getMimeType(),
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "FILE_NOT_FOUND",
+      is_retryable: false,
+      message: "Berkas tidak ditemukan atau tidak dapat diakses: " + err.toString()
+    }, 404);
+  }
+}
+
+/**
+ * Aksi: drive_download_chunk
+ * Mengunduh biner berkas secara privat (server-to-server) dengan verifikasi boundary dan checksum.
+ */
+function handleDriveDownloadChunkAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  var chunkOffset = parseInt(payload.chunk_offset || 0, 10);
+  var chunkSize = parseInt(payload.chunk_size || 0, 10);
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    var blob = file.getBlob();
+    var allBytes = blob.getBytes();
+    var totalSize = allBytes.length;
+    var fileChecksum = computeSha256Hex(allBytes);
+
+    var targetBytes = allBytes;
+    if (chunkSize > 0 && (chunkOffset > 0 || chunkSize < totalSize)) {
+      var end = Math.min(totalSize, chunkOffset + chunkSize);
+      targetBytes = allBytes.slice(chunkOffset, end);
+    }
+
+    var base64Chunk = Utilities.base64Encode(targetBytes);
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_download_chunk",
+      file_id: file.getId(),
+      file_name: file.getName(),
+      mime_type: file.getMimeType(),
+      total_size: totalSize,
+      size_bytes: targetBytes.length,
+      chunk_offset: chunkOffset,
+      chunk_size: targetBytes.length,
+      checksum_sha256: fileChecksum,
+      file_content: base64Chunk,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DOWNLOAD_FAILED",
+      is_retryable: false,
+      message: "Gagal mengunduh berkas: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_list_children
+ * Mendaftar berkas anak dalam folder tertentu yang berada di dalam cakupan root.
+ */
+function handleDriveListChildrenAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var folderId = (payload.folder_id || "").toString().trim() || rootRes.rootFolderId;
+  var pageSize = parseInt(payload.page_size || 50, 10);
+  if (pageSize <= 0 || pageSize > 200) pageSize = 50;
+
+  try {
+    var targetFolder = DriveApp.getFolderById(folderId);
+
+    if (!isWithinRootHierarchy(targetFolder, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Folder berada di luar cakupan induk kanonikal."
+      }, 403);
+    }
+
+    var filesList = [];
+    var files = targetFolder.getFiles();
+    var count = 0;
+
+    while (files.hasNext() && count < pageSize) {
+      var f = files.next();
+      if (!f.isTrashed()) {
+        filesList.push({
+          id: f.getId(),
+          name: f.getName(),
+          size: f.getSize(),
+          mimeType: f.getMimeType(),
+          isFolder: false,
+          lastUpdated: f.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    var subfolders = targetFolder.getFolders();
+    while (subfolders.hasNext() && count < pageSize) {
+      var sf = subfolders.next();
+      if (!sf.isTrashed()) {
+        filesList.push({
+          id: sf.getId(),
+          name: sf.getName(),
+          size: 0,
+          mimeType: "application/vnd.google-apps.folder",
+          isFolder: true,
+          lastUpdated: sf.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_list_children",
+      folder_id: targetFolder.getId(),
+      folder_name: targetFolder.getName(),
+      files: filesList,
+      count: filesList.length,
+      next_page_token: null,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "LIST_CHILDREN_FAILED",
+      is_retryable: false,
+      message: "Gagal membaca isi folder: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_search_files
+ * Mencari berkas berdasarkan nama/query di dalam ruang lingkup folder induk kanonikal.
+ */
+function handleDriveSearchFilesAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var query = (payload.query || "").toString().trim();
+  var pageSize = parseInt(payload.page_size || 50, 10);
+  if (pageSize <= 0 || pageSize > 100) pageSize = 50;
+
+  try {
+    var searchFiles = rootRes.rootFolder.searchFiles(query || "trashed = false");
+    var results = [];
+    var count = 0;
+
+    while (searchFiles.hasNext() && count < pageSize) {
+      var f = searchFiles.next();
+      if (!f.isTrashed()) {
+        results.push({
+          id: f.getId(),
+          name: f.getName(),
+          size: f.getSize(),
+          mimeType: f.getMimeType(),
+          lastUpdated: f.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_search_files",
+      files: results,
+      count: results.length,
+      next_page_token: null,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "SEARCH_FAILED",
+      is_retryable: false,
+      message: "Gagal mencari berkas: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_trash
+ * Menandai berkas sebagai trashed secara aman dengan validasi izin subtree kanonikal.
+ */
+function handleDriveTrashAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    file.setTrashed(true);
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_trash",
+      file_id: file.getId(),
+      trashed: true,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "TRASH_FAILED",
+      is_retryable: false,
+      message: "Gagal memindahkan berkas ke tempat sampah: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle File Upload to Google Drive via Apps Script Gateway (Legacy Compat Handler)
+ * Diperbarui: Bebas penulisan destruktif (tidak menghapus sebelum unggah) dan strictly PRIVATE.
+ */
+function handleUploadFileAction(payload) {
+  return handleDriveUploadAction(payload);
 }
 
 /**
@@ -2875,16 +3498,16 @@ function computeDeterministicSchemaHash(columns) {
 }
 
 /**
- * Derive canonical header row: row 12 for 4-digit year tabs or registration, row 1 for others.
+ * Derive canonical header row: row 12 for 4-digit year tabs (^\d{4}$) or TEMPLATE_TAHUN, row 1 for others (Petunjuk, etc.).
  */
 function deriveHeaderRowForSheet(sheetName, connectionKey, explicitHeaderRow) {
   if (explicitHeaderRow !== undefined && explicitHeaderRow !== null && !isNaN(parseInt(explicitHeaderRow, 10)) && parseInt(explicitHeaderRow, 10) > 0) {
     return parseInt(explicitHeaderRow, 10);
   }
   var cleanName = (sheetName || "").toString().trim();
-  // Strictly 4-digit year tabs (e.g. 2026, 2025) have header on row 12.
-  // Other tabs (Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
-  if (/^\d{4}$/.test(cleanName)) {
+  // Strictly 4-digit year tabs (e.g. 2026, 2025) and TEMPLATE_TAHUN have header on row 12.
+  // Other tabs (Petunjuk, Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
+  if (/^\d{4}$/.test(cleanName) || cleanName === "TEMPLATE_TAHUN") {
     return 12;
   }
   return 1;

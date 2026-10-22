@@ -32,12 +32,7 @@ class DocumentPublishingService
         protected VariableResolverService $resolverService,
         ?CloudStorageInterface $cloudDriver = null
     ) {
-        if ($cloudDriver) {
-            $this->cloudDriver = $cloudDriver;
-        } else {
-            $googleDriver = new GoogleDriveStorageDriver();
-            $this->cloudDriver = $googleDriver->isConfigured() ? $googleDriver : new LocalStorageFallbackDriver();
-        }
+        $this->cloudDriver = $cloudDriver ?? app(CloudStorageInterface::class);
     }
 
     /**
@@ -301,7 +296,7 @@ class DocumentPublishingService
                     $applicantFolderRelative = "Registrasi/{$year}/{$applicantName}_REG{$regId}";
 
                     // Gunakan configured drive folder ID dari koneksi registrasi pemagang jika menggunakan path
-                    if ($this->cloudDriver instanceof GoogleDriveStorageDriver) {
+                    if (method_exists($this->cloudDriver, 'setRootFolderId')) {
                         try {
                             SpreadsheetConnection::ensureDriveFolderColumns();
                             $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
@@ -359,7 +354,7 @@ class DocumentPublishingService
             $remoteFolder = "Generated_Documents/Institutions/{$institutionSlug}/" . strtoupper($doc->document_type);
 
             $settings = $this->storageConfigService->getSettings();
-            if (!empty($settings->generated_docs_folder_id) && $this->cloudDriver instanceof GoogleDriveStorageDriver) {
+            if (!empty($settings->generated_docs_folder_id) && method_exists($this->cloudDriver, 'setRootFolderId')) {
                 $this->cloudDriver->setRootFolderId($settings->generated_docs_folder_id);
             }
         }

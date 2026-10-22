@@ -502,8 +502,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         $sheetNames = !empty($this->remoteSheets) ? array_keys($this->remoteSheets) : ($connection->connection_key === SpreadsheetConnection::KEY_FOLLOWUP ? ['Follow-Up Guru/Dosen'] : ['2026', '2025', '2026_Custom_Fields']);
         $tabs = [];
         foreach ($sheetNames as $idx => $name) {
-            $isReg = preg_match('/^\d{4}$/', $name) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-            $headerRow = $isReg ? 12 : 1;
+            $isYearlyOrTemplate = preg_match('/^\d{4}$/', (string) $name) || (string) $name === 'TEMPLATE_TAHUN';
+            $headerRow = $isYearlyOrTemplate ? 12 : 1;
             $tabs[] = [
                 'id' => $idx,
                 'name' => (string) $name,
@@ -554,8 +554,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             return $this->forcedResponse;
         }
 
-        $isReg = preg_match('/^\d{4}$/', $tabName) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-        $effectiveHeaderRow = $headerRow ?? ($isReg ? 12 : 1);
+        $isYearlyOrTemplate = preg_match('/^\d{4}$/', $tabName) || $tabName === 'TEMPLATE_TAHUN';
+        $effectiveHeaderRow = $headerRow ?? ($isYearlyOrTemplate ? 12 : 1);
 
         $headers = $this->remoteHeaders[$tabName] ?? [];
         if (empty($headers)) {
@@ -648,8 +648,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             return $this->forcedResponse;
         }
 
-        $isReg = preg_match('/^\d{4}$/', $tabName) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-        $effectiveHeaderRow = $headerRow ?? ($isReg ? 12 : 1);
+        $isYearlyOrTemplate = preg_match('/^\d{4}$/', $tabName) || $tabName === 'TEMPLATE_TAHUN';
+        $effectiveHeaderRow = $headerRow ?? ($isYearlyOrTemplate ? 12 : 1);
 
         $allRows = array_values($this->remoteSheets[$tabName] ?? []);
         $totalRows = count($allRows);

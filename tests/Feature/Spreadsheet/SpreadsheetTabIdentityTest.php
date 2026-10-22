@@ -213,4 +213,167 @@ class SpreadsheetTabIdentityTest extends TestCase
         $response2->assertStatus(422);
         $response2->assertJson(['success' => false]);
     }
+
+    /**
+     * Test: Default tab inference rules for 4-digit years, TEMPLATE_TAHUN, Petunjuk, and copied future year tabs (e.g. 2027).
+     */
+    public function test_tab_default_inference_rules(): void
+    {
+        // 1. 4-digit years => 12/13
+        $this->assertSame(12, SpreadsheetTabProfile::defaultHeaderRowSuggestion('2026'));
+        $this->assertSame(13, SpreadsheetTabProfile::defaultDataStartRowSuggestion('2026'));
+
+        $this->assertSame(12, SpreadsheetTabProfile::defaultHeaderRowSuggestion('2027'));
+        $this->assertSame(13, SpreadsheetTabProfile::defaultDataStartRowSuggestion('2027'));
+
+        $this->assertSame(12, SpreadsheetTabProfile::defaultHeaderRowSuggestion('2028'));
+        $this->assertSame(13, SpreadsheetTabProfile::defaultDataStartRowSuggestion('2028'));
+
+        // 2. TEMPLATE_TAHUN => 12/13
+        $this->assertSame(12, SpreadsheetTabProfile::defaultHeaderRowSuggestion('TEMPLATE_TAHUN'));
+        $this->assertSame(13, SpreadsheetTabProfile::defaultDataStartRowSuggestion('TEMPLATE_TAHUN'));
+
+        // 3. Petunjuk and other non-yearly tabs => 1/2
+        $this->assertSame(1, SpreadsheetTabProfile::defaultHeaderRowSuggestion('Petunjuk'));
+        $this->assertSame(2, SpreadsheetTabProfile::defaultDataStartRowSuggestion('Petunjuk'));
+
+        $this->assertSame(1, SpreadsheetTabProfile::defaultHeaderRowSuggestion('Follow-Up'));
+        $this->assertSame(2, SpreadsheetTabProfile::defaultDataStartRowSuggestion('Follow-Up'));
+
+        $this->assertSame(1, SpreadsheetTabProfile::defaultHeaderRowSuggestion('Log'));
+        $this->assertSame(2, SpreadsheetTabProfile::defaultDataStartRowSuggestion('Log'));
+    }
+
+    /**
+     * Test: Discovery service listTabs, inspectSchema, snapshot, proposals, and preview consistently apply inference.
+     */
+    public function test_discovery_service_flow_for_template_tahun_and_yearly_tabs(): void
+    {
+        $this->mockTransport->setMockHeaders('2026', ['Nama', 'Email', 'No WA']);
+        $this->mockTransport->setMockHeaders('TEMPLATE_TAHUN', ['Nama', 'Email', 'No WA']);
+        $this->mockTransport->setMockHeaders('Petunjuk', ['Kolom', 'Keterangan']);
+        $this->mockTransport->setMockHeaders('2027', ['Nama', 'Email', 'No WA']);
+
+        $this->mockTransport->remoteSheets['2026'] = [
+            ['Nama' => 'Peserta 1', 'Email' => 'p1@example.com', 'No WA' => '08123456789'],
+        ];
+        $this->mockTransport->remoteSheets['TEMPLATE_TAHUN'] = [];
+        $this->mockTransport->remoteSheets['Petunjuk'] = [
+            ['Kolom' => 'Nama', 'Keterangan' => 'Isikan nama lengkap'],
+        ];
+        $this->mockTransport->remoteSheets['2027'] = [];
+
+        // 1. List Tabs
+        $tabsResult = $this->discoveryService->listTabs($this->connection);
+        $this->assertTrue($tabsResult['success']);
+        
+        $tabsByName = collect($tabsResult['tabs'])->keyBy('name');
+        
+        $this->assertEquals(12, $tabsByName['2026']['header_row']);
+        $this->assertEquals(13, $tabsByName['2026']['data_start_row']);
+
+        $this->assertEquals(12, $tabsByName['TEMPLATE_TAHUN']['header_row']);
+        $this->assertEquals(13, $tabsByName['TEMPLATE_TAHUN']['data_start_row']);
+
+        $this->assertEquals(1, $tabsByName['Petunjuk']['header_row']);
+        $this->assertEquals(2, $tabsByName['Petunjuk']['data_start_row']);
+
+        $this->assertEquals(12, $tabsByName['2027']['header_row']);
+        $this->assertEquals(13, $tabsByName['2027']['data_start_row']);
+
+        // 2. Inspect Tab Schema
+        $templateSheetId = $tabsByName['TEMPLATE_TAHUN']['id'];
+        $inspectTemplate = $this->discoveryService->inspectTabSchema($this->connection, 'TEMPLATE_TAHUN', null, $templateSheetId);
+        $this->assertTrue($inspectTemplate['success']);
+        $this->assertEquals(12, $inspectTemplate['header_row']);
+        $this->assertEquals(13, $inspectTemplate['data_start_row']);
+
+        $petunjukSheetId = $tabsByName['Petunjuk']['id'];
+        $inspectPetunjuk = $this->discoveryService->inspectTabSchema($this->connection, 'Petunjuk', null, $petunjukSheetId);
+        $this->assertTrue($inspectPetunjuk['success']);
+        $this->assertEquals(1, $inspectPetunjuk['header_row']);
+        $this->assertEquals(2, $inspectPetunjuk['data_start_row']);
+
+        // 3. Save Discovery Snapshot
+        $snapshot = $this->discoveryService->saveDiscoverySnapshot(
+            $this->connection,
+            'TEMPLATE_TAHUN',
+            null,
+            $templateSheetId,
+            $this->adminUser
+        );
+        $this->assertEquals(12, $snapshot->header_row);
+        $this->assertEquals(13, $snapshot->data_start_row);
+
+        // 4. Create Mapping Proposal
+        $proposal = $this->discoveryService->createMappingProposal($this->connection, $snapshot);
+        $this->assertNotNull($proposal);
+        $this->assertGreaterThan(0, $proposal->year, 'Proposal year must be valid and not 0');
+
+        // 5. Preview Rows
+        $preview = $this->discoveryService->previewRows($this->connection, 'TEMPLATE_TAHUN', null, 1, 10, $templateSheetId);
+        $this->assertTrue($preview['success']);
+        $this->assertEquals(12, $preview['header_row']);
+
+        // 6. Resolve Profile
+        $profile = $this->discoveryService->resolveTabHeaderProfile($this->connection, $templateSheetId, 'TEMPLATE_TAHUN');
+        $this->assertEquals(12, $profile->header_row);
+        $this->assertEquals(13, $profile->data_start_row);
+    }
+
+    /**
+     * Test: Existing legacy profile for TEMPLATE_TAHUN (1/2) is updated/healed to 12/13, while 2026 and Petunjuk are preserved.
+     */
+    public function test_existing_template_tahun_profile_upgrade_preserves_others(): void
+    {
+        // Setup legacy explicit profile for TEMPLATE_TAHUN with header_row=1 and data_start_row=2
+        $legacyTemplateProfile = SpreadsheetTabProfile::create([
+            'spreadsheet_connection_id' => $this->connection->id,
+            'sheet_id'                  => 555111,
+            'tab_name'                  => 'TEMPLATE_TAHUN',
+            'header_row'                => 1,
+            'data_start_row'            => 2,
+            'is_active'                 => true,
+        ]);
+
+        // Setup profile for 2026 (12/13)
+        $profile2026 = SpreadsheetTabProfile::create([
+            'spreadsheet_connection_id' => $this->connection->id,
+            'sheet_id'                  => 555222,
+            'tab_name'                  => '2026',
+            'header_row'                => 12,
+            'data_start_row'            => 13,
+            'is_active'                 => true,
+        ]);
+
+        // Setup profile for Petunjuk (1/2)
+        $profilePetunjuk = SpreadsheetTabProfile::create([
+            'spreadsheet_connection_id' => $this->connection->id,
+            'sheet_id'                  => 555333,
+            'tab_name'                  => 'Petunjuk',
+            'header_row'                => 1,
+            'data_start_row'            => 2,
+            'is_active'                 => true,
+        ]);
+
+        // Resolve profile without explicit overrides
+        $resolvedTemplate = SpreadsheetTabProfile::resolveProfile(
+            $this->connection,
+            555111,
+            'TEMPLATE_TAHUN'
+        );
+
+        $this->assertSame(12, $resolvedTemplate->header_row);
+        $this->assertSame(13, $resolvedTemplate->data_start_row);
+
+        // Verify 2026 is unchanged
+        $fresh2026 = $profile2026->fresh();
+        $this->assertSame(12, $fresh2026->header_row);
+        $this->assertSame(13, $fresh2026->data_start_row);
+
+        // Verify Petunjuk is unchanged
+        $freshPetunjuk = $profilePetunjuk->fresh();
+        $this->assertSame(1, $freshPetunjuk->header_row);
+        $this->assertSame(2, $freshPetunjuk->data_start_row);
+    }
 }

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class GoogleDriveStorageDriver implements CloudStorageInterface, CloudFileReadInterface, CloudFolderQueryInterface
+class GoogleDriveStorageDriver implements CloudStorageProviderInterface
 {
     protected ?string $clientId;
     protected ?string $clientSecret;
@@ -52,6 +52,11 @@ class GoogleDriveStorageDriver implements CloudStorageInterface, CloudFileReadIn
         }
 
         return $this;
+    }
+
+    public function getRootFolderId(): ?string
+    {
+        return $this->rootFolderId;
     }
 
     /**

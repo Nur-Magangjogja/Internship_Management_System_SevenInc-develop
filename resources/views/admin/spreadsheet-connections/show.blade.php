@@ -327,7 +327,7 @@
                         @empty
                             <tr>
                                 <td colspan="6" class="px-4 py-4 text-center text-slate-400 italic">
-                                    Belum ada profil tab eksplisit. Sistem menggunakan deteksi default (Tab 2026 = Baris 12, tab lain = Baris 1).
+                                    Belum ada profil tab eksplisit. Sistem menggunakan deteksi default (Tab tahun/TEMPLATE_TAHUN = Baris 12/13, tab non-tahunan/Petunjuk = Baris 1/2).
                                 </td>
                             </tr>
                         @endforelse

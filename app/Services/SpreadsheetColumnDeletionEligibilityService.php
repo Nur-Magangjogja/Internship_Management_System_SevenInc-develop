@@ -102,7 +102,7 @@ class SpreadsheetColumnDeletionEligibilityService
         }
 
         $headerRow = $profile?->header_row;
-        $schemaInspect = $this->discoveryService->inspectTabSchema($connection, $tabName, $sheetId, $headerRow);
+        $schemaInspect = $this->discoveryService->inspectTabSchema($connection, $tabName, headerRow: $headerRow, sheetId: $sheetId);
 
         if (!($schemaInspect['success'] ?? false)) {
             $result['reasons'][] = 'Gagal menginspeksi schema remote tab: ' . ($schemaInspect['message'] ?? 'Error jaringan atau Apps Script.');

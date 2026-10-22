@@ -9,6 +9,8 @@ use App\Models\CloudFolderRegistry;
 use App\Models\CloudStorageSetting;
 use App\Models\User;
 use App\Policies\FileAccessPolicy;
+use App\Services\CloudStorage\CloudStorageInterface;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use Exception;
 use Illuminate\Http\UploadedFile;
@@ -21,19 +23,19 @@ use RuntimeException;
 
 class UniversalFileService
 {
-    protected GoogleDriveStorageDriver $driver;
+    protected CloudStorageInterface $driver;
     protected FileAccessPolicy $policy;
 
-    public function __construct(?GoogleDriveStorageDriver $driver = null, ?FileAccessPolicy $policy = null)
+    public function __construct(?CloudStorageInterface $driver = null, ?FileAccessPolicy $policy = null)
     {
-        $this->driver = $driver ?? new GoogleDriveStorageDriver();
+        $this->driver = $driver ?? app(CloudStorageInterface::class);
         $this->policy = $policy ?? new FileAccessPolicy();
     }
 
     /**
      * Dapatkan instance storage driver aktif.
      */
-    public function getDriver(): GoogleDriveStorageDriver
+    public function getDriver(): CloudStorageInterface
     {
         return $this->driver;
     }
@@ -104,7 +106,9 @@ class UniversalFileService
             }
 
             // Buat remote folder via driver
-            $driveFolderId = $this->driver->getOrCreateFolderPath($cleanPath);
+            $driveFolderId = method_exists($this->driver, 'getOrCreateFolderPath')
+                ? $this->driver->getOrCreateFolderPath($cleanPath)
+                : null;
 
             if (empty($driveFolderId)) {
                 throw new RuntimeException("Gagal memperoleh ID folder Google Drive untuk path: {$cleanPath}");
@@ -284,6 +288,10 @@ class UniversalFileService
         // 2. Unduh dari Google Drive jika cache lokal belum ada atau checksum mismatch
         if (empty($file->drive_file_id)) {
             throw new RuntimeException("Berkas belum terverifikasi di Google Drive.");
+        }
+
+        if (!method_exists($this->driver, 'downloadFileBytes')) {
+            throw new RuntimeException("Driver penyimpanan tidak mendukung pengunduhan berkas biner.");
         }
 
         $bytes = $this->driver->downloadFileBytes($file->drive_file_id);

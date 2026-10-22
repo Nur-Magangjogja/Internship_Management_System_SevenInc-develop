@@ -371,7 +371,7 @@ class SpreadsheetConnectionController extends Controller
         $page = (int) $request->query('page', 1);
         $pageSize = (int) $request->query('page_size', 20);
 
-        $result = $discoveryService->previewRows($spreadsheetConnection, $tabName, $headerRow, $page, $pageSize);
+        $result = $discoveryService->previewRows($spreadsheetConnection, $tabName, $headerRow, $page, $pageSize, $sheetId);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
@@ -388,7 +388,7 @@ class SpreadsheetConnectionController extends Controller
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
         $sheetId = $request->has('sheet_id') && $request->query('sheet_id') !== null && $request->query('sheet_id') !== '' ? (int) $request->query('sheet_id') : null;
 
-        $result = $discoveryService->generateDraftMappingProposals($spreadsheetConnection, $tabName, $headerRow);
+        $result = $discoveryService->generateDraftMappingProposals($spreadsheetConnection, $tabName, $headerRow, $sheetId);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }

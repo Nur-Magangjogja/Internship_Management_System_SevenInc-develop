@@ -24,7 +24,13 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $this->enabled        = (bool) ($cfg['enabled'] ?? false);
         $this->endpointUrl    = $cfg['endpoint_url'] ?? null;
         $this->sharedSecret   = $cfg['shared_secret'] ?? null;
-        $this->timeoutSeconds = (int) ($cfg['timeout_seconds'] ?? 30);
+        $this->timeoutSeconds = (int) ($cfg['timeout_seconds'] ?? 60);
+    }
+
+    public function setTimeoutSeconds(int $seconds): self
+    {
+        $this->timeoutSeconds = max(5, $seconds);
+        return $this;
     }
 
     /**

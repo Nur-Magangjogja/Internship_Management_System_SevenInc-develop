@@ -20,6 +20,45 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
+            \App\Services\CloudStorage\CloudStorageInterface::class,
+            function ($app) {
+                return $app->make(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+            }
+        );
+
+        $this->app->bind(
+            \App\Services\CloudStorage\CloudStorageProviderInterface::class,
+            function ($app) {
+                $configuredProvider = config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', 'apps_script_drive');
+
+                if ($configuredProvider === 'apps_script_drive') {
+                    $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
+                    if ($gasDriver->isConfigured()) {
+                        return $gasDriver;
+                    }
+                } elseif ($configuredProvider === 'google_drive') {
+                    $googleDriver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
+                    if ($googleDriver->isConfigured()) {
+                        return $googleDriver;
+                    }
+                }
+
+                // Fallback hierarchy across transition
+                $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
+                if ($gasDriver->isConfigured()) {
+                    return $gasDriver;
+                }
+
+                $googleDriver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
+                if ($googleDriver->isConfigured()) {
+                    return $googleDriver;
+                }
+
+                return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
+            }
+        );
+
+        $this->app->bind(
             \App\Services\SpreadsheetTransport\SpreadsheetTransportInterface::class,
             function ($app) {
                 $driver = new \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport();

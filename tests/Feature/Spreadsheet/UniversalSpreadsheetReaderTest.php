@@ -83,6 +83,24 @@ const mockSheets = [
     getSheetId: () => 101
   },
   {
+    getName: () => "TEMPLATE_TAHUN",
+    getMaxRows: () => 1000,
+    getMaxColumns: () => 40,
+    getLastRow: () => 50,
+    getLastColumn: () => 40,
+    isSheetHidden: () => false,
+    getSheetId: () => 102
+  },
+  {
+    getName: () => "Petunjuk",
+    getMaxRows: () => 100,
+    getMaxColumns: () => 10,
+    getLastRow: () => 20,
+    getLastColumn: () => 10,
+    isSheetHidden: () => false,
+    getSheetId: () => 103
+  },
+  {
     getName: () => "Follow-Up",
     getMaxRows: () => 500,
     getMaxColumns: () => 21,
@@ -114,15 +132,23 @@ JS;
         $output = json_decode($process->getOutput(), true);
 
         $this->assertTrue($output['success']);
-        $this->assertCount(2, $output['tabs']);
+        $this->assertCount(4, $output['tabs']);
 
         // First tab is '2026' -> header_row must be 12
         $this->assertEquals('2026', $output['tabs'][0]['name']);
         $this->assertEquals(12, $output['tabs'][0]['header_row']);
 
-        // Second tab is 'Follow-Up' -> header_row must be 1
-        $this->assertEquals('Follow-Up', $output['tabs'][1]['name']);
-        $this->assertEquals(1, $output['tabs'][1]['header_row']);
+        // Second tab is 'TEMPLATE_TAHUN' -> header_row must be 12
+        $this->assertEquals('TEMPLATE_TAHUN', $output['tabs'][1]['name']);
+        $this->assertEquals(12, $output['tabs'][1]['header_row']);
+
+        // Third tab is 'Petunjuk' -> header_row must be 1
+        $this->assertEquals('Petunjuk', $output['tabs'][2]['name']);
+        $this->assertEquals(1, $output['tabs'][2]['header_row']);
+
+        // Fourth tab is 'Follow-Up' -> header_row must be 1
+        $this->assertEquals('Follow-Up', $output['tabs'][3]['name']);
+        $this->assertEquals(1, $output['tabs'][3]['header_row']);
     }
 
     /**
