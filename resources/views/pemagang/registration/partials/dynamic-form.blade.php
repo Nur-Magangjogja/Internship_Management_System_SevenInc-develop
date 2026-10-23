@@ -15,7 +15,10 @@
 @php
     $renderField = function(\App\Models\FormField $field) use ($reg, $old, $input, $label, $radio, $divisions, $toDateInput, $cities, $institutions, $faculties, $studyPrograms) {
         $val = $old($field->field_key);
-        $req = $field->is_required ? '<span class="text-red-500">*</span>' : '';
+        $hasOptText = (bool) preg_match('/\(opsional\)/i', (string) $field->label);
+        $req = $field->is_required
+            ? '<span class="text-red-500">*</span>'
+            : (!$hasOptText ? '<span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span>' : '');
         $ph  = e($field->placeholder ?? '');
         $ht  = $field->helper_text
                     ? '<p class="mt-1 text-xs text-gray-400">' . e($field->helper_text) . '</p>'
@@ -213,9 +216,7 @@
                 if (is_array($exts) && !empty($exts)) {
                     $acceptList = array_map(fn($ext) => '.' . ltrim(strtolower((string) $ext), '.'), $exts);
                     $acceptAttr = 'accept="' . e(implode(',', $acceptList)) . '"';
-                } elseif ($field->field_key === 'profile_photo') {
-                    $acceptAttr = 'accept=".jpg,.jpeg,.png,image/jpeg,image/png"';
-                } elseif (in_array($field->field_key, ['cv_ktp_portofolio_pdf', 'cv', 'cover_letter', 'proposal'], true)) {
+                } elseif (in_array($field->field_key, ['cv_ktp_portofolio_pdf', 'cv', 'cover_letter'], true)) {
                     $acceptAttr = 'accept=".pdf,application/pdf"';
                 } else {
                     $acceptAttr = 'accept=".pdf,.jpg,.jpeg,.png"';
@@ -279,7 +280,7 @@
     }
 
     $gDataDiri = $groupedFields['data_diri_edukasi'] ?? collect();
-    $gPilihan  = $groupedFields['pilihan_durasi'] ?? collect();
+    $gPilihan  = collect($groupedFields['pilihan_durasi'] ?? [])->reject(fn($f) => $f->field_key === 'internship_arrangement')->values();
     $gBerkas   = $groupedFields['berkas_portofolio'] ?? collect();
     $gInfo     = $groupedFields['informasi_tambahan'] ?? collect();
 @endphp
@@ -325,25 +326,51 @@
     <div class="mb-4">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
             <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">3</span>
-            Berkas & Portofolio
+            Berkas & Portofolio <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
         </h3>
         <p class="text-xs text-gray-500 mt-1">Unggah berkas CV, KTM/KTP, portofolio karya, dan dokumen pengantar dari kampus / sekolah.</p>
     </div>
 
-    @if($reg && $reg->attachments && $reg->attachments->count() > 0)
-    <div class="mb-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
-        <p class="text-xs font-semibold text-gray-700 mb-2">Berkas Tersimpan di Server ({{ $reg->attachments->count() }} file):</p>
-        <ul class="space-y-1.5 text-xs text-gray-600">
-            @foreach($reg->attachments as $att)
-            <li class="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-gray-100">
-                <span class="truncate max-w-xs">
-                    <strong class="uppercase text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 mr-1.5">{{ str_replace('_', ' ', $att->document_category) }}</strong>
-                    {{ $att->original_filename }}
-                </span>
-                <span class="text-gray-400 text-[11px]">{{ number_format($att->file_size_bytes / 1024, 1) }} KB</span>
-            </li>
+    @php
+        $attachmentsList = ($reg && $reg->attachments) ? $reg->attachments : collect();
+    @endphp
+    @if($attachmentsList->isNotEmpty() || $reg?->profile_photo)
+    <div class="mb-5 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+        <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Berkas Tersimpan di Server ({{ $attachmentsList->count() }} file):
+        </h4>
+        <div class="space-y-2">
+            @foreach($attachmentsList as $att)
+            <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-gray-200 rounded-lg text-xs">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="px-2 py-0.5 rounded font-semibold text-[10px] bg-emerald-100 text-emerald-800 uppercase">
+                        {{ \App\Models\RegistrationAttachment::getCategoryLabel($att->attachment_type ?? '') }}
+                    </span>
+                    <a href="{{ route('pemagang.registration.attachment.download', $att->id) }}" target="_blank" class="text-blue-600 font-medium hover:underline truncate max-w-xs" title="{{ $att->original_name ?: basename($att->file_path) }}">
+                        {{ $att->original_name ?: basename($att->file_path) }}
+                    </a>
+                    <span class="text-gray-400">({{ round(($att->file_size ?: 0) / 1024, 1) }} KB)</span>
+                    @if(($att->drive_sync_status ?? '') === 'synced')
+                        <span class="text-[10px] text-emerald-600 font-medium flex items-center gap-1"><i class="fas fa-cloud-check"></i> Google Drive</span>
+                    @else
+                        <span class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><i class="fas fa-hard-drive"></i> Lokal Privat</span>
+                    @endif
+                </div>
+
+                @if(!$reg || $reg->is_draft || in_array($reg->internship_status, ['new', 'waiting']))
+                <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        Hapus
+                    </button>
+                </form>
+                @endif
+            </div>
             @endforeach
-        </ul>
+        </div>
     </div>
     @endif
 
@@ -367,7 +394,7 @@
         @foreach($gInfo as $field)
             @if($field->field_key === 'social_media_instagram')
             <div>
-                <label class="{{ $label }}">{{ $field->label }}@if($field->is_required) <span class="text-red-500">*</span>@endif</label>
+                <label class="{{ $label }}">{{ $field->label }}@if($field->is_required) <span class="text-red-500">*</span>@elseif(!preg_match('/\(opsional\)/i', (string) $field->label)) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span>@endif</label>
                 <div class="flex items-center gap-0">
                     <span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>
                     <input type="text" name="social_media_instagram"

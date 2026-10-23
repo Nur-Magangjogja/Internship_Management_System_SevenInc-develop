@@ -37,7 +37,7 @@
                 $fields = [
                   'fullname' => 'Nama Lengkap',
                   'born_date' => 'Tanggal Lahir',
-                  'student_id' => 'NIM / NIS',
+                  'student_id' => 'Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional',
                   'email' => 'Email',
                   'gender' => 'Gender',
                   'phone_number' => 'Telepon',

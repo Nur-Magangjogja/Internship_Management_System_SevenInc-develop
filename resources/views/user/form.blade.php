@@ -72,19 +72,11 @@
             <input type="text" id="born_date" name="born_date" placeholder="25 Juni 2005" required class="{{ $input }}" value="{{ old('born_date') }}" />
           </div>
 
-          @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place'))
-          <!-- Tempat Lahir -->
-          <div>
-            <label for="birth_place" class="{{ $label }}">Tempat Lahir</label>
-            <input type="text" id="birth_place" name="birth_place" placeholder="Contoh: Sleman" maxlength="100" class="{{ $input }}" value="{{ old('birth_place') }}" />
-            @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
-          </div>
-          @endif
 
           @if(\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion'))
           <!-- Agama -->
           <div>
-            <label for="religion" class="{{ $label }}">Agama</label>
+            <label for="religion" class="{{ $label }}">Agama <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             @php
               $valRel = strtolower(trim((string) old('religion')));
             @endphp
@@ -106,7 +98,7 @@
 
           <!-- NIM/NIS -->
           <div>
-            <label for="student_id" class="{{ $label }}">Nomor Induk Mahasiswa / Siswa</label>
+            <label for="student_id" class="{{ $label }}">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</label>
             <input type="text" id="student_id" name="student_id" placeholder="21111234" required class="{{ $input }}" value="{{ old('student_id') }}" />
           </div>
 
@@ -160,15 +152,10 @@
 
           <!-- Fakultas -->
           <div>
-            <label for="faculty" class="{{ $label }}">Fakultas</label>
-            <input type="text" id="faculty" name="faculty" placeholder="Ilmu Komputer" required class="{{ $input }}" value="{{ old('faculty') }}" />
+            <label for="faculty" class="{{ $label }}">Fakultas <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
+            <input type="text" id="faculty" name="faculty" placeholder="Ilmu Komputer" class="{{ $input }}" value="{{ old('faculty') }}" />
           </div>
 
-          <!-- Kota -->
-          <div>
-            <label for="current_city" class="{{ $label }}">Kota/Daerah tempat tinggal saat ini</label>
-            <input type="text" id="current_city" name="current_city" placeholder="Kota/daerah" required class="{{ $input }}" value="{{ old('current_city') }}" />
-          </div>
 
           <!-- Alasan -->
           <div>
@@ -253,7 +240,7 @@
 
           <!-- Kontak pembimbing -->
           <div>
-            <label for="supervisor_contact" class="{{ $label }}">No. HP/WA Dosen atau Guru Pembimbing (bisa menyusul)</label>
+            <label for="supervisor_contact" class="{{ $label }}">No. HP/WA Dosen atau Guru Pembimbing (bisa menyusul) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <input type="text" id="supervisor_contact" name="supervisor_contact" placeholder="0812xxxxxxx - Nama (Dosen/Guru)" class="{{ $input }}" value="{{ old('supervisor_contact') }}" />
           </div>
 
@@ -439,12 +426,12 @@
           <div class="space-y-6">
             <div>
               <label for="file-input-1" class="{{ $label }}">
-                Upload <strong>CV, Scan KTP/KTM, Portofolio</strong> <span class="{{ $help }}">Format PDF</span>
+                Upload <strong>CV, Scan KTP/KTM, Portofolio</strong> <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="{{ $help }}">Format PDF</span>
               </label>
               <input id="file-input-1" type="file" name="cv_ktp_portofolio_pdf" class="{{ $input }} file:mr-4 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-primary-600 file:text-white hover:file:bg-primary-700" />
             </div>
             <div>
-              <label for="file-input-2" class="{{ $label }}">Upload <strong>Portofolio Visual</strong></label>
+              <label for="file-input-2" class="{{ $label }}">Upload <strong>Portofolio Visual</strong> <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
               <p class="{{ $help }}">JPG (desainer) atau link YouTube (videografer)</p>
               <input id="file-input-2" type="file" name="portofolio_visual" class="{{ $input }} file:mr-4 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-primary-600 file:text-white hover:file:bg-primary-700" />
             </div>
@@ -452,14 +439,14 @@
 
           <!-- Kegiatan lain -->
           <div>
-            <label for="current-activities" class="{{ $label }}">Kegiatan Anda saat ini selain magang/PKL?</label>
+            <label for="current-activities" class="{{ $label }}">Kegiatan Anda saat ini selain magang/PKL? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <p class="{{ $help }}">Jika ada, mohon sebutkan</p>
             <input id="current-activities" name="current_activities" placeholder="Tuliskan jawaban Anda..." class="{{ $input }}" value="{{ old('current_activities') }}" />
           </div>
 
           <!-- Info kos -->
           <div>
-            <label class="{{ $label }}">Butuh info kos/kontrakan dekat kantor?</label>
+            <label class="{{ $label }}">Butuh info kos/kontrakan dekat kantor? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <ul class="{{ $group }}">
               <li class="border-b border-zinc-200">
                 <label for="boarding-yes" class="{{ $item }}">
@@ -480,7 +467,7 @@
 
           <!-- Instagram -->
           <div>
-            <label for="social-media-link" class="{{ $label }}">Sosial Media (Instagram)</label>
+            <label for="social-media-link" class="{{ $label }}">Sosial Media (Instagram) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <input id="social-media-link" name="social_media_instagram" placeholder="@cakwlive" class="{{ $input }}" value="{{ old('social_media_instagram') }}" />
           </div>
 

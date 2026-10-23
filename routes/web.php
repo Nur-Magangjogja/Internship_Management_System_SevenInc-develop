@@ -428,6 +428,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
         Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
+        Route::get('/{spreadsheetConnection}/schema-history', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'schemaHistory'])->name('schema-history');
         Route::get('/{spreadsheetConnection}/edit', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'edit'])->name('edit');
         Route::put('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'update'])->name('update');
         Route::post('/{spreadsheetConnection}/toggle', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'toggle'])->name('toggle');

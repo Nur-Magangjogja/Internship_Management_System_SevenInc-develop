@@ -508,7 +508,7 @@ di Tempat</p>
         <td style="padding: 3px 0;"><strong>{{pemagang.nama}}</strong></td>
     </tr>
     <tr>
-        <td style="padding: 3px 0;"><strong>NIM / NIS</strong></td>
+        <td style="padding: 3px 0;"><strong>Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</strong></td>
         <td style="padding: 3px 0;">:</td>
         <td style="padding: 3px 0;">{{pemagang.nim}}</td>
     </tr>
@@ -594,7 +594,7 @@ HTML,
         <td style="padding: 2px 0;"><strong>{{pemagang.nama}}</strong></td>
     </tr>
     <tr>
-        <td style="padding: 2px 0;"><strong>NIM / NIS</strong></td>
+        <td style="padding: 2px 0;"><strong>Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</strong></td>
         <td style="padding: 2px 0;">:</td>
         <td style="padding: 2px 0;">{{pemagang.nim}}</td>
     </tr>
@@ -656,7 +656,7 @@ HTML,
         <td>{{magang.divisi}}</td>
     </tr>
     <tr>
-        <td style="padding: 2px 0;">NIM / NIS</td>
+        <td style="padding: 2px 0;">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</td>
         <td>:</td>
         <td>{{pemagang.nim}}</td>
         <td style="padding: 2px 0;">Periode Magang</td>
@@ -781,7 +781,7 @@ HTML,
         <td style="padding: 2px 0;"><strong>{{pemagang.nama}}</strong></td>
     </tr>
     <tr>
-        <td style="padding: 2px 0;"><strong>NIM / NIS</strong></td>
+        <td style="padding: 2px 0;"><strong>Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</strong></td>
         <td style="padding: 2px 0;">:</td>
         <td style="padding: 2px 0;">{{pemagang.nim}}</td>
     </tr>

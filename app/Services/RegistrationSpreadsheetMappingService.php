@@ -190,14 +190,15 @@ class RegistrationSpreadsheetMappingService
         }
 
         $canonical = \Database\Seeders\Spreadsheet2026SchemaSeeder::getCanonicalColumns();
-        $coreCols = array_slice($canonical, 0, 35);
-        $systemCols = array_slice($canonical, 35);
+        $coreCols = array_slice($canonical, 0, count($canonical) - 5);
+        $systemCols = array_slice($canonical, -5);
 
         $customCols = [];
         if ($formSchema) {
+            // Sertakan semua custom field yang tidak diarsipkan (baik berstatus aktif maupun nonaktif)
+            // agar fitur nonaktif pertanyaan tidak menghapus kolom spreadsheet ("dibiarkan saja").
             $customFields = $formSchema->fields()
                 ->where('is_system', false)
-                ->where('is_active', true)
                 ->where('is_archived', false)
                 ->whereNotIn('field_key', \App\Services\FormBuilderService::CORE_FIELD_KEYS)
                 ->orderBy('sort_order')
@@ -219,7 +220,7 @@ class RegistrationSpreadsheetMappingService
                     'type'      => in_array($cf->field_type, ['date', 'number', 'url'], true) ? $cf->field_type : 'string',
                     'direction' => 'outbound',
                     'transform' => 'custom_field',
-                    'required'  => (bool) $cf->is_required,
+                    'required'  => (bool) ($cf->is_active && $cf->is_required),
                 ];
             }
         }
@@ -423,7 +424,7 @@ class RegistrationSpreadsheetMappingService
             'wfo_readiness' => $registration->wfo_readiness ?? '-',
             'supervisor_info' => $this->formatSupervisorInfo($registration),
             'schedule_shift_readiness' => $registration->schedule_shift_readiness ?? '-',
-            'has_laptop' => $registration->has_laptop ? 'YA' : 'TIDAK',
+            'has_laptop' => $registration->has_laptop === null ? '-' : ($registration->has_laptop ? 'YA' : 'TIDAK'),
             'laptop_equipment' => !empty($registration->owned_tools) ? $registration->owned_tools : '-',
             'start_date' => $this->formatDateValue($registration->start_date),
             'planned_duration' => $registration->planned_duration ?? '-',

@@ -6,30 +6,30 @@
 
 @section('content')
 <div class="px-6 py-8 max-w-[1440px] mx-auto">
-    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-3">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+        <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ route('admin.mou-templates.index') }}"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 transition"
                 title="Kembali ke Daftar Template"
             >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
             </a>
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800">Buat Template MOU Baru</h1>
-                <p class="text-sm text-slate-500">Susun naskah Nota Kesepahaman berkonsep aplikasi pengolah kata (Word Office) tanpa kode HTML manual.</p>
+            <div class="min-w-0">
+                <h1 class="text-base font-bold text-slate-800">Buat Template MOU Baru</h1>
+                <p class="text-[11px] text-slate-400 mt-0.5">Susun naskah Nota Kesepahaman berkonsep aplikasi pengolah kata (Word Office)</p>
             </div>
         </div>
 
-        <div class="flex items-center gap-2">
-            <span class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+        <div class="flex items-center gap-2 shrink-0">
+            <span class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                 </svg>
-                Mode Dokumen Visual A4 (Standar Word)
+                Standar Word A4
             </span>
         </div>
     </div>

@@ -382,36 +382,45 @@ document.addEventListener('DOMContentLoaded', function() {
     {{-- Card utama --}}
     <div class="overflow-hidden rounded-[12px] border border-[#DCE7E1] bg-white shadow-sm">
 
-        {{-- Toolbar: filter tab + search --}}
-        <div class="flex flex-col gap-3 border-b border-[#DCE7E1] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        {{-- Toolbar: filter tab + search + follow-up filter --}}
+        <div class="flex flex-col gap-3.5 border-b border-[#DCE7E1] px-4 py-4 sm:px-6">
 
-            {{-- Filter tabs — sesuai mode --}}
-            <div id="filterTabs" class="flex flex-wrap gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-[#F4F8F6] p-1">
-                @foreach($filterTabs as $key => $label)
-                <button type="button"
-                    data-filter="{{ $key }}"
-                    class="filter-tab rounded-[6px] px-3 py-1.5 text-[12.5px] font-semibold transition
-                        {{ $scope === $key ? 'bg-white text-[#1F5F3F] shadow-sm' : 'text-[#4B5F5A] hover:text-[#1B3A34]' }}">
-                    {{ $label }}
-                </button>
-                @endforeach
+            {{-- Baris 1: Filter tabs status pendaftaran (kiri) & Search (kanan) bersebelahan --}}
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {{-- Filter tabs --}}
+                <div id="filterTabs" class="flex flex-wrap gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-[#F4F8F6] p-1">
+                    @foreach($filterTabs as $key => $label)
+                    <button type="button"
+                        data-filter="{{ $key }}"
+                        class="filter-tab rounded-[6px] px-3.5 py-1.5 text-[12.5px] font-semibold transition
+                            {{ $scope === $key ? 'bg-white text-[#1F5F3F] shadow-sm' : 'text-[#4B5F5A] hover:text-[#1B3A34]' }}">
+                        {{ $label }}
+                    </button>
+                    @endforeach
+                </div>
+
+                {{-- Search Box --}}
+                <div class="relative w-full sm:w-72 md:w-80">
+                    <label class="flex w-full items-center gap-2.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 shadow-2xs transition focus-within:border-[#2D8659] focus-within:ring-1 focus-within:ring-[#2D8659]">
+                        <svg class="h-4 w-4 shrink-0 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input id="intern-search" type="search" placeholder="Cari nama / universitas..."
+                            class="w-full border-0 bg-transparent text-[13px] text-[#1B3A34] outline-none placeholder:text-[#4B5F5A]" />
+                    </label>
+                </div>
             </div>
 
-            {{-- Search & Follow-up Filter --}}
-            <div class="flex flex-wrap items-center gap-2">
-                <select id="followup-filter" class="rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] font-semibold text-[#1B3A34] outline-none focus:border-[#2D8659]">
-                    <option value="">Semua Status Follow-Up</option>
-                    @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
-                        <option value="{{ $fKey }}">{{ $fLabel }}</option>
-                    @endforeach
-                </select>
-                <label class="flex items-center gap-2 rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2">
-                    <svg class="h-4 w-4 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input id="intern-search" type="search" placeholder="Cari nama / universitas..."
-                        class="w-48 border-0 bg-transparent text-[13px] text-[#1B3A34] outline-none placeholder:text-[#4B5F5A] sm:w-56" />
-                </label>
+            {{-- Baris 2: Filter Follow-Up Full Kanan Kiri --}}
+            <div class="w-full">
+                <div class="relative w-full">
+                    <select id="followup-filter" class="w-full rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                        <option value="">Semua Status Follow-Up</option>
+                        @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
+                            <option value="{{ $fKey }}">{{ $fLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -575,86 +584,99 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildActionCell(it) {
         const status = String(it.internship_status || 'waiting').toLowerCase();
 
-        // Tombol generate berdasarkan status & mode
-        let extraButtons = '';
+        if (it.is_trashed || activeFilter === 'trashed') {
+            return `
+            <div class="relative inline-block text-left js-action-dropdown-wrap">
+                <button type="button"
+                    class="js-dropdown-toggle inline-flex items-center gap-1.5 rounded-[8px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#1B3A34] shadow-sm transition hover:border-[#2D8659] hover:bg-[#F4F8F6] focus:outline-none"
+                    data-id="${it.id}" aria-expanded="false" title="Menu Aksi">
+                    <span>Aksi</span>
+                    <svg class="h-3.5 w-3.5 text-[#4B5F5A] transition-transform duration-200 js-dropdown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+                <div class="js-dropdown-menu hidden min-w-[175px] rounded-xl border border-[#DCE7E1] bg-white py-1.5 shadow-[0_12px_28px_rgba(27,58,52,0.12)]">
+                    <button type="button" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1B3A34] transition hover:bg-[#F4F8F6] js-detail" data-id="${it.id}">
+                        <svg class="h-4 w-4 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span>Lihat Detail</span>
+                    </button>
+                    <button type="button" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50 js-restore" data-id="${it.id}">
+                        <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        <span>Pulihkan</span>
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        // Item aksi dinamis berdasarkan mode & status
+        let contextualItems = '';
 
         if (MODE === 'pendaftar' && status === 'accepted') {
-            // Tombol LOA
-            extraButtons += `
-            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
-                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
-                LOA
-            </a>`;
-            // Tombol Aktifkan → pindah ke Data Pemagang
-            extraButtons += `
-            <button type="button" title="Aktifkan sebagai Pemagang"
-                class="flex items-center gap-1.5 rounded-[8px] border border-blue-400 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-600 hover:text-white js-activate"
+            contextualItems += `
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                <span>Unduh LOA</span>
+            </a>
+            <button type="button"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50 js-activate"
                 data-id="${it.id}"
                 data-url="${it.status_update_url || `${ADMIN_INTERNS_BASE}/${it.id}/status`}">
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Aktifkan
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span>Aktifkan Pemagang</span>
             </button>`;
         }
 
         if (MODE === 'pemagang' && (status === 'active' || status === 'accepted')) {
-            extraButtons += `
-            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
-                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
-                LOA
+            contextualItems += `
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                <span>Unduh LOA</span>
             </a>`;
         }
 
         if (MODE === 'pemagang' && status === 'completed') {
-            extraButtons = `
-            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" title="Unduh LOA"
-                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white">
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
-                LOA
+            contextualItems += `
+            <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                <span>Unduh LOA</span>
             </a>
-            <button type="button" title="Generate Dokumen Selesai"
-                class="flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc"
+            <button type="button"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9] js-gen-doc"
                 data-id="${it.id}" data-jenis="skl">
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
-                Dokumen
+                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
+                <span>Dokumen Selesai</span>
             </button>`;
         }
 
-        if (it.is_trashed || activeFilter === 'trashed') {
-            return `
-            <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                <button type="button" title="Lihat Detail"
-                    class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-[#2D8659] hover:text-[#1F5F3F] js-detail"
-                    data-id="${it.id}">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-                <button type="button" title="Pulihkan Pendaftaran"
-                    class="flex h-8 px-2.5 items-center justify-center rounded-[8px] border border-blue-200 bg-blue-50 text-blue-600 text-xs font-semibold transition hover:bg-blue-100 js-restore"
-                    data-id="${it.id}">
-                    Pulihkan
-                </button>
-            </div>`;
-        }
-
         return `
-        <div class="flex items-center justify-end gap-1.5 flex-wrap">
-            ${extraButtons}
-            <button type="button" title="Lihat Detail"
-                class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-[#2D8659] hover:text-[#1F5F3F] js-detail"
-                data-id="${it.id}">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div class="relative inline-block text-left js-action-dropdown-wrap">
+            <button type="button"
+                class="js-dropdown-toggle inline-flex items-center gap-1.5 rounded-[8px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#1B3A34] shadow-sm transition hover:border-[#2D8659] hover:bg-[#F4F8F6] focus:outline-none"
+                data-id="${it.id}" aria-expanded="false" title="Menu Aksi">
+                <span>Aksi</span>
+                <svg class="h-3.5 w-3.5 text-[#4B5F5A] transition-transform duration-200 js-dropdown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
             </button>
-            <button type="button" title="Edit Data"
-                class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] bg-white text-[#4B5F5A] transition hover:border-amber-400 hover:text-amber-600 js-edit"
-                data-id="${it.id}">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </button>
-            <button type="button" title="Hapus"
-                class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-red-200 bg-red-50 text-[#D32F2F] transition hover:bg-red-100 js-delete"
-                data-id="${it.id}">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-            </button>
+            <div class="js-dropdown-menu hidden min-w-[190px] rounded-xl border border-[#DCE7E1] bg-white py-1.5 shadow-[0_12px_28px_rgba(27,58,52,0.12)]">
+                <button type="button" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1B3A34] transition hover:bg-[#F4F8F6] js-detail" data-id="${it.id}">
+                    <svg class="h-4 w-4 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Lihat Detail</span>
+                </button>
+                <button type="button" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1B3A34] transition hover:bg-[#F4F8F6] js-edit" data-id="${it.id}">
+                    <svg class="h-4 w-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    <span>Edit Data</span>
+                </button>
+                ${contextualItems}
+                <div class="my-1 border-t border-[#DCE7E1]"></div>
+                <button type="button" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#D32F2F] transition hover:bg-red-50 hover:text-red-700 js-delete" data-id="${it.id}">
+                    <svg class="h-4 w-4 text-[#D32F2F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    <span>Hapus Pendaftaran</span>
+                </button>
+            </div>
         </div>`;
     }
 
@@ -794,12 +816,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-5 py-4">${buildStatusCell(it)}</td>
 
                 {{-- Aksi --}}
-                <td class="px-5 py-4">${buildActionCell(it)}</td>
+                <td class="px-5 py-4 text-right">${buildActionCell(it)}</td>
             </tr>`;
         }).join('');
 
+        closeAllDropdowns();
         bindStatusListeners();
-        bindRowActions();
+        bindRowActions(rowsEl);
         buildPager(meta);
     }
 
@@ -960,84 +983,92 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Refresh tombol generate di baris setelah status berubah
+    // ── Dropdown Controller ─────────────────────────────────────────────────────
+    let activeDropdown = null;
+
+    function closeAllDropdowns() {
+        if (!activeDropdown) return;
+        const { menu, btn, chevron } = activeDropdown;
+        menu.classList.add('hidden');
+        menu.style.position = '';
+        menu.style.top = '';
+        menu.style.left = '';
+        menu.style.zIndex = '';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.classList.remove('border-[#2D8659]', 'bg-[#F4F8F6]', 'ring-2', 'ring-[#2D8659]/30');
+        if (chevron) chevron.classList.remove('rotate-180');
+        activeDropdown = null;
+    }
+
+    function toggleActionDropdown(btn) {
+        const wrap = btn.closest('.js-action-dropdown-wrap');
+        if (!wrap) return;
+        const menu = wrap.querySelector('.js-dropdown-menu');
+        if (!menu) return;
+        const chevron = btn.querySelector('.js-dropdown-chevron');
+
+        const isCurrentlyOpen = activeDropdown && activeDropdown.menu === menu;
+
+        closeAllDropdowns();
+
+        if (isCurrentlyOpen) return;
+
+        menu.classList.remove('hidden');
+        menu.style.position = 'fixed';
+        menu.style.zIndex = '90';
+
+        btn.setAttribute('aria-expanded', 'true');
+        btn.classList.add('border-[#2D8659]', 'bg-[#F4F8F6]', 'ring-2', 'ring-[#2D8659]/30');
+        if (chevron) chevron.classList.add('rotate-180');
+
+        const rect = btn.getBoundingClientRect();
+        const menuWidth = menu.offsetWidth || 190;
+        const menuHeight = menu.offsetHeight || 160;
+
+        let left = rect.right - menuWidth;
+        if (left < 10) left = 10;
+        if (left + menuWidth > window.innerWidth - 10) {
+            left = window.innerWidth - menuWidth - 10;
+        }
+        menu.style.left = `${Math.round(left)}px`;
+
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < menuHeight + 10 && rect.top > menuHeight) {
+            menu.style.top = `${Math.round(rect.top - menuHeight - 4)}px`;
+        } else {
+            menu.style.top = `${Math.round(rect.bottom + 4)}px`;
+        }
+
+        activeDropdown = { menu, btn, chevron };
+    }
+
+    // Refresh tombol generate/dropdown di baris setelah status berubah
     function refreshGenerateButtons(row, id, newStatus) {
         const actionsCell = row.querySelector('td:last-child');
         if (!actionsCell) return;
 
-        // Hapus tombol dinamis lama (LOA, Dokumen, Aktifkan)
-        actionsCell.querySelectorAll('.js-gen-doc, .js-activate').forEach(b => b.remove());
-
-        // Tambah tombol baru sesuai status baru
-        const wrapper = actionsCell.querySelector('div');
-        if (!wrapper) return;
-
-        if (MODE === 'pendaftar' && newStatus === 'accepted') {
-            // Tombol Aktifkan
-            const internData = window.rowData.get(id);
-            const statusUrl  = internData?.status_update_url || `${ADMIN_INTERNS_BASE}/${id}/status`;
-            const btnAktif = document.createElement('button');
-            btnAktif.type = 'button';
-            btnAktif.title = 'Aktifkan sebagai Pemagang';
-            btnAktif.className = 'flex items-center gap-1.5 rounded-[8px] border border-blue-400 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-600 hover:text-white js-activate';
-            btnAktif.dataset.id  = id;
-            btnAktif.dataset.url = statusUrl;
-            btnAktif.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Aktifkan`;
-            btnAktif.addEventListener('click', async () => {
-                const nm = (window.rowData.get(id)?.fullname) || 'pemagang ini';
-                if (!confirm(`Aktifkan "${nm}" sebagai pemagang aktif?\nStatus berubah ke Aktif dan data pindah ke Data Pemagang.`)) return;
-                btnAktif.disabled = true;
-                btnAktif.textContent = 'Memproses...';
-                try {
-                    const res = await fetch(statusUrl, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                        body: JSON.stringify({ internship_status: 'active' }),
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    pushToast(`${nm} berhasil diaktifkan!`, 'success');
-                    const row = btnAktif.closest('tr[data-row-id]');
-                    if (row) { row.style.transition = 'opacity 0.4s'; row.style.opacity = '0'; setTimeout(() => row.remove(), 400); }
-                } catch(err) {
-                    pushToast(`Gagal: ${err.message}`, 'error');
-                    btnAktif.disabled = false;
-                    btnAktif.textContent = 'Aktifkan';
-                }
-            });
-
-            // Tombol LOA
-            const btnLoa = document.createElement('button');
-            btnLoa.type = 'button';
-            btnLoa.title = 'Generate LOA';
-            btnLoa.className = 'flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc';
-            btnLoa.dataset.id    = id;
-            btnLoa.dataset.jenis = 'loa';
-            btnLoa.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg> LOA`;
-            btnLoa.addEventListener('click', () => openGenerateModal(id, 'loa'));
-
-            // Urutan: LOA di depan, lalu Aktifkan, lalu tombol bawaan (Detail, Edit, Hapus)
-            wrapper.prepend(btnAktif);
-            wrapper.prepend(btnLoa);
-        }
-
-        if (MODE === 'pemagang' && newStatus === 'completed') {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.title = 'Generate Dokumen Selesai';
-            btn.className = 'flex items-center gap-1.5 rounded-[8px] border border-[#2D8659] bg-[#E8F5E9] px-2.5 py-1.5 text-[11px] font-semibold text-[#1F5F3F] transition hover:bg-[#2D8659] hover:text-white js-gen-doc';
-            btn.dataset.id    = id;
-            btn.dataset.jenis = 'skl';
-            btn.innerHTML = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg> Dokumen`;
-            wrapper.prepend(btn);
-            btn.addEventListener('click', () => openGenerateModal(id, 'skl'));
+        const internData = window.rowData.get(id);
+        if (internData) {
+            internData.internship_status = newStatus;
+            actionsCell.innerHTML = buildActionCell(internData);
+            bindRowActions(actionsCell);
         }
     }
 
-    // ── Bind aksi baris (detail / edit / hapus) ──────────────────────────────────
-    function bindRowActions() {
+    // ── Bind aksi baris (detail / edit / hapus / dropdown) ──────────────────────
+    function bindRowActions(scope = document) {
+        // Dropdown toggle
+        scope.querySelectorAll('.js-dropdown-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleActionDropdown(btn);
+            });
+        });
+
         // Detail
-        document.querySelectorAll('.js-detail').forEach(btn => {
+        scope.querySelectorAll('.js-detail').forEach(btn => {
             btn.addEventListener('click', () => {
+                closeAllDropdowns();
                 const id   = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
                 if (!data) return;
@@ -1046,8 +1077,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Edit
-        document.querySelectorAll('.js-edit').forEach(btn => {
+        scope.querySelectorAll('.js-edit').forEach(btn => {
             btn.addEventListener('click', () => {
+                closeAllDropdowns();
                 const id   = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
                 if (!data) return;
@@ -1056,8 +1088,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Hapus
-        document.querySelectorAll('.js-delete').forEach(btn => {
+        scope.querySelectorAll('.js-delete').forEach(btn => {
             btn.addEventListener('click', () => {
+                closeAllDropdowns();
                 const id   = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
                 openConfirmDelete(id, data?.fullname || 'pemagang ini');
@@ -1065,8 +1098,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Pulihkan (Restore)
-        document.querySelectorAll('.js-restore').forEach(btn => {
+        scope.querySelectorAll('.js-restore').forEach(btn => {
             btn.addEventListener('click', () => {
+                closeAllDropdowns();
                 const id   = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
                 openConfirmRestore(id, data?.fullname || 'pemagang ini');
@@ -1074,15 +1108,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Generate dokumen
-        document.querySelectorAll('.js-gen-doc').forEach(btn => {
+        scope.querySelectorAll('.js-gen-doc').forEach(btn => {
             btn.addEventListener('click', () => {
+                closeAllDropdowns();
                 openGenerateModal(Number(btn.dataset.id), btn.dataset.jenis);
             });
         });
 
         // Aktifkan pemagang — set status accepted → active langsung
-        document.querySelectorAll('.js-activate').forEach(btn => {
+        scope.querySelectorAll('.js-activate').forEach(btn => {
             btn.addEventListener('click', async () => {
+                closeAllDropdowns();
                 const id   = Number(btn.dataset.id);
                 const url  = btn.dataset.url;
                 const data = window.rowData.get(id);
@@ -1124,7 +1160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Edit Follow-Up Status (S17.18C)
-        document.querySelectorAll('.js-edit-followup').forEach(btn => {
+        scope.querySelectorAll('.js-edit-followup').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = Number(btn.dataset.id);
                 const data = window.rowData.get(id);
@@ -1134,6 +1170,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
     }  // end bindRowActions
+
+    // Tutup dropdown jika klik di luar, tekan Escape, atau saat scroll/resize
+    document.addEventListener('click', (e) => {
+        if (!activeDropdown) return;
+        if (e.target.closest('.js-action-dropdown-wrap')) return;
+        closeAllDropdowns();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllDropdowns();
+    });
+
+    window.addEventListener('scroll', closeAllDropdowns, true);
+    window.addEventListener('resize', closeAllDropdowns);
 
     // ── Follow-Up Modal Controller (S17.18C) ────────────────────────────────────
     const followupModal = document.getElementById('followupModal');
@@ -1692,7 +1742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${detailRow('Nama Lengkap', it.fullname)}
                 ${hasBirthPlace ? detailRow('Tempat Lahir', it.birth_place) : ''}
                 ${detailRow('Tahun Lahir', it.born_date)}
-                ${detailRow('NIM / NIS', it.student_id)}
+                ${detailRow('Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional', it.student_id)}
                 ${detailRow('Jenis Kelamin', it.gender)}
                 ${hasReligion ? detailRow('Agama', it.religion) : ''}
                 ${detailRow('Email', it.email)}
@@ -2070,7 +2120,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${editField('Nama Lengkap', 'fullname', it.fullname)}
                 ${hasBirthPlace ? editField('Tempat Lahir', 'birth_place', it.birth_place) : ''}
                 ${editField('Tahun Lahir (Atau Tanggal)', 'born_date', it.born_date_raw, 'date')}
-                ${editField('NIM / NIS', 'student_id', it.student_id)}
+                ${editField('Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional', 'student_id', it.student_id)}
                 <div>
                     <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">Jenis Kelamin</label>
                     <select name="gender" class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659]">

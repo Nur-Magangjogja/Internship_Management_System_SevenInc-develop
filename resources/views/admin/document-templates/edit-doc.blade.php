@@ -9,12 +9,12 @@
 @section('content')
 <div class="px-6 py-6 max-w-[1600px] mx-auto">
     <!-- Top Action Bar -->
-    <div class="mb-5 flex flex-col gap-3.5 xl:flex-row xl:items-center xl:justify-between border-b border-slate-200 pb-4">
+    <div class="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3.5">
         <!-- Left: Navigation & Document Meta -->
         <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ $backUrl }}"
-                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition"
                 title="Kembali ke Katalog Dokumen"
             >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -22,30 +22,26 @@
                 </svg>
             </a>
             <div class="min-w-0">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <h1 class="text-base font-bold text-slate-800 truncate" title="{{ $template->name }}">
                         <span id="docHeadingName">{{ $template->name }}</span>
                     </h1>
+                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold border {{ $typeBadgeClass }}">
+                        {{ $typeLabel }}
+                    </span>
+                    <span id="docVersionBadge" class="font-mono text-[11px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">v{{ $template->version_number }}</span>
                     @if ($template->is_default)
                         <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 uppercase tracking-wide">
                             Default
                         </span>
                     @endif
                 </div>
-                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium border {{ $typeBadgeClass }}">
-                        {{ $typeLabel }}
-                    </span>
-                    <span class="text-slate-300">•</span>
-                    <span id="docVersionBadge" class="font-mono text-[11px] text-slate-600">v{{ $template->version_number }}</span>
-                    <span class="text-slate-300">•</span>
-                    <span class="text-[11px] text-slate-400">Editor Dokumen</span>
-                </div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Editor Naskah Resmi A4 (Standar Word) • Mendukung paragraf, tabel &amp; mail merge</p>
             </div>
         </div>
 
         <!-- Right: Actions & Preview -->
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0">
             <!-- Versions History -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"

@@ -9,13 +9,13 @@
     @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Dancing+Script:wght@500;700&family=Great+Vibes&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Oswald:wght@400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Poppins:wght@400;500;600;700&family=Prata&family=Raleway:wght@400;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
 </style>
 <div class="px-6 py-6" x-data="certificateCanvasApp()" @keydown.window="handleKeyboard($event)">
-    <!-- Top Action & Navigation Bar -->
-    <div class="mb-5 flex flex-col gap-3.5 xl:flex-row xl:items-center xl:justify-between border-b border-slate-200 pb-4">
+    <!-- Top Action & Navigation Bar (Tier 1: Document Identity & High-Level Actions) -->
+    <div class="mb-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3.5">
         <!-- Left: Navigation & Document Meta -->
         <div class="flex items-center gap-3 min-w-0">
             <a
                 href="{{ route('admin.document-templates.index') }}"
-                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition"
                 title="Kembali ke Katalog Template"
             >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -23,88 +23,27 @@
                 </svg>
             </a>
             <div class="min-w-0">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <h1 class="text-base font-bold text-slate-800 truncate" title="{{ $template->name }}">
                         {{ $template->name }}
                     </h1>
+                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold border"
+                          :class="certificateType === 'webinar' ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
+                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
+                    </span>
+                    <span class="font-mono text-[11px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">v{{ $template->version_number }}</span>
                     @if ($template->is_default)
                         <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 uppercase tracking-wide">
                             Default
                         </span>
                     @endif
                 </div>
-                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium border"
-                          :class="certificateType === 'webinar' ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
-                          x-text="certificateType === 'webinar' ? 'Sertifikat Webinar' : 'Sertifikat Magang'">
-                    </span>
-                    <span class="text-slate-300">•</span>
-                    <span class="font-mono text-[11px] text-slate-600">v{{ $template->version_number }}</span>
-                    <span class="text-slate-300">•</span>
-                    <span class="text-[11px] text-slate-400">Visual Studio</span>
-                </div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Visual Canvas Studio A4 Landscape • Penataan koordinat & layer presisi</p>
             </div>
         </div>
 
-        <!-- Right: Canvas Controls & Actions -->
-        <div class="flex flex-wrap items-center gap-2">
-            <!-- Canvas Controls: Undo/Redo & Zoom -->
-            <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
-                <!-- Undo / Redo -->
-                <div class="flex items-center">
-                    <button
-                        type="button"
-                        @click="undo()"
-                        :disabled="!canUndo"
-                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
-                        title="Urungkan (Ctrl+Z)"
-                    >
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 7v6h6"/>
-                            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-                        </svg>
-                    </button>
-                    <button
-                        type="button"
-                        @click="redo()"
-                        :disabled="!canRedo"
-                        class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
-                        title="Ulangi (Ctrl+Y)"
-                    >
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 7v6h-6"/>
-                            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <span class="h-4 w-px bg-slate-200"></span>
-
-                <!-- Zoom Controls -->
-                <div class="flex items-center gap-0.5 text-slate-600 px-1">
-                    <svg class="h-3.5 w-3.5 text-slate-400 mr-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <button type="button" @click="zoomLevel = 0.75" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 0.75 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">75%</button>
-                    <button type="button" @click="zoomLevel = 1.0" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.0 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">100%</button>
-                    <button type="button" @click="zoomLevel = 1.25" class="px-1.5 py-0.5 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.25 ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">125%</button>
-                </div>
-            </div>
-
-            <!-- Toggle Sample / Placeholder -->
-            <button
-                type="button"
-                @click="showMockData = !showMockData"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition shadow-2xs"
-                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
-                :title="showMockData ? 'Mode Simulasi aktif: menampilkan data contoh pemagang (klik untuk beralih ke kode token)' : 'Mode Token aktif: menampilkan placeholder mentah (klik untuk beralih ke simulasi)'"
-            >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span x-text="showMockData ? 'Data Simulasi' : 'Token Mentah'"></span>
-            </button>
-
+        <!-- Right: Document Actions (Versi, Pratinjau, Simpan) -->
+        <div class="flex items-center gap-2 shrink-0">
             <!-- Histori Versi -->
             <a
                 href="{{ route('admin.document-templates.versions', $template) }}"
@@ -158,6 +97,76 @@
                 <span x-show="isSaving" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full"></span>
                 <span x-text="isSaving ? 'Menyimpan...' : 'Simpan Revisi'"></span>
             </button>
+        </div>
+    </div>
+
+    <!-- Studio Utility Ribbon (Tier 2: Canvas Viewport Tools) -->
+    <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50/90 p-2 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 flex-wrap">
+            <!-- Undo / Redo -->
+            <div class="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+                <button
+                    type="button"
+                    @click="undo()"
+                    :disabled="!canUndo"
+                    class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                    title="Urungkan Perubahan (Ctrl+Z)"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v6h6"/>
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    @click="redo()"
+                    :disabled="!canRedo"
+                    class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded disabled:opacity-30 disabled:hover:bg-transparent transition"
+                    title="Ulangi Perubahan (Ctrl+Y)"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 7v6h-6"/>
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <span class="h-4 w-px bg-slate-300"></span>
+
+            <!-- Zoom Controls -->
+            <div class="inline-flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs text-slate-600">
+                <span class="px-1.5 text-slate-400">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                </span>
+                <button type="button" @click="zoomLevel = 0.75" class="px-2 py-1 rounded text-[11px] font-medium transition" :class="zoomLevel === 0.75 ? 'bg-slate-100 text-slate-900 font-bold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">75%</button>
+                <button type="button" @click="zoomLevel = 1.0" class="px-2 py-1 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.0 ? 'bg-slate-100 text-slate-900 font-bold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">100%</button>
+                <button type="button" @click="zoomLevel = 1.25" class="px-2 py-1 rounded text-[11px] font-medium transition" :class="zoomLevel === 1.25 ? 'bg-slate-100 text-slate-900 font-bold shadow-2xs' : 'text-slate-500 hover:text-slate-900'">125%</button>
+            </div>
+
+            <span class="h-4 w-px bg-slate-300"></span>
+
+            <!-- Toggle Sample / Placeholder -->
+            <button
+                type="button"
+                @click="showMockData = !showMockData"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition shadow-2xs"
+                :class="showMockData ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+                :title="showMockData ? 'Mode Simulasi aktif: menampilkan data contoh pemagang (klik untuk beralih ke kode token)' : 'Mode Token aktif: menampilkan placeholder mentah (klik untuk beralih ke simulasi)'"
+            >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span x-text="showMockData ? 'Data Simulasi' : 'Token Mentah'"></span>
+            </button>
+        </div>
+
+        <!-- Keyboard shortcut hint -->
+        <div class="hidden lg:flex items-center gap-3 text-[11px] text-slate-400">
+            <span><kbd class="px-1.5 py-0.5 rounded border border-slate-200 bg-white font-mono text-[10px]">Ctrl+Z</kbd> Undo</span>
+            <span><kbd class="px-1.5 py-0.5 rounded border border-slate-200 bg-white font-mono text-[10px]">Ctrl+Y</kbd> Redo</span>
+            <span><kbd class="px-1.5 py-0.5 rounded border border-slate-200 bg-white font-mono text-[10px]">Ctrl+S</kbd> Simpan</span>
         </div>
     </div>
 

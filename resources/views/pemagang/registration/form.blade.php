@@ -185,7 +185,7 @@
         </a>
         <a href="#section-3-berkas-portofolio" data-step="3" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
           <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">3</span>
-          <span class="truncate">Berkas & Portofolio</span>
+          <span class="truncate">Berkas & Portofolio <span class="text-[11px] font-normal text-gray-400">(Opsional)</span></span>
         </a>
         <a href="#section-4-informasi-tambahan" data-step="4" class="stepper-tab flex items-center gap-2 text-gray-600 font-medium transition hover:text-emerald-700">
           <span class="step-num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-[11px]">4</span>
@@ -244,8 +244,12 @@
             'radio'         => $radio,
             'toDateInput'   => $toDateInput,
         ])
-        {{-- Hidden/fallback fields untuk kolom NOT NULL jika tidak disediakan di extraFields --}}
-        @if($extraFields->where('field_key', 'supervisor_name')->isEmpty())
+        {{-- Fallback fields hanya jika skema tidak mendefinisikan field tersebut sama sekali --}}
+        @php
+            $definedFieldKeys = $activeSchema ? $activeSchema->fields->pluck('field_key')->all() : [];
+        @endphp
+
+        @if(!in_array('supervisor_name', $definedFieldKeys) && $extraFields->where('field_key', 'supervisor_name')->isEmpty())
         <div>
           <label class="{{ $label }}">Nama Pembimbing (Opsional)</label>
           <input type="text" name="supervisor_name" placeholder="Nama pembimbing (jika ada)"
@@ -253,7 +257,7 @@
         </div>
         @endif
 
-        @if($extraFields->where('field_key', 'supervisor_contact')->isEmpty())
+        @if(!in_array('supervisor_contact', $definedFieldKeys) && $extraFields->where('field_key', 'supervisor_contact')->isEmpty())
         <div>
           <label class="{{ $label }}">No. WA Pembimbing (Opsional)</label>
           <input type="tel" name="supervisor_contact" placeholder="08xxxxxxxxxx"
@@ -263,9 +267,9 @@
         </div>
         @endif
 
-        @if($extraFields->where('field_key', 'current_activities')->isEmpty())
+        @if(!in_array('current_activities', $definedFieldKeys) && $extraFields->where('field_key', 'current_activities')->isEmpty())
         <div>
-          <label class="{{ $label }}">Kegiatan Lain Selain Magang</label>
+          <label class="{{ $label }}">Kegiatan Lain Selain Magang <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
           <textarea name="current_activities" rows="3" placeholder="Contoh: Kuliah malam, freelance, dll (tulis '-' jika tidak ada)"
             class="{{ $input }} resize-none">{{ $old('current_activities', $reg?->current_activities !== '-' ? $reg?->current_activities : '') }}</textarea>
         </div>
@@ -274,7 +278,7 @@
         {{-- Tanggal Mulai Magang (Pastikan selalu ada input start_date jika skema belum menyediakannya di mainFields) --}}
         @if($mainFields->where('field_key', 'start_date')->isEmpty())
         <div>
-          <label class="{{ $label }}">Kapan Berencana Mulai Magang/PKL?</label>
+          <label class="{{ $label }}">Kapan Berencana Mulai Magang/PKL? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
           <input type="date" name="start_date"
             min="{{ date('Y-m-d') }}"
             class="{{ $input }}" value="{{ $toDateInput($old('start_date')) }}">
@@ -298,21 +302,13 @@
               class="{{ $input }}" value="{{ $old('fullname') }}">
           </div>
 
-          {{-- Tempat & Tanggal Lahir --}}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="{{ $label }}">Tempat Lahir <span class="text-red-500">*</span></label>
-              <input type="text" name="birth_place" required placeholder="Contoh: Sleman, Yogyakarta" maxlength="100"
-                class="{{ $input }} @error('birth_place') border-red-500 focus:ring-red-500 @enderror" value="{{ $old('birth_place') }}">
-              @error('birth_place') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
-            </div>
-            <div>
-              <label class="{{ $label }}">Tanggal Lahir <span class="text-red-500">*</span></label>
-              <input type="date" name="born_date" required
-                max="{{ date('Y-m-d') }}"
-                class="{{ $input }} @error('born_date') border-red-500 focus:ring-red-500 @enderror" value="{{ $toDateInput($old('born_date')) }}">
-              @error('born_date') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
-            </div>
+          {{-- Tanggal Lahir --}}
+          <div>
+            <label class="{{ $label }}">Tanggal Lahir <span class="text-red-500">*</span></label>
+            <input type="date" name="born_date" required
+              max="{{ date('Y-m-d') }}"
+              class="{{ $input }} @error('born_date') border-red-500 focus:ring-red-500 @enderror" value="{{ $toDateInput($old('born_date')) }}">
+            @error('born_date') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
           </div>
 
           {{-- Jenis Kelamin & Agama --}}
@@ -357,13 +353,6 @@
             </div>
           </div>
 
-          {{-- Kota Domisili --}}
-          <div>
-            <label class="{{ $label }}">Kota Domisili <span class="text-red-500">*</span></label>
-            <input type="text" id="current_city" name="current_city" required placeholder="Yogyakarta"
-              class="{{ $input }} tomselect-input" value="{{ $old('current_city') }}"
-              data-options="{{ json_encode(collect($cities ?? [])->pluck('name')) }}">
-          </div>
 
           {{-- Email & No HP --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -373,7 +362,7 @@
                 class="{{ $input }}" value="{{ $old('email') }}">
             </div>
             <div>
-              <label class="{{ $label }}">No. HP (WhatsApp) <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">No. HP Aktif yang bisa dihubungi dan chat WA <span class="text-red-500">*</span></label>
               <input type="tel" name="phone_number" required placeholder="08xxxxxxxxxx"
                 pattern="[0-9]{10,15}" inputmode="numeric" title="Hanya boleh angka, 10-15 digit"
                 class="{{ $input }}" value="{{ $old('phone_number') }}">
@@ -384,7 +373,7 @@
           {{-- Status Saat Ini & NIM / NPM --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div>
-              <label class="{{ $label }}">Status Saat Ini <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Status Anda saat ini <span class="text-red-500">*</span></label>
               <select name="current_status" required class="{{ $input }}">
                 <option value="">-- Pilih Status --</option>
                 <option value="Mahasiswa / Pelajar Aktif" @selected($old('current_status') === 'Mahasiswa / Pelajar Aktif')>Mahasiswa / Pelajar Aktif</option>
@@ -393,7 +382,7 @@
               </select>
             </div>
             <div>
-              <label class="{{ $label }}">NIM / NPM / NISN <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional <span class="text-red-500">*</span></label>
               <input type="text" name="student_id" required placeholder="21552011045"
                 pattern="[0-9A-Za-z\-]+" inputmode="text"
                 class="{{ $input }}" value="{{ $old('student_id') }}">
@@ -404,13 +393,13 @@
           {{-- Universitas & Program Studi --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Universitas / Sekolah <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Asal Sekolah/Kampus <span class="text-red-500">*</span></label>
               <input type="text" id="institution_name" name="institution_name" required placeholder="Telkom University"
                 class="{{ $input }} tomselect-input" value="{{ $old('institution_name') }}"
                 data-options="{{ json_encode(collect($institutions ?? [])->pluck('name')) }}">
             </div>
             <div>
-              <label class="{{ $label }}">Program Studi / Jurusan <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Program Studi <span class="text-red-500">*</span></label>
               <input type="text" id="study_program" name="study_program" required placeholder="Rekayasa Perangkat Lunak"
                 class="{{ $input }} tomselect-input" value="{{ $old('study_program') }}"
                 data-options="{{ json_encode(collect($studyPrograms ?? [])->pluck('name')) }}">
@@ -430,7 +419,7 @@
           {{-- Divisi Diminati & Jenis Magang --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Program Magang yang Diminati <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Program Magang/PKL apa yang Anda minati? <span class="text-red-500">*</span></label>
               <select name="internship_interest" required class="{{ $input }}">
                 <option value="">-- Pilih Divisi --</option>
                 @foreach($divisions ?? [] as $div)
@@ -441,7 +430,7 @@
               </select>
             </div>
             <div>
-              <label class="{{ $label }}">Jenis Magang <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Jenis Magang apa yang Anda pilih? <span class="text-red-500">*</span></label>
               <select name="internship_type" required class="{{ $input }}" id="select-internship-type-static">
                 <option value="">-- Pilih --</option>
                 <option value="Magang Mandiri" @selected($old('internship_type') === 'Magang Mandiri')>Magang Mandiri</option>
@@ -453,7 +442,7 @@
           {{-- Kesiapan WFO & Kesanggupan Shifting --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Kesiapan Sistem Magang WFO di Yogyakarta <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta? <span class="text-red-500">*</span></label>
               <select name="wfo_readiness" required class="{{ $input }}">
                 <option value="">-- Pilih Kesiapan WFO --</option>
                 <option value="Siap WFO di Yogyakarta" @selected($old('wfo_readiness') === 'Siap WFO di Yogyakarta')>Siap WFO di Yogyakarta</option>
@@ -461,7 +450,7 @@
               </select>
             </div>
             <div>
-              <label class="{{ $label }}">Kesanggupan Jadwal Senin-Sabtu & Shifting <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Kesanggupan Jadwal Senin - Sabtu & Shifting <span class="text-red-500">*</span></label>
               <select name="schedule_shift_readiness" required class="{{ $input }}">
                 <option value="">-- Pilih Kesanggupan --</option>
                 <option value="Sanggup" @selected($old('schedule_shift_readiness') === 'Sanggup')>Sanggup</option>
@@ -473,7 +462,7 @@
           {{-- Kepemilikan Laptop & Durasi Magang --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Apakah Memiliki Laptop Sendiri? <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL? <span class="text-red-500">*</span></label>
               <div class="flex gap-6 pt-2">
                 <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="radio" name="has_laptop" value="1" class="{{ $radio }}"
@@ -486,7 +475,7 @@
               </div>
             </div>
             <div>
-              <label class="{{ $label }}">Berapa Lama Rencana Magang? <span class="text-red-500">*</span></label>
+              <label class="{{ $label }}">Berapa lama Anda akan Magang/PKL? <span class="text-red-500">*</span></label>
               <select name="planned_duration" required class="{{ $input }}">
                 <option value="">-- Pilih Durasi --</option>
                 <option value="1 Bulan" @selected($old('planned_duration') === '1 Bulan')>1 Bulan</option>
@@ -502,7 +491,7 @@
 
           {{-- Tanggal Mulai --}}
           <div>
-            <label class="{{ $label }}">Kapan Berencana Mulai Magang/PKL?</label>
+            <label class="{{ $label }}">Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <input type="date" name="start_date"
               min="{{ date('Y-m-d') }}"
               class="{{ $input }}" value="{{ $toDateInput($old('start_date')) }}">
@@ -510,7 +499,7 @@
 
           {{-- Alasan Magang --}}
           <div>
-            <label class="{{ $label }}">Alasan Ingin Magang di Sini <span class="text-red-500">*</span></label>
+            <label class="{{ $label }}">Mengapa Anda ingin Magang/PKL disini? <span class="text-red-500">*</span></label>
             <textarea name="internship_reason" required rows="3" placeholder="Tuliskan alasan Anda..."
               class="{{ $input }} resize-none">{{ $old('internship_reason') }}</textarea>
           </div>
@@ -521,7 +510,7 @@
       <div id="section-3-berkas-portofolio" class="border-b border-gray-100 pb-5">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider mb-1 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">3</span>
-          Berkas & Portofolio <span class="text-xs font-normal text-gray-500 normal-case">(Terkategori & Multi-Upload)</span>
+          Berkas & Portofolio <span class="text-xs font-normal text-gray-500 normal-case">(Opsional)</span>
         </h3>
         <p class="text-xs text-gray-400 mb-4">Unggah dokumen sesuai kategorinya. Anda dapat mengunggah sebagian dokumen sekarang dan melengkapi dokumen susulan kemudian.</p>
 
@@ -573,51 +562,37 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           {{-- 1. CV --}}
           <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">Curriculum Vitae (CV) <span class="text-xs text-gray-400 font-normal">(PDF/DOC/DOCX, Maks 10MB)</span></label>
+            <label class="{{ $label }}">Curriculum Vitae (CV) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="text-xs text-gray-400 font-normal">(PDF/DOC/DOCX, Maks 10MB)</span></label>
             <input type="file" name="cv" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
             <p class="text-[11px] text-gray-400 mt-1">Lampirkan CV terbaru Anda.</p>
           </div>
 
           {{-- 2. KTM / KTP --}}
           <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">KTM atau KTP <span class="text-xs text-gray-400 font-normal">(PDF/JPG/PNG, Maks 5MB)</span></label>
+            <label class="{{ $label }}">KTM atau KTP <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="text-xs text-gray-400 font-normal">(PDF/JPG/PNG, Maks 5MB)</span></label>
             <input type="file" name="identity" accept=".pdf,.jpg,.jpeg,.png" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
             <p class="text-[11px] text-gray-400 mt-1">Kartu identitas mahasiswa atau KTP pendaftar.</p>
           </div>
 
           {{-- 3. Portofolio (Multi-Upload) --}}
           <div class="p-3.5 border border-gray-200 rounded-lg bg-white md:col-span-2">
-            <label class="{{ $label }}">Portofolio Karya <span class="text-xs text-emerald-700 font-semibold">(Mendukung Banyak File, Maks 10MB/berkas)</span></label>
+            <label class="{{ $label }}">Portofolio Karya <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="text-xs text-emerald-700 font-semibold">(Mendukung Banyak File, Maks 10MB/berkas)</span></label>
             <input type="file" name="portfolio[]" multiple accept=".pdf,.zip,.rar,.mp4,.doc,.docx,.png,.jpg,.jpeg" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
             <p class="text-[11px] text-gray-400 mt-1">Pilih satu atau beberapa file portofolio, sertifikat penghargaan, atau sampel karya (PDF, ZIP, RAR, video MP4, dokumen).</p>
           </div>
 
           {{-- 4. Surat Pengantar --}}
           <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">Surat Pengantar Kampus / Sekolah <span class="text-xs text-gray-400 font-normal">(PDF/DOCX, Maks 10MB)</span></label>
+            <label class="{{ $label }}">Surat Pengantar Kampus / Sekolah <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="text-xs text-gray-400 font-normal">(PDF/DOCX, Maks 10MB)</span></label>
             <input type="file" name="cover_letter" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
             <p class="text-[11px] text-gray-400 mt-1">Surat permohonan magang dari institusi pendidikan.</p>
           </div>
 
-          {{-- 5. Proposal Magang --}}
+          {{-- 5. Dokumen Pendukung Tambahan (Multi-Upload) --}}
           <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">Proposal Magang / PKL <span class="text-xs text-gray-400 font-normal">(PDF/DOCX, Maks 10MB)</span></label>
-            <input type="file" name="proposal" accept=".pdf,.doc,.docx" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
-            <p class="text-[11px] text-gray-400 mt-1">Opsional jika kampus mensyaratkan proposal kegiatan.</p>
-          </div>
-
-          {{-- 6. Dokumen Pendukung Tambahan (Multi-Upload) --}}
-          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">Dokumen Pendukung Lainnya <span class="text-xs text-gray-400 font-normal">(Multi-File, Maks 10MB/berkas)</span></label>
+            <label class="{{ $label }}">Dokumen Pendukung Lainnya <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span> <span class="text-xs text-gray-400 font-normal">(Multi-File, Maks 10MB/berkas)</span></label>
             <input type="file" name="supporting_document[]" multiple accept=".pdf,.doc,.docx,.zip,.rar,.png,.jpg,.jpeg" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
             <p class="text-[11px] text-gray-400 mt-1">Transkrip nilai, sertifikat keahlian, atau surat izin orang tua.</p>
-          </div>
-
-          {{-- 7. Foto Profil --}}
-          <div class="p-3.5 border border-gray-200 rounded-lg bg-white">
-            <label class="{{ $label }}">Pasfoto Resmi <span class="text-xs text-gray-400 font-normal">(JPG/PNG/WEBP, Maks 5MB)</span></label>
-            <input type="file" name="profile_photo" accept=".jpg,.jpeg,.png,.webp" class="{{ $input }} file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer" style="--file-bg: #1a5c38;">
-            <p class="text-[11px] text-gray-400 mt-1">Pasfoto formal berlatar belakang rapi untuk identitas pemagang.</p>
           </div>
         </div>
       </div>
@@ -634,22 +609,22 @@
           {{-- Skill Fields --}}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="{{ $label }}">Software Desain</label>
+              <label class="{{ $label }}">Software Desain <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
               <input type="text" name="design_software" placeholder="Figma, Photoshop"
                 class="{{ $input }}" value="{{ $old('design_software') }}">
             </div>
             <div>
-              <label class="{{ $label }}">Software Video</label>
+              <label class="{{ $label }}">Software Video <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
               <input type="text" name="video_software" placeholder="Premiere Pro, After Effects"
                 class="{{ $input }}" value="{{ $old('video_software') }}">
             </div>
             <div>
-              <label class="{{ $label }}">Bahasa Pemrograman</label>
+              <label class="{{ $label }}">Bahasa Pemrograman <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
               <input type="text" name="programming_languages" placeholder="PHP, JS"
                 class="{{ $input }}" value="{{ $old('programming_languages') }}">
             </div>
             <div>
-              <label class="{{ $label }}">Digital Marketing</label>
+              <label class="{{ $label }}">Digital Marketing <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
               <input type="text" name="digital_marketing_type" placeholder="SEO, Ads"
                 class="{{ $input }}" value="{{ $old('digital_marketing_type') }}">
             </div>
@@ -657,7 +632,7 @@
 
           {{-- Peralatan --}}
           <div>
-            <label class="{{ $label }}">Peralatan (Laptop, Kamera, Tripod, dll)</label>
+            <label class="{{ $label }}">Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <input type="text" name="owned_tools" placeholder="Asus ROG, Kamera, Tripod"
               class="{{ $input }}" value="{{ $old('owned_tools') ?: $old('laptop_equipment') }}">
           </div>
@@ -679,13 +654,13 @@
           </div>
 
           <div>
-            <label class="{{ $label }}">Kegiatan Lain Selain Magang</label>
+            <label class="{{ $label }}">Kegiatan Lain Selain Magang <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <textarea name="current_activities" rows="2" placeholder="Contoh: Kuliah malam, freelance, dll (tulis '-' jika tidak ada)"
               class="{{ $input }} resize-none">{{ $old('current_activities', $reg?->current_activities !== '-' ? $reg?->current_activities : '') }}</textarea>
           </div>
 
           <div>
-            <label class="{{ $label }}">Butuh Informasi Kost?</label>
+            <label class="{{ $label }}">Apakah anda membutuhkan info kost/kontrakan deket kantor? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <select name="boarding_info" class="{{ $input }}">
               <option value="Tidak" @selected(($old('boarding_info') ?: 'Tidak') === 'Tidak')>Tidak</option>
               <option value="Ya"    @selected($old('boarding_info') === 'Ya')>Ya</option>
@@ -693,7 +668,7 @@
           </div>
 
           <div>
-            <label class="{{ $label }}">Instagram</label>
+            <label class="{{ $label }}">Sosial Media (Instagram) yang dimiliki <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <div class="flex items-center gap-0">
               <span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>
               <input type="text" name="social_media_instagram" placeholder="username_kamu"
@@ -703,7 +678,7 @@
           </div>
 
           <div>
-            <label class="{{ $label }}">Tahu Info Magang Dari</label>
+            <label class="{{ $label }}">Anda tahu info magang ini dari mana? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
             <div class="{{ $group }}">
               @php
                 $infoSources = $old('internship_info_sources', $reg?->internship_info_sources ?? '');
@@ -1000,8 +975,8 @@
   const MANUAL_DRAFT_KEY = 'sertif_manual_draft_{{ auth()->id() }}';
   const TRANSIENT_YEAR_KEY = 'sertif_year_transient_{{ auth()->id() }}';
   const SAFE_CORE_FIELD_NAMES = [
-    'fullname', 'student_id', 'born_date', 'birth_place', 'religion', 'gender',
-    'phone_number', 'email', 'current_city', 'institution_name',
+    'fullname', 'student_id', 'born_date', 'religion', 'gender',
+    'phone_number', 'email', 'institution_name',
     'faculty', 'study_program'
   ];
 

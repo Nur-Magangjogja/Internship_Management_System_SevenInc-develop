@@ -952,12 +952,27 @@
     </div>
 
     <!-- Schema Versions & Column Mappings -->
-    <div class="space-y-8">
-        <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+    <div class="mt-12 space-y-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3">
             <div>
-                <h2 class="text-lg font-bold text-slate-800">Versi Schema & Pemetaan Kolom Tab Tahunan</h2>
-                <p class="text-xs text-slate-500">Struktur header dan kontrak kolom outbound per tab tahun pendaftaran.</p>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-lg font-bold text-slate-800">Versi Schema & Pemetaan Kolom Tab Aktif</h2>
+                    <span class="px-2 py-0.5 text-[11px] font-semibold rounded bg-emerald-100 text-emerald-800">
+                        Versi Terbaru
+                    </span>
+                </div>
+                <p class="text-xs text-slate-500">Struktur header dan kontrak kolom outbound aktif untuk tab tahun pendaftaran saat ini.</p>
             </div>
+            @if (($totalSchemaCount ?? 0) > 1)
+                <a href="{{ route('admin.spreadsheet-connections.schema-history', $connection) }}"
+                   class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-blue-600 hover:border-blue-300">
+                    <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span>Lihat Log & Riwayat Versi ({{ $totalSchemaCount }} Versi) &rarr;</span>
+                </a>
+            @endif
         </div>
 
         @forelse ($schemaVersions as $schema)

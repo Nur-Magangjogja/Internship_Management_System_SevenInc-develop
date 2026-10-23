@@ -97,16 +97,34 @@ class SpreadsheetConnectionController extends Controller
             ];
         })->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
+        $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->where('is_active', true)
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+            ->orderBy('year', 'desc')
+            ->get();
+
+        if ($activeSchemaVersions->isEmpty()) {
+            $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+                ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+                ->orderBy('year', 'desc')
+                ->orderBy('id', 'desc')
+                ->take(1)
+                ->get();
+        }
+
+        $totalSchemaCount = $spreadsheetConnection->schemaVersions()->count();
+
         return view('admin.spreadsheet-connections.show', [
-            'connection'      => $spreadsheetConnection,
-            'schemaVersions'  => $spreadsheetConnection->schemaVersions,
-            'rowSyncs'        => $rowSyncs,
-            'stats'           => $stats,
-            'tabProfiles'     => $tabProfiles,
-            'recentSnapshots' => $recentSnapshots,
-            'recentProposals' => $recentProposals,
-            'outboxEvents'    => $outboxEvents,
-            'formFields'      => $formFields,
+            'connection'       => $spreadsheetConnection,
+            'schemaVersions'   => $activeSchemaVersions,
+            'totalSchemaCount' => $totalSchemaCount,
+            'rowSyncs'         => $rowSyncs,
+            'stats'            => $stats,
+            'tabProfiles'      => $tabProfiles,
+            'recentSnapshots'  => $recentSnapshots,
+            'recentProposals'  => $recentProposals,
+            'outboxEvents'     => $outboxEvents,
+            'formFields'       => $formFields,
         ]);
     }
 
@@ -362,6 +380,26 @@ class SpreadsheetConnectionController extends Controller
                 ->back()
                 ->with('error', 'Gagal menonaktifkan versi schema: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Tampilkan riwayat log dan seluruh versi schema (aktif maupun nonaktif) untuk koneksi spreadsheet.
+     */
+    public function schemaHistory(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        $spreadsheetConnection->refresh()->load(['createdByUser', 'updatedByUser']);
+
+        $allSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc'), 'createdByUser', 'updatedByUser'])
+            ->orderBy('year', 'desc')
+            ->orderBy('is_active', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return view('admin.spreadsheet-connections.schema-history', [
+            'connection'     => $spreadsheetConnection,
+            'schemaVersions' => $allSchemaVersions,
+        ]);
     }
 
     /**

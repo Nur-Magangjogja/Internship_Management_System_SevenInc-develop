@@ -245,7 +245,7 @@ class ArchiveExportService
         fputcsv($handle, [
             'No',
             'Nama Lengkap',
-            'NIM / NISN',
+            'Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional',
             'Jenis Kelamin',
             'Nomor Telepon / WA',
             'Asal Institusi / Sekolah',
