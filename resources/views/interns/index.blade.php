@@ -10,12 +10,14 @@
     // Filter tabs berdasarkan mode
     $filterTabs = match($mode) {
         'pendaftar' => [
+            'all'      => 'Semua',
             'waiting'  => 'Menunggu Review',
             'accepted' => 'Diterima',
             'rejected' => 'Ditolak',
             'trashed'  => 'Arsip Terhapus',
         ],
         'pemagang' => [
+            'all'          => 'Semua',
             'active'       => 'Aktif',
             'participants' => 'Peserta Administratif',
             'completed'    => 'Selesai',
@@ -2567,6 +2569,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const followupVal = (document.getElementById('followup-filter')?.value || '').trim();
         const params = new URLSearchParams({
             scope:    activeFilter,
+            mode:     MODE,
             page:     String(page),
             per_page: '10',
         });

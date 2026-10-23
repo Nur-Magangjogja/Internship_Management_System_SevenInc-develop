@@ -125,7 +125,7 @@ class InternPageController extends Controller
     {
         return $this->renderIndex([
             'title' => 'Data Pendaftar Magang',
-            'scope' => 'waiting',           // default tab saat buka halaman
+            'scope' => request('scope', 'waiting'),           // default tab saat buka halaman
             'mode'  => 'pendaftar',         // dipakai view untuk tampilkan filter yang tepat
         ]);
     }
@@ -138,7 +138,7 @@ class InternPageController extends Controller
     {
         return $this->renderIndex([
             'title' => 'Data Pemagang',
-            'scope' => 'active',            // default tab saat buka halaman
+            'scope' => request('scope', 'active'),            // default tab saat buka halaman
             'mode'  => 'pemagang',          // dipakai view untuk tampilkan filter yang tepat
         ]);
     }

@@ -35,7 +35,7 @@ class FormBuilderService
         'fullname', 'student_id', 'born_date', 'religion', 'institution_name', 'faculty',
         'study_program', 'gender', 'phone_number', 'email',
         'internship_interest', 'start_date', 'end_date', 'internship_type',
-        'internship_arrangement', 'current_status', 'wfo_readiness',
+        'current_status', 'wfo_readiness',
         'schedule_shift_readiness', 'has_laptop', 'planned_duration',
         'cv_ktp_portofolio_pdf', 'profile_photo', 'cv', 'identity', 'portfolio',
         'cover_letter', 'proposal', 'supporting_document', 'design_software',

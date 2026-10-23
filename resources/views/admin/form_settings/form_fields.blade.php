@@ -857,7 +857,7 @@ function buildPreviewHtml(data) {
 
     const grouped = data.grouped_fields || {
         data_diri_edukasi: (data.main_fields || []).filter(f => ['fullname','student_id','born_date','gender','religion','institution_name','faculty','study_program','email','phone_number','current_status'].includes(f.field_key)),
-        pilihan_durasi: (data.main_fields || []).filter(f => ['internship_interest','start_date','end_date','planned_duration','internship_type','wfo_readiness','schedule_shift_readiness','internship_arrangement','has_laptop','owned_tools','internship_reason','design_software','video_software','programming_languages','digital_marketing_type'].includes(f.field_key)),
+        pilihan_durasi: (data.main_fields || []).filter(f => ['internship_interest','start_date','end_date','planned_duration','internship_type','wfo_readiness','schedule_shift_readiness','has_laptop','owned_tools','internship_reason','design_software','video_software','programming_languages','digital_marketing_type'].includes(f.field_key)),
         berkas_portofolio: (data.main_fields || []).filter(f => ['cv','identity','portfolio','cover_letter','supporting_document','cv_ktp_portofolio_pdf'].includes(f.field_key) || f.field_type === 'file'),
         informasi_tambahan: data.extra_fields || [],
     };

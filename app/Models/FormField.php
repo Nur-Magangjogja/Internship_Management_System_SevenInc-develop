@@ -121,7 +121,7 @@ class FormField extends Model
         $pilihanDurasiKeys = [
             'internship_interest', 'start_date', 'end_date', 'planned_duration',
             'internship_type', 'wfo_readiness', 'schedule_shift_readiness',
-            'internship_arrangement', 'has_laptop', 'owned_tools',
+            'has_laptop', 'owned_tools',
             'internship_reason', 'design_software', 'video_software',
             'programming_languages', 'digital_marketing_type',
         ];

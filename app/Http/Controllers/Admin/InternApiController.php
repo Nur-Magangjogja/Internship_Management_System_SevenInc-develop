@@ -201,6 +201,8 @@ class InternApiController extends Controller
         }
         $q = IR::with($relations);
 
+        $mode = $req->get('mode');
+
         // Scope status / Trashed / Peserta Administratif
         if ($scope === 'trashed' || $req->get('status') === 'trashed') {
             $q->onlyTrashed();
@@ -209,6 +211,20 @@ class InternApiController extends Controller
               ->where('followup_status', IR::FOLLOWUP_MOVED_TO_PARTICIPANTS);
         } elseif ($scope !== 'all') {
             $q->where('internship_status', $scope);
+        } elseif ($mode === 'pendaftar') {
+            $q->whereIn('internship_status', [
+                IR::STATUS_NEW,
+                IR::STATUS_WAITING,
+                IR::STATUS_PENDING,
+                IR::STATUS_ACCEPTED,
+                IR::STATUS_REJECTED,
+            ]);
+        } elseif ($mode === 'pemagang') {
+            $q->whereIn('internship_status', [
+                IR::STATUS_ACTIVE,
+                IR::STATUS_COMPLETED,
+                IR::STATUS_EXITED,
+            ]);
         }
 
         // Filter terpisah untuk followup_status jika disediakan

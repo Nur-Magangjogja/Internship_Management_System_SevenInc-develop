@@ -268,21 +268,6 @@ class FormFieldSeeder extends Seeder
                 'column_span' => 2,
             ],
             [
-                'field_key'   => 'internship_arrangement',
-                'field_type'  => 'select',
-                'label'       => 'Sistem Magang',
-                'placeholder' => '-- Pilih --',
-                'options'     => [
-                    ['value' => 'Onsite', 'label' => 'Onsite (WFO)'],
-                ],
-                'is_required' => true,
-                'is_system'   => true,
-                'is_active'   => false,
-                'group_name'  => FormField::GROUP_PILIHAN_DURASI,
-                'sort_order'  => 150,
-                'column_span' => 2,
-            ],
-            [
                 'field_key'   => 'has_laptop',
                 'field_type'  => 'radio',
                 'label'       => 'Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?',
