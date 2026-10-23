@@ -29,11 +29,13 @@
                 ['label' => 'Master Institusi',   'route' => 'admin.institutions.index',       'icon' => 'building'],
                 ['label' => 'Review Kontak Pembimbing', 'route' => 'admin.contact-review.index', 'icon' => 'check'],
                 ['label' => 'Monitoring Follow-Up', 'route' => 'admin.follow-up.index',        'icon' => 'phone'],
-                ['label' => 'Template MOU',        'route' => 'admin.mou-templates.index',      'icon' => 'file'],
-                ['label' => 'Dokumen MOU & PKS',   'route' => 'admin.mous.index',               'icon' => 'file'],
                 ['label' => 'Log Aktivitas',       'route' => 'admin.activity-logs.index',      'icon' => 'activity'],
+            ],
+        ],
+        [
+            'label' => 'Pengaturan Sistem',
+            'items' => [
                 ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
-                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Monitoring Sinkronisasi', 'route' => 'admin.sync-monitoring.index', 'icon' => 'activity'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
                 ['label' => 'Manajemen Divisi',   'route' => 'admin.form-settings.divisions',  'icon' => 'settings'],
@@ -50,8 +52,11 @@
         [
             'label' => 'Dokumen & Sertifikat',
             'items' => [
+                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Perpustakaan Aset',    'route' => 'admin.system-assets.index',   'icon' => 'archive'],
                 ['label' => 'Template Dokumen',     'route' => 'admin.document-templates.index', 'icon' => 'file'],
+                ['label' => 'Template MOU',        'route' => 'admin.mou-templates.index',      'icon' => 'file'],
+                ['label' => 'Dokumen MOU & PKS',   'route' => 'admin.mous.index',               'icon' => 'file'],
                 ['label' => 'Data LOA',             'route' => 'admin.documents.loas',        'icon' => 'file'],
                 ['label' => 'Surat Penilaian',      'route' => 'interns.assessment.index',    'icon' => 'file'],
                 ['label' => 'Data SKL',             'route' => 'admin.documents.skls',        'icon' => 'file'],
