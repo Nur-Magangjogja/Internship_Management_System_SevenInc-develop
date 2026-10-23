@@ -63,6 +63,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -100,8 +101,12 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         $mimeType = mime_content_type($localFullPath) ?: 'application/octet-stream';
         $fileContent = base64_encode(file_get_contents($localFullPath));
         $fileChecksum = hash_file('sha256', $localFullPath);
+        $fileSize = filesize($localFullPath);
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $uploadTimeout = max(90, min(300, (int) ceil($fileSize / (100 * 1024)) * 3));
+        $transport->setTimeoutSeconds($uploadTimeout);
+
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -170,6 +175,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -190,6 +196,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -221,6 +228,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -268,6 +276,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [
@@ -297,6 +306,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
         $response = $transport->dispatchSignedRequest(
             $this->endpointUrl,
             [

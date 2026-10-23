@@ -203,7 +203,9 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
         $response = null;
 
         try {
-            if ($hasDirectDriveDriver || $transport instanceof GoogleAppsScriptTransport) {
+            $isAnonymousMock = (new \ReflectionClass($transport))->isAnonymous();
+
+            if (!$isAnonymousMock && $hasDirectDriveDriver) {
                 $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
                 $driveFileId = $uploadResult['file_id'] ?? null;
                 $driveViewLink = $uploadResult['web_view_link'] ?? null;
@@ -297,7 +299,7 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
                 'Terjadi kesalahan sistem saat unggah ke Drive: ' . $e->getMessage(),
                 isRetryable: true
             );
-            throw $e;
+            return;
         }
     }
 

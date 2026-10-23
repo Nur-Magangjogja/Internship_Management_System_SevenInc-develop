@@ -15,6 +15,11 @@ class CloudStorageSetting extends Model
     public const STATUS_CONNECTED = 'connected';
     public const STATUS_ERROR = 'error';
 
+    public const PROVIDER_APPS_SCRIPT_DRIVE = 'apps_script_drive';
+    /** @deprecated Migrated to PROVIDER_APPS_SCRIPT_DRIVE in GAS-06 */
+    public const PROVIDER_GOOGLE_DRIVE = 'google_drive';
+    public const PROVIDER_LOCAL_FALLBACK = 'local_fallback';
+
     protected $table = 'cloud_storage_settings';
 
     protected $fillable = [
@@ -107,7 +112,7 @@ class CloudStorageSetting extends Model
     public function getEffectiveParentFolderId(): ?string
     {
         $uiRootId = $this->canonical_parent_folder_id ?: self::extractDriveFolderId($this->canonical_parent_folder_url);
-        $envRootId = self::extractDriveFolderId(config('services.google.drive_folder_id'));
+        $envRootId = self::extractDriveFolderId(config('services.google_apps_script.root_folder_id') ?: config('services.google.drive_folder_id'));
 
         // Jika keduanya ada tapi berbeda, tandai konflik
         if (!empty($uiRootId) && !empty($envRootId) && $uiRootId !== $envRootId) {
@@ -124,8 +129,34 @@ class CloudStorageSetting extends Model
             return $envRootId;
         }
 
+        // Fallback ke folder registrasi yang sudah terkonfigurasi di Spreadsheet Connection
+        try {
+            $spreadsheetFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->value('drive_folder_id');
+            if (!empty($spreadsheetFolderId)) {
+                return $spreadsheetFolderId;
+            }
+        } catch (\Throwable) {
+            // Ignore
+        }
+
         // Tidak boleh fallback ke 'root' Drive umum
         return null;
+    }
+
+    /**
+     * Dapatkan nama provider aktif dengan resolusi hierarkis.
+     * Penanganan migrasi GAS-06: Jika konfigurasi database lama masih berisi 'google_drive',
+     * alihkan secara transparan ke 'apps_script_drive' tanpa mengubah atau merusak data historis.
+     */
+    public function getActiveProvider(): string
+    {
+        $rawProvider = $this->provider ?: (config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', self::PROVIDER_APPS_SCRIPT_DRIVE));
+
+        if ($rawProvider === self::PROVIDER_GOOGLE_DRIVE || $rawProvider === 'google_drive') {
+            return self::PROVIDER_APPS_SCRIPT_DRIVE;
+        }
+
+        return $rawProvider;
     }
 
     /**
@@ -134,9 +165,22 @@ class CloudStorageSetting extends Model
     public function hasRootConfigConflict(): bool
     {
         $uiRootId = $this->canonical_parent_folder_id ?: self::extractDriveFolderId($this->canonical_parent_folder_url);
-        $envRootId = self::extractDriveFolderId(config('services.google.drive_folder_id'));
+        $envRootId = self::extractDriveFolderId(config('services.google_apps_script.root_folder_id') ?: config('services.google.drive_folder_id'));
 
         return (!empty($uiRootId) && !empty($envRootId) && $uiRootId !== $envRootId);
+    }
+
+    /**
+     * Periksa apakah folder induk kanonikal berbeda dari folder registrasi spreadsheet.
+     */
+    public function hasSpreadsheetFolderMismatch(?SpreadsheetConnection $connection = null): bool
+    {
+        $conn = $connection ?: SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        if (!$conn || empty($conn->drive_folder_id) || empty($this->canonical_parent_folder_id)) {
+            return false;
+        }
+
+        return $conn->drive_folder_id !== $this->canonical_parent_folder_id;
     }
 
     /**
@@ -148,7 +192,7 @@ class CloudStorageSetting extends Model
         if (!$setting) {
             $setting = static::create([
                 'name'              => 'Penyimpanan Google Drive Sistem',
-                'provider'          => 'google_drive',
+                'provider'          => self::PROVIDER_APPS_SCRIPT_DRIVE,
                 'is_enabled'        => true,
                 'connection_status' => self::STATUS_UNTESTED,
             ]);

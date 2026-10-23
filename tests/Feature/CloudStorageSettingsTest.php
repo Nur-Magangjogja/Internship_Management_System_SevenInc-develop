@@ -46,7 +46,7 @@ class CloudStorageSettingsTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Pusat Pengaturan Penyimpanan Cloud');
-        $response->assertSee('Pemetaan Folder Google Drive');
+        $response->assertSee('Folder Induk Tunggal Google Drive (Kanonikal)');
     }
 
     public function test_admin_can_update_folder_urls_and_ids_are_extracted(): void
@@ -98,31 +98,27 @@ class CloudStorageSettingsTest extends TestCase
 
     public function test_connection_test_updates_status(): void
     {
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_access_token_abc',
-                'expires_in'   => 3600,
-            ], 200),
-            'https://www.googleapis.com/drive/v3/files/*' => Http::response([
-                'id'           => 'mock_folder_123',
-                'name'         => 'System_Assets',
-                'mimeType'     => 'application/vnd.google-apps.folder',
-                'trashed'      => false,
-                'capabilities' => ['canAddChildren' => true],
-            ], 200),
+        config([
+            'services.google_apps_script.enabled'         => true,
+            'services.google_apps_script.endpoint_url'    => 'https://script.google.com/macros/s/test_settings_gas/exec',
+            'services.google_apps_script.shared_secret'   => 'test_secret_settings',
+            'services.google_apps_script.timeout_seconds' => 30,
+            'services.google_apps_script.root_folder_id'  => 'mock_folder_123',
         ]);
 
-        // Pastikan config testing mengizinkan Google Drive test
-        config([
-            'services.google_drive.enabled'       => true,
-            'services.google_drive.client_id'     => 'test_client_id',
-            'services.google_drive.client_secret' => 'test_client_secret',
-            'services.google_drive.refresh_token' => 'test_refresh_token',
+        Http::fake([
+            'https://script.google.com/macros/s/test_settings_gas/exec*' => Http::response([
+                'success'          => true,
+                'action'           => 'drive_ping',
+                'accessible'       => true,
+                'root_folder_name' => 'System_Assets',
+            ], 200),
         ]);
 
         $setting = CloudStorageSetting::getEffectiveSettings();
         $setting->update([
-            'system_assets_folder_id' => 'mock_folder_123',
+            'canonical_parent_folder_id' => 'mock_folder_123',
+            'provider'                   => 'apps_script_drive',
         ]);
 
         $response = $this->actingAs($this->admin)->post(route('admin.cloud-storage.test'));

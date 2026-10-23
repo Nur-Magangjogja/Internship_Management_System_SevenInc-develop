@@ -33,7 +33,7 @@
                 ['label' => 'Dokumen MOU & PKS',   'route' => 'admin.mous.index',               'icon' => 'file'],
                 ['label' => 'Log Aktivitas',       'route' => 'admin.activity-logs.index',      'icon' => 'activity'],
                 ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
-                ['label' => 'Penyimpanan Cloud',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
+                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Monitoring Sinkronisasi', 'route' => 'admin.sync-monitoring.index', 'icon' => 'activity'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
                 ['label' => 'Manajemen Divisi',   'route' => 'admin.form-settings.divisions',  'icon' => 'settings'],

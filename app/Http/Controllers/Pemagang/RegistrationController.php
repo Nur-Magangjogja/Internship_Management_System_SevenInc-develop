@@ -1281,6 +1281,27 @@ class RegistrationController extends Controller
             return Storage::disk('public')->download($filePath, $originalName);
         }
 
+        // 3. Fallback: Unduh dari cloud storage provider privat jika berkas tersedia di Google Drive
+        if (!empty($attachment->drive_file_id)) {
+            try {
+                $driver = app(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+                if ($driver->isConfigured()) {
+                    $bytes = $driver->downloadFileBytes($attachment->drive_file_id);
+                    // Simpan ke private local disk untuk cache selanjutnya
+                    Storage::disk('local')->put($filePath, $bytes);
+
+                    return response($bytes, 200, [
+                        'Content-Type'        => $attachment->mime_type ?: 'application/octet-stream',
+                        'Content-Disposition' => 'attachment; filename="' . addslashes($originalName) . '"',
+                        'Content-Length'      => strlen($bytes),
+                        'Cache-Control'       => 'private, no-transform',
+                    ]);
+                }
+            } catch (\Throwable $cloudEx) {
+                \Illuminate\Support\Facades\Log::warning("Gagal mengunduh lampiran #{$attachment->id} dari cloud storage: " . $cloudEx->getMessage());
+            }
+        }
+
         abort(404, 'Berkas dokumen tidak ditemukan di penyimpanan server.');
     }
 

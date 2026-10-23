@@ -16,7 +16,7 @@ use App\Models\SheetInboundChangeStaging;
 use App\Models\SpreadsheetConnection;
 use App\Models\SystemAsset;
 use App\Models\User;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Services\CloudStorage\SystemStorageConfigService;
 use App\Services\MailMerge\DocumentContext;
 use App\Services\MailMerge\VariableRegistry;
@@ -419,7 +419,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
      */
     public function test_c11_lazy_folder_creation_with_mutex_prevents_duplicate_folders(): void
     {
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getOrCreateFolderPath')->willReturn('DRIVE_FOLDER_ID_101_CV');
 
         $universalService = new UniversalFileService($mockDriver);
@@ -663,7 +663,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
             'sync_status'      => 'verified',
         ]);
 
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getFileMetadata')->willReturn([
             'id'       => 'DRIVE_ALICE_CV_123',
             'name'     => 'cv_alice.pdf',
@@ -729,7 +729,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
             'sync_status'      => 'verified',
         ]);
 
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('downloadFileBytes')
             ->willThrowException(new \RuntimeException("Berkas remote Google Drive tidak ditemukan (404 Not Found)"));
 
@@ -746,7 +746,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
      */
     public function test_c21_cloud_file_registry_persists_checksum_and_supports_multi_file_portfolio(): void
     {
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getOrCreateFolderPath')->willReturn('FOLDER_PORTFOLIO_101');
         $mockDriver->method('uploadFile')->willReturn([
             'file_id'   => 'DRIVE_PORTFOLIO_1',
@@ -795,7 +795,8 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
             CloudFileRegistry::CATEGORY_PROPOSAL,
         ];
 
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
+        $mockDriver->method('getDriverName')->willReturn('apps_script_drive');
         $mockDriver->method('getOrCreateFolderPath')->willReturn('FOLDER_TEST');
         $mockDriver->method('uploadFile')->willReturn([
             'file_id'   => 'DRIVE_REG_FILE',
@@ -813,7 +814,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
                 customFileName: "{$cat}.pdf"
             );
 
-            $this->assertEquals('google_drive', $regFile->provider);
+            $this->assertEquals('apps_script_drive', $regFile->provider);
             $this->assertEquals('verified', $regFile->sync_status);
             $this->assertEquals('DRIVE_REG_FILE', $regFile->drive_file_id);
         }
@@ -824,7 +825,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
      */
     public function test_c23_brand_institution_and_generated_documents_use_same_registry_api(): void
     {
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getOrCreateFolderPath')->willReturn('FOLDER_ASSET');
         $mockDriver->method('uploadFile')->willReturn([
             'file_id'   => 'DRIVE_ASSET_123',
@@ -855,7 +856,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
      */
     public function test_c24_google_drive_failure_reports_failed_status_honestly(): void
     {
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getOrCreateFolderPath')->willReturn('FOLDER_ERROR');
         $mockDriver->method('uploadFile')
             ->willThrowException(new \RuntimeException("Google Drive API 503 Service Unavailable"));
@@ -886,7 +887,7 @@ class Fase5UniversalDriveAndAssetsTest extends TestCase
      */
     public function test_c25_retry_does_not_duplicate_remote_file_records(): void
     {
-        $mockDriver = $this->createMock(GoogleDriveStorageDriver::class);
+        $mockDriver = $this->createMock(CloudStorageProviderInterface::class);
         $mockDriver->method('getOrCreateFolderPath')->willReturn('FOLDER_RETRIES');
         $mockDriver->method('uploadFile')->willReturn([
             'file_id'   => 'REMOTE_FILE_REUSED_123',

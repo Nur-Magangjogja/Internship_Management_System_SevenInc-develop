@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CloudStorageSetting;
+use App\Models\RegistrationAttachment;
+use App\Models\SpreadsheetConnection;
+use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
 use App\Services\CloudStorage\SystemStorageConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,35 +19,55 @@ class CloudStorageSettingController extends Controller
 
     /**
      * Tampilkan halaman pengaturan Penyimpanan Cloud Google Drive sistem.
+     * Hanya melakukan pembacaan konfigurasi & status lokal (tanpa mutasi ke Drive).
      */
     public function index()
     {
         $settings = $this->storageService->getSettings();
         $registrationRef = $this->storageService->getRegistrationFolderReference();
-        $driver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
-        $isDriverConfigured = $driver->isConfigured();
-        $spreadsheetConn = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $spreadsheetConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
+            ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
 
-        $missingEnvKeys = [];
-        if (!config('services.google_drive.enabled')) {
-            $missingEnvKeys[] = 'GOOGLE_DRIVE_ENABLED';
-        }
-        if (empty(config('services.google_drive.client_id'))) {
-            $missingEnvKeys[] = 'GOOGLE_DRIVE_CLIENT_ID';
-        }
-        if (empty(config('services.google_drive.client_secret'))) {
-            $missingEnvKeys[] = 'GOOGLE_DRIVE_CLIENT_SECRET';
-        }
-        if (empty(config('services.google_drive.refresh_token'))) {
-            $missingEnvKeys[] = 'GOOGLE_DRIVE_REFRESH_TOKEN';
+        $gasDriver = new GoogleAppsScriptDriveDriver();
+        $isGasConfigured = $gasDriver->isConfigured();
+        $activeProvider = $settings->getActiveProvider();
+
+        // 1. Metrik Status Antrean Unggah & Sinkronisasi Dokumen
+        $queueStats = [
+            'pending'  => RegistrationAttachment::where('drive_sync_status', RegistrationAttachment::STATUS_PENDING)->count(),
+            'retrying' => RegistrationAttachment::where('drive_sync_status', RegistrationAttachment::STATUS_RETRYING)->count(),
+            'failed'   => RegistrationAttachment::where('drive_sync_status', RegistrationAttachment::STATUS_FAILED)->count(),
+            'synced'   => RegistrationAttachment::where('drive_sync_status', RegistrationAttachment::STATUS_SYNCED)->count(),
+        ];
+
+        // 2. Pemeriksaan Kesesuaian Folder Induk (UI vs ENV & Spreadsheet Connection)
+        $hasEnvConflict = $settings->hasRootConfigConflict();
+        $hasSpreadsheetMismatch = $settings->hasSpreadsheetFolderMismatch($spreadsheetConn);
+
+        // 3. Status Endpoint Google Apps Script (Masked untuk Keamanan)
+        $appsScriptEndpoint = $spreadsheetConn?->apps_script_endpoint_url
+            ?: config('services.google_apps_script.endpoint_url');
+        $hasSharedSecret = !empty(config('services.google_apps_script.shared_secret'));
+
+        $maskedEndpoint = null;
+        if (!empty($appsScriptEndpoint)) {
+            $parsed = parse_url($appsScriptEndpoint);
+            $path = $parsed['path'] ?? '';
+            $maskedEndpoint = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . substr($path, 0, 16) . '.../exec';
         }
 
         return view('admin.cloud-storage.index', [
-            'settings'           => $settings,
-            'registrationRef'    => $registrationRef,
-            'isDriverConfigured' => $isDriverConfigured,
-            'spreadsheetConn'    => $spreadsheetConn,
-            'missingEnvKeys'     => $missingEnvKeys,
+            'settings'                => $settings,
+            'registrationRef'         => $registrationRef,
+            'spreadsheetConn'         => $spreadsheetConn,
+            'activeProvider'          => $activeProvider,
+            'isGasConfigured'         => $isGasConfigured,
+            'queueStats'              => $queueStats,
+            'hasEnvConflict'          => $hasEnvConflict,
+            'hasSpreadsheetMismatch'  => $hasSpreadsheetMismatch,
+            'appsScriptEndpoint'      => $appsScriptEndpoint,
+            'maskedEndpoint'          => $maskedEndpoint,
+            'hasSharedSecret'         => $hasSharedSecret,
         ]);
     }
 
@@ -55,6 +78,7 @@ class CloudStorageSettingController extends Controller
     {
         $validated = $request->validate([
             'name'                          => 'required|string|max:255',
+            'provider'                      => 'nullable|string|in:apps_script_drive,local_fallback',
             'canonical_parent_folder_url'   => 'nullable|string|max:500',
             'system_assets_folder_url'      => 'nullable|string|max:500',
             'document_templates_folder_url' => 'nullable|string|max:500',
@@ -64,15 +88,18 @@ class CloudStorageSettingController extends Controller
         ]);
 
         $validated['is_enabled'] = $request->has('is_enabled');
+        if (empty($validated['provider'])) {
+            $validated['provider'] = CloudStorageSetting::PROVIDER_APPS_SCRIPT_DRIVE;
+        }
 
         $this->storageService->updateSettings($validated, Auth::user());
 
         return redirect()->route('admin.cloud-storage.index')
-            ->with('success', 'Konfigurasi folder induk penyimpanan cloud Google Drive berhasil disimpan.');
+            ->with('success', 'Konfigurasi penyimpanan cloud Google Drive berhasil disimpan.');
     }
 
     /**
-     * Uji koneksi dan izin akses folder Google Drive.
+     * Uji koneksi dan izin akses folder Google Drive secara read-only via drive_ping.
      */
     public function test(Request $request)
     {

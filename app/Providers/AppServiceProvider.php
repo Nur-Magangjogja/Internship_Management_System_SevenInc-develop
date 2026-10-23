@@ -29,31 +29,27 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \App\Services\CloudStorage\CloudStorageProviderInterface::class,
             function ($app) {
-                $configuredProvider = config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', 'apps_script_drive');
-
-                if ($configuredProvider === 'apps_script_drive') {
-                    $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
-                    if ($gasDriver->isConfigured()) {
-                        return $gasDriver;
-                    }
-                } elseif ($configuredProvider === 'google_drive') {
-                    $googleDriver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
-                    if ($googleDriver->isConfigured()) {
-                        return $googleDriver;
-                    }
+                $dbProvider = null;
+                try {
+                    $dbProvider = \App\Models\CloudStorageSetting::value('provider');
+                } catch (\Throwable) {
+                    // Ignore if database is not yet migrated or unreachable
                 }
 
-                // Fallback hierarchy across transition
+                $configuredProvider = $dbProvider
+                    ?: (config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', 'apps_script_drive'));
+
+                if ($configuredProvider === 'local_fallback') {
+                    return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
+                }
+
+                // Default & Primary Provider (GAS-06): Google Apps Script Drive Gateway
                 $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
                 if ($gasDriver->isConfigured()) {
                     return $gasDriver;
                 }
 
-                $googleDriver = new \App\Services\CloudStorage\GoogleDriveStorageDriver();
-                if ($googleDriver->isConfigured()) {
-                    return $googleDriver;
-                }
-
+                // Fallback aman ke local storage driver untuk lingkungan CI/testing
                 return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
             }
         );

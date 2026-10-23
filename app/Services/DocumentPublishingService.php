@@ -9,7 +9,6 @@ use App\Models\InternshipRegistration;
 use App\Models\SpreadsheetConnection;
 use App\Models\User;
 use App\Services\CloudStorage\CloudStorageInterface;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\CloudStorage\SystemStorageConfigService;
 use App\Services\MailMerge\VariableResolverService;
@@ -364,7 +363,7 @@ class DocumentPublishingService
         try {
             $uploadResult = $this->cloudDriver->uploadFile($fullPath, $remoteFolder, $doc->file_name);
 
-            $isRealDrive = $this->cloudDriver->getDriverName() === 'google_drive'
+            $isRealDrive = in_array($this->cloudDriver->getDriverName(), ['google_drive', 'google_apps_script_drive', 'apps_script_drive'], true)
                 && !str_starts_with($uploadResult['file_id'], 'local_sim_')
                 && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 

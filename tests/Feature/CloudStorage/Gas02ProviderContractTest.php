@@ -11,7 +11,6 @@ use App\Services\CloudStorage\CloudStorageInterface;
 use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Services\CloudStorage\CloudSyncManager;
 use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\DocumentPublishingService;
 use App\Services\SystemAssetService;
@@ -53,7 +52,6 @@ class Gas02ProviderContractTest extends TestCase
     public function test_all_drivers_implement_cloud_storage_provider_interface(): void
     {
         $this->assertInstanceOf(CloudStorageProviderInterface::class, new LocalStorageFallbackDriver());
-        $this->assertInstanceOf(CloudStorageProviderInterface::class, new GoogleDriveStorageDriver());
         $this->assertInstanceOf(CloudStorageProviderInterface::class, new GoogleAppsScriptDriveDriver());
     }
 

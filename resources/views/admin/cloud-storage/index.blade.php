@@ -6,19 +6,20 @@
     <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h1 class="text-2xl font-bold text-slate-800">Pusat Pengaturan Penyimpanan Cloud</h1>
-            <p class="text-sm text-slate-500">Konfigurasi struktur folder Google Drive untuk seluruh aset sistem, template dokumen, dan hasil generate.</p>
+            <p class="text-sm text-slate-500">Konfigurasi penyimpanan Google Drive untuk seluruh aset sistem, template dokumen, dan berkas pendaftaran melalui Google Apps Script Gateway.</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
             <form action="{{ route('admin.cloud-storage.test') }}" method="POST">
                 @csrf
                 <button
                     type="submit"
                     class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                    title="Uji koneksi read-only via drive_ping tanpa memutasi data Google Drive"
                 >
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
-                    Uji Koneksi & Izin Folder
+                    Uji Koneksi &amp; Izin Folder (Read-Only)
                 </button>
             </form>
 
@@ -31,7 +32,19 @@
                     <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
                     <path d="M10 12h4"/>
                 </svg>
-                Buka Perpustakaan Aset
+                Perpustakaan Aset
+            </a>
+
+            <a
+                href="{{ route('admin.spreadsheet-connections.index') }}"
+                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+                <svg class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                Integrasi Spreadsheet
             </a>
         </div>
     </div>
@@ -50,14 +63,14 @@
 
     <!-- Status Cards Grid -->
     <div class="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Status Koneksi -->
+        <!-- 1. Status Koneksi -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Status Koneksi</span>
             <div class="mt-2 flex items-center gap-2">
-                @if ($settings->connection_status === 'connected')
+                @if ($settings->connection_status === 'connected' && $settings->is_verified)
                     <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
                         <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-                        Terhubung
+                        Terhubung &amp; Terverifikasi
                     </span>
                 @elseif ($settings->connection_status === 'error')
                     <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-800">
@@ -72,46 +85,70 @@
                 @endif
             </div>
             <p class="mt-2 text-xs text-slate-500">
-                Uji terakhir: {{ $settings->last_tested_at ? $settings->last_tested_at->diffForHumans() : '-' }}
+                Uji terakhir: {{ $settings->last_tested_at ? $settings->last_tested_at->diffForHumans() : 'Belum pernah' }}
             </p>
         </div>
 
-        <!-- Provider Storage -->
+        <!-- 2. Provider Aktif -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Provider Utama</span>
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Provider Aktif</span>
             <div class="mt-2 flex items-center gap-2">
                 <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                 </svg>
-                <p class="text-base font-bold text-slate-800 uppercase">Google Drive</p>
+                <p class="text-sm font-bold text-slate-800">
+                    @if ($activeProvider === 'apps_script_drive')
+                        Apps Script Drive
+                    @else
+                        Local Fallback
+                    @endif
+                </p>
             </div>
             <p class="mt-2 text-xs {{ $settings->connection_status === 'connected' ? 'text-emerald-600 font-semibold' : 'text-slate-500' }}">
-                @if (!empty($isDriverConfigured))
-                    ✓ Direct OAuth2 API
-                @elseif ($settings->connection_status === 'connected')
-                    ✓ Terhubung via Apps Script
+                @if ($activeProvider === 'apps_script_drive')
+                    ✓ Utama (Google Drive via Apps Script)
                 @else
-                    Mode Apps Script Gateway
+                    Simulasi Lokal
                 @endif
             </p>
         </div>
 
-        <!-- Uji Sukses Terakhir -->
+        <!-- 3. Status Antrean & Sinkronisasi -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Uji Sukses Terakhir</span>
-            <p class="mt-2 text-base font-bold text-slate-800">
-                {{ $settings->last_successful_test_at ? $settings->last_successful_test_at->format('d M Y H:i') : 'Belum pernah' }}
-            </p>
-            <p class="mt-2 text-xs text-slate-500">Izin baca/tulis terverifikasi</p>
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Antrean Dokumen</span>
+            <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div class="rounded bg-slate-50 p-1.5">
+                    <span class="text-slate-500">Antrean:</span>
+                    <span class="font-bold text-amber-600 ml-1">{{ $queueStats['pending'] }}</span>
+                </div>
+                <div class="rounded bg-slate-50 p-1.5">
+                    <span class="text-slate-500">Retry:</span>
+                    <span class="font-bold text-indigo-600 ml-1">{{ $queueStats['retrying'] }}</span>
+                </div>
+                <div class="rounded bg-slate-50 p-1.5">
+                    <span class="text-slate-500">Gagal:</span>
+                    <span class="font-bold text-rose-600 ml-1">{{ $queueStats['failed'] }}</span>
+                </div>
+                <div class="rounded bg-slate-50 p-1.5">
+                    <span class="text-slate-500">Sukses:</span>
+                    <span class="font-bold text-emerald-600 ml-1">{{ $queueStats['synced'] }}</span>
+                </div>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">Dipulihkan otomatis di background</p>
         </div>
 
-        <!-- Sinkronisasi Terakhir -->
+        <!-- 4. Kapasitas & Gateway -->
         <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sinkronisasi Aset Terakhir</span>
-            <p class="mt-2 text-base font-bold text-slate-800">
-                {{ $settings->last_synced_at ? $settings->last_synced_at->format('d M Y H:i') : 'Menunggu aksi' }}
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Kapasitas &amp; Gateway</span>
+            <div class="mt-2 flex items-center gap-1.5">
+                <span class="h-2 w-2 rounded-full {{ $isGasConfigured ? 'bg-emerald-500' : 'bg-amber-500' }}"></span>
+                <span class="text-xs font-bold text-slate-800">
+                    {{ $isGasConfigured ? 'Gateway Terpasang' : 'Gateway Belum Lengkap' }}
+                </span>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">
+                Penyimpanan Google Drive Pribadi/Workspace via Apps Script Web App
             </p>
-            <p class="mt-2 text-xs text-slate-500">Status sinkronisasi berkas aktif</p>
         </div>
     </div>
 
@@ -125,14 +162,43 @@
                     <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 <div>
-                    <h3 class="font-bold text-rose-950">Catatan Diagnosa Koneksi</h3>
-                    <p class="mt-1 text-xs text-rose-800">{{ $settings->last_error_summary }}</p>
+                    <h3 class="font-bold text-rose-950">Catatan Diagnosa Terakhir</h3>
+                    <p class="mt-1 text-xs text-rose-800 font-mono">{{ $settings->last_error_summary }}</p>
                 </div>
             </div>
         </div>
     @endif
 
-    @if ($settings->connection_status === 'connected')
+    <!-- Conflict & Mismatch Warnings -->
+    @if ($hasEnvConflict)
+        <div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+            <div class="flex items-start gap-2.5">
+                <span class="text-base">⚠️</span>
+                <div>
+                    <h4 class="font-bold text-amber-950">Perbedaan Konfigurasi Root (UI ≠ ENV)</h4>
+                    <p class="text-xs text-amber-800 mt-0.5">
+                        Folder ID di database (<code>{{ $settings->canonical_parent_folder_id }}</code>) berbeda dengan variabel di <code>.env</code>. Sistem memprioritaskan konfigurasi database UI secara konsisten.
+                    </p>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($hasSpreadsheetMismatch)
+        <div class="mb-6 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 shadow-sm">
+            <div class="flex items-start gap-2.5">
+                <span class="text-base">ℹ️</span>
+                <div>
+                    <h4 class="font-bold text-sky-950">Struktur Terpisah: Folder Pendaftaran Pemagang</h4>
+                    <p class="text-xs text-sky-800 mt-0.5">
+                        Folder registrasi di integrasi Spreadsheet (<code>{{ $registrationRef['folder_id'] }}</code>) terpisah dari Folder Induk Sistem (<code>{{ $settings->canonical_parent_folder_id }}</code>). Berkas pendaftaran pemagang tetap tersimpan aman di jalurnya masing-masing.
+                    </p>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($settings->connection_status === 'connected' && $settings->is_verified)
         <!-- Status Terhubung Sukses -->
         <div class="mb-8 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-sm">
             <div class="flex items-start gap-3">
@@ -144,81 +210,31 @@
                 <div class="space-y-1 text-sm text-emerald-950">
                     <h3 class="font-bold text-base">Google Drive Berhasil Terhubung</h3>
                     <p class="text-xs text-emerald-800">
-                        Folder Google Drive sistem (<strong>{{ $settings->canonical_parent_folder_id }}</strong>) telah berhasil terverifikasi aktif melalui <strong>Google Apps Script Gateway</strong>. Anda tidak perlu membuka Google Cloud Console lagi. Seluruh sinkronisasi data dan penyimpanan berkas berjalan secara otomatis.
+                        Folder Google Drive sistem (<strong>{{ $settings->canonical_parent_folder_id }}</strong>) telah berhasil diverifikasi secara aktif melalui <strong>Google Apps Script Gateway</strong>. Anda tidak perlu membuat project di Google Cloud Console. Seluruh sinkronisasi data dan penyimpanan dokumen pemagang, MOU, serta aset berjalan aman.
                     </p>
                 </div>
             </div>
         </div>
     @else
-        <!-- Komparasi Integrasi: Spreadsheet vs Penyimpanan Cloud jika belum terhubung -->
-        <div class="mb-8 rounded-xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm">
+        <!-- Panduan Integrasi Apps Script Drive -->
+        <div class="mb-8 rounded-xl border border-blue-200 bg-blue-50/70 p-5 shadow-sm">
             <div class="flex items-start gap-3">
-                <div class="rounded-lg bg-amber-100 p-2 text-amber-700">
+                <div class="rounded-lg bg-blue-100 p-2 text-blue-700">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
                     </svg>
                 </div>
-                <div class="space-y-3 flex-1 text-sm text-slate-800">
-                    <div>
-                        <h3 class="font-bold text-amber-950 text-base">Panduan Integrasi: Google Drive &amp; Apps Script</h3>
-                        <p class="text-xs text-amber-800 mt-0.5">Sistem memverifikasi folder Google Drive secara langsung melalui Google Apps Script Gateway.</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div class="rounded-lg border border-emerald-200 bg-white p-3.5 shadow-xs">
-                            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span class="font-bold text-slate-800">1. Integrasi Spreadsheet (Sheets Gateway)</span>
-                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                    {{ ($spreadsheetConn?->connection_status === 'connected') ? 'Terhubung' : 'Dikonfigurasi' }}
-                                </span>
-                            </div>
-                            <ul class="mt-2 space-y-1.5 text-slate-600">
-                                <li><strong>Media:</strong> Google Apps Script Web App (<code>/exec</code>)</li>
-                                <li><strong>Fungsi:</strong> Sinkronisasi data pendaftaran pemagang &amp; guru/dosen ke Google Sheets.</li>
-                                <li><strong>Status:</strong> Link Apps Script Anda sudah aktif di menu <em>Integrasi Spreadsheet</em>.</li>
-                            </ul>
-                        </div>
-
-                        <div class="rounded-lg border {{ !empty($isDriverConfigured) ? 'border-emerald-200 bg-white' : 'border-amber-300 bg-white' }} p-3.5 shadow-xs">
-                            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span class="font-bold text-slate-800">2. Penyimpanan Folder Google Drive</span>
-                                <span class="inline-flex items-center gap-1 rounded-full {{ $settings->connection_status === 'connected' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }} px-2 py-0.5 text-[11px] font-bold">
-                                    <span class="h-1.5 w-1.5 rounded-full {{ $settings->connection_status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500' }}"></span>
-                                    {{ $settings->connection_status === 'connected' ? 'Terverifikasi Aktif' : 'Menunggu Uji Koneksi' }}
-                                </span>
-                            </div>
-                            <ul class="mt-2 space-y-1.5 text-slate-600">
-                                <li><strong>Folder ID:</strong> <code>{{ $settings->canonical_parent_folder_id ?: 'Belum disetel' }}</code></li>
-                                <li><strong>Jalur Akses:</strong> Terhubung otomatis menggunakan izin Google Apps Script yang sudah Anda deploy.</li>
-                            </ul>
-                        </div>
-                    </div>
+                <div class="space-y-2 text-sm text-blue-950">
+                    <h3 class="font-bold text-base">Arsitektur Penyimpanan Google Apps Script Drive</h3>
+                    <p class="text-xs text-blue-800">
+                        Penyimpanan cloud SERTIF menggunakan <strong>Google Apps Script Drive Gateway</strong>. Anda cukup memasukkan URL/ID Folder Induk Google Drive di bawah dan menekan tombol <strong>Uji Koneksi &amp; Izin Folder</strong>. Tidak diperlukan OAuth2 Client ID, Client Secret, atau Refresh Token.
+                    </p>
                 </div>
             </div>
         </div>
     @endif
-
-    <!-- Information Box: Separasi Root -->
-    <div class="mb-8 rounded-xl border border-sky-200 bg-sky-50/60 p-5 text-sm text-sky-950 shadow-sm">
-        <div class="flex items-start gap-3">
-            <svg class="h-5 w-5 shrink-0 text-sky-600 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
-            <div class="space-y-1">
-                <p class="font-bold">Ketentuan & Arsitektur Penyimpanan Terpusat:</p>
-                <ul class="list-disc pl-4 space-y-1 text-xs text-sky-900">
-                    <li><strong>Pemisahan Root:</strong> Root folder aset sistem terpisah dari folder pendaftaran pemagang.</li>
-                    <li><strong>Dukungan Input:</strong> Anda dapat memasukkan URL folder Google Drive lengkap (misal: <code>https://drive.google.com/drive/folders/1a2B3c...</code>) atau ID foldernya secara langsung. Sistem akan mengekstrak ID secara otomatis.</li>
-                    <li><strong>Keamanan Kredensial:</strong> Client ID, Client Secret, dan Refresh Token tersimpan aman di environment server dan tidak diekspos melalui form ini.</li>
-                </ul>
-            </div>
-        </div>
-    </div>
 
     <!-- Main Configuration Form -->
     <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -226,10 +242,26 @@
             @csrf
             @method('PUT')
 
-            <!-- Nama Konfigurasi & Status Aktif -->
+            <!-- Provider Selection & General Info -->
             <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Nama Konfigurasi Penyimpanan</label>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Provider Penyimpanan</label>
+                    <select
+                        name="provider"
+                        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                        <option value="apps_script_drive" {{ $activeProvider === 'apps_script_drive' ? 'selected' : '' }}>
+                            Google Apps Script Drive (Utama &amp; Produksi)
+                        </option>
+                        <option value="local_fallback" {{ $activeProvider === 'local_fallback' ? 'selected' : '' }}>
+                            Local Storage Fallback (Simulasi Pengujian)
+                        </option>
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Pilihan utama: Apps Script Drive tanpa kredensial OAuth2.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Nama Konfigurasi</label>
                     <input
                         type="text"
                         name="name"
@@ -257,15 +289,15 @@
 
             <hr class="border-slate-100" />
 
-            <!-- Single Canonical Parent Root Configuration (Addendum Final V4) -->
+            <!-- Single Canonical Parent Root Configuration -->
             <div>
                 <h2 class="text-base font-bold text-slate-800">Folder Induk Tunggal Google Drive (Kanonikal)</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Satu-satunya folder induk yang diverifikasi. Seluruh folder anak (REGISTRASI, SYSTEM-ASSETS, GENERATED-DOCUMENTS) otomatis dibuat secara malas (lazy-create) oleh sistem.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Satu-satunya folder induk yang diverifikasi. Seluruh folder berkas (REGISTRASI, SYSTEM-ASSETS, GENERATED-DOCUMENTS) otomatis dibuat secara otomatis (*lazy-create*) di bawah folder ini.</p>
             </div>
 
             <div class="space-y-2 rounded-xl border-2 {{ $settings->is_verified ? 'border-emerald-300 bg-emerald-50/20' : ($settings->canonical_parent_folder_id ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 bg-slate-50/50') }} p-4">
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Folder Induk Google Drive SERTIF (URL atau Folder ID) <span class="text-rose-500">*</span>
+                    Folder Induk Google Drive (URL atau Folder ID) <span class="text-rose-500">*</span>
                 </label>
                 <div class="flex flex-col gap-2 sm:flex-row">
                     <input
@@ -295,16 +327,10 @@
                             <span class="h-2 w-2 rounded-full bg-amber-500"></span>
                             Menunggu Uji Verifikasi
                         </span>
-                        <span class="text-slate-500">Klik tombol "Uji Koneksi & Izin Folder" di atas untuk memvalidasi hak tulis akun Google Drive.</span>
+                        <span class="text-slate-500">Klik tombol "Uji Koneksi &amp; Izin Folder (Read-Only)" di atas untuk memvalidasi akses.</span>
                     @else
                         <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
                             Belum Dikonfigurasi
-                        </span>
-                    @endif
-
-                    @if ($settings->hasRootConfigConflict())
-                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 font-bold text-amber-900">
-                            ⚠️ ROOT_CONFIG_CONFLICT: UI ≠ ENV
                         </span>
                     @endif
                 </div>
@@ -316,7 +342,24 @@
                 @endif
             </div>
 
-            <!-- Legacy Folders (Read-Only / Migrasi) -->
+            <!-- Detail Gateway Google Apps Script -->
+            <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs space-y-2">
+                <h3 class="font-bold text-slate-800 uppercase tracking-wider">Konfigurasi Gateway Apps Script</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                        <span class="text-slate-500 block">Web App Endpoint URL:</span>
+                        <span class="font-mono text-slate-800 break-all font-semibold">{{ $maskedEndpoint ?: 'Belum diatur' }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block">Status Kredensial HMAC:</span>
+                        <span class="font-semibold {{ $hasSharedSecret ? 'text-emerald-700' : 'text-amber-700' }}">
+                            {{ $hasSharedSecret ? '✓ Terpasang di Server (HMAC-SHA256 Aktif)' : '⚠️ Belum dikonfigurasi di .env' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legacy Folders (Read-Only / Transisi) -->
             <details class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-600">
                 <summary class="cursor-pointer font-bold uppercase tracking-wider text-slate-700 hover:text-slate-900">
                     Konfigurasi Folder Legacy / Transisi (Opsional / Read-Only)
@@ -344,7 +387,7 @@
 
             <hr class="border-slate-100" />
 
-            <!-- 5. Referensi Folder Registrasi Pemagang (Read Only) -->
+            <!-- Referensi Folder Registrasi Pemagang (Read Only) -->
             <div class="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
                 <div class="flex items-start justify-between">
                     <div>

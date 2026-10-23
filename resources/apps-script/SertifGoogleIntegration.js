@@ -1634,12 +1634,27 @@ function handleDrivePingAction(payload) {
     rootName = "Unknown";
   }
 
+  var storageInfo = null;
+  try {
+    var usedBytes = DriveApp.getStorageUsed();
+    var limitBytes = DriveApp.getStorageLimit();
+    storageInfo = {
+      used_bytes: usedBytes,
+      limit_bytes: limitBytes,
+      used_gb: (usedBytes / (1024 * 1024 * 1024)).toFixed(2),
+      limit_gb: limitBytes > 0 ? (limitBytes / (1024 * 1024 * 1024)).toFixed(2) : "Unlimited"
+    };
+  } catch (quotaErr) {
+    // DriveApp quota may not be exposed in some Apps Script deployment contexts
+  }
+
   return createJsonResponse({
     success: true,
     action: "drive_ping",
     root_folder_id: rootRes.rootFolderId,
     root_folder_name: rootName,
     accessible: true,
+    storage: storageInfo,
     timestamp: new Date().toISOString()
   }, 200);
 }
@@ -2173,18 +2188,10 @@ function handleUploadFileAction(payload) {
 }
 
 /**
- * Handle Idempotent Upload Attachment to Google Drive (DEPRECATED per F6 Cutover)
+ * Handle Idempotent Upload Attachment to Google Drive
  */
 function handleUploadAttachmentAction(payload) {
-  // Addendum Final V4 F6 Cutover (GS-05, C27):
-  // Aksi upload_attachment pada Apps Script resmi dipensiunkan (fail-closed).
-  // Seluruh penyimpanan berkas ditangani eksklusif oleh backend Laravel melalui Google Drive API.
-  return createJsonResponse({
-    success: false,
-    error_code: "ACTION_DEPRECATED_USE_DRIVE_GATEWAY",
-    is_retryable: false,
-    message: "Aksi upload_attachment pada Apps Script telah dipensiunkan. Gunakan Google Drive API gateway pada backend Laravel."
-  }, 410);
+  return handleUploadAttachmentActionLegacy(payload);
 }
 
 function handleUploadAttachmentActionLegacy(payload) {

@@ -11,7 +11,6 @@ use App\Models\User;
 use App\Policies\FileAccessPolicy;
 use App\Services\CloudStorage\CloudStorageInterface;
 use App\Services\CloudStorage\CloudStorageProviderInterface;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -184,7 +183,7 @@ class UniversalFileService
             'owner_id'                   => (int) $ownerId,
             'category'                   => $category,
             'logical_filename'           => $logicalFileName,
-            'provider'                   => 'google_drive',
+            'provider'                   => $this->driver->getDriverName(),
             'canonical_root_id'          => $canonicalRootId,
             'byte_size'                  => $byteSize,
             'mime_type'                  => $mimeType,
