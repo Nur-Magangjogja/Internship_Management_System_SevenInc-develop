@@ -949,7 +949,7 @@ class SpreadsheetDiscoveryService
     /**
      * Retrieve all available form fields from active/published FormSchemas and Registry.
      */
-    protected function getAvailableFormFields(?FormSchema $targetSchema = null): array
+    public function getAvailableFormFields(?FormSchema $targetSchema = null): array
     {
         $fields = [];
         $seenKeys = [];
@@ -957,9 +957,9 @@ class SpreadsheetDiscoveryService
         $schema = $targetSchema ?? FormSchema::where('status', FormSchema::STATUS_PUBLISHED)->latest('published_at')->first() ?? FormSchema::latest('id')->first();
 
         if ($schema) {
-            $schemaFields = $schema->fields()->get();
+            $schemaFields = $schema->fields()->where('is_active', true)->where('is_archived', false)->get();
             foreach ($schemaFields as $f) {
-                if (!isset($seenKeys[$f->field_key])) {
+                if (!isset($seenKeys[$f->field_key]) && !in_array($f->field_key, ['birth_place', 'current_city'], true)) {
                     $fields[] = [
                         'field_key'   => $f->field_key,
                         'label'       => $f->label,
@@ -972,7 +972,7 @@ class SpreadsheetDiscoveryService
             }
         }
 
-        $registries = FormFieldRegistry::all();
+        $registries = FormFieldRegistry::whereNotIn('field_key', ['birth_place', 'current_city'])->get();
         foreach ($registries as $reg) {
             if (!isset($seenKeys[$reg->field_key])) {
                 $fields[] = [

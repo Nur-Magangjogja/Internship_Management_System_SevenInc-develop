@@ -272,7 +272,7 @@
 
       <div class="info-list">
         <div><span class="info-label">Nama</span>: {{ $assessment->intern->fullname ?? '-' }}</div>
-        <div><span class="info-label">NIM/NIS</span>: {{ $assessment->intern->student_id ?? $assessment->intern->nim_nis ?? '-' }}</div>
+        <div><span class="info-label">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</span>: {{ $assessment->intern->student_id ?? $assessment->intern->nim_nis ?? '-' }}</div>
         <div><span class="info-label">Program Studi</span>: {{ $assessment->intern->study_program ?? '-' }}</div>
         <div><span class="info-label">Divisi/Keahlian</span>: {{ $assessment->intern->internship_interest ?? '-' }}</div>
       </div>

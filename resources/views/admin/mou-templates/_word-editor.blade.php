@@ -104,11 +104,11 @@
     }
     .mou-studio-sticky-header {
         position: sticky;
-        top: 0;
-        z-index: 30;
+        top: 4rem;
+        z-index: 20;
         background: #ffffff;
         border-bottom: 1px solid #cbd5e1;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
         flex-shrink: 0;
     }
     .mou-ribbon-tab-btn {

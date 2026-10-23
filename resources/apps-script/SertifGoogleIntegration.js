@@ -19,44 +19,42 @@
  *    Penyimpanan berkas fisik dikelola langsung oleh backend Laravel melalui Google Drive API.
  */
 
-// Canonical 40-Column Contract Definition for Registration Tab 2026 (Order 1 to 40)
+// Canonical 38-Column Contract Definition for Registration Tab 2026 (Order 1 to 38)
 var REG_CONTRACT_2026 = [
   { order: 1, dbKey: "Timestamp", test: function(h) { return /timestamp|waktu/i.test(h); } },
   { order: 2, dbKey: "Nama Lengkap", aliases: ["Nama"], test: function(h) { return (/nama\s+lengkap/i.test(h) || /^nama$/i.test(h)) && !/pembimbing/i.test(h); } },
-  { order: 3, dbKey: "NIM (Nomor Induk Mahasiswa)", aliases: ["NIM", "NISN"], test: function(h) { return /nim|nisn/i.test(h); } },
+  { order: 3, dbKey: "NIM/NIS", aliases: ["Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional", "Nomor Induk Mahasiswa", "Nomor Induk Siswa Nasional", "NIM (Nomor Induk Mahasiswa)", "NIM", "NISN", "NIS", "NIM / NIS"], test: function(h) { return /nim|nis|nomor\s*induk/i.test(h); } },
   { order: 4, dbKey: "Program Studi", aliases: ["Jurusan", "Prodi"], test: function(h) { return /program\s+studi|jurusan|prodi/i.test(h); } },
   { order: 5, dbKey: "Email", test: function(h) { return /email/i.test(h); } },
   { order: 6, dbKey: "Jenis Kelamin", aliases: ["Gender"], test: function(h) { return /jenis\s+kelamin|gender/i.test(h); } },
   { order: 7, dbKey: "No. HP Aktif yang bisa dihubungi dan chat WA", aliases: ["No. HP", "Nomor WhatsApp", "No WA", "No. HP Aktif"], test: function(h) { return (/no.*hp|whats?app/i.test(h) && !/dosen|guru|pembimbing/i.test(h)); } },
   { order: 8, dbKey: "Asal Sekolah/Kampus", aliases: ["Sekolah/Kampus", "Asal Kampus", "Institusi"], test: function(h) { return /sekolah.*kampus|asal.*sekolah|institusi/i.test(h); } },
-  { order: 9, dbKey: "Nama Kota/Daerah tempat tinggal Anda saat ini", aliases: ["Kota Tinggal", "Domisili", "Kota Asal"], test: function(h) { return /kota.*tinggal|kota.*daerah|kota\s+asal|domisili/i.test(h); } },
-  { order: 10, dbKey: "Mengapa Anda ingin Magang/PKL disini?", aliases: ["Alasan Magang", "Alasan PKL", "Mengapa Anda ingin Magang/PKL disini"], test: function(h) { return /mengapa.*ingin|alasan.*magang|alasan.*pkl/i.test(h); } },
-  { order: 11, dbKey: "Jenis Magang apa yang Anda pilih?", aliases: ["Jenis Magang", "Jalur Magang", "Jenis Magang apa yang Anda pilih"], test: function(h) { return /jenis\s+magang|jalur.*magang/i.test(h); } },
-  { order: 12, dbKey: "Status Anda saat ini", aliases: ["Status Saat Ini", "Status"], test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
-  { order: 13, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", aliases: ["Kesiapan WFO", "Siap WFO", "Apakah Anda siap dengan Sistem Magang WFO"], test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
-  { order: 14, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", aliases: ["No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).", "Kontak Dosen/Guru Pembimbing", "Pembimbing PKL/Magang"], test: function(h) { return (/dosen|guru\s+pembimbing/i.test(h) || (/pembimbing/i.test(h) && /jabatan/i.test(h))) && !/^nama\s+pembimbing/i.test(h) && !/(no|wa).*pembimbing$/i.test(h); } },
-  { order: 15, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", aliases: ["Hari magang adalah Senin - Sabtu. Jam magangnya dijadwalkan shifting bergantian antara : Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB). Apakah Anda sanggup?", "Kesanggupan Jadwal", "Kesiapan Shifting", "Kesanggupan jadwal Senin–Sabtu dan shifting"], test: function(h) { return /senin.*sabtu|shifting|kesiapan\s+shift|apakah\s+anda\s+sanggup/i.test(h); } },
-  { order: 16, dbKey: "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?", legacyKey: "Apakah ada laptop sendiri", aliases: ["Punya Laptop Sendiri", "Apakah ada laptop sendiri", "Apakah Anda ada alat kerja sendiri (LAPTOP)"], test: function(h) { return /laptop/i.test(h) && !/peralatan/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h); } },
-  { order: 17, dbKey: "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?", legacyKey: "Jika YA, alat apa yang dimiliki/dibawa", aliases: ["Alat yang dibawa", "Jika YA, alat apa yang dimiliki/dibawa", "Jika YA, alat apa yang Anda miliki"], test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)/i.test(h) && !/peralatan/i.test(h); } },
-  { order: 18, dbKey: "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)", legacyKey: "Kapan berencana mulai Magang/PKL", aliases: ["Rencana Mulai Magang", "Tanggal Mulai", "Kapan berencana mulai Magang/PKL", "Kapan Anda berencana mulai Magang/PKL"], test: function(h) { return /kapan.*mulai|rencana.*mulai|mulai.*magang/i.test(h); } },
-  { order: 19, dbKey: "Berapa lama Anda akan Magang/PKL?", legacyKey: "Berapa lama akan Magang/PKL", aliases: ["Durasi Magang", "Lama Magang", "Berapa lama akan Magang/PKL", "Berapa lama Anda akan Magang/PKL"], test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
-  { order: 20, dbKey: "Anda tahu info magang ini dari mana?", legacyKey: "Sumber info magang", aliases: ["Sumber Informasi", "Sumber info magang", "Anda tahu info magang ini dari mana"], test: function(h) { return /tahu.*info|sumber.*info|dapat.*info/i.test(h); } },
-  { order: 21, dbKey: "Sosial Media (Instagram) yang dimiliki", legacyKey: "Instagram", aliases: ["Akun Instagram", "Instagram", "Sosial Media (Instagram)"], test: function(h) { return /instagram|sosial\s+media/i.test(h); } },
-  { order: 22, dbKey: "Apakah anda membutuhkan info kost/kontrakan deket kantor?", legacyKey: "Butuh info kost/kontrakan", aliases: ["Info Kost", "Butuh Kost", "Butuh info kost/kontrakan", "Apakah anda membutuhkan info kost/kontrakan"], test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
-  { order: 23, dbKey: "Program Magang/PKL apa yang Anda minati?", legacyKey: "Program Magang/PKL yang diminati", aliases: ["Bidang Minat", "Divisi Magang", "Program Magang/PKL yang diminati", "Program Magang/PKL apa yang Anda minati"], test: function(h) { return /minat|bidang.*magang/i.test(h); } },
-  { order: 24, dbKey: "Tempat Lahir", aliases: ["Tempat Kelahiran", "Birth Place"], test: function(h) { return /tempat\s+lahir/i.test(h); } },
-  { order: 25, dbKey: "Tanggal Lahir", aliases: ["Tgl Lahir", "Birth Date"], test: function(h) { return /tanggal\s+lahir|tgl\s+lahir|birth\s*date/i.test(h); } },
-  { order: 26, dbKey: "Agama", aliases: ["Religion"], test: function(h) { return /^agama$|^religion$/i.test(h); } },
-  { order: 27, dbKey: "Software Desain", aliases: ["Design Software", "Software Desain yang Dikuasai"], test: function(h) { return /software\s+desain/i.test(h); } },
-  { order: 28, dbKey: "Software Video", aliases: ["Video Editing Software", "Software Video yang Dikuasai"], test: function(h) { return /software\s+video/i.test(h); } },
-  { order: 29, dbKey: "Bahasa Pemrograman", aliases: ["Programming Languages", "Bahasa Koding"], test: function(h) { return /bahasa\s+pemrograman|programming/i.test(h); } },
-  { order: 30, dbKey: "Digital Marketing", aliases: ["Keahlian Digital Marketing"], test: function(h) { return /digital\s+marketing/i.test(h); } },
-  { order: 31, dbKey: "Peralatan (Laptop, Kamera, Tripod, dll)", aliases: ["Peralatan", "Alat Milik Sendiri", "Peralatan (Laptop, Kamera, Tripod dll)"], test: function(h) { return /^peralatan/i.test(h) || /peralatan.*laptop/i.test(h); } },
-  { order: 32, dbKey: "Nama Pembimbing", aliases: ["Nama Guru Pembimbing", "Nama Dosen Pembimbing"], test: function(h) { return /^nama\s+pembimbing/i.test(h); } },
-  { order: 33, dbKey: "No. WA Pembimbing", aliases: ["Nomor WA Pembimbing", "No HP Pembimbing"], test: function(h) { return /(no|wa).*pembimbing/i.test(h) && !/dosen|guru|jabatan/i.test(h); } },
-  { order: 34, dbKey: "Kegiatan Lain Selain Magang", aliases: ["Aktivitas Lain", "Kegiatan Lain"], test: function(h) { return /kegiatan\s+lain/i.test(h); } },
+  { order: 9, dbKey: "Mengapa Anda ingin Magang/PKL disini?", aliases: ["Alasan Magang", "Alasan PKL", "Mengapa Anda ingin Magang/PKL disini"], test: function(h) { return /mengapa.*ingin|alasan.*magang|alasan.*pkl/i.test(h); } },
+  { order: 10, dbKey: "Jenis Magang apa yang Anda pilih?", aliases: ["Jenis Magang", "Jalur Magang", "Jenis Magang apa yang Anda pilih"], test: function(h) { return /jenis\s+magang|jalur.*magang/i.test(h); } },
+  { order: 11, dbKey: "Status Anda saat ini", aliases: ["Status Saat Ini", "Status"], test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
+  { order: 12, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", aliases: ["Kesiapan WFO", "Siap WFO", "Apakah Anda siap dengan Sistem Magang WFO"], test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
+  { order: 13, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", aliases: ["No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).", "Kontak Dosen/Guru Pembimbing", "Pembimbing PKL/Magang"], test: function(h) { return (/dosen|guru\s+pembimbing/i.test(h) || (/pembimbing/i.test(h) && /jabatan/i.test(h))) && !/^nama\s+pembimbing/i.test(h) && !/(no|wa).*pembimbing$/i.test(h); } },
+  { order: 14, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", aliases: ["Hari magang adalah Senin - Sabtu. Jam magangnya dijadwalkan shifting bergantian antara : Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB). Apakah Anda sanggup?", "Kesanggupan Jadwal", "Kesiapan Shifting", "Kesanggupan jadwal Senin–Sabtu dan shifting"], test: function(h) { return /senin.*sabtu|shifting|kesiapan\s+shift|apakah\s+anda\s+sanggup/i.test(h); } },
+  { order: 15, dbKey: "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?", legacyKey: "Apakah ada laptop sendiri", aliases: ["Punya Laptop Sendiri", "Apakah ada laptop sendiri", "Apakah Anda ada alat kerja sendiri (LAPTOP)"], test: function(h) { return /laptop/i.test(h) && !/peralatan/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h); } },
+  { order: 16, dbKey: "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?", legacyKey: "Jika YA, alat apa yang dimiliki/dibawa", aliases: ["Alat yang dibawa", "Jika YA, alat apa yang dimiliki/dibawa", "Jika YA, alat apa yang Anda miliki"], test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)/i.test(h) && !/peralatan/i.test(h); } },
+  { order: 17, dbKey: "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)", legacyKey: "Kapan berencana mulai Magang/PKL", aliases: ["Rencana Mulai Magang", "Tanggal Mulai", "Kapan berencana mulai Magang/PKL", "Kapan Anda berencana mulai Magang/PKL"], test: function(h) { return /kapan.*mulai|rencana.*mulai|mulai.*magang/i.test(h); } },
+  { order: 18, dbKey: "Berapa lama Anda akan Magang/PKL?", legacyKey: "Berapa lama akan Magang/PKL", aliases: ["Durasi Magang", "Lama Magang", "Berapa lama akan Magang/PKL", "Berapa lama Anda akan Magang/PKL"], test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
+  { order: 19, dbKey: "Anda tahu info magang ini dari mana?", legacyKey: "Sumber info magang", aliases: ["Sumber Informasi", "Sumber info magang", "Anda tahu info magang ini dari mana"], test: function(h) { return /tahu.*info|sumber.*info|dapat.*info/i.test(h); } },
+  { order: 20, dbKey: "Sosial Media (Instagram) yang dimiliki", legacyKey: "Instagram", aliases: ["Akun Instagram", "Instagram", "Sosial Media (Instagram)"], test: function(h) { return /instagram|sosial\s+media/i.test(h); } },
+  { order: 21, dbKey: "Apakah anda membutuhkan info kost/kontrakan deket kantor?", legacyKey: "Butuh info kost/kontrakan", aliases: ["Info Kost", "Butuh Kost", "Butuh info kost/kontrakan", "Apakah anda membutuhkan info kost/kontrakan"], test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
+  { order: 22, dbKey: "Program Magang/PKL apa yang Anda minati?", legacyKey: "Program Magang/PKL yang diminati", aliases: ["Bidang Minat", "Divisi Magang", "Program Magang/PKL yang diminati", "Program Magang/PKL apa yang Anda minati"], test: function(h) { return /minat|bidang.*magang/i.test(h); } },
+  { order: 23, dbKey: "Tanggal Lahir", aliases: ["Tgl Lahir", "Birth Date"], test: function(h) { return /tanggal\s+lahir|tgl\s+lahir|birth\s*date/i.test(h); } },
+  { order: 24, dbKey: "Agama", aliases: ["Religion"], test: function(h) { return /^agama$|^religion$/i.test(h); } },
+  { order: 25, dbKey: "Software Desain", aliases: ["Design Software", "Software Desain yang Dikuasai"], test: function(h) { return /software\s+desain/i.test(h); } },
+  { order: 26, dbKey: "Software Video", aliases: ["Video Editing Software", "Software Video yang Dikuasai"], test: function(h) { return /software\s+video/i.test(h); } },
+  { order: 27, dbKey: "Bahasa Pemrograman", aliases: ["Programming Languages", "Bahasa Koding"], test: function(h) { return /bahasa\s+pemrograman|programming/i.test(h); } },
+  { order: 28, dbKey: "Digital Marketing", aliases: ["Keahlian Digital Marketing"], test: function(h) { return /digital\s+marketing/i.test(h); } },
+  { order: 29, dbKey: "Peralatan (Laptop, Kamera, Tripod, dll)", aliases: ["Peralatan", "Alat Milik Sendiri", "Peralatan (Laptop, Kamera, Tripod dll)"], test: function(h) { return /^peralatan/i.test(h) || /peralatan.*laptop/i.test(h); } },
+  { order: 30, dbKey: "Nama Pembimbing", aliases: ["Nama Guru Pembimbing", "Nama Dosen Pembimbing"], test: function(h) { return /^nama\s+pembimbing/i.test(h); } },
+  { order: 31, dbKey: "No. WA Pembimbing", aliases: ["Nomor WA Pembimbing", "No HP Pembimbing"], test: function(h) { return /(no|wa).*pembimbing/i.test(h) && !/dosen|guru|jabatan/i.test(h); } },
+  { order: 32, dbKey: "Kegiatan Lain Selain Magang", aliases: ["Aktivitas Lain", "Kegiatan Lain"], test: function(h) { return /kegiatan\s+lain/i.test(h); } },
   { 
-    order: 35, 
+    order: 33, 
     dbKey: "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", 
     legacyKey: "Upload PDF CV + scan KTM/KTP + portofolio max 10MB",
     aliases: [
@@ -67,11 +65,11 @@ var REG_CONTRACT_2026 = [
     ],
     test: function(h) { return /silakan\s+upload|upload.*pdf|attachment|cv.*ktm.*portofolio/i.test(h); } 
   },
-  { order: 36, dbKey: "KET", aliases: ["Keterangan", "Status Approval"], test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
-  { order: 37, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
-  { order: 38, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
-  { order: 39, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
-  { order: 40, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
+  { order: 34, dbKey: "KET", aliases: ["Keterangan", "Status Approval"], test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
+  { order: 35, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
+  { order: 36, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
+  { order: 37, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
+  { order: 38, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
 ];
 
 // Canonical 21-Column Contract Definition for Follow Up Tab (Order 1 to 21)
@@ -305,7 +303,7 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDyna
   var isRegistration = (connectionKey === "registration");
   var expectedCols = isRegistration ? 40 : 21;
 
-  if (isRegistration && allowDynamicRegistrationCols === true) {
+  if (isRegistration && (allowDynamicRegistrationCols === true || (actualHeaders && actualHeaders.length >= 40))) {
     if (!actualHeaders || actualHeaders.length < 40) {
       return {
         error: "Jumlah kolom spreadsheet pendaftaran minimal 40 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",

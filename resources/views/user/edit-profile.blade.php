@@ -311,7 +311,7 @@
 
         <div class="grid grid-cols-12 gap-x-6 gap-y-6">
           <div class="col-span-12 md:col-span-6 lg:col-span-4">
-            <label class="{{ $label }}">NIM / Student ID</label>
+            <label class="{{ $label }}">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</label>
             <input type="text" name="student_id" value="{{ old('student_id', $intern->student_id) }}"
                    class="{{ $input }} @error('student_id') border-red-500 focus:ring-red-500 @enderror" required>
             @error('student_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror

@@ -494,7 +494,7 @@ class SpreadsheetColumnDeletionEligibilityService
         }
 
         // Core registration fields pattern
-        if (preg_match('/^(timestamp|nama lengkap|email|jenis kelamin|nim|nisn|program studi|no\.?\s*hp)/i', $clean)) {
+        if (preg_match('/^(timestamp|nama lengkap|email|jenis kelamin|nim|nisn|nomor\s*induk|program studi|no\.?\s*hp)/i', $clean)) {
             return true;
         }
 

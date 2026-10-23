@@ -169,15 +169,20 @@ class NonDestructiveSchemaMappingTest extends TestCase
         $this->assertNotNull($mapping);
         $this->assertSame('active', $mapping->mapping_status);
 
-        // Deactivate/archive the field
+        // 1. Deactivate the field (is_active = false)
+        // Per requirement: deactivating a field must NOT delete the column or mark it unmapped;
+        // the column remains active in the spreadsheet ("dibiarkan saja").
         $field->update(['is_active' => false]);
-
-        // Reconcile again
         $this->mappingService->syncSpreadsheetSchemaWithFormSchema(2026, $draft);
-
-        // Assert record still exists in DB, but with mapping_status = unmapped
         $mapping->refresh();
-        $this->assertSame('unmapped', $mapping->mapping_status);
+        $this->assertSame('active', $mapping->mapping_status, 'Deactivated custom field column remains active in spreadsheet.');
+
+        // 2. Archive the field (is_archived = true)
+        // Archiving the field marks it unmapped without hard-deleting the record.
+        $field->update(['is_archived' => true]);
+        $this->mappingService->syncSpreadsheetSchemaWithFormSchema(2026, $draft);
+        $mapping->refresh();
+        $this->assertSame('unmapped', $mapping->mapping_status, 'Archived custom field mapping is marked unmapped.');
     }
 
     /**

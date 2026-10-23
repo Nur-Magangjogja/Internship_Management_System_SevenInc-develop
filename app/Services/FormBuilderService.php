@@ -32,10 +32,10 @@ class FormBuilderService
     ];
 
     public const CORE_FIELD_KEYS = [
-        'fullname', 'student_id', 'born_date', 'birth_place', 'religion', 'institution_name', 'faculty',
-        'study_program', 'current_city', 'gender', 'phone_number', 'email',
+        'fullname', 'student_id', 'born_date', 'religion', 'institution_name', 'faculty',
+        'study_program', 'gender', 'phone_number', 'email',
         'internship_interest', 'start_date', 'end_date', 'internship_type',
-        'internship_arrangement', 'current_status', 'wfo_readiness',
+        'current_status', 'wfo_readiness',
         'schedule_shift_readiness', 'has_laptop', 'planned_duration',
         'cv_ktp_portofolio_pdf', 'profile_photo', 'cv', 'identity', 'portfolio',
         'cover_letter', 'proposal', 'supporting_document', 'design_software',
@@ -837,8 +837,9 @@ class FormBuilderService
                 'published_by' => $publisher?->id,
             ]);
 
-            // Daftarkan seluruh field aktif ke FormFieldRegistry dan kunci identitasnya
-            foreach ($activeFields as $field) {
+            // Daftarkan seluruh field (aktif maupun nonaktif yang tidak diarsipkan) ke FormFieldRegistry dan kunci identitasnya
+            $allDraftFields = $lockedDraft->fields()->where('is_archived', false)->get();
+            foreach ($allDraftFields as $field) {
                 $registry = FormFieldRegistry::where('field_key', $field->field_key)->first();
                 if (!$registry) {
                     FormFieldRegistry::create([

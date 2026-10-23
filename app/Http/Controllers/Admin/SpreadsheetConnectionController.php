@@ -55,21 +55,76 @@ class SpreadsheetConnectionController extends Controller
         $recentSnapshots = $spreadsheetConnection->discoverySnapshots()->limit(5)->get();
         $recentProposals = $spreadsheetConnection->mappingProposals()->with(['items', 'formSchema'])->limit(5)->get();
         $outboxEvents = $spreadsheetConnection->outboxEvents()->limit(10)->get();
-        $formFields = \App\Models\FormField::query()
-            ->select('id', 'field_key', 'label', 'label as field_label', 'field_type', 'is_active', 'is_archived')
-            ->orderBy('sort_order')
+
+        $activeProposal = $recentProposals->first();
+        $targetSchema = $activeProposal?->formSchema;
+        if (!$targetSchema && $activeProposal?->year) {
+            $targetSchema = \App\Models\FormSchema::where('year', $activeProposal->year)
+                ->where('status', \App\Models\FormSchema::STATUS_PUBLISHED)
+                ->latest('published_at')
+                ->first();
+        }
+
+        $discoveryService = app(\App\Services\SpreadsheetDiscoveryService::class);
+        $availableFields = $discoveryService->getAvailableFormFields($targetSchema);
+
+        // Jika ada item proposal yang telah terhubung ke field_key tertentu, pastikan tetap ada dalam opsi pilihan
+        if ($activeProposal) {
+            $existingKeys = collect($availableFields)->pluck('field_key')->all();
+            foreach ($activeProposal->items as $item) {
+                if ($item->field_key && !in_array($item->field_key, $existingKeys, true)) {
+                    $availableFields[] = [
+                        'field_key'   => $item->field_key,
+                        'label'       => $item->suggested_label ?: $item->field_key,
+                        'field_type'  => $item->suggested_field_type ?: 'text',
+                        'is_system'   => false,
+                        'group_name'  => 'Tersimpan',
+                    ];
+                    $existingKeys[] = $item->field_key;
+                }
+            }
+        }
+
+        $formFields = collect($availableFields)->map(function ($f) {
+            return (object) [
+                'id'          => $f['field_key'],
+                'field_key'   => $f['field_key'],
+                'label'       => $f['label'] ?? $f['field_key'],
+                'field_label' => $f['label'] ?? $f['field_key'],
+                'field_type'  => $f['field_type'] ?? 'text',
+                'is_system'   => $f['is_system'] ?? false,
+                'group_name'  => $f['group_name'] ?? 'Lainnya',
+            ];
+        })->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->where('is_active', true)
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+            ->orderBy('year', 'desc')
             ->get();
 
+        if ($activeSchemaVersions->isEmpty()) {
+            $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+                ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+                ->orderBy('year', 'desc')
+                ->orderBy('id', 'desc')
+                ->take(1)
+                ->get();
+        }
+
+        $totalSchemaCount = $spreadsheetConnection->schemaVersions()->count();
+
         return view('admin.spreadsheet-connections.show', [
-            'connection'      => $spreadsheetConnection,
-            'schemaVersions'  => $spreadsheetConnection->schemaVersions,
-            'rowSyncs'        => $rowSyncs,
-            'stats'           => $stats,
-            'tabProfiles'     => $tabProfiles,
-            'recentSnapshots' => $recentSnapshots,
-            'recentProposals' => $recentProposals,
-            'outboxEvents'    => $outboxEvents,
-            'formFields'      => $formFields,
+            'connection'       => $spreadsheetConnection,
+            'schemaVersions'   => $activeSchemaVersions,
+            'totalSchemaCount' => $totalSchemaCount,
+            'rowSyncs'         => $rowSyncs,
+            'stats'            => $stats,
+            'tabProfiles'      => $tabProfiles,
+            'recentSnapshots'  => $recentSnapshots,
+            'recentProposals'  => $recentProposals,
+            'outboxEvents'     => $outboxEvents,
+            'formFields'       => $formFields,
         ]);
     }
 
@@ -325,6 +380,26 @@ class SpreadsheetConnectionController extends Controller
                 ->back()
                 ->with('error', 'Gagal menonaktifkan versi schema: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Tampilkan riwayat log dan seluruh versi schema (aktif maupun nonaktif) untuk koneksi spreadsheet.
+     */
+    public function schemaHistory(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        $spreadsheetConnection->refresh()->load(['createdByUser', 'updatedByUser']);
+
+        $allSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc'), 'createdByUser', 'updatedByUser'])
+            ->orderBy('year', 'desc')
+            ->orderBy('is_active', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return view('admin.spreadsheet-connections.schema-history', [
+            'connection'     => $spreadsheetConnection,
+            'schemaVersions' => $allSchemaVersions,
+        ]);
     }
 
     /**

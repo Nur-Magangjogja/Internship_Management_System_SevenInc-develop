@@ -1,17 +1,44 @@
 @extends('layouts.dashboard', ['title' => 'Buat Template Dokumen Baru'])
 
 @section('content')
-<div class="px-6 py-8 max-w-4xl mx-auto">
+<div class="px-6 py-6 max-w-4xl mx-auto">
     <!-- Header -->
-    <div class="mb-8">
-        <a href="{{ route('admin.document-templates.index') }}" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition mb-2">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Kembali ke Daftar Template
-        </a>
-        <h1 class="text-2xl font-bold text-slate-800">Buat Template Dokumen & Sertifikat Baru</h1>
-        <p class="text-sm text-slate-500">Pilih jenis dokumen resmi dan tentukan draf awal yang akan dipersonalisasi di editor visual.</p>
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+        <div class="flex items-center gap-3 min-w-0">
+            <a
+                href="{{ route('admin.document-templates.index') }}"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition"
+                title="Kembali ke Daftar Template"
+            >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </a>
+            <div class="min-w-0">
+                <h1 class="text-base font-bold text-slate-800">Buat Template Dokumen &amp; Sertifikat Baru</h1>
+                <p class="text-[11px] text-slate-400 mt-0.5">Pilih jenis dokumen resmi dan tentukan draf awal untuk dipersonalisasi di editor</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+            <a
+                href="{{ route('admin.document-templates.index') }}"
+                class="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+            >
+                Batal
+            </a>
+            <button
+                type="submit"
+                form="createDocumentTemplateForm"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition"
+            >
+                <span>Lanjutkan ke Editor Visual</span>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                    <polyline points="12 5 19 12 12 19"/>
+                </svg>
+            </button>
+        </div>
     </div>
 
     <!-- Error Summary -->
@@ -26,7 +53,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('admin.document-templates.store') }}" class="space-y-6">
+    <form id="createDocumentTemplateForm" method="POST" action="{{ route('admin.document-templates.store') }}" class="space-y-6">
         @csrf
 
         <!-- Card Jenis Dokumen -->

@@ -228,7 +228,7 @@
 
       <div class="info-list">
         <div><span class="info-label">Nama</span>: {{ $participantName ?? '-' }}</div>
-        <div><span class="info-label">NIM/NIS</span>: {{ $participantId ?? '-' }}</div>
+        <div><span class="info-label">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</span>: {{ $participantId ?? '-' }}</div>
         <div><span class="info-label">Program Studi</span>: {{ $participantMajor ?? '-' }}</div>
         <div><span class="info-label">Asal Sekolah/Kampus</span>: {{ $participantInstitute ?? '-' }}</div>
       </div>
