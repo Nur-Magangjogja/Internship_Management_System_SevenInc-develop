@@ -712,5 +712,25 @@ class InternshipRegistration extends Model
     {
         return $this->hasMany(\App\Models\ExternalRegistrationMapping::class, 'ims_registration_id');
     }
+
+    /**
+     * Label presentasi sumber pendaftar (Revisi Terminologi V1.3):
+     * - Pendaftar Terintegrasi (umum / waiting / pending)
+     * - Pemagang Terintegrasi (accepted / active)
+     * - Alumni Terintegrasi (completed)
+     * - Pendaftaran Langsung SERTIF (regular web)
+     */
+    public function getProvenanceLabelAttribute(): string
+    {
+        if ($this->is_outsider || $this->registration_provenance === 'historical_import' || $this->registration_provenance === 'reconciled_sheet') {
+            return match ($this->internship_status) {
+                self::STATUS_COMPLETED => 'Alumni Terintegrasi',
+                self::STATUS_ACCEPTED, self::STATUS_ACTIVE => 'Pemagang Terintegrasi',
+                default => 'Pendaftar Terintegrasi',
+            };
+        }
+
+        return 'Pendaftaran Langsung SERTIF';
+    }
 }
 

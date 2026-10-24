@@ -56,6 +56,17 @@ return new class extends Migration
                 $table->unique(['batch_id', 'row_index'], 'uniq_batch_row');
             });
         }
+
+        // Tautkan foreign key pada internship_registrations jika kolom historical_import_batch_id sudah ada
+        if (Schema::hasTable('internship_registrations') && Schema::hasColumn('internship_registrations', 'historical_import_batch_id')) {
+            try {
+                Schema::table('internship_registrations', function (Blueprint $table) {
+                    $table->foreign('historical_import_batch_id')->references('id')->on('historical_import_batches')->nullOnDelete();
+                });
+            } catch (\Throwable) {
+                // Abaikan jika foreign key sudah pernah terpasang
+            }
+        }
     }
 
     /**

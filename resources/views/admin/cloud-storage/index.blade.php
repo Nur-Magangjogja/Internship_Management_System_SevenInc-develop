@@ -5,7 +5,7 @@
     <!-- Header -->
     <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Pusat Pengaturan Penyimpanan Cloud</h1>
+            <h1 class="text-2xl font-bold text-slate-800">Pusat Pengaturan Penyimpanan Asset</h1>
             <p class="text-sm text-slate-500">Konfigurasi penyimpanan Google Drive untuk seluruh aset sistem, template dokumen, dan berkas pendaftaran melalui Google Apps Script Gateway.</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">

@@ -329,7 +329,7 @@
             <div class="border-t border-slate-200 bg-slate-50/75 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div class="text-xs text-slate-500">
                     <p class="font-medium text-slate-700">&bull; Data akan divalidasi ke tabel Staging terlebih dahulu.</p>
-                    <p class="text-[11px]">Anda dapat meninjau duplikasi peristiwa, kontak outsider, dan status sebelum melakukan commit permanen ke database.</p>
+                    <p class="text-[11px]">Anda dapat meninjau duplikasi peristiwa, kontak pendaftar terintegrasi, dan status sebelum melakukan commit permanen ke database.</p>
                 </div>
                 <div>
                     <button

@@ -327,6 +327,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+    Route::get('/dashboard/accepted-interns-chart', [DashboardController::class, 'acceptedInternsChart'])->name('dashboard.accepted-interns-chart');
     Route::get('/', fn () => redirect()->route('admin.dashboard.index'))->name('home');
 
     // Manajemen Brand

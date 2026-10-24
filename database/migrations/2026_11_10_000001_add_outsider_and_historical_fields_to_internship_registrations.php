@@ -37,8 +37,10 @@ return new class extends Migration
                 $table->string('registration_provenance', 50)->default('direct_web')->after('is_outsider');
             }
             if (!Schema::hasColumn('internship_registrations', 'historical_import_batch_id')) {
-                $table->foreignId('historical_import_batch_id')->nullable()->after('registration_provenance')
-                    ->constrained('historical_import_batches')->nullOnDelete();
+                $table->unsignedBigInteger('historical_import_batch_id')->nullable()->after('registration_provenance');
+                if (Schema::hasTable('historical_import_batches')) {
+                    $table->foreign('historical_import_batch_id')->references('id')->on('historical_import_batches')->nullOnDelete();
+                }
             }
             if (!Schema::hasColumn('internship_registrations', 'event_fingerprint')) {
                 $table->string('event_fingerprint', 64)->nullable()->after('historical_import_batch_id')->index();
