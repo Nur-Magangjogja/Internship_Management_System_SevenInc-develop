@@ -6,6 +6,7 @@
     // Mode: 'pendaftar' (waiting/accepted/rejected) atau 'pemagang' (active/completed/exited)
     $mode  = $mode  ?? 'all';
     $scope = $scope ?? 'all';
+    $years = $years ?? [(int) date('Y'), (int) date('Y') - 1];
 
     // Filter tabs berdasarkan mode
     $filterTabs = match($mode) {
@@ -413,15 +414,53 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            {{-- Baris 2: Filter Follow-Up Full Kanan Kiri --}}
-            <div class="w-full">
-                <div class="relative w-full">
-                    <select id="followup-filter" class="w-full rounded-[9px] border border-[#DCE7E1] bg-white px-3.5 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
-                        <option value="">Semua Status Follow-Up</option>
-                        @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
-                            <option value="{{ $fKey }}">{{ $fLabel }}</option>
-                        @endforeach
-                    </select>
+            {{-- Baris 2: Filter Tambahan (Tahun & Follow-Up) --}}
+            <div class="flex flex-col sm:flex-row items-center gap-3 w-full">
+                {{-- Filter Tahun --}}
+                <div class="relative w-full sm:w-48 lg:w-52 shrink-0">
+                    <div class="relative flex items-center">
+                        <select id="year-filter" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="">Semua Tahun</option>
+                            @foreach($years as $yr)
+                                <option value="{{ $yr }}" {{ (string)request('year', '') === (string)$yr ? 'selected' : '' }}>Tahun {{ $yr }}</option>
+                            @endforeach
+                        </select>
+                        <div class="pointer-events-none absolute left-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                        </div>
+                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Filter Follow-Up --}}
+                <div class="relative w-full flex-1">
+                    <div class="relative flex items-center">
+                        <select id="followup-filter" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="">Semua Status Follow-Up</option>
+                            @foreach(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS as $fKey => $fLabel)
+                                <option value="{{ $fKey }}">{{ $fLabel }}</option>
+                            @endforeach
+                        </select>
+                        <div class="pointer-events-none absolute left-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                            </svg>
+                        </div>
+                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2567,12 +2606,18 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadPage(page = 1) {
         const searchQuery = (searchInput?.value || '').trim();
         const followupVal = (document.getElementById('followup-filter')?.value || '').trim();
+        const yearVal     = (document.getElementById('year-filter')?.value || '').trim();
         const params = new URLSearchParams({
             scope:    activeFilter,
             mode:     MODE,
             page:     String(page),
             per_page: '10',
         });
+
+        // Filter tahun
+        if (yearVal) {
+            params.set('year', yearVal);
+        }
 
         // Filter status follow-up
         if (followupVal) {
@@ -2623,6 +2668,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.reloadInterns   = (p) => loadPage(p || window.__CURRENT_PAGE || 1);
 
     // ── Init ─────────────────────────────────────────────────────────────────────
+    const yearFilterEl = document.getElementById('year-filter');
+    if (yearFilterEl) {
+        const initialYear = new URLSearchParams(location.search).get('year');
+        if (initialYear) yearFilterEl.value = initialYear;
+        yearFilterEl.addEventListener('change', () => loadPage(1));
+    }
+
     const followupFilterEl = document.getElementById('followup-filter');
     if (followupFilterEl) {
         followupFilterEl.addEventListener('change', () => loadPage(1));

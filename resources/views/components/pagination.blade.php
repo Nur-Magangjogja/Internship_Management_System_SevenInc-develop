@@ -37,7 +37,7 @@
                     <span class="font-semibold text-gray-800">{{ $paginator->lastItem() ?? 0 }}</span>
                     dari total
                     <span class="font-semibold text-gray-800">{{ $paginator->total() }}</span>
-                    data
+                    {{ $itemLabel ?? 'data' }}
                 </p>
             </div>
 

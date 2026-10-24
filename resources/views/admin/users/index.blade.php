@@ -490,10 +490,13 @@
         </div>
 
         {{-- Pagination --}}
-        <div class="flex items-center justify-between border-t border-[#DCE7E1] px-5 py-4 text-[12.5px] text-[#4B5F5A]">
-            <span>Menampilkan <strong class="text-[#1B3A34]">{{ $users->firstItem() ?? 0 }}</strong>–<strong class="text-[#1B3A34]">{{ $users->lastItem() ?? 0 }}</strong> dari <strong class="text-[#1B3A34]">{{ $users->total() }}</strong> pengguna</span>
-            <div>{{ $users->appends(request()->query())->links() }}</div>
-        </div>
+        @if ($users->hasPages())
+            {{ $users->appends(request()->query())->links('components.pagination', ['itemLabel' => 'pengguna']) }}
+        @elseif ($users->total() > 0)
+            <div class="flex items-center justify-between border-t border-[#DCE7E1] px-5 py-4 text-[12.5px] text-[#4B5F5A]">
+                <span>Menampilkan <strong class="text-[#1B3A34]">{{ $users->firstItem() ?? 0 }}</strong>–<strong class="text-[#1B3A34]">{{ $users->lastItem() ?? 0 }}</strong> dari <strong class="text-[#1B3A34]">{{ $users->total() }}</strong> pengguna</span>
+            </div>
+        @endif
     </div>
 </div>
 

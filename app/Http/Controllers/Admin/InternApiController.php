@@ -232,6 +232,17 @@ class InternApiController extends Controller
             $q->where('followup_status', $req->get('followup_status'));
         }
 
+        // Filter tahun (berdasarkan start_date atau created_at)
+        if ($req->filled('year')) {
+            $year = (int) $req->get('year');
+            if ($year > 0) {
+                $q->where(function ($yq) use ($year) {
+                    $yq->whereYear('start_date', $year)
+                       ->orWhereYear('created_at', $year);
+                });
+            }
+        }
+
         // ========== GLOBAL SEARCH (semua kolom) ==========
         if ($req->filled('q')) {
             $raw    = trim($req->get('q'));

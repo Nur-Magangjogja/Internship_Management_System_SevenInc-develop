@@ -3,63 +3,93 @@
 @section('content')
 <div class="px-6 py-8">
     <!-- Header -->
-    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
+            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                <span>Pengaturan Sistem</span>
+                <span class="text-slate-300">&bull;</span>
+                <span class="text-slate-600">Penyimpanan Cloud</span>
+            </div>
             <h1 class="text-2xl font-bold text-slate-800">Pusat Pengaturan Penyimpanan Asset</h1>
-            <p class="text-sm text-slate-500">Konfigurasi penyimpanan Google Drive untuk seluruh aset sistem, template dokumen, dan berkas pendaftaran melalui Google Apps Script Gateway.</p>
+            <p class="text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">Konfigurasi penyimpanan Google Drive untuk seluruh aset sistem, template dokumen, dan berkas pendaftaran melalui Google Apps Script Gateway.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-            <form action="{{ route('admin.cloud-storage.test') }}" method="POST">
-                @csrf
-                <button
-                    type="submit"
-                    class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                    title="Uji koneksi read-only via drive_ping tanpa memutasi data Google Drive"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    Uji Koneksi &amp; Izin Folder (Read-Only)
-                </button>
-            </form>
 
-            <form action="{{ route('admin.cloud-storage.activate-root') }}" method="POST" onsubmit="return confirm('Otorisasi dan aktifkan folder induk Google Drive ini secara resmi pada Script Properties Google Apps Script Gateway? Peringatan: Seluruh antrean upload yang pending akan dialihkan ke root baru setelah verifikasi.');">
-                @csrf
-                <button
-                    type="submit"
-                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-                    title="Otorisasi target root folder resmi pada Google Apps Script Gateway"
-                >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    Aktifkan Folder Root (Otorisasi)
-                </button>
-            </form>
-
+        <!-- Tautan Navigasi Modul Terkait (Kanan Atas) -->
+        <div class="flex items-center gap-2 shrink-0">
             <a
                 href="{{ route('admin.system-assets.index') }}"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-blue-600 hover:border-slate-300"
+                title="Buka Perpustakaan Aset Sistem"
             >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect width="20" height="5" x="2" y="3" rx="1"/>
                     <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
                     <path d="M10 12h4"/>
                 </svg>
-                Perpustakaan Aset
+                <span>Perpustakaan Aset</span>
             </a>
 
             <a
                 href="{{ route('admin.spreadsheet-connections.index') }}"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-emerald-600 hover:border-slate-300"
+                title="Buka Integrasi Spreadsheet"
             >
                 <svg class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
                     <line x1="3" y1="9" x2="21" y2="9"/>
                     <line x1="9" y1="21" x2="9" y2="9"/>
                 </svg>
-                Integrasi Spreadsheet
+                <span>Integrasi Spreadsheet</span>
             </a>
+        </div>
+    </div>
+
+    <!-- Toolbar Aksi Operasional Drive -->
+    <div class="mb-8 rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Aksi Diagnostik &amp; Otorisasi Drive</h3>
+                    <p class="text-xs text-slate-500">Uji akses folder secara read-only atau otorisasi folder root resmi pada Google Apps Script Gateway.</p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+                <form action="{{ route('admin.cloud-storage.test') }}" method="POST" class="inline-block m-0">
+                    @csrf
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 active:translate-y-px"
+                        title="Uji koneksi read-only via drive_ping tanpa memutasi data Google Drive"
+                    >
+                        <svg class="h-4 w-4 shrink-0 text-emerald-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        <span>Uji Koneksi &amp; Izin Folder</span>
+                        <span class="ml-1 rounded bg-emerald-700/80 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-100">Read-Only</span>
+                    </button>
+                </form>
+
+                <form action="{{ route('admin.cloud-storage.activate-root') }}" method="POST" class="inline-block m-0" onsubmit="return confirm('Otorisasi dan aktifkan folder induk Google Drive ini secara resmi pada Script Properties Google Apps Script Gateway? Peringatan: Seluruh antrean upload yang pending akan dialihkan ke root baru setelah verifikasi.');">
+                    @csrf
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:translate-y-px"
+                        title="Otorisasi target root folder resmi pada Google Apps Script Gateway"
+                    >
+                        <svg class="h-4 w-4 shrink-0 text-indigo-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <span>Aktifkan Folder Root</span>
+                        <span class="ml-1 rounded bg-indigo-700/80 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-indigo-100">Otorisasi</span>
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -398,30 +428,79 @@
             <hr class="border-slate-100" />
 
             <!-- Referensi Folder Registrasi Pemagang (Read Only) -->
-            <div class="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                <div class="flex items-start justify-between">
-                    <div>
-                        <span class="text-xs font-bold uppercase tracking-wider text-amber-900">
-                            Referensi Folder Registrasi Pemagang (Read-Only)
-                        </span>
-                        <p class="mt-1 text-xs text-amber-800">
-                            Dikonfigurasi melalui modul <strong>Integrasi Spreadsheet (Registration Connection)</strong>. Dokumen individu pemagang (LOA, SKL, sertifikat) otomatis tersimpan ke subfolder pemagang di dalam folder ini.
-                        </p>
+            <div class="rounded-xl border border-amber-200/90 bg-amber-50/40 p-5 shadow-sm">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="flex items-start gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-sm font-bold text-slate-800">Referensi Folder Registrasi Pemagang</h3>
+                                <span class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 border border-amber-300/60">Read-Only</span>
+                            </div>
+                            <p class="mt-1 text-xs text-slate-600 max-w-2xl leading-relaxed">
+                                Dikonfigurasi melalui modul <strong class="text-slate-800">Integrasi Spreadsheet (Registration Connection)</strong>. Dokumen individu pemagang (LOA, SKL, sertifikat) otomatis tersimpan ke subfolder pemagang di dalam folder ini.
+                            </p>
+                        </div>
                     </div>
-                    <a
-                        href="{{ route('admin.spreadsheet-connections.index') }}"
-                        class="text-xs font-bold text-amber-700 underline hover:text-amber-900"
-                    >
-                        Ubah di Spreadsheet
-                    </a>
+                    <div class="shrink-0 self-start">
+                        <a
+                            href="{{ route('admin.spreadsheet-connections.index') }}"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100/60 hover:border-amber-400"
+                        >
+                            <svg class="h-3.5 w-3.5 text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            <span>Ubah di Spreadsheet</span>
+                        </a>
+                    </div>
                 </div>
-                <div class="mt-3 flex items-center gap-2">
-                    <span class="rounded bg-amber-100 px-2 py-1 text-xs font-mono font-bold text-amber-900">
-                        {{ $registrationRef['folder_id'] ?: 'Belum diatur' }}
-                    </span>
+
+                <!-- Display ID & Action Box -->
+                <div class="mt-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                    <div x-data="{ copied: false }" class="relative flex-1">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <span class="text-[11px] font-mono font-bold text-slate-400">ID:</span>
+                        </div>
+                        <input
+                            type="text"
+                            readonly
+                            value="{{ $registrationRef['folder_id'] ?: 'Belum diatur' }}"
+                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-24 font-mono text-xs font-semibold text-slate-800 shadow-sm focus:outline-none select-all"
+                        />
+                        @if ($registrationRef['folder_id'])
+                            <button
+                                type="button"
+                                @click="navigator.clipboard.writeText('{{ $registrationRef['folder_id'] }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                class="absolute inset-y-1 right-1 inline-flex items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
+                                title="Salin Folder ID"
+                            >
+                                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                                </svg>
+                                <span x-text="copied ? 'Tersalin!' : 'Salin'">Salin</span>
+                            </button>
+                        @endif
+                    </div>
+
                     @if ($registrationRef['folder_url'])
-                        <a href="{{ $registrationRef['folder_url'] }}" target="_blank" class="text-xs text-blue-600 hover:underline">
-                            Buka di Google Drive &rarr;
+                        <a
+                            href="{{ $registrationRef['folder_url'] }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 hover:border-blue-300 shrink-0"
+                        >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                <polyline points="15 3 21 3 21 9"/>
+                                <line x1="10" y1="14" x2="21" y2="3"/>
+                            </svg>
+                            <span>Buka di Google Drive &rarr;</span>
                         </a>
                     @endif
                 </div>

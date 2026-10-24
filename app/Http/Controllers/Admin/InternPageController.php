@@ -13,7 +13,13 @@ class InternPageController extends Controller
 {
     protected function renderIndex(array $data)
     {
+        $yearsCreated = IR::selectRaw('YEAR(created_at) as y')->distinct()->pluck('y')->filter()->all();
+        $yearsStart   = IR::selectRaw('YEAR(start_date) as y')->distinct()->pluck('y')->filter()->all();
+        $allYears     = array_values(array_unique(array_merge($yearsCreated, $yearsStart, [(int) date('Y')])));
+        rsort($allYears);
+
         $default = [
+            'years'         => $allYears,
             'divisions'     => Division::where('is_active', true)->orderBy('name')->get(),
             'brands'        => Brand::orderBy('name')->get(),
             'cities'        => \App\Models\City::orderBy('name')->get(),
