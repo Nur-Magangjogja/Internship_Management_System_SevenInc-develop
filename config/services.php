@@ -63,7 +63,8 @@ return [
     ],
 
     'cloud_storage' => [
-        'provider' => env('CLOUD_STORAGE_PROVIDER', 'apps_script_drive'),
+        // S17.18G: Remote storage is permanently pinned to Google Apps Script DriveApp gateway.
+        // Runtime dependency on CLOUD_STORAGE_PROVIDER has been removed.
     ],
 
 ];

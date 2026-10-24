@@ -217,6 +217,7 @@ class SystemStorageConfigService
                 if ($response->success && $driveAccessible === true) {
                     $rootName = $response->context['root_folder_name'] ?? 'Google Drive';
                     $successMsg = "Koneksi Google Drive berhasil terhubung dan diverifikasi via Google Apps Script Gateway (Folder: {$rootName}, ID: {$canonicalFolderId}).";
+
                     $setting->update([
                         'connection_status'       => CloudStorageSetting::STATUS_CONNECTED,
                         'is_verified'             => true,
@@ -429,6 +430,72 @@ class SystemStorageConfigService
             'accessible'    => $accessible,
             'inaccessible'  => $inaccessible,
             'details'       => $results,
+        ];
+    }
+
+    /**
+     * Otorisasi dan aktifkan folder induk Google Drive secara resmi pada Google Apps Script Gateway.
+     */
+    public function activateAuthorizedDriveRoot(CloudStorageSetting $setting, ?User $actor = null): array
+    {
+        $canonicalFolderId = $setting->canonical_parent_folder_id ?: CloudStorageSetting::extractDriveFolderId($setting->canonical_parent_folder_url);
+        if (empty($canonicalFolderId)) {
+            return [
+                'success' => false,
+                'message' => 'Folder Induk Google Drive kanonikal belum dikonfigurasi.',
+            ];
+        }
+
+        $spreadsheetConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
+            ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
+
+        if (!$spreadsheetConn || empty($spreadsheetConn->apps_script_endpoint_url)) {
+            return [
+                'success' => false,
+                'message' => 'Koneksi Apps Script Endpoint belum tersedia untuk aktivasi Google Drive.',
+            ];
+        }
+
+        $transport = app(\App\Services\SpreadsheetTransport\GoogleAppsScriptTransport::class);
+
+        // 1. Inspect target (Read-Only)
+        $inspectRes = $transport->inspectTarget($spreadsheetConn, 'drive_folder', $canonicalFolderId, 'drive_root');
+        if (!$inspectRes->isSuccess()) {
+            return [
+                'success' => false,
+                'message' => 'Inspeksi folder Drive gagal: ' . ($inspectRes->getErrorMessage() ?? 'Folder tidak dapat diakses.'),
+            ];
+        }
+
+        // 2. Aktivasi target (Mutasi dengan Persetujuan Admin)
+        $activateRes = $transport->activateAuthorizedTarget($spreadsheetConn, 'drive_folder', $canonicalFolderId, 'drive_root');
+        if (!$activateRes->isSuccess()) {
+            return [
+                'success' => false,
+                'message' => 'Aktivasi root folder Drive gagal: ' . ($activateRes->getErrorMessage() ?? 'Gagal otorisasi.'),
+            ];
+        }
+
+        $setting->update([
+            'is_verified'             => true,
+            'verified_at'             => now(),
+            'connection_status'       => CloudStorageSetting::STATUS_CONNECTED,
+            'last_successful_test_at' => now(),
+            'validation_error'        => null,
+            'last_error_summary'      => null,
+        ]);
+
+        ActivityLogger::log(
+            action: 'cloud_storage_root_activated',
+            description: "Folder root Google Drive ({$canonicalFolderId}) berhasil diotorisasi dan diaktifkan di Script Properties.",
+            subject: $setting,
+            actor: $actor
+        );
+
+        return [
+            'success' => true,
+            'message' => "Folder root Google Drive ({$canonicalFolderId}) berhasil diotorisasi dan diaktifkan.",
+            'details' => $activateRes->getData(),
         ];
     }
 }

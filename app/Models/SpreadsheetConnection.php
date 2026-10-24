@@ -33,6 +33,9 @@ class SpreadsheetConnection extends Model
         'display_name',
         'spreadsheet_url',
         'spreadsheet_id',
+        'active_spreadsheet_id',
+        'previous_spreadsheet_id',
+        'target_generation',
         'apps_script_endpoint_url',
         'drive_folder_url',
         'drive_folder_id',
@@ -47,9 +50,30 @@ class SpreadsheetConnection extends Model
 
     protected $casts = [
         'is_enabled' => 'boolean',
+        'target_generation' => 'integer',
         'last_tested_at' => 'datetime',
         'last_successful_test_at' => 'datetime',
     ];
+
+    /**
+     * Memeriksa apakah spreadsheet_id saat ini sudah aktif dan terotorisasi.
+     */
+    public function isTargetActive(): bool
+    {
+        return !empty($this->active_spreadsheet_id)
+            && !empty($this->spreadsheet_id)
+            && $this->active_spreadsheet_id === $this->spreadsheet_id;
+    }
+
+    /**
+     * Memeriksa apakah spreadsheet_id telah diubah dari target yang aktif.
+     */
+    public function hasTargetChanged(): bool
+    {
+        return !empty($this->active_spreadsheet_id)
+            && !empty($this->spreadsheet_id)
+            && $this->active_spreadsheet_id !== $this->spreadsheet_id;
+    }
 
     protected static function booted(): void
     {

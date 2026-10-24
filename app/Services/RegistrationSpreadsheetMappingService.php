@@ -152,7 +152,7 @@ class RegistrationSpreadsheetMappingService
         $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
             ->where('year', $year)
             ->where('is_active', true)
-            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order')])
+            ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
             ->first();
 
         // Jika tidak ada versi yang aktif, gunakan versi terbaru untuk tahun tersebut (historis)
@@ -160,7 +160,7 @@ class RegistrationSpreadsheetMappingService
             $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
                 ->where('year', $year)
                 ->latest('id')
-                ->with(['columnMappings' => fn($q) => $q->orderBy('column_order')])
+                ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
                 ->first();
         }
 
@@ -193,18 +193,17 @@ class RegistrationSpreadsheetMappingService
         $coreCols = array_slice($canonical, 0, count($canonical) - 5);
         $systemCols = array_slice($canonical, -5);
 
-        $customCols = [];
+        $formCustomCols = [];
+        $existingHeadersLower = array_map(fn($c) => mb_strtolower(trim($c['header'])), array_merge($coreCols, $systemCols));
+
         if ($formSchema) {
-            // Sertakan semua custom field yang tidak diarsipkan (baik berstatus aktif maupun nonaktif)
-            // agar fitur nonaktif pertanyaan tidak menghapus kolom spreadsheet ("dibiarkan saja").
+            // Sertakan semua custom field form builder yang tidak diarsipkan (aktif maupun nonaktif)
             $customFields = $formSchema->fields()
                 ->where('is_system', false)
                 ->where('is_archived', false)
                 ->whereNotIn('field_key', \App\Services\FormBuilderService::CORE_FIELD_KEYS)
                 ->orderBy('sort_order')
                 ->get();
-
-            $existingHeadersLower = array_map(fn($c) => mb_strtolower(trim($c['header'])), array_merge($coreCols, $systemCols));
 
             foreach ($customFields as $cf) {
                 $headerLabel = trim((string) $cf->label);
@@ -213,7 +212,7 @@ class RegistrationSpreadsheetMappingService
                 }
                 $existingHeadersLower[] = mb_strtolower($headerLabel);
 
-                $customCols[] = [
+                $formCustomCols[] = [
                     'header'    => $headerLabel,
                     'entity'    => 'registration_custom_answers',
                     'field'     => $cf->field_key,
@@ -225,11 +224,48 @@ class RegistrationSpreadsheetMappingService
             }
         }
 
-        $mergedColumns = array_merge($coreCols, $customCols, $systemCols);
         $activeSchemaVersion = null;
         $versionCode = $formSchema?->version_code ?: 'v1';
 
         foreach ($connections as $connection) {
+            $existingActiveVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+                ->where('year', $year)
+                ->where('is_active', true)
+                ->first();
+
+            $customCols = $formCustomCols;
+            $existingFieldKeys = array_column($customCols, 'field');
+
+            // Himpun field historis nonaktif yang sudah disetujui untuk koneksi dan tahun ini
+            // agar tidak terlempar ke unmapped saat publikasi skema formulir baru
+            if ($existingActiveVersion) {
+                $historicalApprovedMappings = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $existingActiveVersion->id)
+                    ->where('target_entity', 'registration_custom_answers')
+                    ->where('mapping_status', 'active')
+                    ->get();
+
+                foreach ($historicalApprovedMappings as $ham) {
+                    if (!empty($ham->target_field) && !in_array($ham->target_field, $existingFieldKeys, true)) {
+                        $reg = \App\Models\FormFieldRegistry::where('field_key', $ham->target_field)->first();
+                        // Hanya sertakan jika history_storage_enabled dan spreadsheet_sync_enabled bernilai true
+                        if (!$reg || ($reg->history_storage_enabled && $reg->spreadsheet_sync_enabled)) {
+                            $customCols[] = [
+                                'header'    => $ham->sheet_header,
+                                'entity'    => 'registration_custom_answers',
+                                'field'     => $ham->target_field,
+                                'type'      => $ham->data_type ?: 'string',
+                                'direction' => $ham->direction ?: 'outbound',
+                                'transform' => $ham->transform_key ?: 'custom_field',
+                                'required'  => false,
+                            ];
+                            $existingFieldKeys[] = $ham->target_field;
+                        }
+                    }
+                }
+            }
+
+            $mergedColumns = array_merge($coreCols, $customCols, $systemCols);
+
             $schemaVersion = SpreadsheetSchemaVersion::updateOrCreate(
                 [
                     'spreadsheet_connection_id' => $connection->id,
@@ -367,7 +403,7 @@ class RegistrationSpreadsheetMappingService
             throw new DomainException("Schema Spreadsheet untuk tahun {$year} belum dikonfigurasi.");
         }
 
-        $mappings = $schemaVersion->columnMappings()->orderBy('column_order', 'asc')->get();
+        $mappings = $schemaVersion->columnMappings()->where('mapping_status', 'active')->orderBy('column_order', 'asc')->get();
         if ($mappings->isEmpty()) {
             throw new DomainException("Pemetaan kolom untuk schema versi '{$schemaVersion->schema_version}' tahun {$schemaVersion->year} masih kosong.");
         }
@@ -599,7 +635,7 @@ class RegistrationSpreadsheetMappingService
      */
     public function validateHeaderCompatibility(SpreadsheetSchemaVersion $schema, array $sheetHeaders): array
     {
-        $expectedMappings = $schema->columnMappings()->orderBy('column_order', 'asc')->get();
+        $expectedMappings = $schema->columnMappings()->where('mapping_status', 'active')->orderBy('column_order', 'asc')->get();
         $expectedHeaders = $expectedMappings->pluck('sheet_header')->toArray();
 
         $missingHeaders = [];

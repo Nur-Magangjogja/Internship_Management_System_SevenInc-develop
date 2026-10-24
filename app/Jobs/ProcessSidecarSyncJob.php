@@ -20,12 +20,18 @@ class ProcessSidecarSyncJob implements ShouldQueue
     public int $tries = 1; // Retry logic is managed explicitly in SpreadsheetSyncEngineService
     public int $timeout = 60;
     public string $fenceToken;
+    public ?string $snapshotSpreadsheetId = null;
+    public ?string $snapshotSheetName = null;
 
     public function __construct(
         public int $sidecarSyncId,
-        ?string $fenceToken = null
+        ?string $fenceToken = null,
+        ?string $snapshotSpreadsheetId = null,
+        ?string $snapshotSheetName = null
     ) {
         $this->fenceToken = $fenceToken ?: (string) Str::uuid();
+        $this->snapshotSpreadsheetId = $snapshotSpreadsheetId;
+        $this->snapshotSheetName = $snapshotSheetName;
     }
 
     /**
@@ -41,7 +47,9 @@ class ProcessSidecarSyncJob implements ShouldQueue
 
         $engine->processSidecarSyncRecord(
             $sidecarSync,
-            requestedFenceToken: $this->fenceToken
+            requestedFenceToken: $this->fenceToken,
+            snapshotSpreadsheetId: $this->snapshotSpreadsheetId,
+            snapshotSheetName: $this->snapshotSheetName
         );
     }
 

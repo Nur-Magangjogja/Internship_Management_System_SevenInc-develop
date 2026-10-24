@@ -42,4 +42,19 @@ class SpreadsheetTransportResponse
             context: $context
         );
     }
+
+    public function isSuccess(): bool
+    {
+        return $this->success;
+    }
+
+    public function getData(): array
+    {
+        return $this->context;
+    }
+
+    public function getErrorMessage(): ?string
+    {
+        return $this->errorMessage;
+    }
 }

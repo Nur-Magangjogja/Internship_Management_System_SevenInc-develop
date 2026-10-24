@@ -113,18 +113,20 @@ class SpreadsheetConnectionController extends Controller
         }
 
         $totalSchemaCount = $spreadsheetConnection->schemaVersions()->count();
+        $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
 
         return view('admin.spreadsheet-connections.show', [
-            'connection'       => $spreadsheetConnection,
-            'schemaVersions'   => $activeSchemaVersions,
-            'totalSchemaCount' => $totalSchemaCount,
-            'rowSyncs'         => $rowSyncs,
-            'stats'            => $stats,
-            'tabProfiles'      => $tabProfiles,
-            'recentSnapshots'  => $recentSnapshots,
-            'recentProposals'  => $recentProposals,
-            'outboxEvents'     => $outboxEvents,
-            'formFields'       => $formFields,
+            'connection'          => $spreadsheetConnection,
+            'schemaVersions'      => $activeSchemaVersions,
+            'totalSchemaCount'    => $totalSchemaCount,
+            'rowSyncs'            => $rowSyncs,
+            'stats'               => $stats,
+            'pausedQueuesSummary' => $pausedQueuesSummary,
+            'tabProfiles'         => $tabProfiles,
+            'recentSnapshots'     => $recentSnapshots,
+            'recentProposals'     => $recentProposals,
+            'outboxEvents'        => $outboxEvents,
+            'formFields'          => $formFields,
         ]);
     }
 
@@ -133,8 +135,11 @@ class SpreadsheetConnectionController extends Controller
      */
     public function edit(SpreadsheetConnection $spreadsheetConnection)
     {
+        $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
+
         return view('admin.spreadsheet-connections.edit', [
-            'connection' => $spreadsheetConnection->fresh(),
+            'connection'          => $spreadsheetConnection->fresh(),
+            'pausedQueuesSummary' => $pausedQueuesSummary,
         ]);
     }
 
@@ -213,6 +218,78 @@ class SpreadsheetConnectionController extends Controller
             return redirect()
                 ->back()
                 ->with('error', 'Gagal menjalankan pengujian koneksi: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Otorisasi dan aktifkan target Spreadsheet secara resmi ke Google Apps Script Gateway (dengan persetujuan Admin).
+     */
+    public function activateTarget(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        try {
+            $confirmPromote = $request->boolean('confirm_promote_legacy', false);
+            $result = $this->service->activateAuthorizedTarget($spreadsheetConnection, Auth::user(), $confirmPromote);
+
+            if ($result['success']) {
+                return redirect()
+                    ->back()
+                    ->with('success', $result['message']);
+            }
+
+            return redirect()
+                ->back()
+                ->with('error', $result['message']);
+        } catch (\Throwable $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Gagal mengaktifkan target: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Rekonsiliasi antrean sinkronisasi yang dibekukan karena pergantian target Spreadsheet.
+     */
+    public function reconcileQueue(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\SpreadsheetQueueReconciliationService $reconciliationService
+    ) {
+        $validated = $request->validate([
+            'decision'       => 'required|string|in:rebind_new_target,cancel_sync',
+            'row_sync_id'    => 'nullable|integer|exists:spreadsheet_row_syncs,id',
+            'row_sync_ids'   => 'nullable|array',
+            'row_sync_ids.*' => 'integer|exists:spreadsheet_row_syncs,id',
+        ]);
+
+        try {
+            if (!empty($validated['row_sync_id'])) {
+                $rowSync = SpreadsheetRowSync::findOrFail($validated['row_sync_id']);
+                if ((int) $rowSync->spreadsheet_connection_id !== (int) $spreadsheetConnection->id) {
+                    abort(404);
+                }
+                $result = $reconciliationService->reconcileRowSync($rowSync, $validated['decision'], Auth::user());
+                return redirect()->back()->with('success', $result['message']);
+            }
+
+            // Batch reconcile
+            $rowIds = $validated['row_sync_ids'] ?? [];
+            $stats = $reconciliationService->reconcileBatch(
+                $spreadsheetConnection,
+                $validated['decision'],
+                $rowIds,
+                [],
+                Auth::user()
+            );
+
+            $msg = "Rekonsiliasi antrean selesai. Diproses: {$stats['total_processed']}, " .
+                   "dialihkan: {$stats['rebound_queued']}, deduplikasi remote: {$stats['deduplicated_synced']}, dibatalkan: {$stats['cancelled']}.";
+            if ($stats['failed'] > 0) {
+                $msg .= " (Gagal: {$stats['failed']})";
+            }
+
+            return redirect()->back()->with('success', $msg);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('error', 'Gagal memproses rekonsiliasi: ' . $e->getMessage());
         }
     }
 

@@ -29,27 +29,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \App\Services\CloudStorage\CloudStorageProviderInterface::class,
             function ($app) {
-                $dbProvider = null;
-                try {
-                    $dbProvider = \App\Models\CloudStorageSetting::value('provider');
-                } catch (\Throwable) {
-                    // Ignore if database is not yet migrated or unreachable
-                }
-
-                $configuredProvider = $dbProvider
-                    ?: (config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', 'apps_script_drive'));
-
-                if ($configuredProvider === 'local_fallback') {
-                    return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
-                }
-
-                // Default & Primary Provider (GAS-06): Google Apps Script Drive Gateway
+                // S17.18G: Arsitektur penyimpanan tunggal Google Apps Script DriveApp gateway.
+                // Ketergantungan runtime terhadap CLOUD_STORAGE_PROVIDER telah dihapus total.
                 $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
                 if ($gasDriver->isConfigured()) {
                     return $gasDriver;
                 }
 
-                // Fallback aman ke local storage driver untuk lingkungan CI/testing
+                // Buffer penampung lokal privat sementara saat remote belum terkonfigurasi/offline
                 return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
             }
         );

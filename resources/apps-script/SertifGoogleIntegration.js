@@ -3,20 +3,21 @@
  * SERTIF SHEETS GATEWAY — MASTER PLAN V1 (ADDENDUM FINAL V4)
  * ============================================================================
  * 
- * Panduan Deployment untuk Operator:
+ * Panduan Deployment untuk Operator (V1.3):
  * 1. Buka proyek Google Apps Script EXISTING pada https://script.google.com
  *    (Jangan membuat New Project kecuali diperintahkan khusus).
  * 2. Perbarui seluruh isi file Code.gs dengan kode ini secara utuh.
  * 3. Buka Project Settings (ikon gerigi) -> Script Properties:
- *    - SHARED_API_KEY              : [Kunci rahasia HMAC sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
- *    - REGISTRATION_SPREADSHEET_ID : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU
- *    - FOLLOWUP_SPREADSHEET_ID     : 1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
- *    - SPREADSHEET_ALLOWLIST       : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU,1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
- *    - ATTACHMENTS_ROOT_FOLDER_ID  : [Properti Transisi - pertahankan selama uploader legacy bermigrasi ke Drive API]
+ *    - SHARED_SECRET (atau SHARED_API_KEY) : [Kunci rahasia HMAC sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
+ *    CATATAN PENTING V1.3:
+ *    - ID Spreadsheet Pendaftaran, ID Follow-Up, SPREADSHEET_ALLOWLIST, dan ID Folder Google Drive (ATTACHMENTS_ROOT_FOLDER_ID)
+ *      TIDAK PERLU DIKETIK MANUAL di Script Properties!
+ *    - Nilai-nilai tersebut didaftarkan, diinspeksi, dan diaktifkan secara dinamis langsung dari antarmuka Admin SERTIF
+ *      melalui gateway aman (inspect_target & activate_authorized_target).
  * 4. Klik "Deploy" -> "Manage deployments" -> Pilih deployment aktif -> Edit -> New version -> Deploy.
  *    (Pertahankan URL /exec yang sama untuk koneksi Laravel).
- * 5. Apps Script ini khusus berfungsi sebagai SHEETS GATEWAY.
- *    Penyimpanan berkas fisik dikelola langsung oleh backend Laravel melalui Google Drive API.
+ * 5. Apps Script ini berfungsi sebagai GATEWAY resmi integrasi Google Sheets & DriveApp.
+ *    Penyimpanan berkas fisik remote diarahkan melalui DriveApp ke Google Drive pribadi SERTIF.
  */
 
 // Canonical 38-Column Contract Definition for Registration Tab 2026 (Order 1 to 38)
@@ -98,7 +99,7 @@ var FOLLOWUP_CONTRACT = [
 ];
 
 /**
- * Match a raw spreadsheet header string to a canonical registration slot (1-40).
+ * Match a raw spreadsheet header string to a canonical registration slot (1-38).
  * Uses a robust two-pass strategy:
  * Pass 1: Strict exact matching on dbKey, legacyKey, and known aliases across all slots.
  * Pass 2: Fallback regex pattern matching if no exact header match was found.
@@ -252,6 +253,12 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
     colMap.push(foundOldIdx);
   }
 
+  // If new headers require columns beyond current max columns, ensure sheet has enough columns FIRST
+  var currentMaxCols = sheet.getMaxColumns();
+  if (schemaHeaders.length > currentMaxCols) {
+    sheet.insertColumnsAfter(currentMaxCols, schemaHeaders.length - currentMaxCols);
+  }
+
   // Realign existing data rows (Row 13+) so KET and SERTIF_SYNC_ID never shift into wrong columns
   var numDataRows = lastRow - headerRowIndex;
   if (numDataRows > 0) {
@@ -276,12 +283,6 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
   // Write updated headers on headerRowIndex
   sheet.getRange(headerRowIndex, 1, 1, schemaHeaders.length).setValues([schemaHeaders]);
 
-  // If new headers require columns beyond current max columns, ensure sheet has enough columns
-  var currentMaxCols = sheet.getMaxColumns();
-  if (schemaHeaders.length > currentMaxCols) {
-    sheet.insertColumnsAfter(currentMaxCols, schemaHeaders.length - currentMaxCols);
-  }
-
   // Unhide any columns within the active schema range in case they were previously hidden
   try {
     if (typeof sheet.unhideColumn === "function") {
@@ -301,12 +302,12 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
  */
 function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDynamicRegistrationCols) {
   var isRegistration = (connectionKey === "registration");
-  var expectedCols = isRegistration ? 40 : 21;
+  var expectedCols = isRegistration ? 38 : 21;
 
-  if (isRegistration && (allowDynamicRegistrationCols === true || (actualHeaders && actualHeaders.length >= 40))) {
-    if (!actualHeaders || actualHeaders.length < 40) {
+  if (isRegistration && (allowDynamicRegistrationCols === true || (actualHeaders && actualHeaders.length >= 38))) {
+    if (!actualHeaders || actualHeaders.length < 38) {
       return {
-        error: "Jumlah kolom spreadsheet pendaftaran minimal 40 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+        error: "Jumlah kolom spreadsheet pendaftaran minimal 38 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
         error_code: "SCHEMA_MISMATCH"
       };
     }
@@ -359,9 +360,9 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDyna
     return { values: dynValues };
   }
 
-  if (!actualHeaders || actualHeaders.length !== expectedCols) {
+  if (!actualHeaders || (isRegistration ? actualHeaders.length < 38 : actualHeaders.length !== expectedCols)) {
     return {
-      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (harus tepat 40 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (minimal 38 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
       error_code: "SCHEMA_MISMATCH"
     };
   }
@@ -540,6 +541,15 @@ function doPost(e) {
       case "delete_empty_column":
         return handleDeleteEmptyColumnAction(payload);
 
+      case "inspect_target":
+        return handleInspectTargetAction(payload);
+
+      case "activate_authorized_target":
+        return handleActivateAuthorizedTargetAction(payload);
+
+      case "attach_row_sync_id":
+        return handleAttachRowSyncIdAction(payload);
+
       default:
         return createJsonResponse({
           success: false,
@@ -563,12 +573,13 @@ function doPost(e) {
  */
 function handlePingAction(payload) {
   var props = PropertiesService.getScriptProperties();
-  var regSheetId = props.getProperty("REGISTRATION_SPREADSHEET_ID");
-  var fwuSheetId = props.getProperty("FOLLOWUP_SPREADSHEET_ID");
-  var driveFolderId = props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID");
+  var regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
+  var fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
+  var allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+  var driveFolderId = (props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") || "").toString().trim();
 
   var connectionKey = payload.connection_key || "";
-  var requestedSpreadsheetId = payload.spreadsheet_id || "";
+  var requestedSpreadsheetId = (payload.spreadsheet_id || "").toString().trim();
 
   var expectedSpreadsheetId = "";
   if (connectionKey === "registration") {
@@ -577,9 +588,26 @@ function handlePingAction(payload) {
     expectedSpreadsheetId = fwuSheetId;
   }
 
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
   var idMatched = true;
-  if (expectedSpreadsheetId && requestedSpreadsheetId) {
-    idMatched = (requestedSpreadsheetId.trim() === expectedSpreadsheetId.trim());
+  if (requestedSpreadsheetId) {
+    if (expectedSpreadsheetId) {
+      idMatched = (requestedSpreadsheetId === expectedSpreadsheetId) || (allowedIds.indexOf(requestedSpreadsheetId) !== -1);
+    } else if (allowedIds.length > 0) {
+      idMatched = (allowedIds.indexOf(requestedSpreadsheetId) !== -1);
+    }
   }
 
   var regAccessible = false;
@@ -749,7 +777,7 @@ function handleUpsertRowAction(payload) {
     }, 400);
   }
 
-  // 5. Strict fail-closed Spreadsheet ID resolution from Script Properties
+  // 5. Dynamic & Allowlisted Spreadsheet ID Resolution
   var props = null;
   try {
     if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
@@ -764,38 +792,75 @@ function handleUpsertRowAction(payload) {
 
   var regSheetId = "";
   var fwuSheetId = "";
+  var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
-  }
-
-  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
-
-  if (!expectedSpreadsheetId) {
-    return createJsonResponse({
-      success: false,
-      sync_id: syncId,
-      error_code: "SPREADSHEET_ID_MISSING",
-      is_retryable: false,
-      message: "Spreadsheet ID untuk koneksi '" + connectionKey + "' belum dikonfigurasi di Script Properties."
-    }, 400);
+    allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var requestedSpreadsheetId = (payload.spreadsheet_id !== undefined && payload.spreadsheet_id !== null)
     ? payload.spreadsheet_id.toString().trim()
     : "";
 
-  if (requestedSpreadsheetId !== "" && requestedSpreadsheetId !== expectedSpreadsheetId) {
+  // SECURITY GUARD: Tolak mutasi tulis jika target terdaftar sebagai sumber legacy read-only
+  if (requestedSpreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === requestedSpreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          sync_id: syncId,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + requestedSpreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan."
+        }, 403);
+      }
+    }
+  }
+
+  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
+
+  // Bangun daftar lengkap ID spreadsheet yang diizinkan untuk penulisan
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
+  var spreadsheetId = "";
+  if (requestedSpreadsheetId !== "") {
+    if (requestedSpreadsheetId === expectedSpreadsheetId || allowedIds.indexOf(requestedSpreadsheetId) !== -1) {
+      spreadsheetId = requestedSpreadsheetId;
+    } else {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "TARGET_NOT_AUTHORIZED",
+        is_retryable: false,
+        message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') belum diotorisasi oleh Admin. Aktivasi target wajib melalui persetujuan Admin."
+      }, 403);
+    }
+  } else if (expectedSpreadsheetId !== "") {
+    spreadsheetId = expectedSpreadsheetId;
+  } else {
     return createJsonResponse({
       success: false,
       sync_id: syncId,
-      error_code: "TARGET_MISMATCH",
+      error_code: "TARGET_NOT_AUTHORIZED",
       is_retryable: false,
-      message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') tidak sesuai dengan konfigurasi resmi untuk koneksi '" + connectionKey + "'."
-    }, 400);
+      message: "Target Spreadsheet belum diotorisasi oleh Admin pada Script Properties."
+    }, 403);
   }
-
-  var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
   if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
@@ -836,7 +901,7 @@ function handleUpsertRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 38);
     var sheet = autoSyncHeaders
       ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
       : ss.getSheetByName(targetTabName);
@@ -1055,7 +1120,7 @@ function handleUpdateRowAction(payload) {
     }, 400);
   }
 
-  // 5. Strict fail-closed Spreadsheet ID resolution from Script Properties
+  // 5. Dynamic & Allowlisted Spreadsheet ID Resolution
   var props = null;
   try {
     if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
@@ -1070,38 +1135,75 @@ function handleUpdateRowAction(payload) {
 
   var regSheetId = "";
   var fwuSheetId = "";
+  var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
-  }
-
-  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
-
-  if (!expectedSpreadsheetId) {
-    return createJsonResponse({
-      success: false,
-      sync_id: syncId,
-      error_code: "SPREADSHEET_ID_MISSING",
-      is_retryable: false,
-      message: "Spreadsheet ID untuk koneksi '" + connectionKey + "' belum dikonfigurasi di Script Properties."
-    }, 400);
+    allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var requestedSpreadsheetId = (payload.spreadsheet_id !== undefined && payload.spreadsheet_id !== null)
     ? payload.spreadsheet_id.toString().trim()
     : "";
 
-  if (requestedSpreadsheetId !== "" && requestedSpreadsheetId !== expectedSpreadsheetId) {
+  // SECURITY GUARD: Tolak mutasi tulis jika target terdaftar sebagai sumber legacy read-only
+  if (requestedSpreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === requestedSpreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          sync_id: syncId,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + requestedSpreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan."
+        }, 403);
+      }
+    }
+  }
+
+  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
+
+  // Bangun daftar lengkap ID spreadsheet yang diizinkan untuk penulisan
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
+  var spreadsheetId = "";
+  if (requestedSpreadsheetId !== "") {
+    if (requestedSpreadsheetId === expectedSpreadsheetId || allowedIds.indexOf(requestedSpreadsheetId) !== -1) {
+      spreadsheetId = requestedSpreadsheetId;
+    } else {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "TARGET_NOT_AUTHORIZED",
+        is_retryable: false,
+        message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') belum diotorisasi oleh Admin. Aktivasi target wajib melalui persetujuan Admin."
+      }, 403);
+    }
+  } else if (expectedSpreadsheetId !== "") {
+    spreadsheetId = expectedSpreadsheetId;
+  } else {
     return createJsonResponse({
       success: false,
       sync_id: syncId,
-      error_code: "TARGET_MISMATCH",
+      error_code: "TARGET_NOT_AUTHORIZED",
       is_retryable: false,
-      message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') tidak sesuai dengan konfigurasi resmi untuk koneksi '" + connectionKey + "'."
-    }, 400);
+      message: "Target Spreadsheet belum diotorisasi oleh Admin pada Script Properties."
+    }, 403);
   }
-
-  var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
   if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
@@ -1143,7 +1245,7 @@ function handleUpdateRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 38);
     var sheet = autoSyncHeaders
       ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
       : ss.getSheetByName(targetTabName);
@@ -1328,6 +1430,22 @@ function handleSyncSheetSchemaAction(payload) {
       is_retryable: false,
       message: "Spreadsheet ID belum dikonfigurasi."
     }, 400);
+  }
+
+  // SECURITY GUARD: Tolak sinkronisasi skema jika target terdaftar sebagai sumber legacy read-only
+  var legacySourcesStr = (props && typeof props.getProperty === "function") ? (props.getProperty("LEGACY_SOURCES") || "").toString().trim() : "";
+  if (spreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === spreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + spreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk sinkronisasi modifikasi skema."
+        }, 403);
+      }
+    }
   }
 
   var headerRowIndex = (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) ? 12 : 1;
@@ -2491,14 +2609,14 @@ function getOrCreateSubFolder(parentFolder, folderName) {
  */
 function validateAuthentication(requestBody) {
   var props = PropertiesService.getScriptProperties();
-  var sharedSecret = props.getProperty("SHARED_API_KEY");
+  var sharedSecret = props.getProperty("SHARED_SECRET") || props.getProperty("SHARED_API_KEY");
 
   if (!sharedSecret) {
     return {
       success: false,
       error_code: "SERVER_NOT_CONFIGURED",
       is_retryable: false,
-      message: "SHARED_API_KEY belum disetel di Script Properties."
+      message: "SHARED_SECRET atau SHARED_API_KEY belum disetel di Script Properties."
     };
   }
 
@@ -2658,6 +2776,34 @@ function validateAuthentication(requestBody) {
 }
 
 /**
+ * Helper untuk memeriksa apakah target ID terdaftar sebagai sumber legacy read-only.
+ */
+function isLegacySource(targetId) {
+  if (!targetId) return false;
+  var props = null;
+  try {
+    if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+      props = PropertiesService.getScriptProperties();
+    }
+  } catch (e) {
+    props = null;
+  }
+  if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+    props = global._mockScriptProperties;
+  }
+  if (!props || typeof props.getProperty !== "function") return false;
+  var legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
+  if (!legacySourcesStr) return false;
+  var parts = legacySourcesStr.split(",");
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i].trim() === targetId.toString().trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Resolusi spreadsheet target untuk operasi sidecar tab 2026_Custom_Fields.
  */
 function resolveSpreadsheetForSidecar(payload) {
@@ -2681,6 +2827,17 @@ function resolveSpreadsheetForSidecar(payload) {
   var targetId = (payload.spreadsheet_id || regSheetId || "").toString().trim();
   if (!targetId) {
     return { error: "Spreadsheet ID belum dikonfigurasi di payload atau Script Properties.", code: "SPREADSHEET_ID_MISSING" };
+  }
+
+  var allowlistStr = (props && typeof props.getProperty === "function") ? (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim() : "";
+  var allowedList = allowlistStr ? allowlistStr.split(",").map(function(s){return s.trim();}) : [];
+  if (regSheetId && allowedList.indexOf(regSheetId) === -1) allowedList.push(regSheetId);
+  if (allowedList.length > 0 && allowedList.indexOf(targetId) === -1) {
+    return { error: "Target Spreadsheet sidecar ('" + targetId + "') belum diotorisasi oleh Admin.", code: "TARGET_NOT_AUTHORIZED" };
+  }
+
+  if (isLegacySource(targetId)) {
+    return { error: "Target Spreadsheet terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan sidecar.", code: "LEGACY_SOURCE_READONLY" };
   }
 
   try {
@@ -3537,10 +3694,12 @@ function resolveSpreadsheetWithAllowlist(payload) {
   var regSheetId = "";
   var fwuSheetId = "";
   var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
     allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var targetId = (payload.spreadsheet_id || regSheetId || "").toString().trim();
@@ -3557,6 +3716,15 @@ function resolveSpreadsheetWithAllowlist(payload) {
       var item = parts[i].trim();
       if (item && allowedIds.indexOf(item) === -1) {
         allowedIds.push(item);
+      }
+    }
+  }
+  if (legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var j = 0; j < legParts.length; j++) {
+      var legItem = legParts[j].trim();
+      if (legItem && allowedIds.indexOf(legItem) === -1) {
+        allowedIds.push(legItem);
       }
     }
   }
@@ -3958,6 +4126,15 @@ function handleDeleteEmptyColumnAction(payload) {
       }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
     }
 
+    if (isLegacySource(resolved.spreadsheetId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "LEGACY_SOURCE_READONLY",
+        is_retryable: false,
+        message: "Spreadsheet target ('" + resolved.spreadsheetId + "') terdaftar sebagai arsip historis lama (LEGACY_SOURCES) yang bersifat BACA-SAJA. Penghapusan kolom dilarang."
+      }, 403);
+    }
+
     var ss = resolved.spreadsheet;
     var tabName = (payload.tab_name || "").toString().trim();
     if (!tabName) {
@@ -4203,6 +4380,352 @@ function handleDeleteEmptyColumnAction(payload) {
 }
 
 /**
+ * Aksi: inspect_target
+ * Pemeriksaan identitas dan aksesibilitas target Google (Spreadsheet / Drive Folder) tanpa mutasi.
+ */
+function handleInspectTargetAction(payload) {
+  try {
+    var targetType = (payload.target_type || "spreadsheet").toString().toLowerCase().trim();
+    var targetId = (payload.target_id || "").toString().trim();
+    var permission = (payload.permission || "registration").toString().toLowerCase().trim();
+
+    if (!targetId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TARGET_ID_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'target_id' wajib diisi."
+      }, 400);
+    }
+
+    if (targetType === "spreadsheet") {
+      var ss = null;
+      try {
+        ss = SpreadsheetApp.openById(targetId);
+      } catch (openErr) {
+        return createJsonResponse({
+          success: false,
+          error_code: "SPREADSHEET_ACCESS_DENIED",
+          is_retryable: false,
+          message: "Tidak dapat membuka Spreadsheet (" + targetId + "): " + openErr.toString()
+        }, 403);
+      }
+
+      var sheets = ss.getSheets();
+      var tabList = [];
+      for (var i = 0; i < sheets.length; i++) {
+        var sh = sheets[i];
+        tabList.push({
+          name: sh.getName(),
+          sheet_id: sh.getSheetId(),
+          last_row: sh.getLastRow(),
+          last_column: sh.getLastColumn()
+        });
+      }
+
+      return createJsonResponse({
+        success: true,
+        target_type: "spreadsheet",
+        target_id: targetId,
+        name: ss.getName(),
+        tabs: tabList,
+        tabs_count: tabList.length,
+        permission: permission
+      }, 200);
+    } else if (targetType === "drive_folder") {
+      var folder = null;
+      try {
+        folder = DriveApp.getFolderById(targetId);
+      } catch (folderErr) {
+        return createJsonResponse({
+          success: false,
+          error_code: "DRIVE_FOLDER_ACCESS_DENIED",
+          is_retryable: false,
+          message: "Tidak dapat mengakses Google Drive Folder (" + targetId + "): " + folderErr.toString()
+        }, 403);
+      }
+
+      var props = null;
+      try {
+        if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+          props = PropertiesService.getScriptProperties();
+        }
+      } catch (e) {
+        props = null;
+      }
+      var canonicalRoot = (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "";
+      var isSubtreeValid = true;
+      if (permission !== "drive_root" && canonicalRoot && canonicalRoot !== targetId) {
+        isSubtreeValid = isWithinRootHierarchy(folder, canonicalRoot);
+      }
+
+      return createJsonResponse({
+        success: true,
+        target_type: "drive_folder",
+        target_id: targetId,
+        name: folder.getName(),
+        is_inside_canonical_root: isSubtreeValid,
+        permission: permission
+      }, 200);
+    } else {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_TARGET_TYPE",
+        is_retryable: false,
+        message: "target_type harus 'spreadsheet' atau 'drive_folder'."
+      }, 400);
+    }
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "INSPECT_TARGET_ERROR",
+      is_retryable: false,
+      message: "Gagal inspeksi target: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: activate_authorized_target
+ * Mendaftarkan target yang telah diverifikasi ke dalam registry resmi Script Properties.
+ */
+function handleActivateAuthorizedTargetAction(payload) {
+  try {
+    var targetType = (payload.target_type || "spreadsheet").toString().toLowerCase().trim();
+    var targetId = (payload.target_id || "").toString().trim();
+    var permission = (payload.permission || "registration").toString().toLowerCase().trim();
+
+    if (!targetId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TARGET_ID_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'target_id' wajib diisi."
+      }, 400);
+    }
+
+    var validPermissions = ["registration", "followup", "legacy_source", "drive_root"];
+    if (validPermissions.indexOf(permission) === -1) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_PERMISSION",
+        is_retryable: false,
+        message: "Izin target tidak valid. Pilihan: registration, followup, legacy_source, drive_root."
+      }, 400);
+    }
+
+    var props = null;
+    try {
+      if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+        props = PropertiesService.getScriptProperties();
+      }
+    } catch (e) {
+      props = null;
+    }
+    if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+      props = global._mockScriptProperties;
+    }
+
+    if (!props) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SCRIPT_PROPERTIES_UNAVAILABLE",
+        is_retryable: false,
+        message: "Script Properties tidak tersedia untuk menyimpan otorisasi target."
+      }, 500);
+    }
+
+    // 1. Simpan berdasarkan jenis izin
+    if (permission === "registration" || permission === "followup") {
+      if (isLegacySource(targetId)) {
+        return createJsonResponse({
+          success: false,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + targetId + "') terdaftar sebagai arsip historis (LEGACY_SOURCES) yang bersifat PERMANEN BACA-SAJA. Dilarang dipromosikan menjadi target penulisan resmi."
+        }, 403);
+      }
+    }
+
+    if (permission === "registration") {
+      props.setProperty("REGISTRATION_SPREADSHEET_ID", targetId);
+    } else if (permission === "followup") {
+      props.setProperty("FOLLOWUP_SPREADSHEET_ID", targetId);
+      var curLegFol = props.getProperty("LEGACY_SOURCES") || "";
+      if (curLegFol) {
+        var filteredFol = curLegFol.split(",").map(function(s){return s.trim();}).filter(function(s){return s && s !== targetId;});
+        props.setProperty("LEGACY_SOURCES", filteredFol.join(","));
+      }
+    } else if (permission === "legacy_source") {
+      var currentLegacy = props.getProperty("LEGACY_SOURCES") || "";
+      var legList = currentLegacy ? currentLegacy.split(",") : [];
+      if (legList.indexOf(targetId) === -1) {
+        legList.push(targetId);
+        props.setProperty("LEGACY_SOURCES", legList.join(","));
+      }
+    } else if (permission === "drive_root") {
+      props.setProperty("ATTACHMENTS_ROOT_FOLDER_ID", targetId);
+    }
+
+    // 2. Jika tipe spreadsheet, pastikan masuk ke SPREADSHEET_ALLOWLIST
+    if (targetType === "spreadsheet") {
+      var currentAllowlist = props.getProperty("SPREADSHEET_ALLOWLIST") || "";
+      var allowList = currentAllowlist ? currentAllowlist.split(",") : [];
+      var cleanList = [];
+      for (var a = 0; a < allowList.length; a++) {
+        var trimmed = allowList[a].trim();
+        if (trimmed && cleanList.indexOf(trimmed) === -1) cleanList.push(trimmed);
+      }
+      if (cleanList.indexOf(targetId) === -1) {
+        cleanList.push(targetId);
+      }
+      props.setProperty("SPREADSHEET_ALLOWLIST", cleanList.join(","));
+    }
+
+    return createJsonResponse({
+      success: true,
+      target_type: targetType,
+      target_id: targetId,
+      permission: permission,
+      activated_at: new Date().toISOString(),
+      message: "Target berhasil diotorisasi dan diaktifkan pada Script Properties."
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "ACTIVATE_TARGET_ERROR",
+      is_retryable: false,
+      message: "Gagal mengaktifkan target: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: attach_row_sync_id
+ * Menempelkan SERTIF_SYNC_ID pada baris aktif yang belum memiliki identitas sinkronisasi.
+ */
+function handleAttachRowSyncIdAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    if (isLegacySource(resolved.spreadsheetId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "LEGACY_SOURCE_READONLY",
+        is_retryable: false,
+        message: "Spreadsheet target ('" + resolved.spreadsheetId + "') terdaftar sebagai arsip historis lama (LEGACY_SOURCES) yang bersifat BACA-SAJA. Operasi penulisan dilarang."
+      }, 403);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    var rowIndex = parseInt(payload.row_index, 10);
+    var syncId = (payload.sync_id || "").toString().trim();
+    var registrationId = payload.registration_id ? payload.registration_id.toString().trim() : "";
+
+    if (!tabName || isNaN(rowIndex) || rowIndex < 1 || !syncId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_PARAMETERS",
+        is_retryable: false,
+        message: "Parameter 'tab_name', 'row_index' (>=1), dan 'sync_id' wajib diisi."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan."
+      }, 404);
+    }
+
+    var connectionKey = (payload.connection_key || "registration").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastCol = sheet.getLastColumn();
+
+    if (rowIndex <= headerRow) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_ROW_INDEX",
+        is_retryable: false,
+        message: "row_index harus berada di bawah header row (" + headerRow + ")."
+      }, 400);
+    }
+
+    var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+    var syncIdCol = -1;
+    var regIdCol = -1;
+    var statusCol = -1;
+    var lastSyncCol = -1;
+
+    for (var c = 0; c < headers.length; c++) {
+      var hClean = (headers[c] || "").toString().replace(/[\r\n]+/g, " ").trim();
+      if (/^sertif_sync_id$/i.test(hClean)) syncIdCol = c + 1;
+      else if (/^sertif_registration_id$/i.test(hClean)) regIdCol = c + 1;
+      else if (/^sertif_sync_status$/i.test(hClean)) statusCol = c + 1;
+      else if (/^sertif_last_sync_at$/i.test(hClean)) lastSyncCol = c + 1;
+    }
+
+    if (syncIdCol === -1) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SYNC_ID_COLUMN_NOT_FOUND",
+        is_retryable: false,
+        message: "Kolom SERTIF_SYNC_ID tidak ditemukan pada tab '" + tabName + "'."
+      }, 404);
+    }
+
+    // Periksa nilai SERTIF_SYNC_ID saat ini pada baris tersebut
+    var currentSyncIdVal = (sheet.getRange(rowIndex, syncIdCol).getValue() || "").toString().trim();
+    if (currentSyncIdVal !== "" && currentSyncIdVal !== "-" && currentSyncIdVal !== syncId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SYNC_ID_CONFLICT",
+        is_retryable: false,
+        message: "Baris " + rowIndex + " sudah memiliki SERTIF_SYNC_ID lain ('" + currentSyncIdVal + "')."
+      }, 409);
+    }
+
+    // Tulis nilai sync_id dan metadata penutup
+    sheet.getRange(rowIndex, syncIdCol).setValue(syncId);
+    if (regIdCol !== -1 && registrationId) {
+      sheet.getRange(rowIndex, regIdCol).setValue(registrationId);
+    }
+    if (statusCol !== -1) {
+      sheet.getRange(rowIndex, statusCol).setValue("synced");
+    }
+    if (lastSyncCol !== -1) {
+      sheet.getRange(rowIndex, lastSyncCol).setValue(new Date().toISOString());
+    }
+
+    return createJsonResponse({
+      success: true,
+      row_index: rowIndex,
+      sync_id: syncId,
+      message: "SERTIF_SYNC_ID berhasil dipasangkan pada baris " + rowIndex + "."
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "ATTACH_ROW_SYNC_ID_FAILED",
+      is_retryable: false,
+      message: "Gagal memasangkan sync ID: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
  * Convert byte array to hexadecimal string
  */
 function bytesToHex(bytes) {
@@ -4264,6 +4787,9 @@ if (typeof module !== "undefined" && module.exports) {
     deriveHeaderRowForSheet: deriveHeaderRowForSheet,
     columnIndexToLetter: columnIndexToLetter,
     maskPiiValue: maskPiiValue,
-    computeDeterministicSchemaHash: computeDeterministicSchemaHash
+    computeDeterministicSchemaHash: computeDeterministicSchemaHash,
+    handleInspectTargetAction: handleInspectTargetAction,
+    handleActivateAuthorizedTargetAction: handleActivateAuthorizedTargetAction,
+    handleAttachRowSyncIdAction: handleAttachRowSyncIdAction
   };
 }

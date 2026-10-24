@@ -123,4 +123,37 @@ interface SpreadsheetTransportInterface
         string $expectedSchemaHash,
         ?string $idempotencyKey = null
     ): SpreadsheetTransportResponse;
+
+    /**
+     * Inspect Google target accessibility and metadata (Read-Only).
+     */
+    public function inspectTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration'
+    ): SpreadsheetTransportResponse;
+
+    /**
+     * Activate verified Google target into Apps Script authorized registry.
+     */
+    public function activateAuthorizedTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration',
+        bool $confirmPromoteLegacy = false
+    ): SpreadsheetTransportResponse;
+
+    /**
+     * Attach SERTIF_SYNC_ID to an existing row in Google Sheets.
+     */
+    public function attachRowSyncId(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        int $rowIndex,
+        string $syncId,
+        ?string $registrationId = null,
+        ?string $expectedChecksum = null
+    ): SpreadsheetTransportResponse;
 }

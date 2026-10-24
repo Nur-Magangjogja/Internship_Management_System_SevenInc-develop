@@ -17,14 +17,31 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
 
     public function __construct()
     {
-        $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
-            ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
+        $conn = null;
+        try {
+            $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
+                ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
+        } catch (\Throwable) {
+            // Database not accessible or running in standalone test environment
+        }
 
-        $this->endpointUrl = $conn?->apps_script_endpoint_url ?: config('services.google_apps_script.endpoint_url');
-        $this->sharedSecret = config('services.google_apps_script.shared_secret');
+        try {
+            $this->endpointUrl = $conn?->apps_script_endpoint_url ?: (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null);
+            $this->sharedSecret = function_exists('config') ? config('services.google_apps_script.shared_secret') : null;
+        } catch (\Throwable) {
+            $this->endpointUrl = $conn?->apps_script_endpoint_url;
+            $this->sharedSecret = null;
+        }
 
-        $setting = CloudStorageSetting::getEffectiveSettings();
-        $this->rootFolderId = $setting->getEffectiveParentFolderId() ?: $conn?->drive_folder_id;
+        $settingRoot = null;
+        try {
+            $setting = CloudStorageSetting::getEffectiveSettings();
+            $settingRoot = $setting->getEffectiveParentFolderId();
+        } catch (\Throwable) {
+            // Database not accessible
+        }
+
+        $this->rootFolderId = $settingRoot ?: $conn?->drive_folder_id;
     }
 
     public function isConfigured(): bool
@@ -76,11 +93,19 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
 
         if (!$response->success) {
             $err = $response->errorMessage ?: 'Gagal resolusi folder di Apps Script';
-            Log::warning("GoogleAppsScriptDriveDriver getOrCreateFolderPath: {$err}");
-            return (string) ($response->context['folder_id'] ?? $this->rootFolderId);
+            Log::error("GoogleAppsScriptDriveDriver getOrCreateFolderPath gagal: {$err}", [
+                'path'    => $cleanPath,
+                'context' => $response->context,
+            ]);
+            throw new RuntimeException("Gagal resolusi direktori Google Drive '{$cleanPath}': {$err}");
         }
 
-        return (string) ($response->context['folder_id'] ?? $this->rootFolderId);
+        $resolvedFolderId = $response->context['folder_id'] ?? null;
+        if (empty($resolvedFolderId)) {
+            throw new RuntimeException("Respon resolusi folder Apps Script tidak memuat folder_id valid untuk '{$cleanPath}'.");
+        }
+
+        return (string) $resolvedFolderId;
     }
 
     public function uploadFile(string $localFullPath, string $remoteFolderPath, ?string $customFileName = null): array

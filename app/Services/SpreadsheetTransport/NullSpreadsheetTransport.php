@@ -168,4 +168,49 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             context: ['connection_key' => $connection->connection_key]
         );
     }
+
+    public function inspectTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration'
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['target_id' => $targetId]
+        );
+    }
+
+    public function activateAuthorizedTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration',
+        bool $confirmPromoteLegacy = false
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['target_id' => $targetId]
+        );
+    }
+
+    public function attachRowSyncId(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        int $rowIndex,
+        string $syncId,
+        ?string $registrationId = null,
+        ?string $expectedChecksum = null
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['sync_id' => $syncId]
+        );
+    }
 }

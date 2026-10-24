@@ -46,9 +46,12 @@ class InternshipRegistration extends Model
     ];
 
     protected $fillable = [
+        'public_uuid',
         'user_id',
+        'email',
         'fullname', 'born_date', 'birth_place', 'student_id', 'gender', 'religion', 'phone_number',
         'city_id', 'institution_id', 'study_program_id', 'faculty_id',
+        'raw_institution_name', 'raw_faculty_name', 'raw_study_program_name',
         'internship_reason', 'internship_type', 'internship_arrangement',
         'current_status', 'english_book_ability',
         'wfo_readiness', 'schedule_shift_readiness', 'has_laptop',
@@ -56,6 +59,10 @@ class InternshipRegistration extends Model
         'start_date', 'planned_duration', 'end_date',
         'internship_status',
         'followup_status',
+        'is_outsider',
+        'registration_provenance',
+        'historical_import_batch_id',
+        'event_fingerprint',
         'supervisor_name', 'supervisor_contact',
         'current_activities', 'social_media_instagram',
         'profile_photo',
@@ -70,6 +77,7 @@ class InternshipRegistration extends Model
      */
     protected $casts = [
         'has_laptop'     => 'boolean',
+        'is_outsider'    => 'boolean',
         'created_at'     => 'datetime',
         'updated_at'     => 'datetime',
     ];
@@ -448,27 +456,47 @@ class InternshipRegistration extends Model
 
     public function getEmailAttribute()
     {
-        return $this->user ? $this->user->email : null;
+        if (empty($this->user_id)) {
+            return $this->attributes['email'] ?? null;
+        }
+
+        return $this->user ? $this->user->email : ($this->attributes['email'] ?? null);
     }
 
     public function getCurrentCityAttribute()
     {
+        if (empty($this->city_id)) {
+            return null;
+        }
+
         return $this->city ? $this->city->name : null;
     }
 
     public function getInstitutionNameAttribute()
     {
-        return $this->institution ? $this->institution->name : null;
+        if (empty($this->institution_id)) {
+            return $this->attributes['raw_institution_name'] ?? null;
+        }
+
+        return $this->institution ? $this->institution->name : ($this->attributes['raw_institution_name'] ?? null);
     }
 
     public function getStudyProgramAttribute()
     {
-        return $this->studyProgramRel ? $this->studyProgramRel->name : null;
+        if (empty($this->study_program_id)) {
+            return $this->attributes['raw_study_program_name'] ?? null;
+        }
+
+        return $this->studyProgramRel ? $this->studyProgramRel->name : ($this->attributes['raw_study_program_name'] ?? null);
     }
 
     public function getFacultyAttribute()
     {
-        return $this->facultyRel ? $this->facultyRel->name : null;
+        if (empty($this->faculty_id)) {
+            return $this->attributes['raw_faculty_name'] ?? null;
+        }
+
+        return $this->facultyRel ? $this->facultyRel->name : ($this->attributes['raw_faculty_name'] ?? null);
     }
 
     public function division()
@@ -519,6 +547,21 @@ class InternshipRegistration extends Model
     public function assessments()
     {
         return $this->hasMany(\App\Models\InternAssessment::class, 'intern_id');
+    }
+
+    public function historicalImportBatch()
+    {
+        return $this->belongsTo(\App\Models\HistoricalImportBatch::class, 'historical_import_batch_id');
+    }
+
+    public function scopeOutsiders($query)
+    {
+        return $query->where('is_outsider', true);
+    }
+
+    public function scopeRegular($query)
+    {
+        return $query->where('is_outsider', false)->whereNotNull('user_id');
     }
 
     public function membercards()

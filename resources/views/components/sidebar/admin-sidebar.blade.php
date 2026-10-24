@@ -35,6 +35,7 @@
         [
             'label' => 'Pengaturan Sistem',
             'items' => [
+                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
                 ['label' => 'Monitoring Sinkronisasi', 'route' => 'admin.sync-monitoring.index', 'icon' => 'activity'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
@@ -52,7 +53,6 @@
         [
             'label' => 'Dokumen & Sertifikat',
             'items' => [
-                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Perpustakaan Aset',    'route' => 'admin.system-assets.index',   'icon' => 'archive'],
                 ['label' => 'Template Dokumen',     'route' => 'admin.document-templates.index', 'icon' => 'file'],
                 ['label' => 'Template MOU',        'route' => 'admin.mou-templates.index',      'icon' => 'file'],

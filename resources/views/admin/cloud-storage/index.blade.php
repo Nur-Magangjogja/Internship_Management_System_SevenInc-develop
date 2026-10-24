@@ -23,6 +23,20 @@
                 </button>
             </form>
 
+            <form action="{{ route('admin.cloud-storage.activate-root') }}" method="POST" onsubmit="return confirm('Otorisasi dan aktifkan folder induk Google Drive ini secara resmi pada Script Properties Google Apps Script Gateway? Peringatan: Seluruh antrean upload yang pending akan dialihkan ke root baru setelah verifikasi.');">
+                @csrf
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                    title="Otorisasi target root folder resmi pada Google Apps Script Gateway"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    Aktifkan Folder Root (Otorisasi)
+                </button>
+            </form>
+
             <a
                 href="{{ route('admin.system-assets.index') }}"
                 class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
@@ -245,19 +259,15 @@
             <!-- Provider Selection & General Info -->
             <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
                 <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Provider Penyimpanan</label>
-                    <select
-                        name="provider"
-                        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                        <option value="apps_script_drive" {{ $activeProvider === 'apps_script_drive' ? 'selected' : '' }}>
-                            Google Apps Script Drive (Utama &amp; Produksi)
-                        </option>
-                        <option value="local_fallback" {{ $activeProvider === 'local_fallback' ? 'selected' : '' }}>
-                            Local Storage Fallback (Simulasi Pengujian)
-                        </option>
-                    </select>
-                    <p class="mt-1 text-[11px] text-slate-500">Pilihan utama: Apps Script Drive tanpa kredensial OAuth2.</p>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Gateway Penyimpanan Remote</label>
+                    <input type="hidden" name="provider" value="apps_script_drive">
+                    <div class="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
+                        <svg class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                        <span>Google Apps Script DriveApp (Drive Pribadi)</span>
+                    </div>
+                    <p class="mt-1 text-[11px] text-slate-500">Arsitektur tunggal tanpa OAuth2 direct Laravel.</p>
                 </div>
 
                 <div>
@@ -418,13 +428,18 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex items-center justify-end gap-3 pt-4">
-                <button
-                    type="submit"
-                    class="rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
-                >
-                    Simpan Konfigurasi Penyimpanan
-                </button>
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                <div class="text-xs text-slate-500">
+                    Target Root Aktif: <strong class="font-mono text-slate-700">{{ $settings->canonical_parent_folder_id ?: 'Belum diotorisasi' }}</strong>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                    >
+                        Simpan Konfigurasi Penyimpanan
+                    </button>
+                </div>
             </div>
         </form>
     </div>

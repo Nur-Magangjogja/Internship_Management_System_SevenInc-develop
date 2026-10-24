@@ -106,6 +106,43 @@
                         </div>
 
                         <div>
+                            <span class="font-medium text-slate-500 block">Target Aktif Terotorisasi:</span>
+                            @if ($conn->active_spreadsheet_id)
+                                <span class="font-mono text-emerald-700 font-semibold break-all">{{ $conn->active_spreadsheet_id }}</span>
+                                @if ($conn->hasTargetChanged())
+                                    <span class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800 border border-amber-300">Target Berubah</span>
+                                @else
+                                    <span class="inline-block ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Aktif</span>
+                                @endif
+                            @else
+                                <span class="text-slate-400 italic">Belum Diaktifkan (Perlu Otorisasi Admin)</span>
+                            @endif
+                        </div>
+
+                        @php
+                            $pausedCount = \App\Models\SpreadsheetRowSync::where('spreadsheet_connection_id', $conn->id)
+                                ->where('sync_status', \App\Models\SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND)
+                                ->count();
+                        @endphp
+
+                        @if ($conn->hasTargetChanged())
+                            <div class="rounded-lg p-2.5 border border-amber-200 bg-amber-50 text-amber-900 text-xs">
+                                <span class="font-bold">⚠️ Perubahan Target:</span> ID Spreadsheet diubah. Klik <strong>Aktifkan Target</strong> untuk memperbarui Script Properties pada Apps Script Gateway.
+                            </div>
+                        @endif
+
+                        @if ($pausedCount > 0)
+                            <div class="rounded-lg p-2.5 border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-center justify-between">
+                                <div>
+                                    <span class="font-bold">⏸️ Antrean Dibekukan:</span> Terdapat {{ $pausedCount }} baris sinkronisasi dibekukan karena pergantian target.
+                                </div>
+                                <a href="{{ route('admin.spreadsheet-connections.show', $conn) }}" class="underline font-bold text-amber-800 hover:text-amber-950">
+                                    Rekonsiliasi &rarr;
+                                </a>
+                            </div>
+                        @endif
+
+                        <div>
                             <span class="font-medium text-slate-500 block">Apps Script Endpoint URL:</span>
                             @if ($conn->apps_script_endpoint_url)
                                 <span class="font-mono text-slate-700 break-all">{{ $conn->apps_script_endpoint_url }}</span>
@@ -228,6 +265,20 @@
                                 <polyline points="22 4 12 14.01 9 11.01"/>
                             </svg>
                             Uji Koneksi
+                        </button>
+                    </form>
+
+                    <form action="{{ route('admin.spreadsheet-connections.activate-target', $conn) }}" method="POST" class="inline" onsubmit="return confirm('Otorisasi dan aktifkan target Spreadsheet \'{{ $conn->display_name }}\' ({{ $conn->spreadsheet_id }}) pada Google Apps Script Gateway? Perhatian: Seluruh pekerjaan pending/processing yang belum selesai akan dibekukan untuk proses rekonsiliasi.');">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 shadow-sm transition hover:bg-indigo-100"
+                            title="Otorisasi target resmi pada Script Properties Google Apps Script"
+                        >
+                            <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            Aktifkan Target
                         </button>
                     </form>
                 </div>

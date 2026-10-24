@@ -117,4 +117,25 @@ class CloudStorageSettingController extends Controller
         return redirect()->route('admin.cloud-storage.index')
             ->with('error', $result['message']);
     }
+
+    /**
+     * Otorisasi dan aktifkan folder induk Google Drive secara resmi ke Google Apps Script Gateway (dengan persetujuan Admin).
+     */
+    public function activateRoot(Request $request)
+    {
+        $settings = $this->storageService->getSettings();
+        $result = $this->storageService->activateAuthorizedDriveRoot($settings, Auth::user());
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json($result, $result['success'] ? 200 : 422);
+        }
+
+        if ($result['success']) {
+            return redirect()->route('admin.cloud-storage.index')
+                ->with('success', $result['message']);
+        }
+
+        return redirect()->route('admin.cloud-storage.index')
+            ->with('error', $result['message']);
+    }
 }

@@ -31,12 +31,15 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
      * Durable fencing token assigned before queue serialization and reconstructed safely on failure callbacks.
      */
     public string $fenceToken;
+    public ?string $snapshotRootFolderId = null;
 
     public function __construct(
         public int $attachmentId,
-        ?string $fenceToken = null
+        ?string $fenceToken = null,
+        ?string $snapshotRootFolderId = null
     ) {
         $this->fenceToken = $fenceToken ?? (string) Str::uuid();
+        $this->snapshotRootFolderId = $snapshotRootFolderId;
     }
 
     /**
@@ -206,6 +209,29 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
             $isAnonymousMock = (new \ReflectionClass($transport))->isAnonymous();
 
             if (!$isAnonymousMock && $hasDirectDriveDriver) {
+                $effectiveRoot = $this->snapshotRootFolderId;
+                if (empty($effectiveRoot)) {
+                    try {
+                        $storageSetting = \App\Models\CloudStorageSetting::getEffectiveSettings();
+                        $effectiveRoot = $storageSetting->getEffectiveParentFolderId();
+                    } catch (\Throwable) {
+                        $effectiveRoot = null;
+                    }
+                }
+
+                if (empty($effectiveRoot)) {
+                    $this->releaseLeaseAndFail(
+                        $attachment,
+                        'Folder root Google Drive belum diverifikasi atau diotorisasi oleh Admin. Operasi upload ditahan demi keamanan data.',
+                        isRetryable: true
+                    );
+                    return;
+                }
+
+                if (method_exists($cloudSyncManager->getDriver(), 'setRootFolderId')) {
+                    $cloudSyncManager->getDriver()->setRootFolderId($effectiveRoot);
+                }
+
                 $uploadResult = $cloudSyncManager->uploadRegistrationAttachment($attachment);
                 $driveFileId = $uploadResult['file_id'] ?? null;
                 $driveViewLink = $uploadResult['web_view_link'] ?? null;

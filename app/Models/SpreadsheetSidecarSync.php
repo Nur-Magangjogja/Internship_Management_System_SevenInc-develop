@@ -18,6 +18,7 @@ class SpreadsheetSidecarSync extends Model
     public const STATUS_SYNCED     = 'synced';
     public const STATUS_FAILED     = 'failed';
     public const STATUS_RETRYING   = 'retrying';
+    public const STATUS_PAUSED_TARGET_REBIND = 'paused_target_rebind';
 
     protected $fillable = [
         'public_uuid',
@@ -26,6 +27,8 @@ class SpreadsheetSidecarSync extends Model
         'external_sync_id',
         'main_sheet_tab',
         'extension_sheet_tab',
+        'target_spreadsheet_id',
+        'target_generation',
         'form_schema_version',
         'sync_status',
         'payload_checksum',
@@ -43,6 +46,7 @@ class SpreadsheetSidecarSync extends Model
     protected $casts = [
         'attempt_count'   => 'integer',
         'max_attempts'    => 'integer',
+        'target_generation' => 'integer',
         'row_index'       => 'integer',
         'last_attempt_at' => 'datetime',
         'last_synced_at'  => 'datetime',
@@ -75,6 +79,31 @@ class SpreadsheetSidecarSync extends Model
     public function internshipRegistration(): BelongsTo
     {
         return $this->belongsTo(InternshipRegistration::class, 'internship_registration_id');
+    }
+
+    public function isPending(): bool
+    {
+        return $this->sync_status === self::STATUS_PENDING;
+    }
+
+    public function isProcessing(): bool
+    {
+        return $this->sync_status === self::STATUS_PROCESSING;
+    }
+
+    public function isSynced(): bool
+    {
+        return $this->sync_status === self::STATUS_SYNCED;
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->sync_status === self::STATUS_FAILED;
+    }
+
+    public function isPausedForTargetRebind(): bool
+    {
+        return $this->sync_status === self::STATUS_PAUSED_TARGET_REBIND;
     }
 
     public static function calculateBackoffSeconds(int $attempt): int

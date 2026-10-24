@@ -112,34 +112,22 @@ class CloudStorageSetting extends Model
     public function getEffectiveParentFolderId(): ?string
     {
         $uiRootId = $this->canonical_parent_folder_id ?: self::extractDriveFolderId($this->canonical_parent_folder_url);
-        $envRootId = self::extractDriveFolderId(config('services.google_apps_script.root_folder_id') ?: config('services.google.drive_folder_id'));
 
-        // Jika keduanya ada tapi berbeda, tandai konflik
-        if (!empty($uiRootId) && !empty($envRootId) && $uiRootId !== $envRootId) {
-            // UI canonical root yang tervalidasi tetap menjadi otoritas utama,
-            // namun mencatat peringatan konflik
-            return $uiRootId;
-        }
-
+        // S17.18G V1.3: Jika Admin telah mengonfigurasi root folder di UI, namun belum diverifikasi / diaktifkan resmi:
+        // DILARANG KERAS fallback ke folder lama di .env atau SpreadsheetConnection demi keamanan data pemagang (Fail-Closed).
         if (!empty($uiRootId)) {
+            if (!$this->is_verified || $this->connection_status !== self::STATUS_CONNECTED) {
+                return null;
+            }
             return $uiRootId;
         }
 
+        // Hanya jika UI root belum pernah dikonfigurasi sama sekali (instalasi baru)
+        $envRootId = self::extractDriveFolderId(config('services.google_apps_script.root_folder_id') ?: config('services.google.drive_folder_id'));
         if (!empty($envRootId)) {
             return $envRootId;
         }
 
-        // Fallback ke folder registrasi yang sudah terkonfigurasi di Spreadsheet Connection
-        try {
-            $spreadsheetFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->value('drive_folder_id');
-            if (!empty($spreadsheetFolderId)) {
-                return $spreadsheetFolderId;
-            }
-        } catch (\Throwable) {
-            // Ignore
-        }
-
-        // Tidak boleh fallback ke 'root' Drive umum
         return null;
     }
 
@@ -150,13 +138,7 @@ class CloudStorageSetting extends Model
      */
     public function getActiveProvider(): string
     {
-        $rawProvider = $this->provider ?: (config('services.cloud_storage.provider') ?: env('CLOUD_STORAGE_PROVIDER', self::PROVIDER_APPS_SCRIPT_DRIVE));
-
-        if ($rawProvider === self::PROVIDER_GOOGLE_DRIVE || $rawProvider === 'google_drive') {
-            return self::PROVIDER_APPS_SCRIPT_DRIVE;
-        }
-
-        return $rawProvider;
+        return self::PROVIDER_APPS_SCRIPT_DRIVE;
     }
 
     /**

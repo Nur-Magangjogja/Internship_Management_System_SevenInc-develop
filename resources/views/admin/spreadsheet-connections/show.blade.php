@@ -1109,7 +1109,7 @@
         </div>
 
         <!-- Sync Statistics Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-6 gap-4">
             <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Total Baris</span>
                 <p class="text-xl font-bold text-slate-800 mt-1">{{ number_format($stats['total'] ?? 0) }}</p>
@@ -1130,7 +1130,71 @@
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-rose-700">Gagal Permanen</span>
                 <p class="text-xl font-bold text-rose-700 mt-1">{{ number_format($stats['failed'] ?? 0) }}</p>
             </div>
+            <div class="rounded-xl border border-amber-300 bg-amber-50/70 p-4 shadow-sm">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-amber-800">Antrean Dibekukan</span>
+                <p class="text-xl font-bold text-amber-800 mt-1">{{ number_format($pausedQueuesSummary['total_count'] ?? 0) }}</p>
+            </div>
         </div>
+
+        @if (!empty($pausedQueuesSummary['total_count']) && $pausedQueuesSummary['total_count'] > 0)
+            <!-- Panel Rekonsiliasi Target & Antrean Dibekukan (HOTFIX 1) -->
+            <div class="rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-sm space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-amber-950 flex items-center gap-2">
+                            <span>⏸️</span> Antrean Sinkronisasi Dibekukan (paused_target_rebind)
+                        </h3>
+                        <p class="text-xs text-amber-800 mt-1">
+                            Terdapat <strong>{{ $pausedQueuesSummary['total_count'] }}</strong> baris sinkronisasi yang dibekukan karena pergantian target Spreadsheet. Data pendaftar di database tetap aman dan tidak terhapus.
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Opsi 1: Pindahkan ke Target Baru -->
+                        <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" onsubmit="return confirm('Pindahkan seluruh antrean yang dibekukan ke target Spreadsheet baru? Sistem akan melakukan remote deduplication check.');">
+                            @csrf
+                            <input type="hidden" name="decision" value="rebind_new_target">
+                            <button
+                                type="submit"
+                                class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition"
+                            >
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="9 18 15 12 9 6"/>
+                                </svg>
+                                Pindahkan Semua ke Target Baru
+                            </button>
+                        </form>
+
+                        <!-- Opsi 2: Batalkan Antrean -->
+                        <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" onsubmit="return confirm('Batalkan seluruh antrean yang dibekukan? Data pendaftaran TIDAK akan dihapus dari sistem.');">
+                            @csrf
+                            <input type="hidden" name="decision" value="cancel_sync">
+                            <button
+                                type="submit"
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50 transition"
+                            >
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/>
+                                    <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                                Batalkan Semua Antrean
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                @if (!empty($pausedQueuesSummary['by_tab']))
+                    <div class="flex flex-wrap items-center gap-2 text-xs">
+                        <span class="font-semibold text-amber-900">Distribusi Tab:</span>
+                        @foreach ($pausedQueuesSummary['by_tab'] as $tab => $count)
+                            <span class="rounded bg-white/80 border border-amber-200 px-2 py-0.5 text-amber-900 font-mono text-[11px]">
+                                {{ $tab }}: <strong>{{ $count }}</strong>
+                            </span>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        @endif
 
         <!-- Sync Rows Table -->
         <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -1163,16 +1227,17 @@
                                 <td class="px-4 py-3">
                                     @php
                                         $statusClass = match($sync->sync_status) {
-                                            'synced'     => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                            'pending'    => 'bg-blue-50 text-blue-700 border-blue-200',
-                                            'processing' => 'bg-purple-50 text-purple-700 border-purple-200',
-                                            'retrying'   => 'bg-amber-50 text-amber-700 border-amber-200',
-                                            'failed'     => 'bg-rose-50 text-rose-700 border-rose-200',
-                                            default      => 'bg-slate-100 text-slate-700 border-slate-200',
+                                            'synced'               => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                            'pending'              => 'bg-blue-50 text-blue-700 border-blue-200',
+                                            'processing'           => 'bg-purple-50 text-purple-700 border-purple-200',
+                                            'retrying'             => 'bg-amber-50 text-amber-700 border-amber-200',
+                                            'paused_target_rebind' => 'bg-amber-100 text-amber-900 border-amber-300 font-bold',
+                                            'failed'               => 'bg-rose-50 text-rose-700 border-rose-200',
+                                            default                => 'bg-slate-100 text-slate-700 border-slate-200',
                                         };
                                     @endphp
                                     <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border {{ $statusClass }}">
-                                        {{ ucfirst($sync->sync_status) }}
+                                        {{ $sync->sync_status === 'paused_target_rebind' ? 'Dibekukan (Target Berubah)' : ucfirst($sync->sync_status) }}
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 font-mono text-slate-600">
@@ -1185,7 +1250,26 @@
                                     {{ $sync->error_message ?: '-' }}
                                 </td>
                                 <td class="px-4 py-3 text-right">
-                                    @if ($sync->canRetry() || $sync->isSynced())
+                                    @if ($sync->isPausedForTargetRebind())
+                                        <div class="inline-flex items-center gap-1">
+                                            <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" class="inline" onsubmit="return confirm('Pindahkan antrean baris ini ke target baru?');">
+                                                @csrf
+                                                <input type="hidden" name="decision" value="rebind_new_target">
+                                                <input type="hidden" name="row_sync_id" value="{{ $sync->id }}">
+                                                <button type="submit" class="px-2 py-0.5 text-[10px] font-semibold rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200" title="Pindah ke target baru (deduplikasi remote)">
+                                                    Pindah
+                                                </button>
+                                            </form>
+                                            <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" class="inline" onsubmit="return confirm('Batalkan antrean sinkronisasi ini? Data pendaftar tetap utuh.');">
+                                                @csrf
+                                                <input type="hidden" name="decision" value="cancel_sync">
+                                                <input type="hidden" name="row_sync_id" value="{{ $sync->id }}">
+                                                <button type="submit" class="px-2 py-0.5 text-[10px] font-semibold rounded bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200" title="Batalkan antrean tanpa menghapus registrasi">
+                                                    Batal
+                                                </button>
+                                            </form>
+                                        </div>
+                                    @elseif ($sync->canRetry() || $sync->isSynced())
                                         <form action="{{ route('admin.spreadsheet-connections.retry-row', [$connection, $sync]) }}" method="POST" class="inline-block">
                                             @csrf
                                             <button

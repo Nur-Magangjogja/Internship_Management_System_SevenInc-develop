@@ -20,12 +20,24 @@ class ProcessSpreadsheetRowSyncJob implements ShouldQueue
     public int $tries = 1; // Retry logic is managed explicitly in SpreadsheetSyncEngineService
     public int $timeout = 60;
     public string $fenceToken;
+    public ?string $snapshotSpreadsheetId = null;
+    public ?string $snapshotTabName = null;
+    public ?string $snapshotSchemaVersion = null;
+    public ?int $snapshotConnectionId = null;
 
     public function __construct(
         public int $rowSyncId,
-        ?string $fenceToken = null
+        ?string $fenceToken = null,
+        ?string $snapshotSpreadsheetId = null,
+        ?string $snapshotTabName = null,
+        ?string $snapshotSchemaVersion = null,
+        ?int $snapshotConnectionId = null
     ) {
         $this->fenceToken = $fenceToken ?: (string) Str::uuid();
+        $this->snapshotSpreadsheetId = $snapshotSpreadsheetId;
+        $this->snapshotTabName = $snapshotTabName;
+        $this->snapshotSchemaVersion = $snapshotSchemaVersion;
+        $this->snapshotConnectionId = $snapshotConnectionId;
     }
 
     /**
@@ -41,7 +53,10 @@ class ProcessSpreadsheetRowSyncJob implements ShouldQueue
 
         $engine->processSyncRecord(
             $rowSync,
-            requestedFenceToken: $this->fenceToken
+            requestedFenceToken: $this->fenceToken,
+            snapshotSpreadsheetId: $this->snapshotSpreadsheetId,
+            snapshotTabName: $this->snapshotTabName,
+            snapshotSchemaVersion: $this->snapshotSchemaVersion
         );
     }
 

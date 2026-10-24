@@ -413,11 +413,11 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             ]);
         }
 
-        // 3. Kolom-kolom kanonikal 2026 (40 kolom lengkap terpadu)
+        // 3. Kolom-kolom kanonikal 2026 (38 kolom kontrak baseline)
         $columns = self::getCanonicalColumns();
 
         foreach ($connections as $connection) {
-            $schemaVersion = SpreadsheetSchemaVersion::updateOrCreate(
+            $schemaVersion = SpreadsheetSchemaVersion::firstOrCreate(
                 [
                     'spreadsheet_connection_id' => $connection->id,
                     'year' => 2026,
@@ -426,31 +426,65 @@ class Spreadsheet2026SchemaSeeder extends Seeder
                 [
                     'sheet_tab_name' => '2026',
                     'is_active' => true,
-                    'notes' => 'Official 2026 40-Column Unified Registration Contract',
+                    'notes' => 'Official 2026 38-Column Unified Registration Contract',
                 ]
             );
 
-            // Hapus kolom lama di atas urutan 40 agar tidak tersisa 47 kolom
-            SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)
-                ->where('column_order', '>', count($columns))
-                ->delete();
+            // Baseline initialization only: periksa apakah skema sudah memiliki custom/historical mapping
+            $existingMappings = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->get();
 
+            $hasCustomOrHistorical = $existingMappings->contains(function ($m) {
+                return $m->target_entity === 'registration_custom_answers'
+                    || str_starts_with((string) ($m->target_field ?? ''), 'custom_')
+                    || str_starts_with((string) ($m->column_identity ?? ''), 'col_custom_')
+                    || $m->column_order > 38;
+            });
+
+            if ($hasCustomOrHistorical) {
+                // Skema sudah dikembangkan secara dinamis dengan field custom/historis.
+                // Jangan menimpa atau merusak urutan field yang sudah dipublikasikan.
+                continue;
+            }
+
+            // Inisialisasi/sinkronisasi baseline 38 kolom tanpa operasi delete destruktif
+            // dan tanpa menimpa berdasarkan column_order semata.
             foreach ($columns as $col) {
-                SpreadsheetColumnMapping::updateOrCreate(
-                    [
+                $identity = !empty($col['field']) ? 'col_' . $col['field'] : 'col_' . \Illuminate\Support\Str::slug($col['header'], '_');
+
+                $mapping = $existingMappings->first(function ($m) use ($identity, $col) {
+                    return $m->column_identity === $identity
+                        || (!empty($col['field']) && $m->target_field === $col['field'] && $m->target_entity === $col['entity']);
+                });
+
+                if ($mapping) {
+                    $mapping->update([
+                        'column_identity' => $identity,
+                        'column_order'   => $col['order'],
+                        'sheet_header'   => $col['header'],
+                        'target_entity'  => $col['entity'],
+                        'target_field'   => $col['field'],
+                        'data_type'      => $col['type'],
+                        'direction'      => $col['direction'],
+                        'transform_key'  => $col['transform'],
+                        'is_required'    => $col['required'],
+                        'mapping_status' => 'active',
+                    ]);
+                } else {
+                    SpreadsheetColumnMapping::create([
+                        'public_uuid'                   => (string) \Illuminate\Support\Str::uuid(),
                         'spreadsheet_schema_version_id' => $schemaVersion->id,
-                        'column_order' => $col['order'],
-                    ],
-                    [
-                        'sheet_header' => $col['header'],
-                        'target_entity' => $col['entity'],
-                        'target_field' => $col['field'],
-                        'data_type' => $col['type'],
-                        'direction' => $col['direction'],
-                        'transform_key' => $col['transform'],
-                        'is_required' => $col['required'],
-                    ]
-                );
+                        'column_identity'               => $identity,
+                        'column_order'                  => $col['order'],
+                        'sheet_header'                  => $col['header'],
+                        'target_entity'                 => $col['entity'],
+                        'target_field'                  => $col['field'],
+                        'data_type'                     => $col['type'],
+                        'direction'                     => $col['direction'],
+                        'transform_key'                 => $col['transform'],
+                        'is_required'                   => $col['required'],
+                        'mapping_status'                => 'active',
+                    ]);
+                }
             }
         }
     }
