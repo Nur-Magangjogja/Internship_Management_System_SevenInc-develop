@@ -85,7 +85,8 @@ class SpreadsheetInboundSyncService
             $tabYear = (int) $profile->year;
         }
 
-        $headerRow = $profile?->header_row ?? ($tabYear !== null ? 12 : 1);
+        $defaultHeader = SpreadsheetTabProfile::defaultHeaderRowSuggestion($tabName, $connection->connection_key);
+        $headerRow = $profile?->header_row ?? ($tabYear !== null ? 12 : $defaultHeader);
         $dataStartRow = $profile?->data_start_row ?? ($headerRow + 1);
         $effectiveSheetId = (int) ($profile?->sheet_id ?? ($sheetId !== null ? (int) $sheetId : 0));
 

@@ -35,17 +35,35 @@ class SpreadsheetTabProfile extends Model
     }
 
     /**
+     * Determine if a tab is a yearly tab (e.g. 2026, 2027) or TEMPLATE_TAHUN.
+     */
+    public static function isYearlyOrTemplateTab(string $tabName): bool
+    {
+        $clean = trim($tabName);
+        return (bool) preg_match('/^\d{4}$/', $clean) || $clean === 'TEMPLATE_TAHUN';
+    }
+
+    /**
      * Resolve default header row suggestion based on convention if no profile exists.
-     * Note: 2026/year => 12 and other => 1 is only an initial suggestion;
-     * explicit profile always takes precedence.
+     * Note: 2026/year and TEMPLATE_TAHUN => 12; other tabs (e.g. Petunjuk) => 1.
+     * Explicit profile always takes precedence.
      */
     public static function defaultHeaderRowSuggestion(string $tabName, string $connectionKey = ''): int
     {
-        $clean = trim($tabName);
-        if (preg_match('/^\d{4}$/', $clean)) {
+        if (static::isYearlyOrTemplateTab($tabName)) {
             return 12;
         }
         return 1;
+    }
+
+    /**
+     * Resolve default data start row suggestion based on convention if no profile exists.
+     * Note: 2026/year and TEMPLATE_TAHUN => 13; other tabs (e.g. Petunjuk) => 2.
+     */
+    public static function defaultDataStartRowSuggestion(string $tabName, string $connectionKey = '', ?int $headerRow = null): int
+    {
+        $header = $headerRow ?? static::defaultHeaderRowSuggestion($tabName, $connectionKey);
+        return $header + 1;
     }
 
     /**
@@ -89,6 +107,16 @@ class SpreadsheetTabProfile extends Model
                 $profile->data_start_row = $explicitDataStartRow;
                 $dirty = true;
             }
+            // Auto-heal legacy TEMPLATE_TAHUN profile if still defaulting to 1/2 without explicit override
+            if ($explicitHeaderRow === null && $explicitDataStartRow === null
+                && $profile->tab_name === 'TEMPLATE_TAHUN'
+                && $profile->header_row === 1
+                && $profile->data_start_row === 2
+            ) {
+                $profile->header_row = 12;
+                $profile->data_start_row = 13;
+                $dirty = true;
+            }
             if ($dirty) {
                 $profile->save();
             }
@@ -96,7 +124,7 @@ class SpreadsheetTabProfile extends Model
         }
 
         $headerRow = $explicitHeaderRow ?? static::defaultHeaderRowSuggestion($tabName, $connection->connection_key);
-        $dataStartRow = $explicitDataStartRow ?? ($headerRow + 1);
+        $dataStartRow = $explicitDataStartRow ?? static::defaultDataStartRowSuggestion($tabName, $connection->connection_key, $headerRow);
 
         if ($dataStartRow <= $headerRow) {
             throw new \InvalidArgumentException('data_start_row harus lebih besar dari header_row.');

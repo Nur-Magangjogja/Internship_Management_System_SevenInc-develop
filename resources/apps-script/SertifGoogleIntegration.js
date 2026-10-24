@@ -3,60 +3,59 @@
  * SERTIF SHEETS GATEWAY — MASTER PLAN V1 (ADDENDUM FINAL V4)
  * ============================================================================
  * 
- * Panduan Deployment untuk Operator:
+ * Panduan Deployment untuk Operator (V1.3):
  * 1. Buka proyek Google Apps Script EXISTING pada https://script.google.com
  *    (Jangan membuat New Project kecuali diperintahkan khusus).
  * 2. Perbarui seluruh isi file Code.gs dengan kode ini secara utuh.
  * 3. Buka Project Settings (ikon gerigi) -> Script Properties:
- *    - SHARED_API_KEY              : [Kunci rahasia HMAC sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
- *    - REGISTRATION_SPREADSHEET_ID : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU
- *    - FOLLOWUP_SPREADSHEET_ID     : 1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
- *    - SPREADSHEET_ALLOWLIST       : 1lY3UhhViRCOstvZZeJtEEW2Yol8eFIIFgkCqt3haQSU,1aEuwUFQED_DODDcf9IPm2gKe4cbdpPYim77mYu9yDEU
- *    - ATTACHMENTS_ROOT_FOLDER_ID  : [Properti Transisi - pertahankan selama uploader legacy bermigrasi ke Drive API]
+ *    - SHARED_SECRET (atau SHARED_API_KEY) : [Kunci rahasia HMAC sama dengan GOOGLE_APPS_SCRIPT_SHARED_SECRET di .env]
+ *    CATATAN PENTING V1.3:
+ *    - ID Spreadsheet Pendaftaran, ID Follow-Up, SPREADSHEET_ALLOWLIST, dan ID Folder Google Drive (ATTACHMENTS_ROOT_FOLDER_ID)
+ *      TIDAK PERLU DIKETIK MANUAL di Script Properties!
+ *    - Nilai-nilai tersebut didaftarkan, diinspeksi, dan diaktifkan secara dinamis langsung dari antarmuka Admin SERTIF
+ *      melalui gateway aman (inspect_target & activate_authorized_target).
  * 4. Klik "Deploy" -> "Manage deployments" -> Pilih deployment aktif -> Edit -> New version -> Deploy.
  *    (Pertahankan URL /exec yang sama untuk koneksi Laravel).
- * 5. Apps Script ini khusus berfungsi sebagai SHEETS GATEWAY.
- *    Penyimpanan berkas fisik dikelola langsung oleh backend Laravel melalui Google Drive API.
+ * 5. Apps Script ini berfungsi sebagai GATEWAY resmi integrasi Google Sheets & DriveApp.
+ *    Penyimpanan berkas fisik remote diarahkan melalui DriveApp ke Google Drive pribadi SERTIF.
  */
 
-// Canonical 40-Column Contract Definition for Registration Tab 2026 (Order 1 to 40)
+// Canonical 38-Column Contract Definition for Registration Tab 2026 (Order 1 to 38)
 var REG_CONTRACT_2026 = [
   { order: 1, dbKey: "Timestamp", test: function(h) { return /timestamp|waktu/i.test(h); } },
   { order: 2, dbKey: "Nama Lengkap", aliases: ["Nama"], test: function(h) { return (/nama\s+lengkap/i.test(h) || /^nama$/i.test(h)) && !/pembimbing/i.test(h); } },
-  { order: 3, dbKey: "NIM (Nomor Induk Mahasiswa)", aliases: ["NIM", "NISN"], test: function(h) { return /nim|nisn/i.test(h); } },
+  { order: 3, dbKey: "NIM/NIS", aliases: ["Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional", "Nomor Induk Mahasiswa", "Nomor Induk Siswa Nasional", "NIM (Nomor Induk Mahasiswa)", "NIM", "NISN", "NIS", "NIM / NIS"], test: function(h) { return /nim|nis|nomor\s*induk/i.test(h); } },
   { order: 4, dbKey: "Program Studi", aliases: ["Jurusan", "Prodi"], test: function(h) { return /program\s+studi|jurusan|prodi/i.test(h); } },
   { order: 5, dbKey: "Email", test: function(h) { return /email/i.test(h); } },
   { order: 6, dbKey: "Jenis Kelamin", aliases: ["Gender"], test: function(h) { return /jenis\s+kelamin|gender/i.test(h); } },
   { order: 7, dbKey: "No. HP Aktif yang bisa dihubungi dan chat WA", aliases: ["No. HP", "Nomor WhatsApp", "No WA", "No. HP Aktif"], test: function(h) { return (/no.*hp|whats?app/i.test(h) && !/dosen|guru|pembimbing/i.test(h)); } },
   { order: 8, dbKey: "Asal Sekolah/Kampus", aliases: ["Sekolah/Kampus", "Asal Kampus", "Institusi"], test: function(h) { return /sekolah.*kampus|asal.*sekolah|institusi/i.test(h); } },
-  { order: 9, dbKey: "Nama Kota/Daerah tempat tinggal Anda saat ini", aliases: ["Kota Tinggal", "Domisili", "Kota Asal"], test: function(h) { return /kota.*tinggal|kota.*daerah|kota\s+asal|domisili/i.test(h); } },
-  { order: 10, dbKey: "Mengapa Anda ingin Magang/PKL disini?", aliases: ["Alasan Magang", "Alasan PKL", "Mengapa Anda ingin Magang/PKL disini"], test: function(h) { return /mengapa.*ingin|alasan.*magang|alasan.*pkl/i.test(h); } },
-  { order: 11, dbKey: "Jenis Magang apa yang Anda pilih?", aliases: ["Jenis Magang", "Jalur Magang", "Jenis Magang apa yang Anda pilih"], test: function(h) { return /jenis\s+magang|jalur.*magang/i.test(h); } },
-  { order: 12, dbKey: "Status Anda saat ini", aliases: ["Status Saat Ini", "Status"], test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
-  { order: 13, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", aliases: ["Kesiapan WFO", "Siap WFO", "Apakah Anda siap dengan Sistem Magang WFO"], test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
-  { order: 14, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", aliases: ["No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).", "Kontak Dosen/Guru Pembimbing", "Pembimbing PKL/Magang"], test: function(h) { return (/dosen|guru\s+pembimbing/i.test(h) || (/pembimbing/i.test(h) && /jabatan/i.test(h))) && !/^nama\s+pembimbing/i.test(h) && !/(no|wa).*pembimbing$/i.test(h); } },
-  { order: 15, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", aliases: ["Hari magang adalah Senin - Sabtu. Jam magangnya dijadwalkan shifting bergantian antara : Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB). Apakah Anda sanggup?", "Kesanggupan Jadwal", "Kesiapan Shifting", "Kesanggupan jadwal Senin–Sabtu dan shifting"], test: function(h) { return /senin.*sabtu|shifting|kesiapan\s+shift|apakah\s+anda\s+sanggup/i.test(h); } },
-  { order: 16, dbKey: "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?", legacyKey: "Apakah ada laptop sendiri", aliases: ["Punya Laptop Sendiri", "Apakah ada laptop sendiri", "Apakah Anda ada alat kerja sendiri (LAPTOP)"], test: function(h) { return /laptop/i.test(h) && !/peralatan/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h); } },
-  { order: 17, dbKey: "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?", legacyKey: "Jika YA, alat apa yang dimiliki/dibawa", aliases: ["Alat yang dibawa", "Jika YA, alat apa yang dimiliki/dibawa", "Jika YA, alat apa yang Anda miliki"], test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)/i.test(h) && !/peralatan/i.test(h); } },
-  { order: 18, dbKey: "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)", legacyKey: "Kapan berencana mulai Magang/PKL", aliases: ["Rencana Mulai Magang", "Tanggal Mulai", "Kapan berencana mulai Magang/PKL", "Kapan Anda berencana mulai Magang/PKL"], test: function(h) { return /kapan.*mulai|rencana.*mulai|mulai.*magang/i.test(h); } },
-  { order: 19, dbKey: "Berapa lama Anda akan Magang/PKL?", legacyKey: "Berapa lama akan Magang/PKL", aliases: ["Durasi Magang", "Lama Magang", "Berapa lama akan Magang/PKL", "Berapa lama Anda akan Magang/PKL"], test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
-  { order: 20, dbKey: "Anda tahu info magang ini dari mana?", legacyKey: "Sumber info magang", aliases: ["Sumber Informasi", "Sumber info magang", "Anda tahu info magang ini dari mana"], test: function(h) { return /tahu.*info|sumber.*info|dapat.*info/i.test(h); } },
-  { order: 21, dbKey: "Sosial Media (Instagram) yang dimiliki", legacyKey: "Instagram", aliases: ["Akun Instagram", "Instagram", "Sosial Media (Instagram)"], test: function(h) { return /instagram|sosial\s+media/i.test(h); } },
-  { order: 22, dbKey: "Apakah anda membutuhkan info kost/kontrakan deket kantor?", legacyKey: "Butuh info kost/kontrakan", aliases: ["Info Kost", "Butuh Kost", "Butuh info kost/kontrakan", "Apakah anda membutuhkan info kost/kontrakan"], test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
-  { order: 23, dbKey: "Program Magang/PKL apa yang Anda minati?", legacyKey: "Program Magang/PKL yang diminati", aliases: ["Bidang Minat", "Divisi Magang", "Program Magang/PKL yang diminati", "Program Magang/PKL apa yang Anda minati"], test: function(h) { return /minat|bidang.*magang/i.test(h); } },
-  { order: 24, dbKey: "Tempat Lahir", aliases: ["Tempat Kelahiran", "Birth Place"], test: function(h) { return /tempat\s+lahir/i.test(h); } },
-  { order: 25, dbKey: "Tanggal Lahir", aliases: ["Tgl Lahir", "Birth Date"], test: function(h) { return /tanggal\s+lahir|tgl\s+lahir|birth\s*date/i.test(h); } },
-  { order: 26, dbKey: "Agama", aliases: ["Religion"], test: function(h) { return /^agama$|^religion$/i.test(h); } },
-  { order: 27, dbKey: "Software Desain", aliases: ["Design Software", "Software Desain yang Dikuasai"], test: function(h) { return /software\s+desain/i.test(h); } },
-  { order: 28, dbKey: "Software Video", aliases: ["Video Editing Software", "Software Video yang Dikuasai"], test: function(h) { return /software\s+video/i.test(h); } },
-  { order: 29, dbKey: "Bahasa Pemrograman", aliases: ["Programming Languages", "Bahasa Koding"], test: function(h) { return /bahasa\s+pemrograman|programming/i.test(h); } },
-  { order: 30, dbKey: "Digital Marketing", aliases: ["Keahlian Digital Marketing"], test: function(h) { return /digital\s+marketing/i.test(h); } },
-  { order: 31, dbKey: "Peralatan (Laptop, Kamera, Tripod, dll)", aliases: ["Peralatan", "Alat Milik Sendiri", "Peralatan (Laptop, Kamera, Tripod dll)"], test: function(h) { return /^peralatan/i.test(h) || /peralatan.*laptop/i.test(h); } },
-  { order: 32, dbKey: "Nama Pembimbing", aliases: ["Nama Guru Pembimbing", "Nama Dosen Pembimbing"], test: function(h) { return /^nama\s+pembimbing/i.test(h); } },
-  { order: 33, dbKey: "No. WA Pembimbing", aliases: ["Nomor WA Pembimbing", "No HP Pembimbing"], test: function(h) { return /(no|wa).*pembimbing/i.test(h) && !/dosen|guru|jabatan/i.test(h); } },
-  { order: 34, dbKey: "Kegiatan Lain Selain Magang", aliases: ["Aktivitas Lain", "Kegiatan Lain"], test: function(h) { return /kegiatan\s+lain/i.test(h); } },
+  { order: 9, dbKey: "Mengapa Anda ingin Magang/PKL disini?", aliases: ["Alasan Magang", "Alasan PKL", "Mengapa Anda ingin Magang/PKL disini"], test: function(h) { return /mengapa.*ingin|alasan.*magang|alasan.*pkl/i.test(h); } },
+  { order: 10, dbKey: "Jenis Magang apa yang Anda pilih?", aliases: ["Jenis Magang", "Jalur Magang", "Jenis Magang apa yang Anda pilih"], test: function(h) { return /jenis\s+magang|jalur.*magang/i.test(h); } },
+  { order: 11, dbKey: "Status Anda saat ini", aliases: ["Status Saat Ini", "Status"], test: function(h) { return /status.*saat\s+ini|^status$/i.test(h); } },
+  { order: 12, dbKey: "Apakah Anda siap dengan Sistem Magang WFO (Work From Office) di Yogyakarta?", aliases: ["Kesiapan WFO", "Siap WFO", "Apakah Anda siap dengan Sistem Magang WFO"], test: function(h) { return /wfo|work\s+from\s+office/i.test(h); } },
+  { order: 13, dbKey: "No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan", aliases: ["No. HP Aktif / WA Dosen atau Guru Pembimbing PKL/Magang beserta Nama dan Jabatan (bisa diisi menyusul, jika belum dapat dosen pembimbing).", "Kontak Dosen/Guru Pembimbing", "Pembimbing PKL/Magang"], test: function(h) { return (/dosen|guru\s+pembimbing/i.test(h) || (/pembimbing/i.test(h) && /jabatan/i.test(h))) && !/^nama\s+pembimbing/i.test(h) && !/(no|wa).*pembimbing$/i.test(h); } },
+  { order: 14, dbKey: "Kesanggupan jadwal Senin–Sabtu dan shifting (full text mengikuti form/template)", aliases: ["Hari magang adalah Senin - Sabtu. Jam magangnya dijadwalkan shifting bergantian antara : Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB). Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB). Apakah Anda sanggup?", "Kesanggupan Jadwal", "Kesiapan Shifting", "Kesanggupan jadwal Senin–Sabtu dan shifting"], test: function(h) { return /senin.*sabtu|shifting|kesiapan\s+shift|apakah\s+anda\s+sanggup/i.test(h); } },
+  { order: 15, dbKey: "Apakah Anda ada alat kerja sendiri (LAPTOP) yang bisa dipakai selama Magang/PKL?", legacyKey: "Apakah ada laptop sendiri", aliases: ["Punya Laptop Sendiri", "Apakah ada laptop sendiri", "Apakah Anda ada alat kerja sendiri (LAPTOP)"], test: function(h) { return /laptop/i.test(h) && !/peralatan/i.test(h) && !/alat.*(miliki|milik|bawa|dimiliki)/i.test(h); } },
+  { order: 16, dbKey: "Jika YA, alat apa yang Anda miliki, yang bisa Anda bawa selama Magang/PKL?", legacyKey: "Jika YA, alat apa yang dimiliki/dibawa", aliases: ["Alat yang dibawa", "Jika YA, alat apa yang dimiliki/dibawa", "Jika YA, alat apa yang Anda miliki"], test: function(h) { return /alat.*(miliki|milik|bawa|dimiliki)/i.test(h) && !/peralatan/i.test(h); } },
+  { order: 17, dbKey: "Kapan Anda berencana mulai Magang/PKL? (tulis lengkap tanggal, bulan, tahun)", legacyKey: "Kapan berencana mulai Magang/PKL", aliases: ["Rencana Mulai Magang", "Tanggal Mulai", "Kapan berencana mulai Magang/PKL", "Kapan Anda berencana mulai Magang/PKL"], test: function(h) { return /kapan.*mulai|rencana.*mulai|mulai.*magang/i.test(h); } },
+  { order: 18, dbKey: "Berapa lama Anda akan Magang/PKL?", legacyKey: "Berapa lama akan Magang/PKL", aliases: ["Durasi Magang", "Lama Magang", "Berapa lama akan Magang/PKL", "Berapa lama Anda akan Magang/PKL"], test: function(h) { return /\blama\b.*magang|\bdurasi\b/i.test(h); } },
+  { order: 19, dbKey: "Anda tahu info magang ini dari mana?", legacyKey: "Sumber info magang", aliases: ["Sumber Informasi", "Sumber info magang", "Anda tahu info magang ini dari mana"], test: function(h) { return /tahu.*info|sumber.*info|dapat.*info/i.test(h); } },
+  { order: 20, dbKey: "Sosial Media (Instagram) yang dimiliki", legacyKey: "Instagram", aliases: ["Akun Instagram", "Instagram", "Sosial Media (Instagram)"], test: function(h) { return /instagram|sosial\s+media/i.test(h); } },
+  { order: 21, dbKey: "Apakah anda membutuhkan info kost/kontrakan deket kantor?", legacyKey: "Butuh info kost/kontrakan", aliases: ["Info Kost", "Butuh Kost", "Butuh info kost/kontrakan", "Apakah anda membutuhkan info kost/kontrakan"], test: function(h) { return /kost|kontrakan|^kos$/i.test(h); } },
+  { order: 22, dbKey: "Program Magang/PKL apa yang Anda minati?", legacyKey: "Program Magang/PKL yang diminati", aliases: ["Bidang Minat", "Divisi Magang", "Program Magang/PKL yang diminati", "Program Magang/PKL apa yang Anda minati"], test: function(h) { return /minat|bidang.*magang/i.test(h); } },
+  { order: 23, dbKey: "Tanggal Lahir", aliases: ["Tgl Lahir", "Birth Date"], test: function(h) { return /tanggal\s+lahir|tgl\s+lahir|birth\s*date/i.test(h); } },
+  { order: 24, dbKey: "Agama", aliases: ["Religion"], test: function(h) { return /^agama$|^religion$/i.test(h); } },
+  { order: 25, dbKey: "Software Desain", aliases: ["Design Software", "Software Desain yang Dikuasai"], test: function(h) { return /software\s+desain/i.test(h); } },
+  { order: 26, dbKey: "Software Video", aliases: ["Video Editing Software", "Software Video yang Dikuasai"], test: function(h) { return /software\s+video/i.test(h); } },
+  { order: 27, dbKey: "Bahasa Pemrograman", aliases: ["Programming Languages", "Bahasa Koding"], test: function(h) { return /bahasa\s+pemrograman|programming/i.test(h); } },
+  { order: 28, dbKey: "Digital Marketing", aliases: ["Keahlian Digital Marketing"], test: function(h) { return /digital\s+marketing/i.test(h); } },
+  { order: 29, dbKey: "Peralatan (Laptop, Kamera, Tripod, dll)", aliases: ["Peralatan", "Alat Milik Sendiri", "Peralatan (Laptop, Kamera, Tripod dll)"], test: function(h) { return /^peralatan/i.test(h) || /peralatan.*laptop/i.test(h); } },
+  { order: 30, dbKey: "Nama Pembimbing", aliases: ["Nama Guru Pembimbing", "Nama Dosen Pembimbing"], test: function(h) { return /^nama\s+pembimbing/i.test(h); } },
+  { order: 31, dbKey: "No. WA Pembimbing", aliases: ["Nomor WA Pembimbing", "No HP Pembimbing"], test: function(h) { return /(no|wa).*pembimbing/i.test(h) && !/dosen|guru|jabatan/i.test(h); } },
+  { order: 32, dbKey: "Kegiatan Lain Selain Magang", aliases: ["Aktivitas Lain", "Kegiatan Lain"], test: function(h) { return /kegiatan\s+lain/i.test(h); } },
   { 
-    order: 35, 
+    order: 33, 
     dbKey: "Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB", 
     legacyKey: "Upload PDF CV + scan KTM/KTP + portofolio max 10MB",
     aliases: [
@@ -67,11 +66,11 @@ var REG_CONTRACT_2026 = [
     ],
     test: function(h) { return /silakan\s+upload|upload.*pdf|attachment|cv.*ktm.*portofolio/i.test(h); } 
   },
-  { order: 36, dbKey: "KET", aliases: ["Keterangan", "Status Approval"], test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
-  { order: 37, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
-  { order: 38, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
-  { order: 39, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
-  { order: 40, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
+  { order: 34, dbKey: "KET", aliases: ["Keterangan", "Status Approval"], test: function(h) { return /^ket$|^keterangan$/i.test(h); } },
+  { order: 35, dbKey: "SERTIF_SYNC_ID", test: function(h) { return /^sertif_sync_id$/i.test(h); } },
+  { order: 36, dbKey: "SERTIF_REGISTRATION_ID", test: function(h) { return /^sertif_registration_id$/i.test(h); } },
+  { order: 37, dbKey: "SERTIF_SYNC_STATUS", test: function(h) { return /^sertif_sync_status$/i.test(h); } },
+  { order: 38, dbKey: "SERTIF_LAST_SYNC_AT", test: function(h) { return /^sertif_last_sync_at$/i.test(h); } }
 ];
 
 // Canonical 21-Column Contract Definition for Follow Up Tab (Order 1 to 21)
@@ -100,7 +99,7 @@ var FOLLOWUP_CONTRACT = [
 ];
 
 /**
- * Match a raw spreadsheet header string to a canonical registration slot (1-40).
+ * Match a raw spreadsheet header string to a canonical registration slot (1-38).
  * Uses a robust two-pass strategy:
  * Pass 1: Strict exact matching on dbKey, legacyKey, and known aliases across all slots.
  * Pass 2: Fallback regex pattern matching if no exact header match was found.
@@ -254,6 +253,12 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
     colMap.push(foundOldIdx);
   }
 
+  // If new headers require columns beyond current max columns, ensure sheet has enough columns FIRST
+  var currentMaxCols = sheet.getMaxColumns();
+  if (schemaHeaders.length > currentMaxCols) {
+    sheet.insertColumnsAfter(currentMaxCols, schemaHeaders.length - currentMaxCols);
+  }
+
   // Realign existing data rows (Row 13+) so KET and SERTIF_SYNC_ID never shift into wrong columns
   var numDataRows = lastRow - headerRowIndex;
   if (numDataRows > 0) {
@@ -278,12 +283,6 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
   // Write updated headers on headerRowIndex
   sheet.getRange(headerRowIndex, 1, 1, schemaHeaders.length).setValues([schemaHeaders]);
 
-  // If new headers require columns beyond current max columns, ensure sheet has enough columns
-  var currentMaxCols = sheet.getMaxColumns();
-  if (schemaHeaders.length > currentMaxCols) {
-    sheet.insertColumnsAfter(currentMaxCols, schemaHeaders.length - currentMaxCols);
-  }
-
   // Unhide any columns within the active schema range in case they were previously hidden
   try {
     if (typeof sheet.unhideColumn === "function") {
@@ -303,12 +302,12 @@ function ensureSheetAndSyncHeaders(ss, tabName, schemaHeaders, headerRowIndex) {
  */
 function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDynamicRegistrationCols) {
   var isRegistration = (connectionKey === "registration");
-  var expectedCols = isRegistration ? 40 : 21;
+  var expectedCols = isRegistration ? 38 : 21;
 
-  if (isRegistration && allowDynamicRegistrationCols === true) {
-    if (!actualHeaders || actualHeaders.length < 40) {
+  if (isRegistration && (allowDynamicRegistrationCols === true || (actualHeaders && actualHeaders.length >= 38))) {
+    if (!actualHeaders || actualHeaders.length < 38) {
       return {
-        error: "Jumlah kolom spreadsheet pendaftaran minimal 40 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+        error: "Jumlah kolom spreadsheet pendaftaran minimal 38 kolom: ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
         error_code: "SCHEMA_MISMATCH"
       };
     }
@@ -361,9 +360,9 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDyna
     return { values: dynValues };
   }
 
-  if (!actualHeaders || actualHeaders.length !== expectedCols) {
+  if (!actualHeaders || (isRegistration ? actualHeaders.length < 38 : actualHeaders.length !== expectedCols)) {
     return {
-      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (harus tepat 40 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
+      error: "Jumlah kolom spreadsheet tidak sesuai kontrak " + (isRegistration ? "Pendaftaran 2026 (minimal 38 kolom)" : "Follow-Up (harus tepat 21 kolom)") + ": ditemukan " + (actualHeaders ? actualHeaders.length : 0) + " kolom.",
       error_code: "SCHEMA_MISMATCH"
     };
   }
@@ -493,6 +492,31 @@ function doPost(e) {
       case "upload_asset":
         return handleUploadFileAction(payload);
 
+      // ── SERTIF PRIVATE GOOGLE DRIVE GATEWAY ACTIONS (Addendum Final V4 & GAS-03) ──
+      case "drive_ping":
+        return handleDrivePingAction(payload);
+
+      case "drive_resolve_folder":
+        return handleDriveResolveFolderAction(payload);
+
+      case "drive_upload":
+        return handleDriveUploadAction(payload);
+
+      case "drive_get_metadata":
+        return handleDriveGetMetadataAction(payload);
+
+      case "drive_download_chunk":
+        return handleDriveDownloadChunkAction(payload);
+
+      case "drive_list_children":
+        return handleDriveListChildrenAction(payload);
+
+      case "drive_search_files":
+        return handleDriveSearchFilesAction(payload);
+
+      case "drive_trash":
+        return handleDriveTrashAction(payload);
+
       case "ensure_extension_columns":
         return handleEnsureExtensionColumnsAction(payload);
 
@@ -517,6 +541,15 @@ function doPost(e) {
       case "delete_empty_column":
         return handleDeleteEmptyColumnAction(payload);
 
+      case "inspect_target":
+        return handleInspectTargetAction(payload);
+
+      case "activate_authorized_target":
+        return handleActivateAuthorizedTargetAction(payload);
+
+      case "attach_row_sync_id":
+        return handleAttachRowSyncIdAction(payload);
+
       default:
         return createJsonResponse({
           success: false,
@@ -540,12 +573,13 @@ function doPost(e) {
  */
 function handlePingAction(payload) {
   var props = PropertiesService.getScriptProperties();
-  var regSheetId = props.getProperty("REGISTRATION_SPREADSHEET_ID");
-  var fwuSheetId = props.getProperty("FOLLOWUP_SPREADSHEET_ID");
-  var driveFolderId = props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID");
+  var regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
+  var fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
+  var allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+  var driveFolderId = (props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") || "").toString().trim();
 
   var connectionKey = payload.connection_key || "";
-  var requestedSpreadsheetId = payload.spreadsheet_id || "";
+  var requestedSpreadsheetId = (payload.spreadsheet_id || "").toString().trim();
 
   var expectedSpreadsheetId = "";
   if (connectionKey === "registration") {
@@ -554,9 +588,26 @@ function handlePingAction(payload) {
     expectedSpreadsheetId = fwuSheetId;
   }
 
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
   var idMatched = true;
-  if (expectedSpreadsheetId && requestedSpreadsheetId) {
-    idMatched = (requestedSpreadsheetId.trim() === expectedSpreadsheetId.trim());
+  if (requestedSpreadsheetId) {
+    if (expectedSpreadsheetId) {
+      idMatched = (requestedSpreadsheetId === expectedSpreadsheetId) || (allowedIds.indexOf(requestedSpreadsheetId) !== -1);
+    } else if (allowedIds.length > 0) {
+      idMatched = (allowedIds.indexOf(requestedSpreadsheetId) !== -1);
+    }
   }
 
   var regAccessible = false;
@@ -726,7 +777,7 @@ function handleUpsertRowAction(payload) {
     }, 400);
   }
 
-  // 5. Strict fail-closed Spreadsheet ID resolution from Script Properties
+  // 5. Dynamic & Allowlisted Spreadsheet ID Resolution
   var props = null;
   try {
     if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
@@ -741,38 +792,75 @@ function handleUpsertRowAction(payload) {
 
   var regSheetId = "";
   var fwuSheetId = "";
+  var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
-  }
-
-  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
-
-  if (!expectedSpreadsheetId) {
-    return createJsonResponse({
-      success: false,
-      sync_id: syncId,
-      error_code: "SPREADSHEET_ID_MISSING",
-      is_retryable: false,
-      message: "Spreadsheet ID untuk koneksi '" + connectionKey + "' belum dikonfigurasi di Script Properties."
-    }, 400);
+    allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var requestedSpreadsheetId = (payload.spreadsheet_id !== undefined && payload.spreadsheet_id !== null)
     ? payload.spreadsheet_id.toString().trim()
     : "";
 
-  if (requestedSpreadsheetId !== "" && requestedSpreadsheetId !== expectedSpreadsheetId) {
+  // SECURITY GUARD: Tolak mutasi tulis jika target terdaftar sebagai sumber legacy read-only
+  if (requestedSpreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === requestedSpreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          sync_id: syncId,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + requestedSpreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan."
+        }, 403);
+      }
+    }
+  }
+
+  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
+
+  // Bangun daftar lengkap ID spreadsheet yang diizinkan untuk penulisan
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
+  var spreadsheetId = "";
+  if (requestedSpreadsheetId !== "") {
+    if (requestedSpreadsheetId === expectedSpreadsheetId || allowedIds.indexOf(requestedSpreadsheetId) !== -1) {
+      spreadsheetId = requestedSpreadsheetId;
+    } else {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "TARGET_NOT_AUTHORIZED",
+        is_retryable: false,
+        message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') belum diotorisasi oleh Admin. Aktivasi target wajib melalui persetujuan Admin."
+      }, 403);
+    }
+  } else if (expectedSpreadsheetId !== "") {
+    spreadsheetId = expectedSpreadsheetId;
+  } else {
     return createJsonResponse({
       success: false,
       sync_id: syncId,
-      error_code: "TARGET_MISMATCH",
+      error_code: "TARGET_NOT_AUTHORIZED",
       is_retryable: false,
-      message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') tidak sesuai dengan konfigurasi resmi untuk koneksi '" + connectionKey + "'."
-    }, 400);
+      message: "Target Spreadsheet belum diotorisasi oleh Admin pada Script Properties."
+    }, 403);
   }
-
-  var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
   if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
@@ -813,7 +901,7 @@ function handleUpsertRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 38);
     var sheet = autoSyncHeaders
       ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
       : ss.getSheetByName(targetTabName);
@@ -1032,7 +1120,7 @@ function handleUpdateRowAction(payload) {
     }, 400);
   }
 
-  // 5. Strict fail-closed Spreadsheet ID resolution from Script Properties
+  // 5. Dynamic & Allowlisted Spreadsheet ID Resolution
   var props = null;
   try {
     if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
@@ -1047,38 +1135,75 @@ function handleUpdateRowAction(payload) {
 
   var regSheetId = "";
   var fwuSheetId = "";
+  var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
-  }
-
-  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
-
-  if (!expectedSpreadsheetId) {
-    return createJsonResponse({
-      success: false,
-      sync_id: syncId,
-      error_code: "SPREADSHEET_ID_MISSING",
-      is_retryable: false,
-      message: "Spreadsheet ID untuk koneksi '" + connectionKey + "' belum dikonfigurasi di Script Properties."
-    }, 400);
+    allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var requestedSpreadsheetId = (payload.spreadsheet_id !== undefined && payload.spreadsheet_id !== null)
     ? payload.spreadsheet_id.toString().trim()
     : "";
 
-  if (requestedSpreadsheetId !== "" && requestedSpreadsheetId !== expectedSpreadsheetId) {
+  // SECURITY GUARD: Tolak mutasi tulis jika target terdaftar sebagai sumber legacy read-only
+  if (requestedSpreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === requestedSpreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          sync_id: syncId,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + requestedSpreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan."
+        }, 403);
+      }
+    }
+  }
+
+  var expectedSpreadsheetId = (connectionKey === "registration") ? regSheetId : fwuSheetId;
+
+  // Bangun daftar lengkap ID spreadsheet yang diizinkan untuk penulisan
+  var allowedIds = [];
+  if (regSheetId) allowedIds.push(regSheetId);
+  if (fwuSheetId && allowedIds.indexOf(fwuSheetId) === -1) allowedIds.push(fwuSheetId);
+  if (allowlistStr) {
+    var parts = allowlistStr.split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var item = parts[i].trim();
+      if (item && allowedIds.indexOf(item) === -1) {
+        allowedIds.push(item);
+      }
+    }
+  }
+
+  var spreadsheetId = "";
+  if (requestedSpreadsheetId !== "") {
+    if (requestedSpreadsheetId === expectedSpreadsheetId || allowedIds.indexOf(requestedSpreadsheetId) !== -1) {
+      spreadsheetId = requestedSpreadsheetId;
+    } else {
+      return createJsonResponse({
+        success: false,
+        sync_id: syncId,
+        error_code: "TARGET_NOT_AUTHORIZED",
+        is_retryable: false,
+        message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') belum diotorisasi oleh Admin. Aktivasi target wajib melalui persetujuan Admin."
+      }, 403);
+    }
+  } else if (expectedSpreadsheetId !== "") {
+    spreadsheetId = expectedSpreadsheetId;
+  } else {
     return createJsonResponse({
       success: false,
       sync_id: syncId,
-      error_code: "TARGET_MISMATCH",
+      error_code: "TARGET_NOT_AUTHORIZED",
       is_retryable: false,
-      message: "Spreadsheet ID yang diminta ('" + requestedSpreadsheetId + "') tidak sesuai dengan konfigurasi resmi untuk koneksi '" + connectionKey + "'."
-    }, 400);
+      message: "Target Spreadsheet belum diotorisasi oleh Admin pada Script Properties."
+    }, 403);
   }
-
-  var spreadsheetId = expectedSpreadsheetId;
 
   var headerRowIndex = 1;
   if (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) {
@@ -1120,7 +1245,7 @@ function handleUpdateRowAction(payload) {
 
   try {
     var ss = SpreadsheetApp.openById(spreadsheetId);
-    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 40);
+    var autoSyncHeaders = (connectionKey === "registration" && payload.auto_sync_headers === true && Array.isArray(payload.schema_headers) && payload.schema_headers.length >= 38);
     var sheet = autoSyncHeaders
       ? ensureSheetAndSyncHeaders(ss, targetTabName, payload.schema_headers, headerRowIndex)
       : ss.getSheetByName(targetTabName);
@@ -1307,6 +1432,22 @@ function handleSyncSheetSchemaAction(payload) {
     }, 400);
   }
 
+  // SECURITY GUARD: Tolak sinkronisasi skema jika target terdaftar sebagai sumber legacy read-only
+  var legacySourcesStr = (props && typeof props.getProperty === "function") ? (props.getProperty("LEGACY_SOURCES") || "").toString().trim() : "";
+  if (spreadsheetId && legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var l = 0; l < legParts.length; l++) {
+      if (legParts[l].trim() === spreadsheetId) {
+        return createJsonResponse({
+          success: false,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + spreadsheetId + "') terdaftar sebagai sumber legacy read-only dan dilarang untuk sinkronisasi modifikasi skema."
+        }, 403);
+      }
+    }
+  }
+
   var headerRowIndex = (connectionKey === "registration" || /^\d{4}$/.test(targetTabName)) ? 12 : 1;
   var lock = (typeof LockService !== "undefined" && LockService && LockService.getScriptLock)
     ? LockService.getScriptLock()
@@ -1465,16 +1606,226 @@ function handleLookupRowAction(payload) {
  * Handle File Upload to Google Drive via Apps Script Gateway
  * Mendukung pembentukan folder hierarkis otomatis (misal: SYSTEM-ASSETS/BRANDS/SEVEN-INC atau SYSTEM-ASSETS/Logos)
  */
-function handleUploadFileAction(payload) {
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * SERTIF PRIVATE GOOGLE DRIVE GATEWAY — HELPER UTILITIES & SECURITY GUARDS
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Hitung checksum SHA-256 dalam representasi heksadesimal lowercase.
+ */
+function computeSha256Hex(bytes) {
+  var rawDigest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  var hex = "";
+  for (var i = 0; i < rawDigest.length; i++) {
+    var val = rawDigest[i];
+    if (val < 0) val += 256;
+    var str = val.toString(16);
+    if (str.length === 1) str = "0" + str;
+    hex += str;
+  }
+  return hex;
+}
+
+/**
+ * Validasi dan dapatkan objek Folder Induk Google Drive kanonikal.
+ * Memastikan request terikat pada root folder yang sah dan terdaftar.
+ */
+function getAndVerifyCanonicalRoot(payload) {
   var props = PropertiesService.getScriptProperties();
   var rootFolderId = (payload.drive_folder_id || (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "").toString().trim();
 
   if (!rootFolderId) {
+    return {
+      valid: false,
+      error: "DRIVE_ROOT_NOT_CONFIGURED",
+      message: "Folder ID Google Drive induk kanonikal belum ditentukan."
+    };
+  }
+
+  try {
+    var rootFolder = DriveApp.getFolderById(rootFolderId);
+    return {
+      valid: true,
+      rootFolder: rootFolder,
+      rootFolderId: rootFolderId
+    };
+  } catch (e) {
+    return {
+      valid: false,
+      error: "DRIVE_ROOT_INACCESSIBLE",
+      message: "Folder induk kanonikal (" + rootFolderId + ") tidak dapat diakses atau izin ditolak: " + e.toString()
+    };
+  }
+}
+
+/**
+ * Verifikasi apakah folder atau file berada dalam hierarki subtree rootFolderId yang sah.
+ * Menolak akses ke file sembarangan di luar cakupan SERTIF.
+ */
+function isWithinRootHierarchy(item, rootFolderId) {
+  if (!item || !rootFolderId) return false;
+  try {
+    if (item.getId() === rootFolderId) return true;
+    var current = item;
+    var depth = 0;
+    while (current && depth < 25) {
+      if (current.getId() === rootFolderId) {
+        return true;
+      }
+      var parents = current.getParents();
+      if (!parents || !parents.hasNext()) {
+        break;
+      }
+      current = parents.next();
+      depth++;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Resolusi path folder bertingkat di bawah folder induk kanonikal.
+ * Dilengkapi pencegahan Directory Traversal ('..').
+ */
+function resolveFolderPathUnderRoot(rootFolder, folderPath) {
+  var cleanPath = (folderPath || "").toString().replace(/\\/g, "/").trim();
+  cleanPath = cleanPath.replace(/^\/+|\/+$/g, "");
+
+  if (!cleanPath) {
+    return { folder: rootFolder, path: "" };
+  }
+
+  var parts = cleanPath.split("/");
+  var currentFolder = rootFolder;
+  var resolvedParts = [];
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i].trim();
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      throw new Error("PATH_TRAVERSAL_DETECTED: Jalur folder tidak boleh memuat '..'");
+    }
+    resolvedParts.push(part);
+    var subFolders = currentFolder.getFoldersByName(part);
+    if (subFolders.hasNext()) {
+      currentFolder = subFolders.next();
+    } else {
+      currentFolder = currentFolder.createFolder(part);
+    }
+  }
+
+  return { folder: currentFolder, path: resolvedParts.join("/") };
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * SERTIF PRIVATE GOOGLE DRIVE GATEWAY — ACTIONS HANDLER
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Aksi: drive_ping
+ * Memverifikasi keterjangkauan dan validitas Folder Induk Kanonikal Google Drive pribadi.
+ */
+function handleDrivePingAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
     return createJsonResponse({
       success: false,
-      error_code: "DRIVE_FOLDER_NOT_CONFIGURED",
+      error_code: rootRes.error,
       is_retryable: false,
-      message: "Folder ID Google Drive induk belum ditentukan."
+      message: rootRes.message
+    }, 400);
+  }
+
+  var rootFolder = rootRes.rootFolder;
+  var rootName = "";
+  try {
+    rootName = rootFolder.getName();
+  } catch (e) {
+    rootName = "Unknown";
+  }
+
+  var storageInfo = null;
+  try {
+    var usedBytes = DriveApp.getStorageUsed();
+    var limitBytes = DriveApp.getStorageLimit();
+    storageInfo = {
+      used_bytes: usedBytes,
+      limit_bytes: limitBytes,
+      used_gb: (usedBytes / (1024 * 1024 * 1024)).toFixed(2),
+      limit_gb: limitBytes > 0 ? (limitBytes / (1024 * 1024 * 1024)).toFixed(2) : "Unlimited"
+    };
+  } catch (quotaErr) {
+    // DriveApp quota may not be exposed in some Apps Script deployment contexts
+  }
+
+  return createJsonResponse({
+    success: true,
+    action: "drive_ping",
+    root_folder_id: rootRes.rootFolderId,
+    root_folder_name: rootName,
+    accessible: true,
+    storage: storageInfo,
+    timestamp: new Date().toISOString()
+  }, 200);
+}
+
+/**
+ * Aksi: drive_resolve_folder
+ * Menemukan atau membuat struktur folder hierarkis di bawah root kanonikal.
+ */
+function handleDriveResolveFolderAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var folderPath = (payload.folder_path || "").toString();
+  try {
+    var resolved = resolveFolderPathUnderRoot(rootRes.rootFolder, folderPath);
+    return createJsonResponse({
+      success: true,
+      action: "drive_resolve_folder",
+      folder_id: resolved.folder.getId(),
+      folder_name: resolved.folder.getName(),
+      folder_path: resolved.path,
+      timestamp: new Date().toISOString()
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "FOLDER_RESOLUTION_FAILED",
+      is_retryable: false,
+      message: err.toString()
+    }, 400);
+  }
+}
+
+/**
+ * Aksi: drive_upload
+ * Mengunggah berkas secara aman:
+ * 1. Default PRIVATE (tidak mempublikasikan ke ANYONE_WITH_LINK).
+ * 2. Idempotensi non-destruktif (tidak menghapus file lama sebelum upload baru sukses).
+ * 3. Verifikasi integritas Checksum SHA-256.
+ */
+function handleDriveUploadAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
     }, 400);
   }
 
@@ -1482,6 +1833,8 @@ function handleUploadFileAction(payload) {
   var mimeType = (payload.mime_type || "application/octet-stream").toString().trim();
   var base64Content = payload.file_content || "";
   var folderPath = (payload.folder_path || "").toString().trim();
+  var expectedSha256 = (payload.checksum_sha256 || "").toString().trim().toLowerCase();
+  var allowReplace = payload.allow_replace === true;
 
   if (!base64Content) {
     return createJsonResponse({
@@ -1493,49 +1846,94 @@ function handleUploadFileAction(payload) {
   }
 
   try {
-    var rootFolder = DriveApp.getFolderById(rootFolderId);
-    var targetFolder = rootFolder;
+    var resolved = resolveFolderPathUnderRoot(rootRes.rootFolder, folderPath);
+    var targetFolder = resolved.folder;
 
-    if (folderPath) {
-      var parts = folderPath.replace(/\\/g, "/").split("/");
-      for (var i = 0; i < parts.length; i++) {
-        var partName = parts[i].trim();
-        if (!partName) continue;
-        var subFolders = targetFolder.getFoldersByName(partName);
-        if (subFolders.hasNext()) {
-          targetFolder = subFolders.next();
-        } else {
-          targetFolder = targetFolder.createFolder(partName);
+    var decodedBytes = Utilities.base64Decode(base64Content);
+    var actualSha256 = computeSha256Hex(decodedBytes);
+
+    // Verifikasi checksum SHA-256
+    if (expectedSha256 && expectedSha256 !== actualSha256) {
+      return createJsonResponse({
+        success: false,
+        error_code: "CHECKSUM_MISMATCH",
+        is_retryable: false,
+        message: "Integritas berkas gagal: Checksum SHA-256 payload (" + actualSha256 + ") tidak cocok dengan yang diharapkan (" + expectedSha256 + ")."
+      }, 400);
+    }
+
+    // Idempotensi: Cek apakah file dengan nama yang sama dan checksum yang sama sudah ada
+    var existingFiles = targetFolder.getFilesByName(fileName);
+    var existingMatch = null;
+    var otherDuplicates = [];
+
+    while (existingFiles.hasNext()) {
+      var f = existingFiles.next();
+      if (!f.isTrashed()) {
+        try {
+          var fBytes = f.getBlob().getBytes();
+          if (fBytes.length === decodedBytes.length) {
+            var fSha = computeSha256Hex(fBytes);
+            if (fSha === actualSha256) {
+              existingMatch = f;
+              break;
+            } else {
+              otherDuplicates.push(f);
+            }
+          } else {
+            otherDuplicates.push(f);
+          }
+        } catch (ex) {
+          otherDuplicates.push(f);
         }
       }
     }
 
-    var decodedBytes = Utilities.base64Decode(base64Content);
-    var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
-
-    // Idempotency: Bersihkan berkas usang dengan nama sama jika ada di folder target
-    var existingFiles = targetFolder.getFilesByName(fileName);
-    while (existingFiles.hasNext()) {
-      var oldFile = existingFiles.next();
-      oldFile.setTrashed(true);
+    if (existingMatch) {
+      return createJsonResponse({
+        success: true,
+        action: "drive_upload",
+        file_id: existingMatch.getId(),
+        file_name: existingMatch.getName(),
+        web_view_link: "https://drive.google.com/file/d/" + existingMatch.getId() + "/view",
+        folder_id: targetFolder.getId(),
+        folder_name: targetFolder.getName(),
+        folder_path: resolved.path,
+        size_bytes: existingMatch.getSize(),
+        checksum_sha256: actualSha256,
+        operation: "reused_idempotent",
+        timestamp: new Date().toISOString()
+      }, 200);
     }
 
+    // Buat file baru TERLEBIH DAHULU (tanpa menyentuh file lain)
+    var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
     var createdFile = targetFolder.createFile(blob);
 
-    try {
-      createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (permErr) {}
+    // KETENTUAN UTAMA: Dokumen disimpan secara PRIVATE.
+    // Tidak pernah memanggil createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, ...).
+
+    // Jika penggantian disetujui (allowReplace), baru pindahkan versi usang ke tempat sampah
+    if (allowReplace && otherDuplicates.length > 0) {
+      for (var d = 0; d < otherDuplicates.length; d++) {
+        try {
+          otherDuplicates[d].setTrashed(true);
+        } catch (trashErr) {}
+      }
+    }
 
     return createJsonResponse({
       success: true,
+      action: "drive_upload",
       file_id: createdFile.getId(),
       file_name: createdFile.getName(),
-      web_view_link: createdFile.getUrl(),
-      download_url: createdFile.getDownloadUrl(),
+      web_view_link: "https://drive.google.com/file/d/" + createdFile.getId() + "/view",
       folder_id: targetFolder.getId(),
       folder_name: targetFolder.getName(),
-      folder_path: folderPath,
+      folder_path: resolved.path,
       size_bytes: createdFile.getSize(),
+      checksum_sha256: actualSha256,
+      operation: "created",
       timestamp: new Date().toISOString()
     }, 200);
 
@@ -1543,25 +1941,373 @@ function handleUploadFileAction(payload) {
     return createJsonResponse({
       success: false,
       error_code: "DRIVE_UPLOAD_FAILED",
-      is_retryable: false,
+      is_retryable: true,
       message: "Gagal mengunggah berkas ke Google Drive: " + err.toString()
     }, 500);
   }
 }
 
 /**
- * Handle Idempotent Upload Attachment to Google Drive (DEPRECATED per F6 Cutover)
+ * Aksi: drive_get_metadata
+ * Mengambil metadata berkas secara privat dengan validasi batas subtree root kanonikal.
+ */
+function handleDriveGetMetadataAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas (" + fileId + ") berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_get_metadata",
+      metadata: {
+        id: file.getId(),
+        name: file.getName(),
+        size_bytes: file.getSize(),
+        mime_type: file.getMimeType(),
+        trashed: file.isTrashed(),
+        created_time: file.getDateCreated().toISOString(),
+        last_updated: file.getLastUpdated().toISOString()
+      },
+      file_id: file.getId(),
+      file_name: file.getName(),
+      size_bytes: file.getSize(),
+      mime_type: file.getMimeType(),
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "FILE_NOT_FOUND",
+      is_retryable: false,
+      message: "Berkas tidak ditemukan atau tidak dapat diakses: " + err.toString()
+    }, 404);
+  }
+}
+
+/**
+ * Aksi: drive_download_chunk
+ * Mengunduh biner berkas secara privat (server-to-server) dengan verifikasi boundary dan checksum.
+ */
+function handleDriveDownloadChunkAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  var chunkOffset = parseInt(payload.chunk_offset || 0, 10);
+  var chunkSize = parseInt(payload.chunk_size || 0, 10);
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    var blob = file.getBlob();
+    var allBytes = blob.getBytes();
+    var totalSize = allBytes.length;
+    var fileChecksum = computeSha256Hex(allBytes);
+
+    var targetBytes = allBytes;
+    if (chunkSize > 0 && (chunkOffset > 0 || chunkSize < totalSize)) {
+      var end = Math.min(totalSize, chunkOffset + chunkSize);
+      targetBytes = allBytes.slice(chunkOffset, end);
+    }
+
+    var base64Chunk = Utilities.base64Encode(targetBytes);
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_download_chunk",
+      file_id: file.getId(),
+      file_name: file.getName(),
+      mime_type: file.getMimeType(),
+      total_size: totalSize,
+      size_bytes: targetBytes.length,
+      chunk_offset: chunkOffset,
+      chunk_size: targetBytes.length,
+      checksum_sha256: fileChecksum,
+      file_content: base64Chunk,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DOWNLOAD_FAILED",
+      is_retryable: false,
+      message: "Gagal mengunduh berkas: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_list_children
+ * Mendaftar berkas anak dalam folder tertentu yang berada di dalam cakupan root.
+ */
+function handleDriveListChildrenAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var folderId = (payload.folder_id || "").toString().trim() || rootRes.rootFolderId;
+  var pageSize = parseInt(payload.page_size || 50, 10);
+  if (pageSize <= 0 || pageSize > 200) pageSize = 50;
+
+  try {
+    var targetFolder = DriveApp.getFolderById(folderId);
+
+    if (!isWithinRootHierarchy(targetFolder, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Folder berada di luar cakupan induk kanonikal."
+      }, 403);
+    }
+
+    var filesList = [];
+    var files = targetFolder.getFiles();
+    var count = 0;
+
+    while (files.hasNext() && count < pageSize) {
+      var f = files.next();
+      if (!f.isTrashed()) {
+        filesList.push({
+          id: f.getId(),
+          name: f.getName(),
+          size: f.getSize(),
+          mimeType: f.getMimeType(),
+          isFolder: false,
+          lastUpdated: f.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    var subfolders = targetFolder.getFolders();
+    while (subfolders.hasNext() && count < pageSize) {
+      var sf = subfolders.next();
+      if (!sf.isTrashed()) {
+        filesList.push({
+          id: sf.getId(),
+          name: sf.getName(),
+          size: 0,
+          mimeType: "application/vnd.google-apps.folder",
+          isFolder: true,
+          lastUpdated: sf.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_list_children",
+      folder_id: targetFolder.getId(),
+      folder_name: targetFolder.getName(),
+      files: filesList,
+      count: filesList.length,
+      next_page_token: null,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "LIST_CHILDREN_FAILED",
+      is_retryable: false,
+      message: "Gagal membaca isi folder: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_search_files
+ * Mencari berkas berdasarkan nama/query di dalam ruang lingkup folder induk kanonikal.
+ */
+function handleDriveSearchFilesAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var query = (payload.query || "").toString().trim();
+  var pageSize = parseInt(payload.page_size || 50, 10);
+  if (pageSize <= 0 || pageSize > 100) pageSize = 50;
+
+  try {
+    var searchFiles = rootRes.rootFolder.searchFiles(query || "trashed = false");
+    var results = [];
+    var count = 0;
+
+    while (searchFiles.hasNext() && count < pageSize) {
+      var f = searchFiles.next();
+      if (!f.isTrashed()) {
+        results.push({
+          id: f.getId(),
+          name: f.getName(),
+          size: f.getSize(),
+          mimeType: f.getMimeType(),
+          lastUpdated: f.getLastUpdated().toISOString()
+        });
+        count++;
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_search_files",
+      files: results,
+      count: results.length,
+      next_page_token: null,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "SEARCH_FAILED",
+      is_retryable: false,
+      message: "Gagal mencari berkas: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: drive_trash
+ * Menandai berkas sebagai trashed secara aman dengan validasi izin subtree kanonikal.
+ */
+function handleDriveTrashAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var fileId = (payload.file_id || "").toString().trim();
+  if (!fileId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FILE_ID",
+      is_retryable: false,
+      message: "ID berkas (file_id) tidak disertakan."
+    }, 400);
+  }
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+
+    // Proteksi batas subtree
+    if (!isWithinRootHierarchy(file, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Berkas berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    file.setTrashed(true);
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_trash",
+      file_id: file.getId(),
+      trashed: true,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "TRASH_FAILED",
+      is_retryable: false,
+      message: "Gagal memindahkan berkas ke tempat sampah: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Handle File Upload to Google Drive via Apps Script Gateway (Legacy Compat Handler)
+ * Diperbarui: Bebas penulisan destruktif (tidak menghapus sebelum unggah) dan strictly PRIVATE.
+ */
+function handleUploadFileAction(payload) {
+  return handleDriveUploadAction(payload);
+}
+
+/**
+ * Handle Idempotent Upload Attachment to Google Drive
  */
 function handleUploadAttachmentAction(payload) {
-  // Addendum Final V4 F6 Cutover (GS-05, C27):
-  // Aksi upload_attachment pada Apps Script resmi dipensiunkan (fail-closed).
-  // Seluruh penyimpanan berkas ditangani eksklusif oleh backend Laravel melalui Google Drive API.
-  return createJsonResponse({
-    success: false,
-    error_code: "ACTION_DEPRECATED_USE_DRIVE_GATEWAY",
-    is_retryable: false,
-    message: "Aksi upload_attachment pada Apps Script telah dipensiunkan. Gunakan Google Drive API gateway pada backend Laravel."
-  }, 410);
+  return handleUploadAttachmentActionLegacy(payload);
 }
 
 function handleUploadAttachmentActionLegacy(payload) {
@@ -1863,14 +2609,14 @@ function getOrCreateSubFolder(parentFolder, folderName) {
  */
 function validateAuthentication(requestBody) {
   var props = PropertiesService.getScriptProperties();
-  var sharedSecret = props.getProperty("SHARED_API_KEY");
+  var sharedSecret = props.getProperty("SHARED_SECRET") || props.getProperty("SHARED_API_KEY");
 
   if (!sharedSecret) {
     return {
       success: false,
       error_code: "SERVER_NOT_CONFIGURED",
       is_retryable: false,
-      message: "SHARED_API_KEY belum disetel di Script Properties."
+      message: "SHARED_SECRET atau SHARED_API_KEY belum disetel di Script Properties."
     };
   }
 
@@ -2030,6 +2776,34 @@ function validateAuthentication(requestBody) {
 }
 
 /**
+ * Helper untuk memeriksa apakah target ID terdaftar sebagai sumber legacy read-only.
+ */
+function isLegacySource(targetId) {
+  if (!targetId) return false;
+  var props = null;
+  try {
+    if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+      props = PropertiesService.getScriptProperties();
+    }
+  } catch (e) {
+    props = null;
+  }
+  if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+    props = global._mockScriptProperties;
+  }
+  if (!props || typeof props.getProperty !== "function") return false;
+  var legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
+  if (!legacySourcesStr) return false;
+  var parts = legacySourcesStr.split(",");
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i].trim() === targetId.toString().trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Resolusi spreadsheet target untuk operasi sidecar tab 2026_Custom_Fields.
  */
 function resolveSpreadsheetForSidecar(payload) {
@@ -2053,6 +2827,17 @@ function resolveSpreadsheetForSidecar(payload) {
   var targetId = (payload.spreadsheet_id || regSheetId || "").toString().trim();
   if (!targetId) {
     return { error: "Spreadsheet ID belum dikonfigurasi di payload atau Script Properties.", code: "SPREADSHEET_ID_MISSING" };
+  }
+
+  var allowlistStr = (props && typeof props.getProperty === "function") ? (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim() : "";
+  var allowedList = allowlistStr ? allowlistStr.split(",").map(function(s){return s.trim();}) : [];
+  if (regSheetId && allowedList.indexOf(regSheetId) === -1) allowedList.push(regSheetId);
+  if (allowedList.length > 0 && allowedList.indexOf(targetId) === -1) {
+    return { error: "Target Spreadsheet sidecar ('" + targetId + "') belum diotorisasi oleh Admin.", code: "TARGET_NOT_AUTHORIZED" };
+  }
+
+  if (isLegacySource(targetId)) {
+    return { error: "Target Spreadsheet terdaftar sebagai sumber legacy read-only dan dilarang untuk operasi penulisan sidecar.", code: "LEGACY_SOURCE_READONLY" };
   }
 
   try {
@@ -2875,16 +3660,16 @@ function computeDeterministicSchemaHash(columns) {
 }
 
 /**
- * Derive canonical header row: row 12 for 4-digit year tabs or registration, row 1 for others.
+ * Derive canonical header row: row 12 for 4-digit year tabs (^\d{4}$) or TEMPLATE_TAHUN, row 1 for others (Petunjuk, etc.).
  */
 function deriveHeaderRowForSheet(sheetName, connectionKey, explicitHeaderRow) {
   if (explicitHeaderRow !== undefined && explicitHeaderRow !== null && !isNaN(parseInt(explicitHeaderRow, 10)) && parseInt(explicitHeaderRow, 10) > 0) {
     return parseInt(explicitHeaderRow, 10);
   }
   var cleanName = (sheetName || "").toString().trim();
-  // Strictly 4-digit year tabs (e.g. 2026, 2025) have header on row 12.
-  // Other tabs (Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
-  if (/^\d{4}$/.test(cleanName)) {
+  // Strictly 4-digit year tabs (e.g. 2026, 2025) and TEMPLATE_TAHUN have header on row 12.
+  // Other tabs (Petunjuk, Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
+  if (/^\d{4}$/.test(cleanName) || cleanName === "TEMPLATE_TAHUN") {
     return 12;
   }
   return 1;
@@ -2909,10 +3694,12 @@ function resolveSpreadsheetWithAllowlist(payload) {
   var regSheetId = "";
   var fwuSheetId = "";
   var allowlistStr = "";
+  var legacySourcesStr = "";
   if (props && typeof props.getProperty === "function") {
     regSheetId = (props.getProperty("REGISTRATION_SPREADSHEET_ID") || "").toString().trim();
     fwuSheetId = (props.getProperty("FOLLOWUP_SPREADSHEET_ID") || "").toString().trim();
     allowlistStr = (props.getProperty("SPREADSHEET_ALLOWLIST") || "").toString().trim();
+    legacySourcesStr = (props.getProperty("LEGACY_SOURCES") || "").toString().trim();
   }
 
   var targetId = (payload.spreadsheet_id || regSheetId || "").toString().trim();
@@ -2929,6 +3716,15 @@ function resolveSpreadsheetWithAllowlist(payload) {
       var item = parts[i].trim();
       if (item && allowedIds.indexOf(item) === -1) {
         allowedIds.push(item);
+      }
+    }
+  }
+  if (legacySourcesStr) {
+    var legParts = legacySourcesStr.split(",");
+    for (var j = 0; j < legParts.length; j++) {
+      var legItem = legParts[j].trim();
+      if (legItem && allowedIds.indexOf(legItem) === -1) {
+        allowedIds.push(legItem);
       }
     }
   }
@@ -3330,6 +4126,15 @@ function handleDeleteEmptyColumnAction(payload) {
       }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
     }
 
+    if (isLegacySource(resolved.spreadsheetId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "LEGACY_SOURCE_READONLY",
+        is_retryable: false,
+        message: "Spreadsheet target ('" + resolved.spreadsheetId + "') terdaftar sebagai arsip historis lama (LEGACY_SOURCES) yang bersifat BACA-SAJA. Penghapusan kolom dilarang."
+      }, 403);
+    }
+
     var ss = resolved.spreadsheet;
     var tabName = (payload.tab_name || "").toString().trim();
     if (!tabName) {
@@ -3575,6 +4380,352 @@ function handleDeleteEmptyColumnAction(payload) {
 }
 
 /**
+ * Aksi: inspect_target
+ * Pemeriksaan identitas dan aksesibilitas target Google (Spreadsheet / Drive Folder) tanpa mutasi.
+ */
+function handleInspectTargetAction(payload) {
+  try {
+    var targetType = (payload.target_type || "spreadsheet").toString().toLowerCase().trim();
+    var targetId = (payload.target_id || "").toString().trim();
+    var permission = (payload.permission || "registration").toString().toLowerCase().trim();
+
+    if (!targetId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TARGET_ID_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'target_id' wajib diisi."
+      }, 400);
+    }
+
+    if (targetType === "spreadsheet") {
+      var ss = null;
+      try {
+        ss = SpreadsheetApp.openById(targetId);
+      } catch (openErr) {
+        return createJsonResponse({
+          success: false,
+          error_code: "SPREADSHEET_ACCESS_DENIED",
+          is_retryable: false,
+          message: "Tidak dapat membuka Spreadsheet (" + targetId + "): " + openErr.toString()
+        }, 403);
+      }
+
+      var sheets = ss.getSheets();
+      var tabList = [];
+      for (var i = 0; i < sheets.length; i++) {
+        var sh = sheets[i];
+        tabList.push({
+          name: sh.getName(),
+          sheet_id: sh.getSheetId(),
+          last_row: sh.getLastRow(),
+          last_column: sh.getLastColumn()
+        });
+      }
+
+      return createJsonResponse({
+        success: true,
+        target_type: "spreadsheet",
+        target_id: targetId,
+        name: ss.getName(),
+        tabs: tabList,
+        tabs_count: tabList.length,
+        permission: permission
+      }, 200);
+    } else if (targetType === "drive_folder") {
+      var folder = null;
+      try {
+        folder = DriveApp.getFolderById(targetId);
+      } catch (folderErr) {
+        return createJsonResponse({
+          success: false,
+          error_code: "DRIVE_FOLDER_ACCESS_DENIED",
+          is_retryable: false,
+          message: "Tidak dapat mengakses Google Drive Folder (" + targetId + "): " + folderErr.toString()
+        }, 403);
+      }
+
+      var props = null;
+      try {
+        if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+          props = PropertiesService.getScriptProperties();
+        }
+      } catch (e) {
+        props = null;
+      }
+      var canonicalRoot = (props ? props.getProperty("ATTACHMENTS_ROOT_FOLDER_ID") : "") || "";
+      var isSubtreeValid = true;
+      if (permission !== "drive_root" && canonicalRoot && canonicalRoot !== targetId) {
+        isSubtreeValid = isWithinRootHierarchy(folder, canonicalRoot);
+      }
+
+      return createJsonResponse({
+        success: true,
+        target_type: "drive_folder",
+        target_id: targetId,
+        name: folder.getName(),
+        is_inside_canonical_root: isSubtreeValid,
+        permission: permission
+      }, 200);
+    } else {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_TARGET_TYPE",
+        is_retryable: false,
+        message: "target_type harus 'spreadsheet' atau 'drive_folder'."
+      }, 400);
+    }
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "INSPECT_TARGET_ERROR",
+      is_retryable: false,
+      message: "Gagal inspeksi target: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: activate_authorized_target
+ * Mendaftarkan target yang telah diverifikasi ke dalam registry resmi Script Properties.
+ */
+function handleActivateAuthorizedTargetAction(payload) {
+  try {
+    var targetType = (payload.target_type || "spreadsheet").toString().toLowerCase().trim();
+    var targetId = (payload.target_id || "").toString().trim();
+    var permission = (payload.permission || "registration").toString().toLowerCase().trim();
+
+    if (!targetId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TARGET_ID_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'target_id' wajib diisi."
+      }, 400);
+    }
+
+    var validPermissions = ["registration", "followup", "legacy_source", "drive_root"];
+    if (validPermissions.indexOf(permission) === -1) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_PERMISSION",
+        is_retryable: false,
+        message: "Izin target tidak valid. Pilihan: registration, followup, legacy_source, drive_root."
+      }, 400);
+    }
+
+    var props = null;
+    try {
+      if (typeof PropertiesService !== "undefined" && PropertiesService && PropertiesService.getScriptProperties) {
+        props = PropertiesService.getScriptProperties();
+      }
+    } catch (e) {
+      props = null;
+    }
+    if (!props && typeof global !== "undefined" && global._mockScriptProperties) {
+      props = global._mockScriptProperties;
+    }
+
+    if (!props) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SCRIPT_PROPERTIES_UNAVAILABLE",
+        is_retryable: false,
+        message: "Script Properties tidak tersedia untuk menyimpan otorisasi target."
+      }, 500);
+    }
+
+    // 1. Simpan berdasarkan jenis izin
+    if (permission === "registration" || permission === "followup") {
+      if (isLegacySource(targetId)) {
+        return createJsonResponse({
+          success: false,
+          error_code: "LEGACY_SOURCE_READONLY",
+          is_retryable: false,
+          message: "Spreadsheet ID ('" + targetId + "') terdaftar sebagai arsip historis (LEGACY_SOURCES) yang bersifat PERMANEN BACA-SAJA. Dilarang dipromosikan menjadi target penulisan resmi."
+        }, 403);
+      }
+    }
+
+    if (permission === "registration") {
+      props.setProperty("REGISTRATION_SPREADSHEET_ID", targetId);
+    } else if (permission === "followup") {
+      props.setProperty("FOLLOWUP_SPREADSHEET_ID", targetId);
+      var curLegFol = props.getProperty("LEGACY_SOURCES") || "";
+      if (curLegFol) {
+        var filteredFol = curLegFol.split(",").map(function(s){return s.trim();}).filter(function(s){return s && s !== targetId;});
+        props.setProperty("LEGACY_SOURCES", filteredFol.join(","));
+      }
+    } else if (permission === "legacy_source") {
+      var currentLegacy = props.getProperty("LEGACY_SOURCES") || "";
+      var legList = currentLegacy ? currentLegacy.split(",") : [];
+      if (legList.indexOf(targetId) === -1) {
+        legList.push(targetId);
+        props.setProperty("LEGACY_SOURCES", legList.join(","));
+      }
+    } else if (permission === "drive_root") {
+      props.setProperty("ATTACHMENTS_ROOT_FOLDER_ID", targetId);
+    }
+
+    // 2. Jika tipe spreadsheet, pastikan masuk ke SPREADSHEET_ALLOWLIST
+    if (targetType === "spreadsheet") {
+      var currentAllowlist = props.getProperty("SPREADSHEET_ALLOWLIST") || "";
+      var allowList = currentAllowlist ? currentAllowlist.split(",") : [];
+      var cleanList = [];
+      for (var a = 0; a < allowList.length; a++) {
+        var trimmed = allowList[a].trim();
+        if (trimmed && cleanList.indexOf(trimmed) === -1) cleanList.push(trimmed);
+      }
+      if (cleanList.indexOf(targetId) === -1) {
+        cleanList.push(targetId);
+      }
+      props.setProperty("SPREADSHEET_ALLOWLIST", cleanList.join(","));
+    }
+
+    return createJsonResponse({
+      success: true,
+      target_type: targetType,
+      target_id: targetId,
+      permission: permission,
+      activated_at: new Date().toISOString(),
+      message: "Target berhasil diotorisasi dan diaktifkan pada Script Properties."
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "ACTIVATE_TARGET_ERROR",
+      is_retryable: false,
+      message: "Gagal mengaktifkan target: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * Aksi: attach_row_sync_id
+ * Menempelkan SERTIF_SYNC_ID pada baris aktif yang belum memiliki identitas sinkronisasi.
+ */
+function handleAttachRowSyncIdAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    if (isLegacySource(resolved.spreadsheetId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "LEGACY_SOURCE_READONLY",
+        is_retryable: false,
+        message: "Spreadsheet target ('" + resolved.spreadsheetId + "') terdaftar sebagai arsip historis lama (LEGACY_SOURCES) yang bersifat BACA-SAJA. Operasi penulisan dilarang."
+      }, 403);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    var rowIndex = parseInt(payload.row_index, 10);
+    var syncId = (payload.sync_id || "").toString().trim();
+    var registrationId = payload.registration_id ? payload.registration_id.toString().trim() : "";
+
+    if (!tabName || isNaN(rowIndex) || rowIndex < 1 || !syncId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_PARAMETERS",
+        is_retryable: false,
+        message: "Parameter 'tab_name', 'row_index' (>=1), dan 'sync_id' wajib diisi."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan."
+      }, 404);
+    }
+
+    var connectionKey = (payload.connection_key || "registration").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastCol = sheet.getLastColumn();
+
+    if (rowIndex <= headerRow) {
+      return createJsonResponse({
+        success: false,
+        error_code: "INVALID_ROW_INDEX",
+        is_retryable: false,
+        message: "row_index harus berada di bawah header row (" + headerRow + ")."
+      }, 400);
+    }
+
+    var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+    var syncIdCol = -1;
+    var regIdCol = -1;
+    var statusCol = -1;
+    var lastSyncCol = -1;
+
+    for (var c = 0; c < headers.length; c++) {
+      var hClean = (headers[c] || "").toString().replace(/[\r\n]+/g, " ").trim();
+      if (/^sertif_sync_id$/i.test(hClean)) syncIdCol = c + 1;
+      else if (/^sertif_registration_id$/i.test(hClean)) regIdCol = c + 1;
+      else if (/^sertif_sync_status$/i.test(hClean)) statusCol = c + 1;
+      else if (/^sertif_last_sync_at$/i.test(hClean)) lastSyncCol = c + 1;
+    }
+
+    if (syncIdCol === -1) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SYNC_ID_COLUMN_NOT_FOUND",
+        is_retryable: false,
+        message: "Kolom SERTIF_SYNC_ID tidak ditemukan pada tab '" + tabName + "'."
+      }, 404);
+    }
+
+    // Periksa nilai SERTIF_SYNC_ID saat ini pada baris tersebut
+    var currentSyncIdVal = (sheet.getRange(rowIndex, syncIdCol).getValue() || "").toString().trim();
+    if (currentSyncIdVal !== "" && currentSyncIdVal !== "-" && currentSyncIdVal !== syncId) {
+      return createJsonResponse({
+        success: false,
+        error_code: "SYNC_ID_CONFLICT",
+        is_retryable: false,
+        message: "Baris " + rowIndex + " sudah memiliki SERTIF_SYNC_ID lain ('" + currentSyncIdVal + "')."
+      }, 409);
+    }
+
+    // Tulis nilai sync_id dan metadata penutup
+    sheet.getRange(rowIndex, syncIdCol).setValue(syncId);
+    if (regIdCol !== -1 && registrationId) {
+      sheet.getRange(rowIndex, regIdCol).setValue(registrationId);
+    }
+    if (statusCol !== -1) {
+      sheet.getRange(rowIndex, statusCol).setValue("synced");
+    }
+    if (lastSyncCol !== -1) {
+      sheet.getRange(rowIndex, lastSyncCol).setValue(new Date().toISOString());
+    }
+
+    return createJsonResponse({
+      success: true,
+      row_index: rowIndex,
+      sync_id: syncId,
+      message: "SERTIF_SYNC_ID berhasil dipasangkan pada baris " + rowIndex + "."
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "ATTACH_ROW_SYNC_ID_FAILED",
+      is_retryable: false,
+      message: "Gagal memasangkan sync ID: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
  * Convert byte array to hexadecimal string
  */
 function bytesToHex(bytes) {
@@ -3636,6 +4787,9 @@ if (typeof module !== "undefined" && module.exports) {
     deriveHeaderRowForSheet: deriveHeaderRowForSheet,
     columnIndexToLetter: columnIndexToLetter,
     maskPiiValue: maskPiiValue,
-    computeDeterministicSchemaHash: computeDeterministicSchemaHash
+    computeDeterministicSchemaHash: computeDeterministicSchemaHash,
+    handleInspectTargetAction: handleInspectTargetAction,
+    handleActivateAuthorizedTargetAction: handleActivateAuthorizedTargetAction,
+    handleAttachRowSyncIdAction: handleAttachRowSyncIdAction
   };
 }

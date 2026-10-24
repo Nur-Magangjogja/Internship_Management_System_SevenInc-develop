@@ -102,7 +102,7 @@ class SpreadsheetColumnDeletionEligibilityService
         }
 
         $headerRow = $profile?->header_row;
-        $schemaInspect = $this->discoveryService->inspectTabSchema($connection, $tabName, $sheetId, $headerRow);
+        $schemaInspect = $this->discoveryService->inspectTabSchema($connection, $tabName, headerRow: $headerRow, sheetId: $sheetId);
 
         if (!($schemaInspect['success'] ?? false)) {
             $result['reasons'][] = 'Gagal menginspeksi schema remote tab: ' . ($schemaInspect['message'] ?? 'Error jaringan atau Apps Script.');
@@ -494,7 +494,7 @@ class SpreadsheetColumnDeletionEligibilityService
         }
 
         // Core registration fields pattern
-        if (preg_match('/^(timestamp|nama lengkap|email|jenis kelamin|nim|nisn|program studi|no\.?\s*hp)/i', $clean)) {
+        if (preg_match('/^(timestamp|nama lengkap|email|jenis kelamin|nim|nisn|nomor\s*induk|program studi|no\.?\s*hp)/i', $clean)) {
             return true;
         }
 

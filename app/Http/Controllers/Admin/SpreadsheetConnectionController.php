@@ -97,16 +97,36 @@ class SpreadsheetConnectionController extends Controller
             ];
         })->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
+        $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->where('is_active', true)
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+            ->orderBy('year', 'desc')
+            ->get();
+
+        if ($activeSchemaVersions->isEmpty()) {
+            $activeSchemaVersions = $spreadsheetConnection->schemaVersions()
+                ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc')])
+                ->orderBy('year', 'desc')
+                ->orderBy('id', 'desc')
+                ->take(1)
+                ->get();
+        }
+
+        $totalSchemaCount = $spreadsheetConnection->schemaVersions()->count();
+        $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
+
         return view('admin.spreadsheet-connections.show', [
-            'connection'      => $spreadsheetConnection,
-            'schemaVersions'  => $spreadsheetConnection->schemaVersions,
-            'rowSyncs'        => $rowSyncs,
-            'stats'           => $stats,
-            'tabProfiles'     => $tabProfiles,
-            'recentSnapshots' => $recentSnapshots,
-            'recentProposals' => $recentProposals,
-            'outboxEvents'    => $outboxEvents,
-            'formFields'      => $formFields,
+            'connection'          => $spreadsheetConnection,
+            'schemaVersions'      => $activeSchemaVersions,
+            'totalSchemaCount'    => $totalSchemaCount,
+            'rowSyncs'            => $rowSyncs,
+            'stats'               => $stats,
+            'pausedQueuesSummary' => $pausedQueuesSummary,
+            'tabProfiles'         => $tabProfiles,
+            'recentSnapshots'     => $recentSnapshots,
+            'recentProposals'     => $recentProposals,
+            'outboxEvents'        => $outboxEvents,
+            'formFields'          => $formFields,
         ]);
     }
 
@@ -115,8 +135,11 @@ class SpreadsheetConnectionController extends Controller
      */
     public function edit(SpreadsheetConnection $spreadsheetConnection)
     {
+        $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
+
         return view('admin.spreadsheet-connections.edit', [
-            'connection' => $spreadsheetConnection->fresh(),
+            'connection'          => $spreadsheetConnection->fresh(),
+            'pausedQueuesSummary' => $pausedQueuesSummary,
         ]);
     }
 
@@ -195,6 +218,78 @@ class SpreadsheetConnectionController extends Controller
             return redirect()
                 ->back()
                 ->with('error', 'Gagal menjalankan pengujian koneksi: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Otorisasi dan aktifkan target Spreadsheet secara resmi ke Google Apps Script Gateway (dengan persetujuan Admin).
+     */
+    public function activateTarget(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        try {
+            $confirmPromote = $request->boolean('confirm_promote_legacy', false);
+            $result = $this->service->activateAuthorizedTarget($spreadsheetConnection, Auth::user(), $confirmPromote);
+
+            if ($result['success']) {
+                return redirect()
+                    ->back()
+                    ->with('success', $result['message']);
+            }
+
+            return redirect()
+                ->back()
+                ->with('error', $result['message']);
+        } catch (\Throwable $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Gagal mengaktifkan target: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Rekonsiliasi antrean sinkronisasi yang dibekukan karena pergantian target Spreadsheet.
+     */
+    public function reconcileQueue(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\SpreadsheetQueueReconciliationService $reconciliationService
+    ) {
+        $validated = $request->validate([
+            'decision'       => 'required|string|in:rebind_new_target,cancel_sync',
+            'row_sync_id'    => 'nullable|integer|exists:spreadsheet_row_syncs,id',
+            'row_sync_ids'   => 'nullable|array',
+            'row_sync_ids.*' => 'integer|exists:spreadsheet_row_syncs,id',
+        ]);
+
+        try {
+            if (!empty($validated['row_sync_id'])) {
+                $rowSync = SpreadsheetRowSync::findOrFail($validated['row_sync_id']);
+                if ((int) $rowSync->spreadsheet_connection_id !== (int) $spreadsheetConnection->id) {
+                    abort(404);
+                }
+                $result = $reconciliationService->reconcileRowSync($rowSync, $validated['decision'], Auth::user());
+                return redirect()->back()->with('success', $result['message']);
+            }
+
+            // Batch reconcile
+            $rowIds = $validated['row_sync_ids'] ?? [];
+            $stats = $reconciliationService->reconcileBatch(
+                $spreadsheetConnection,
+                $validated['decision'],
+                $rowIds,
+                [],
+                Auth::user()
+            );
+
+            $msg = "Rekonsiliasi antrean selesai. Diproses: {$stats['total_processed']}, " .
+                   "dialihkan: {$stats['rebound_queued']}, deduplikasi remote: {$stats['deduplicated_synced']}, dibatalkan: {$stats['cancelled']}.";
+            if ($stats['failed'] > 0) {
+                $msg .= " (Gagal: {$stats['failed']})";
+            }
+
+            return redirect()->back()->with('success', $msg);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('error', 'Gagal memproses rekonsiliasi: ' . $e->getMessage());
         }
     }
 
@@ -365,6 +460,26 @@ class SpreadsheetConnectionController extends Controller
     }
 
     /**
+     * Tampilkan riwayat log dan seluruh versi schema (aktif maupun nonaktif) untuk koneksi spreadsheet.
+     */
+    public function schemaHistory(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        $spreadsheetConnection->refresh()->load(['createdByUser', 'updatedByUser']);
+
+        $allSchemaVersions = $spreadsheetConnection->schemaVersions()
+            ->with(['columnMappings' => fn($q) => $q->orderBy('column_order', 'asc'), 'createdByUser', 'updatedByUser'])
+            ->orderBy('year', 'desc')
+            ->orderBy('is_active', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return view('admin.spreadsheet-connections.schema-history', [
+            'connection'     => $spreadsheetConnection,
+            'schemaVersions' => $allSchemaVersions,
+        ]);
+    }
+
+    /**
      * Ambil daftar seluruh tab dari Google Spreadsheet (Read-Only).
      */
     public function getTabs(
@@ -408,7 +523,7 @@ class SpreadsheetConnectionController extends Controller
         $page = (int) $request->query('page', 1);
         $pageSize = (int) $request->query('page_size', 20);
 
-        $result = $discoveryService->previewRows($spreadsheetConnection, $tabName, $headerRow, $page, $pageSize);
+        $result = $discoveryService->previewRows($spreadsheetConnection, $tabName, $headerRow, $page, $pageSize, $sheetId);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
@@ -425,7 +540,7 @@ class SpreadsheetConnectionController extends Controller
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
         $sheetId = $request->has('sheet_id') && $request->query('sheet_id') !== null && $request->query('sheet_id') !== '' ? (int) $request->query('sheet_id') : null;
 
-        $result = $discoveryService->generateDraftMappingProposals($spreadsheetConnection, $tabName, $headerRow);
+        $result = $discoveryService->generateDraftMappingProposals($spreadsheetConnection, $tabName, $headerRow, $sheetId);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }

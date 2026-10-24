@@ -51,7 +51,7 @@
                             $fields = [
                                 'fullname' => 'NAMA LENGKAP',
                                 'born_date' => 'TANGGAL LAHIR',
-                                'student_id' => 'NIM / NIS',
+                                'student_id' => 'NOMOR INDUK MAHASISWA / NOMOR INDUK SISWA NASIONAL',
                                 'email' => 'EMAIL',
                                 'internship_status' => 'STATUS',     // ⬅️ kolom baru
                                 'gender' => 'GENDER',

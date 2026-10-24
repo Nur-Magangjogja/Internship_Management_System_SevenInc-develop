@@ -28,19 +28,6 @@
     </div>
   @endif
 
-  {{-- Pemberitahuan Pemisahan Data Pendaftaran vs Akun --}}
-  @if($user->internshipRegistration)
-    <div class="mb-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/80 p-4 text-xs text-blue-800">
-      <i class="fas fa-info-circle text-blue-500 text-sm mt-0.5 shrink-0"></i>
-      <div>
-        <p class="font-semibold text-blue-900 mb-0.5">Informasi Biodata Pemagang</p>
-        <p class="text-blue-700 leading-relaxed">
-          Halaman ini khusus untuk pengaturan kredensial akun pengguna (tabel users). Data biodata seperti nama lengkap, nomor HP, asal instansi, dan foto profil dikelola melalui form pendaftaran pemagang.
-        </p>
-      </div>
-    </div>
-  @endif
-
   <form action="{{ route('pemagang.settings.update') }}" method="POST">
     @csrf
     @method('PUT')

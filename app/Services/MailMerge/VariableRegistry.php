@@ -80,7 +80,7 @@ class VariableRegistry
             'pemagang.nim' => [
                 'token'                  => 'pemagang.nim',
                 'aliases'                => ['student_id', 'nim_nis', 'nim', 'nis', 'nomor_induk'],
-                'label'                  => 'Nomor Induk Mahasiswa / Siswa (NIM / NISN)',
+                'label'                  => 'Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional',
                 'category'               => 'Data Pemagang',
                 'data_type'              => self::TYPE_STRING,
                 'type'                   => 'text',

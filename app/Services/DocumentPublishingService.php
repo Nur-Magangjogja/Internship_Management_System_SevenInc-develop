@@ -9,7 +9,6 @@ use App\Models\InternshipRegistration;
 use App\Models\SpreadsheetConnection;
 use App\Models\User;
 use App\Services\CloudStorage\CloudStorageInterface;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\CloudStorage\SystemStorageConfigService;
 use App\Services\MailMerge\VariableResolverService;
@@ -32,12 +31,7 @@ class DocumentPublishingService
         protected VariableResolverService $resolverService,
         ?CloudStorageInterface $cloudDriver = null
     ) {
-        if ($cloudDriver) {
-            $this->cloudDriver = $cloudDriver;
-        } else {
-            $googleDriver = new GoogleDriveStorageDriver();
-            $this->cloudDriver = $googleDriver->isConfigured() ? $googleDriver : new LocalStorageFallbackDriver();
-        }
+        $this->cloudDriver = $cloudDriver ?? app(CloudStorageInterface::class);
     }
 
     /**
@@ -301,7 +295,7 @@ class DocumentPublishingService
                     $applicantFolderRelative = "Registrasi/{$year}/{$applicantName}_REG{$regId}";
 
                     // Gunakan configured drive folder ID dari koneksi registrasi pemagang jika menggunakan path
-                    if ($this->cloudDriver instanceof GoogleDriveStorageDriver) {
+                    if (method_exists($this->cloudDriver, 'setRootFolderId')) {
                         try {
                             SpreadsheetConnection::ensureDriveFolderColumns();
                             $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
@@ -359,7 +353,7 @@ class DocumentPublishingService
             $remoteFolder = "Generated_Documents/Institutions/{$institutionSlug}/" . strtoupper($doc->document_type);
 
             $settings = $this->storageConfigService->getSettings();
-            if (!empty($settings->generated_docs_folder_id) && $this->cloudDriver instanceof GoogleDriveStorageDriver) {
+            if (!empty($settings->generated_docs_folder_id) && method_exists($this->cloudDriver, 'setRootFolderId')) {
                 $this->cloudDriver->setRootFolderId($settings->generated_docs_folder_id);
             }
         }
@@ -369,7 +363,7 @@ class DocumentPublishingService
         try {
             $uploadResult = $this->cloudDriver->uploadFile($fullPath, $remoteFolder, $doc->file_name);
 
-            $isRealDrive = $this->cloudDriver->getDriverName() === 'google_drive'
+            $isRealDrive = in_array($this->cloudDriver->getDriverName(), ['google_drive', 'google_apps_script_drive', 'apps_script_drive'], true)
                 && !str_starts_with($uploadResult['file_id'], 'local_sim_')
                 && !str_starts_with($uploadResult['file_id'], 'DRIVE-MOCK-');
 

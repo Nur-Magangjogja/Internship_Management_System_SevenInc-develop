@@ -115,6 +115,18 @@ class SpreadsheetConnectionService
             $connection->drive_folder_id = $driveFolderId;
         }
 
+        $oldSpreadsheetId = $connection->getOriginal('spreadsheet_id');
+        $targetChanged = !empty($oldSpreadsheetId) && !empty($spreadsheetId) && $oldSpreadsheetId !== $spreadsheetId;
+        if ($targetChanged) {
+            $connection->previous_spreadsheet_id = $oldSpreadsheetId;
+            // Freeze seluruh pekerjaan sinkronisasi aktif untuk koneksi ini (HOTFIX 1)
+            try {
+                app(\App\Services\SpreadsheetQueueReconciliationService::class)->freezePendingJobs($connection, $oldSpreadsheetId, $actor);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("freezePendingJobs warning: " . $e->getMessage());
+            }
+        }
+
         $connection->display_name = $data['display_name'] ?? $connection->display_name;
         $connection->spreadsheet_url = $spreadsheetUrl;
         $connection->spreadsheet_id = $spreadsheetId;
@@ -365,6 +377,17 @@ class SpreadsheetConnectionService
                 $status = SpreadsheetConnection::STATUS_CONNECTED;
                 $summary = 'Koneksi ke Google Apps Script Gateway dan Google Spreadsheet berhasil diverifikasi (Ping OK).';
                 $connection->last_successful_test_at = $testedAt;
+
+                // Read-only inspection of target accessibility (Strictly no target mutation during test)
+                try {
+                    $permission = ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) ? 'registration' : 'followup';
+                    $inspectTargetRes = $transport->inspectTarget($connection, 'spreadsheet', $spreadsheetId, $permission);
+                    if ($inspectTargetRes->isSuccess()) {
+                        $rawResponse['inspected_tabs'] = $inspectTargetRes->getData()['tabs'] ?? [];
+                    }
+                } catch (\Throwable $targetErr) {
+                    \Illuminate\Support\Facades\Log::info("Read-only inspection notice during testConnection: " . $targetErr->getMessage());
+                }
             }
         } else {
             $status = SpreadsheetConnection::STATUS_ERROR;
@@ -541,5 +564,108 @@ class SpreadsheetConnectionService
         );
 
         return $schemaVersion;
+    }
+
+    /**
+     * Otorisasi dan aktifkan target Spreadsheet secara resmi pada Google Apps Script Gateway (dengan persetujuan Admin).
+     */
+    public function activateAuthorizedTarget(
+        SpreadsheetConnection $connection,
+        ?User $actor = null,
+        bool $confirmPromoteLegacy = false
+    ): array {
+        if (empty($connection->apps_script_endpoint_url) || empty($connection->spreadsheet_id)) {
+            return [
+                'success' => false,
+                'message' => 'Endpoint Apps Script dan ID Spreadsheet wajib dikonfigurasi sebelum aktivasi target.',
+            ];
+        }
+
+        $sharedSecret = config('services.google_apps_script.shared_secret');
+        if (empty($sharedSecret)) {
+            return [
+                'success' => false,
+                'message' => 'Shared Secret belum dikonfigurasi di environment (.env).',
+            ];
+        }
+
+        $transport = new \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport([
+            'enabled'         => true,
+            'endpoint_url'    => $connection->apps_script_endpoint_url,
+            'shared_secret'   => $sharedSecret,
+            'timeout_seconds' => 15,
+        ]);
+
+        $permission = ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION) ? 'registration' : 'followup';
+
+        // 1. Inspect target terlebih dahulu (Read-Only)
+        $inspectRes = $transport->inspectTarget($connection, 'spreadsheet', $connection->spreadsheet_id, $permission);
+        if (!$inspectRes->isSuccess()) {
+            return [
+                'success' => false,
+                'message' => 'Inspeksi target gagal: ' . ($inspectRes->getErrorMessage() ?? 'Target tidak dapat diakses.'),
+            ];
+        }
+
+        // 2. Aktivasi target resmi pada Script Properties (Mutasi dengan Persetujuan Admin)
+        $activateRes = $transport->activateAuthorizedTarget(
+            connection: $connection,
+            targetType: 'spreadsheet',
+            targetId: $connection->spreadsheet_id,
+            permission: $permission,
+            confirmPromoteLegacy: $confirmPromoteLegacy
+        );
+
+        if (!$activateRes->isSuccess()) {
+            return [
+                'success' => false,
+                'message' => 'Aktivasi target gagal: ' . ($activateRes->getErrorMessage() ?? 'Gagal mendaftarkan target.'),
+            ];
+        }
+
+        // 3. Simpan target aktif dan perbarui generation pada model
+        $connection->previous_spreadsheet_id = $connection->active_spreadsheet_id ?: $connection->previous_spreadsheet_id;
+        $connection->active_spreadsheet_id = $connection->spreadsheet_id;
+        $connection->target_generation = ($connection->target_generation ?? 0) + 1;
+        $connection->connection_status = SpreadsheetConnection::STATUS_CONNECTED;
+        $connection->updated_by = $actor?->id;
+        $connection->save();
+
+        // 4. Jika koneksi pendaftaran memiliki drive_folder_id, aktifkan juga root folder Drive
+        if (!empty($connection->drive_folder_id)) {
+            $transport->activateAuthorizedTarget(
+                connection: $connection,
+                targetType: 'drive_folder',
+                targetId: $connection->drive_folder_id,
+                permission: 'drive_root'
+            );
+        }
+
+        // Periksa apakah terdapat antrean yang dibekukan membutuhkan rekonsiliasi
+        $frozenSummary = ['total_count' => 0];
+        try {
+            $frozenSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($connection);
+        } catch (\Throwable) {}
+
+        ActivityLogger::log(
+            action: 'spreadsheet_target_activated',
+            description: "Target spreadsheet '{$connection->display_name}' ({$connection->spreadsheet_id}) berhasil diotorisasi dan diaktifkan di Script Properties.",
+            subject: $connection,
+            actor: $actor
+        );
+
+        $msg = "Target spreadsheet '{$connection->display_name}' berhasil diotorisasi dan diaktifkan di Script Properties.";
+        if (($frozenSummary['total_count'] ?? 0) > 0) {
+            $msg .= " PERHATIAN: Terdapat {$frozenSummary['total_count']} antrean sinkronisasi yang dibekukan dan memerlukan rekonsiliasi.";
+        }
+
+        return [
+            'success'            => true,
+            'message'            => $msg,
+            'active_target_id'   => $connection->spreadsheet_id,
+            'target_generation'  => $connection->target_generation,
+            'frozen_queue_count' => $frozenSummary['total_count'] ?? 0,
+            'details'            => $activateRes->getData(),
+        ];
     }
 }

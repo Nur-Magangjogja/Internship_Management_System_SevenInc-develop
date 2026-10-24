@@ -50,14 +50,6 @@ return [
         ],
     ],
 
-    'google_drive' => [
-        'enabled'       => env('GOOGLE_DRIVE_ENABLED', false),
-        'client_id'     => env('GOOGLE_DRIVE_CLIENT_ID'),
-        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
-        'refresh_token' => env('GOOGLE_DRIVE_REFRESH_TOKEN'),
-        'folder_id'     => env('GOOGLE_DRIVE_FOLDER_ID'),
-    ],
-
     'google_sheets' => [
         'enabled' => env('GOOGLE_SHEETS_ENABLED', false),
     ],
@@ -66,8 +58,13 @@ return [
         'enabled'          => env('GOOGLE_APPS_SCRIPT_ENABLED', false),
         'endpoint_url'     => env('GOOGLE_APPS_SCRIPT_ENDPOINT_URL'),
         'shared_secret'    => env('GOOGLE_APPS_SCRIPT_SHARED_SECRET', env('GOOGLE_APPS_SCRIPT_WEBHOOK_SECRET')),
-        'timeout_seconds'  => (int) env('GOOGLE_APPS_SCRIPT_TIMEOUT_SECONDS', 30),
+        'timeout_seconds'  => (int) env('GOOGLE_APPS_SCRIPT_TIMEOUT_SECONDS', 120),
         'root_folder_id'   => env('GOOGLE_DRIVE_ROOT_FOLDER_ID'),
+    ],
+
+    'cloud_storage' => [
+        // S17.18G: Remote storage is permanently pinned to Google Apps Script DriveApp gateway.
+        // Runtime dependency on CLOUD_STORAGE_PROVIDER has been removed.
     ],
 
 ];

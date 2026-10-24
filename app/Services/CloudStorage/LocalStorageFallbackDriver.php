@@ -7,10 +7,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-class LocalStorageFallbackDriver implements CloudStorageInterface
+class LocalStorageFallbackDriver implements CloudStorageProviderInterface
 {
     protected string $diskName;
     protected string $basePrefix;
+    protected ?string $rootFolderId = null;
 
     public function __construct(string $diskName = 'local', string $basePrefix = 'cloud_simulated')
     {
@@ -28,6 +29,26 @@ class LocalStorageFallbackDriver implements CloudStorageInterface
         return 'local_fallback';
     }
 
+    public function setRootFolderId(?string $folderId): self
+    {
+        $this->rootFolderId = $folderId;
+        return $this;
+    }
+
+    public function getRootFolderId(): ?string
+    {
+        return $this->rootFolderId ?? 'sim_root';
+    }
+
+    public function getOrCreateFolderPath(string $folderPath): ?string
+    {
+        $cleanFolder = trim(str_replace('\\', '/', $folderPath), '/');
+        $fullSimPath = "{$this->basePrefix}/{$cleanFolder}";
+        Storage::disk($this->diskName)->makeDirectory($fullSimPath);
+
+        return 'sim_folder_' . md5($cleanFolder);
+    }
+
     public function uploadFile(string $localFullPath, string $remoteFolderPath, ?string $customFileName = null): array
     {
         if (!file_exists($localFullPath)) {
@@ -43,7 +64,6 @@ class LocalStorageFallbackDriver implements CloudStorageInterface
 
         $fileId = 'local_sim_' . md5($targetRelativePath . time());
         $simulatedViewUrl = "sertif://simulated-storage/{$targetRelativePath}";
-
         $folderId = 'sim_folder_' . md5($cleanFolder);
 
         return [
@@ -58,7 +78,47 @@ class LocalStorageFallbackDriver implements CloudStorageInterface
 
     public function deleteFile(string $remoteFileId): bool
     {
-        // Dalam implementasi simulasi, kembalikan true
         return true;
+    }
+
+    public function getFileMetadata(string $remoteFileId): array
+    {
+        return [
+            'id'          => $remoteFileId,
+            'name'        => 'simulated_file.bin',
+            'size'        => 0,
+            'mimeType'    => 'application/octet-stream',
+            'trashed'     => false,
+            'createdTime' => now()->toIso8601String(),
+        ];
+    }
+
+    public function downloadFileBytes(string $remoteFileId): string
+    {
+        return "SIMULATED_CONTENT_FOR_{$remoteFileId}";
+    }
+
+    public function openFileStream(string $remoteFileId): mixed
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $this->downloadFileBytes($remoteFileId));
+        rewind($stream);
+        return $stream;
+    }
+
+    public function listChildren(string $folderId, ?string $pageToken = null, int $pageSize = 50): array
+    {
+        return [
+            'files'         => [],
+            'nextPageToken' => null,
+        ];
+    }
+
+    public function searchWithinCanonicalRoot(string $canonicalRootId, string $query, ?string $pageToken = null, int $pageSize = 50): array
+    {
+        return [
+            'files'         => [],
+            'nextPageToken' => null,
+        ];
     }
 }

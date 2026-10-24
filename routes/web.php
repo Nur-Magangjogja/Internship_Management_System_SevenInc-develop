@@ -327,6 +327,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+    Route::get('/dashboard/accepted-interns-chart', [DashboardController::class, 'acceptedInternsChart'])->name('dashboard.accepted-interns-chart');
     Route::get('/', fn () => redirect()->route('admin.dashboard.index'))->name('home');
 
     // Manajemen Brand
@@ -410,6 +411,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'index'])->name('index');
         Route::put('/', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'update'])->name('update');
         Route::post('/test', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'test'])->name('test');
+        Route::post('/activate-root', [\App\Http\Controllers\Admin\CloudStorageSettingController::class, 'activateRoot'])->name('activate-root');
     });
 
     // Perpustakaan Aset Sistem (Manajemen Admin) -> admin.system-assets.*
@@ -428,10 +430,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
         Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
+        Route::get('/{spreadsheetConnection}/schema-history', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'schemaHistory'])->name('schema-history');
         Route::get('/{spreadsheetConnection}/edit', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'edit'])->name('edit');
         Route::put('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'update'])->name('update');
         Route::post('/{spreadsheetConnection}/toggle', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'toggle'])->name('toggle');
         Route::post('/{spreadsheetConnection}/test', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'test'])->name('test');
+        Route::post('/{spreadsheetConnection}/activate-target', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'activateTarget'])->name('activate-target');
+        Route::post('/{spreadsheetConnection}/reconcile-queue', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'reconcileQueue'])->name('reconcile-queue');
         Route::post('/{spreadsheetConnection}/sync-rows/{spreadsheetRowSync}/retry', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryRow'])->name('retry-row');
         Route::post('/{spreadsheetConnection}/retry-failed', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryAllFailed'])->name('retry-failed');
         Route::post('/{spreadsheetConnection}/schemas', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'storeSchema'])->name('schemas.store');
@@ -506,10 +511,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::delete('/{archiveExport}', [\App\Http\Controllers\Admin\ArchiveExportController::class, 'destroy'])->name('destroy');
     });
 
-    // Impor Data Legacy -> admin.legacy-import.*
+    // Impor Data Legacy & Historis -> admin.legacy-import.*
     Route::prefix('legacy-import')->name('legacy-import.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\LegacyImportController::class, 'index'])->name('index');
         Route::post('/preview', [\App\Http\Controllers\Admin\LegacyImportController::class, 'preview'])->name('preview');
+        Route::post('/preview-google-sheet', [\App\Http\Controllers\Admin\LegacyImportController::class, 'previewGoogleSheet'])->name('preview-google-sheet');
+        Route::post('/stage', [\App\Http\Controllers\Admin\LegacyImportController::class, 'stage'])->name('stage');
+        Route::get('/batch/{batch}', [\App\Http\Controllers\Admin\LegacyImportController::class, 'showBatch'])->name('batch');
         Route::post('/commit', [\App\Http\Controllers\Admin\LegacyImportController::class, 'commit'])->name('commit');
         Route::post('/cancel', [\App\Http\Controllers\Admin\LegacyImportController::class, 'cancel'])->name('cancel');
         Route::get('/template', [\App\Http\Controllers\Admin\LegacyImportController::class, 'downloadTemplate'])->name('template');

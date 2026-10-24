@@ -8,10 +8,11 @@ use App\Models\Institution;
 use App\Models\Mou;
 use App\Models\User;
 use App\Services\CloudStorage\CloudSyncManager;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
+use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -79,54 +80,46 @@ class CloudStorageSyncTest extends TestCase
     }
 
     /**
-     * Test GoogleDriveStorageDriver menangani otentikasi token dan unggah berkas via HTTP Mocking.
+     * Test GoogleAppsScriptDriveDriver menangani unggah berkas via Google Apps Script Drive Gateway.
      */
-    public function test_google_drive_driver_handles_token_refresh_and_file_upload_with_http_mocking(): void
+    public function test_apps_script_drive_driver_handles_file_upload_with_signed_gateway(): void
     {
+        Config::set('services.google_apps_script.enabled', true);
+        Config::set('services.google_apps_script.endpoint_url', 'https://script.google.com/macros/s/AKfy_test_gas/exec');
+        Config::set('services.google_apps_script.shared_secret', 'test_secret_123');
+        Config::set('services.google_apps_script.timeout_seconds', 30);
+        Config::set('services.google_apps_script.root_folder_id', 'test_root_folder_123');
+
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mocked_google_access_token_123',
-                'expires_in'   => 3600,
-            ], 200),
-
-            'https://www.googleapis.com/drive/v3/files?*' => Http::response([
-                'files' => [
-                    ['id' => 'mocked_folder_id_456', 'name' => 'MOU'],
-                ],
-            ], 200),
-
-            'https://www.googleapis.com/upload/drive/v3/files*' => Http::response([
-                'id'          => 'mocked_drive_file_id_789',
-                'name'        => 'mou-signed-final.pdf',
-                'webViewLink' => 'https://drive.google.com/file/d/mocked_drive_file_id_789/view',
+            'https://script.google.com/macros/s/AKfy_test_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'mocked_gas_drive_file_id_789',
+                'file_name'       => 'mou-signed-final.pdf',
+                'web_view_link'   => 'https://drive.google.com/file/d/mocked_gas_drive_file_id_789/view',
+                'checksum_sha256' => hash('sha256', 'Isi naskah dokumen PDF asli'),
             ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'test_client_id',
-            'client_secret' => 'test_client_secret',
-            'refresh_token' => 'test_refresh_token',
-            'folder_id'     => 'test_root_folder',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $this->assertTrue($driver->isConfigured());
-        $this->assertEquals('google_drive', $driver->getDriverName());
+        $this->assertEquals('google_apps_script_drive', $driver->getDriverName());
 
-        $tempFile = tempnam(sys_get_temp_dir(), 'test_gd_');
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_gas_');
         file_put_contents($tempFile, 'Isi naskah dokumen PDF asli');
 
         $upload = $driver->uploadFile($tempFile, 'Institusi/smk-test/MOU', 'mou-signed-final.pdf');
 
-        $this->assertEquals('mocked_drive_file_id_789', $upload['file_id']);
-        $this->assertEquals('https://drive.google.com/file/d/mocked_drive_file_id_789/view', $upload['web_view_link']);
-        $this->assertEquals('google_drive', $upload['driver']);
+        $this->assertEquals('mocked_gas_drive_file_id_789', $upload['file_id']);
+        $this->assertEquals('https://drive.google.com/file/d/mocked_gas_drive_file_id_789/view', $upload['web_view_link']);
+        $this->assertEquals('google_apps_script_drive', $upload['driver']);
 
         @unlink($tempFile);
     }
 
     /**
-     * Test CloudSyncManager menyinkronkan paket arsip tahunan ke cloud dan mengupdate database.
+     * Test CloudSyncManager menangani paket arsip tahunan sesuai ketentuan Addendum V4 (deactivated).
      */
     public function test_cloud_sync_manager_syncs_archive_export_and_updates_database(): void
     {
@@ -150,17 +143,9 @@ class CloudStorageSyncTest extends TestCase
         $manager = new CloudSyncManager(new LocalStorageFallbackDriver());
         $result = $manager->syncArchiveExport($archive, $this->admin);
 
-        $archive->refresh();
-        $this->assertTrue($archive->is_drive_synced);
-        $this->assertNotEmpty($archive->drive_file_id);
-        $this->assertNotEmpty($archive->drive_web_view_link);
-        $this->assertNotNull($archive->drive_synced_at);
-
-        // Verifikasi log audit activity_logs tercatat
-        $this->assertDatabaseHas('activity_logs', [
-            'action'        => 'archive_drive_synced',
-            'actor_user_id' => $this->admin->id,
-        ]);
+        $this->assertTrue($result['success']);
+        $this->assertEquals('deactivated', $result['driver']);
+        $this->assertStringContainsString('telah dinonaktifkan', $result['message']);
 
         // Bersihkan berkas
         if (Storage::disk('local')->exists($archivePath)) {
@@ -203,7 +188,14 @@ class CloudStorageSyncTest extends TestCase
             'rendered_document_html'       => '<p>Naskah MOU</p>',
         ]);
 
-        $manager = new CloudSyncManager(new LocalStorageFallbackDriver());
+        $mockDriver = $this->createMock(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+        $mockDriver->method('getDriverName')->willReturn('google_apps_script_drive');
+        $mockDriver->method('uploadFile')->willReturn([
+            'file_id'       => 'mocked_mou_drive_id_123',
+            'web_view_link' => 'https://drive.google.com/file/d/mocked_mou_drive_id_123/view',
+            'driver'        => 'google_apps_script_drive',
+        ]);
+        $manager = new CloudSyncManager($mockDriver);
         $result = $manager->syncMou($mou, $this->admin);
 
         $mou->refresh();

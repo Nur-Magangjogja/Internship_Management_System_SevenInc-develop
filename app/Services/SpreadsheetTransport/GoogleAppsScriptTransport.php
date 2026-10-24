@@ -19,12 +19,27 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
 
     public function __construct(array $config = [])
     {
-        $cfg = array_merge(config('services.google_apps_script', []), $config);
+        $defaultConfig = [];
+        try {
+            if (function_exists('config')) {
+                $defaultConfig = config('services.google_apps_script', []) ?: [];
+            }
+        } catch (\Throwable) {
+            $defaultConfig = [];
+        }
+
+        $cfg = array_merge($defaultConfig, $config);
 
         $this->enabled        = (bool) ($cfg['enabled'] ?? false);
         $this->endpointUrl    = $cfg['endpoint_url'] ?? null;
         $this->sharedSecret   = $cfg['shared_secret'] ?? null;
-        $this->timeoutSeconds = (int) ($cfg['timeout_seconds'] ?? 30);
+        $this->timeoutSeconds = (int) ($cfg['timeout_seconds'] ?? 60);
+    }
+
+    public function setTimeoutSeconds(int $seconds): self
+    {
+        $this->timeoutSeconds = max(5, $seconds);
+        return $this;
     }
 
     /**
@@ -58,12 +73,14 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $sanitizedPayload = $this->sanitizePayloadForFormulas($payload);
 
         $innerPayload = [
-            'action'         => 'upsert_row',
-            'connection_key' => $connection->connection_key,
-            'spreadsheet_id' => $connection->spreadsheet_id,
-            'tab_name'       => $tabName,
-            'sync_id'        => $syncId,
-            'payload'        => $sanitizedPayload,
+            'action'            => 'upsert_row',
+            'connection_key'    => $connection->connection_key,
+            'spreadsheet_id'    => $connection->spreadsheet_id,
+            'tab_name'          => $tabName,
+            'sync_id'           => $syncId,
+            'payload'           => $sanitizedPayload,
+            'schema_headers'    => array_keys($sanitizedPayload),
+            'auto_sync_headers' => true,
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
@@ -93,12 +110,14 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $sanitizedPayload = $this->sanitizePayloadForFormulas($payload);
 
         $innerPayload = [
-            'action'         => 'update_row',
-            'connection_key' => $connection->connection_key,
-            'spreadsheet_id' => $connection->spreadsheet_id,
-            'tab_name'       => $tabName,
-            'sync_id'        => $syncId,
-            'payload'        => $sanitizedPayload,
+            'action'            => 'update_row',
+            'connection_key'    => $connection->connection_key,
+            'spreadsheet_id'    => $connection->spreadsheet_id,
+            'tab_name'          => $tabName,
+            'sync_id'           => $syncId,
+            'payload'           => $sanitizedPayload,
+            'schema_headers'    => array_keys($sanitizedPayload),
+            'auto_sync_headers' => true,
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
@@ -525,6 +544,101 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, 'DELETE_COLUMN_' . $columnIdentity);
+    }
+
+    /**
+     * Inspect Google target accessibility and metadata (Read-Only).
+     */
+    public function inspectTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration'
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'      => 'inspect_target',
+            'target_type' => $targetType,
+            'target_id'   => $targetId,
+            'permission'  => $permission,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'INSPECT_TARGET');
+    }
+
+    /**
+     * Activate verified Google target into Apps Script authorized registry.
+     */
+    public function activateAuthorizedTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration',
+        bool $confirmPromoteLegacy = false
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'                 => 'activate_authorized_target',
+            'target_type'            => $targetType,
+            'target_id'              => $targetId,
+            'permission'             => $permission,
+            'confirm_promote_legacy' => $confirmPromoteLegacy,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'ACTIVATE_TARGET');
+    }
+
+    /**
+     * Attach SERTIF_SYNC_ID to an existing row in Google Sheets.
+     */
+    public function attachRowSyncId(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        int $rowIndex,
+        string $syncId,
+        ?string $registrationId = null,
+        ?string $expectedChecksum = null
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'            => 'attach_row_sync_id',
+            'connection_key'    => $connection->connection_key,
+            'spreadsheet_id'    => $connection->spreadsheet_id,
+            'tab_name'          => $tabName,
+            'row_index'         => $rowIndex,
+            'sync_id'           => $syncId,
+            'registration_id'   => $registrationId,
+            'expected_checksum' => $expectedChecksum,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
     }
 
     /**

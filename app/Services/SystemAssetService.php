@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Services\CloudStorage\CloudStorageInterface;
 use App\Services\CloudStorage\CloudSyncManager;
 use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\CloudStorage\SystemStorageConfigService;
 use Exception;
@@ -28,20 +27,7 @@ class SystemAssetService
         protected SystemStorageConfigService $storageConfigService,
         ?CloudStorageInterface $cloudDriver = null
     ) {
-        if ($cloudDriver) {
-            $this->cloudDriver = $cloudDriver;
-        } else {
-            $googleDriver = new GoogleDriveStorageDriver();
-            $gasDriver = new GoogleAppsScriptDriveDriver();
-
-            if ($googleDriver->isConfigured()) {
-                $this->cloudDriver = $googleDriver;
-            } elseif ($gasDriver->isConfigured()) {
-                $this->cloudDriver = $gasDriver;
-            } else {
-                $this->cloudDriver = new LocalStorageFallbackDriver();
-            }
-        }
+        $this->cloudDriver = $cloudDriver ?? app(CloudStorageInterface::class);
     }
 
     /**
@@ -199,7 +185,7 @@ class SystemAssetService
         };
 
         // Konfigurasikan root folder sistem jika ada
-        if (!empty($settings->system_assets_folder_id) && $this->cloudDriver instanceof GoogleDriveStorageDriver) {
+        if (!empty($settings->system_assets_folder_id) && method_exists($this->cloudDriver, 'setRootFolderId')) {
             $this->cloudDriver->setRootFolderId($settings->system_assets_folder_id);
         }
 

@@ -7,6 +7,7 @@ use App\Models\ArchiveExport;
 use App\Models\Mou;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -18,20 +19,7 @@ class CloudSyncManager
 
     public function __construct(?CloudStorageInterface $driver = null)
     {
-        if ($driver) {
-            $this->driver = $driver;
-        } else {
-            $googleDriver = new GoogleDriveStorageDriver();
-            $gasDriver = new GoogleAppsScriptDriveDriver();
-
-            if ($googleDriver->isConfigured()) {
-                $this->driver = $googleDriver;
-            } elseif ($gasDriver->isConfigured()) {
-                $this->driver = $gasDriver;
-            } else {
-                $this->driver = new LocalStorageFallbackDriver();
-            }
-        }
+        $this->driver = $driver ?? app(CloudStorageInterface::class);
     }
 
     public function setDriver(CloudStorageInterface $driver): self
@@ -215,7 +203,7 @@ class CloudSyncManager
         $baseFileName = $attachment->original_name ?: basename($attachment->file_path);
         $customFileName = "ATT-{$regId}-{$attachment->id}-v{$contentVersion}_{$baseFileName}";
 
-        if ($this->driver instanceof GoogleDriveStorageDriver) {
+        if (method_exists($this->driver, 'setRootFolderId')) {
             try {
                 \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
                 $configuredFolderId = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)
@@ -415,7 +403,7 @@ class CloudSyncManager
             default                                    => "System_Assets/Global/{$categoryDir}",
         };
 
-        if (!empty($settings->system_assets_folder_id) && $this->driver instanceof GoogleDriveStorageDriver) {
+        if (!empty($settings->system_assets_folder_id) && method_exists($this->driver, 'setRootFolderId')) {
             $this->driver->setRootFolderId($settings->system_assets_folder_id);
         }
 
@@ -472,7 +460,7 @@ class CloudSyncManager
             $typeFolder = strtoupper($doc->document_type);
             $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
 
-            if ($this->driver instanceof GoogleDriveStorageDriver) {
+            if (method_exists($this->driver, 'setRootFolderId')) {
                 try {
                     \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
                     $regFolderId = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)
@@ -489,7 +477,7 @@ class CloudSyncManager
             $remoteFolder = "Generated_Documents/Institutions/{$institutionSlug}/" . strtoupper($doc->document_type);
 
             $settings = \App\Models\CloudStorageSetting::getEffectiveSettings();
-            if (!empty($settings->generated_docs_folder_id) && $this->driver instanceof GoogleDriveStorageDriver) {
+            if (!empty($settings->generated_docs_folder_id) && method_exists($this->driver, 'setRootFolderId')) {
                 $this->driver->setRootFolderId($settings->generated_docs_folder_id);
             }
         }

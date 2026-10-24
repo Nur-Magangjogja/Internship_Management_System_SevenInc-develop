@@ -102,12 +102,14 @@ class SpreadsheetSyncEngineService
                 'syncable_id'               => $registration->id,
             ],
             [
-                'public_uuid'      => (string) Str::uuid(),
-                'external_sync_id' => $externalSyncId,
-                'target_sheet_tab' => $targetTab,
-                'schema_version'   => 'v1',
-                'sync_status'      => SpreadsheetRowSync::STATUS_PENDING,
-                'next_retry_at'    => now(),
+                'public_uuid'           => (string) Str::uuid(),
+                'external_sync_id'      => $externalSyncId,
+                'target_sheet_tab'      => $targetTab,
+                'target_spreadsheet_id' => $connection->spreadsheet_id,
+                'target_generation'     => $connection->target_generation ?? 1,
+                'schema_version'        => 'v1',
+                'sync_status'           => SpreadsheetRowSync::STATUS_PENDING,
+                'next_retry_at'         => now(),
             ]
         );
 
@@ -133,13 +135,27 @@ class SpreadsheetSyncEngineService
 
             if ($updated > 0) {
                 $rowSync->refresh();
-                DB::afterCommit(function () use ($rowSync) {
-                    ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+                DB::afterCommit(function () use ($rowSync, $connection) {
+                    ProcessSpreadsheetRowSyncJob::dispatch(
+                        $rowSync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $rowSync->target_sheet_tab,
+                        $rowSync->schema_version,
+                        $connection?->id
+                    );
                 });
             }
         } else {
-            DB::afterCommit(function () use ($rowSync) {
-                ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                ProcessSpreadsheetRowSyncJob::dispatch(
+                    $rowSync->id,
+                    null,
+                    $connection?->spreadsheet_id,
+                    $rowSync->target_sheet_tab,
+                    $rowSync->schema_version,
+                    $connection?->id
+                );
             });
         }
 
@@ -171,12 +187,14 @@ class SpreadsheetSyncEngineService
                 'syncable_id'               => $cycle->id,
             ],
             [
-                'public_uuid'      => (string) Str::uuid(),
-                'external_sync_id' => $externalSyncId,
-                'target_sheet_tab' => $targetTab,
-                'schema_version'   => 'v1',
-                'sync_status'      => SpreadsheetRowSync::STATUS_PENDING,
-                'next_retry_at'    => now(),
+                'public_uuid'           => (string) Str::uuid(),
+                'external_sync_id'      => $externalSyncId,
+                'target_sheet_tab'      => $targetTab,
+                'target_spreadsheet_id' => $connection->spreadsheet_id,
+                'target_generation'     => $connection->target_generation ?? 1,
+                'schema_version'        => 'v1',
+                'sync_status'           => SpreadsheetRowSync::STATUS_PENDING,
+                'next_retry_at'         => now(),
             ]
         );
 
@@ -200,13 +218,27 @@ class SpreadsheetSyncEngineService
 
             if ($updated > 0) {
                 $rowSync->refresh();
-                DB::afterCommit(function () use ($rowSync) {
-                    ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+                DB::afterCommit(function () use ($rowSync, $connection) {
+                    ProcessSpreadsheetRowSyncJob::dispatch(
+                        $rowSync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $rowSync->target_sheet_tab,
+                        $rowSync->schema_version,
+                        $connection?->id
+                    );
                 });
             }
         } else {
-            DB::afterCommit(function () use ($rowSync) {
-                ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                ProcessSpreadsheetRowSyncJob::dispatch(
+                    $rowSync->id,
+                    null,
+                    $connection?->spreadsheet_id,
+                    $rowSync->target_sheet_tab,
+                    $rowSync->schema_version,
+                    $connection?->id
+                );
             });
         }
 
@@ -243,7 +275,10 @@ class SpreadsheetSyncEngineService
         ?SpreadsheetTransportInterface $customTransport = null,
         bool $force = false,
         ?string $preClaimedFence = null,
-        ?string $requestedFenceToken = null
+        ?string $requestedFenceToken = null,
+        ?string $snapshotSpreadsheetId = null,
+        ?string $snapshotTabName = null,
+        ?string $snapshotSchemaVersion = null
     ): bool {
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
@@ -310,6 +345,38 @@ class SpreadsheetSyncEngineService
 
         // 2. Validate connection configuration
         $connection = $rowSync->spreadsheetConnection;
+
+        // HOTFIX 1: Target identity & version divergence protection (Freeze on divergence)
+        // Saat target Spreadsheet diganti dari A ke B:
+        // Job lama TIDAK boleh menulis ke A dan TIDAK boleh otomatis menulis ke B.
+        // Job harus dibekukan dengan status paused_target_rebind untuk direkonsiliasi.
+        if ($rowSync->isPausedForTargetRebind()) {
+            \Illuminate\Support\Facades\Log::warning("processSyncRecord: Job #{$rowSync->id} dalam status 'paused_target_rebind'. Menolak eksekusi otomatis.");
+            return false;
+        }
+
+        if ($connection && !empty($snapshotSpreadsheetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $snapshotSpreadsheetId) {
+            $errMsg = "Target spreadsheet koneksi diubah dari '{$snapshotSpreadsheetId}' menjadi '{$connection->spreadsheet_id}'. Job dibekukan untuk rekonsiliasi admin.";
+            $this->updateGuardedByFence($rowSync, $fenceToken, [
+                'sync_status'     => SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
+                'last_attempt_at' => now(),
+                'error_message'   => $errMsg,
+                'locked_at'       => null,
+                'locked_by'       => null,
+                'next_retry_at'   => null,
+            ]);
+            \Illuminate\Support\Facades\Log::warning("processSyncRecord: " . $errMsg);
+            return false;
+        }
+
+        if (!empty($snapshotTabName) && $rowSync->target_sheet_tab !== $snapshotTabName) {
+            $rowSync->target_sheet_tab = $snapshotTabName;
+        }
+
+        if (!empty($snapshotSchemaVersion) && $rowSync->schema_version !== $snapshotSchemaVersion) {
+            $rowSync->schema_version = $snapshotSchemaVersion;
+        }
+
         if (!$connection || !$connection->is_enabled || empty($connection->spreadsheet_url)) {
             $errMsg = 'Koneksi spreadsheet dinonaktifkan atau URL belum dikonfigurasi.';
             $this->updateGuardedByFence($rowSync, $fenceToken, [
@@ -617,6 +684,10 @@ class SpreadsheetSyncEngineService
         ?SpreadsheetTransportInterface $customTransport = null,
         bool $async = false
     ): bool {
+        if ($rowSync->isPausedForTargetRebind()) {
+            throw new DomainException("Antrean sinkronisasi baris {$rowSync->external_sync_id} sedang dibekukan karena pergantian target Spreadsheet. Gunakan fitur rekonsiliasi antrean target.");
+        }
+
         $fenceToken = (string) Str::uuid();
 
         // Single atomic transition directly to processing, resetting checksum and attempts
@@ -673,7 +744,15 @@ class SpreadsheetSyncEngineService
                 ]);
 
             DB::afterCommit(function () use ($rowSync) {
-                \App\Jobs\ProcessSpreadsheetRowSyncJob::dispatch($rowSync->id);
+                $conn = $rowSync->spreadsheetConnection;
+                \App\Jobs\ProcessSpreadsheetRowSyncJob::dispatch(
+                    $rowSync->id,
+                    null,
+                    $conn?->spreadsheet_id,
+                    $rowSync->target_sheet_tab,
+                    $rowSync->schema_version,
+                    $rowSync->spreadsheet_connection_id
+                );
             });
 
             return true;
@@ -730,8 +809,15 @@ class SpreadsheetSyncEngineService
                 ]);
 
             if ($affected > 0) {
-                DB::afterCommit(function () use ($sync) {
-                    ProcessSpreadsheetRowSyncJob::dispatch($sync->id);
+                DB::afterCommit(function () use ($sync, $connection) {
+                    ProcessSpreadsheetRowSyncJob::dispatch(
+                        $sync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $sync->target_sheet_tab,
+                        $sync->schema_version,
+                        $connection?->id
+                    );
                 });
 
                 $count++;
@@ -785,7 +871,15 @@ class SpreadsheetSyncEngineService
         $dispatched = 0;
 
         foreach ($dueSyncs as $sync) {
-            ProcessSpreadsheetRowSyncJob::dispatch($sync->id);
+            $conn = $sync->spreadsheetConnection;
+            ProcessSpreadsheetRowSyncJob::dispatch(
+                $sync->id,
+                null,
+                $conn?->spreadsheet_id,
+                $sync->target_sheet_tab,
+                $sync->schema_version,
+                $sync->spreadsheet_connection_id
+            );
             $dispatched++;
         }
 
@@ -919,14 +1013,24 @@ class SpreadsheetSyncEngineService
                 ]);
 
             if ($updated > 0) {
-                $sidecarSync->refresh();
-                DB::afterCommit(function () use ($sidecarSync) {
-                    ProcessSidecarSyncJob::dispatch($sidecarSync->id);
+                $rowSync->refresh();
+                DB::afterCommit(function () use ($sidecarSync, $connection) {
+                    ProcessSidecarSyncJob::dispatch(
+                        $sidecarSync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $sidecarSync->extension_sheet_tab
+                    );
                 });
             }
         } else {
-            DB::afterCommit(function () use ($sidecarSync) {
-                ProcessSidecarSyncJob::dispatch($sidecarSync->id);
+            DB::afterCommit(function () use ($sidecarSync, $connection) {
+                ProcessSidecarSyncJob::dispatch(
+                    $sidecarSync->id,
+                    null,
+                    $connection?->spreadsheet_id,
+                    $sidecarSync->extension_sheet_tab
+                );
             });
         }
 
@@ -941,7 +1045,9 @@ class SpreadsheetSyncEngineService
         ?SpreadsheetTransportInterface $customTransport = null,
         bool $force = false,
         ?string $preClaimedFence = null,
-        ?string $requestedFenceToken = null
+        ?string $requestedFenceToken = null,
+        ?string $snapshotSpreadsheetId = null,
+        ?string $snapshotSheetName = null
     ): bool {
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
@@ -1017,6 +1123,31 @@ class SpreadsheetSyncEngineService
 
         // 2. Validate connection
         $connection = $sidecarSync->spreadsheetConnection;
+
+        // HOTFIX 1: Target identity divergence protection (Freeze on divergence)
+        if ($sidecarSync->isPausedForTargetRebind()) {
+            \Illuminate\Support\Facades\Log::warning("processSidecarSyncRecord: Job sidecar #{$sidecarSync->id} dalam status 'paused_target_rebind'. Menolak eksekusi otomatis.");
+            return false;
+        }
+
+        if ($connection && !empty($snapshotSpreadsheetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $snapshotSpreadsheetId) {
+            $errMsg = "Target spreadsheet koneksi diubah dari '{$snapshotSpreadsheetId}' menjadi '{$connection->spreadsheet_id}'. Job sidecar dibekukan untuk rekonsiliasi admin.";
+            $this->updateSidecarGuardedByFence($sidecarSync, $fenceToken, [
+                'sync_status'     => SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND,
+                'last_attempt_at' => now(),
+                'error_message'   => $errMsg,
+                'locked_at'       => null,
+                'locked_by'       => null,
+                'next_retry_at'   => null,
+            ]);
+            \Illuminate\Support\Facades\Log::warning("processSidecarSyncRecord: " . $errMsg);
+            return false;
+        }
+
+        if (!empty($snapshotSheetName) && $sidecarSync->sheet_name !== $snapshotSheetName) {
+            $sidecarSync->sheet_name = $snapshotSheetName;
+        }
+
         if (!$connection || !$connection->is_enabled || empty($connection->spreadsheet_url)) {
             $errMsg = 'Koneksi spreadsheet dinonaktifkan atau URL belum dikonfigurasi.';
             $this->updateSidecarGuardedByFence($sidecarSync, $fenceToken, [
@@ -1333,7 +1464,13 @@ class SpreadsheetSyncEngineService
         $sidecarSync->refresh();
 
         DB::afterCommit(function () use ($sidecarSync) {
-            ProcessSidecarSyncJob::dispatch($sidecarSync->id);
+            $conn = $sidecarSync->spreadsheetConnection;
+            ProcessSidecarSyncJob::dispatch(
+                $sidecarSync->id,
+                null,
+                $conn?->spreadsheet_id,
+                $sidecarSync->extension_sheet_tab
+            );
         });
 
         // 5. Audit log
@@ -1400,7 +1537,13 @@ class SpreadsheetSyncEngineService
 
         foreach ($dueSyncs as $sync) {
             DB::afterCommit(function () use ($sync) {
-                ProcessSidecarSyncJob::dispatch($sync->id);
+                $conn = $sync->spreadsheetConnection;
+                ProcessSidecarSyncJob::dispatch(
+                    $sync->id,
+                    null,
+                    $conn?->spreadsheet_id,
+                    $sync->extension_sheet_tab
+                );
             });
             $dispatched++;
         }

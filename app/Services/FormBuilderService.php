@@ -32,10 +32,10 @@ class FormBuilderService
     ];
 
     public const CORE_FIELD_KEYS = [
-        'fullname', 'student_id', 'born_date', 'birth_place', 'religion', 'institution_name', 'faculty',
-        'study_program', 'current_city', 'gender', 'phone_number', 'email',
+        'fullname', 'student_id', 'born_date', 'religion', 'institution_name', 'faculty',
+        'study_program', 'gender', 'phone_number', 'email',
         'internship_interest', 'start_date', 'end_date', 'internship_type',
-        'internship_arrangement', 'current_status', 'wfo_readiness',
+        'current_status', 'wfo_readiness',
         'schedule_shift_readiness', 'has_laptop', 'planned_duration',
         'cv_ktp_portofolio_pdf', 'profile_photo', 'cv', 'identity', 'portfolio',
         'cover_letter', 'proposal', 'supporting_document', 'design_software',
@@ -632,6 +632,33 @@ class FormBuilderService
     }
 
     /**
+     * Promosikan field historis nonaktif ke dalam draf formulir untuk diaktifkan kembali.
+     */
+    public function promoteHistoricalFieldToDraft(
+        FormSchema $draft,
+        string $fieldKey,
+        ?string $label = null,
+        int $sortOrder = 0,
+        bool $isRequired = false
+    ): FormField {
+        if ($draft->isPublished() || $draft->isArchived()) {
+            throw new \DomainException("Hanya draf formulir yang dapat menerima penambahan field.");
+        }
+
+        $registry = FormFieldRegistry::where('field_key', $fieldKey)->firstOrFail();
+
+        return $this->addFieldToDraft($draft, [
+            'field_key'   => $registry->field_key,
+            'field_type'  => $registry->field_type,
+            'label'       => $label ?: $registry->canonical_label,
+            'options'     => $registry->allowed_options,
+            'is_required' => $isRequired,
+            'is_active'   => true,
+            'sort_order'  => $sortOrder,
+        ]);
+    }
+
+    /**
      * Perbarui field dalam draf skema.
      */
     public function updateFieldInDraft(FormField $field, array $data): FormField
@@ -837,27 +864,36 @@ class FormBuilderService
                 'published_by' => $publisher?->id,
             ]);
 
-            // Daftarkan seluruh field aktif ke FormFieldRegistry dan kunci identitasnya
-            foreach ($activeFields as $field) {
+            // Daftarkan seluruh field (aktif maupun nonaktif yang tidak diarsipkan) ke FormFieldRegistry dan kunci identitasnya
+            $allDraftFields = $lockedDraft->fields()->where('is_archived', false)->get();
+            foreach ($allDraftFields as $field) {
                 $registry = FormFieldRegistry::where('field_key', $field->field_key)->first();
                 if (!$registry) {
                     FormFieldRegistry::create([
-                        'field_key'               => $field->field_key,
-                        'field_type'              => $field->field_type,
-                        'canonical_label'         => $field->label,
-                        'first_published_version' => $publishedVersionCode,
-                        'is_locked'               => true,
-                        'allowed_options'         => $field->options,
+                        'field_key'                => $field->field_key,
+                        'field_type'               => $field->field_type,
+                        'field_state'              => FormFieldRegistry::STATE_FORM_FIELD,
+                        'canonical_label'          => $field->label,
+                        'form_enabled'             => true,
+                        'history_storage_enabled'  => true,
+                        'spreadsheet_sync_enabled' => true,
+                        'first_published_version'  => $publishedVersionCode,
+                        'is_locked'                => true,
+                        'allowed_options'          => $field->options,
                     ]);
                 } else {
-                    // first_published_version HANYA diisi pada publikasi pertama dan tidak boleh ditimpa
+                    // Promosikan field historis/draft ke active form field pada publikasi resmi
                     $existingOptions = $registry->allowed_options ?? [];
                     $mergedOptions = $this->mergeAllowedOptions($existingOptions, $field->options);
 
                     $registry->update([
-                        'canonical_label' => $field->label,
-                        'allowed_options' => $mergedOptions,
-                        'is_locked'       => true,
+                        'field_state'              => FormFieldRegistry::STATE_FORM_FIELD,
+                        'form_enabled'             => true,
+                        'history_storage_enabled'  => true,
+                        'canonical_label'          => $field->label,
+                        'allowed_options'          => $mergedOptions,
+                        'first_published_version'  => $registry->first_published_version ?: $publishedVersionCode,
+                        'is_locked'                => true,
                     ]);
                 }
             }

@@ -502,8 +502,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         $sheetNames = !empty($this->remoteSheets) ? array_keys($this->remoteSheets) : ($connection->connection_key === SpreadsheetConnection::KEY_FOLLOWUP ? ['Follow-Up Guru/Dosen'] : ['2026', '2025', '2026_Custom_Fields']);
         $tabs = [];
         foreach ($sheetNames as $idx => $name) {
-            $isReg = preg_match('/^\d{4}$/', $name) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-            $headerRow = $isReg ? 12 : 1;
+            $isYearlyOrTemplate = preg_match('/^\d{4}$/', (string) $name) || (string) $name === 'TEMPLATE_TAHUN';
+            $headerRow = $isYearlyOrTemplate ? 12 : 1;
             $tabs[] = [
                 'id' => $idx,
                 'name' => (string) $name,
@@ -554,8 +554,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             return $this->forcedResponse;
         }
 
-        $isReg = preg_match('/^\d{4}$/', $tabName) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-        $effectiveHeaderRow = $headerRow ?? ($isReg ? 12 : 1);
+        $isYearlyOrTemplate = preg_match('/^\d{4}$/', $tabName) || $tabName === 'TEMPLATE_TAHUN';
+        $effectiveHeaderRow = $headerRow ?? ($isYearlyOrTemplate ? 12 : 1);
 
         $headers = $this->remoteHeaders[$tabName] ?? [];
         if (empty($headers)) {
@@ -648,8 +648,8 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             return $this->forcedResponse;
         }
 
-        $isReg = preg_match('/^\d{4}$/', $tabName) || $connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION;
-        $effectiveHeaderRow = $headerRow ?? ($isReg ? 12 : 1);
+        $isYearlyOrTemplate = preg_match('/^\d{4}$/', $tabName) || $tabName === 'TEMPLATE_TAHUN';
+        $effectiveHeaderRow = $headerRow ?? ($isYearlyOrTemplate ? 12 : 1);
 
         $allRows = array_values($this->remoteSheets[$tabName] ?? []);
         $totalRows = count($allRows);
@@ -808,6 +808,96 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             return substr($str, 0, 3) . '****' . substr($str, -3);
         }
         return $str;
+    }
+
+    public function inspectTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration'
+    ): SpreadsheetTransportResponse {
+        $this->callHistory[] = [
+            'method' => 'inspectTarget',
+            'args'   => ['targetType' => $targetType, 'targetId' => $targetId, 'permission' => $permission],
+        ];
+        if ($this->forcedResponse !== null) {
+            return $this->forcedResponse;
+        }
+
+        return SpreadsheetTransportResponse::ok(context: [
+            'success'     => true,
+            'target_type' => $targetType,
+            'target_id'   => $targetId,
+            'name'        => 'Mock Target ' . $targetId,
+            'tabs'        => [
+                ['name' => '2026', 'sheet_id' => 0, 'last_row' => 20, 'last_column' => 38],
+            ],
+            'permission'  => $permission,
+        ]);
+    }
+
+    public function activateAuthorizedTarget(
+        SpreadsheetConnection $connection,
+        string $targetType,
+        string $targetId,
+        string $permission = 'registration',
+        bool $confirmPromoteLegacy = false
+    ): SpreadsheetTransportResponse {
+        $this->callHistory[] = [
+            'method' => 'activateAuthorizedTarget',
+            'args'   => ['targetType' => $targetType, 'targetId' => $targetId, 'permission' => $permission],
+        ];
+        if ($this->forcedResponse !== null) {
+            return $this->forcedResponse;
+        }
+
+        return SpreadsheetTransportResponse::ok(context: [
+            'success'     => true,
+            'target_type' => $targetType,
+            'target_id'   => $targetId,
+            'permission'  => $permission,
+            'message'     => 'Mock target activated.',
+        ]);
+    }
+
+    public function attachRowSyncId(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        int $rowIndex,
+        string $syncId,
+        ?string $registrationId = null,
+        ?string $expectedChecksum = null
+    ): SpreadsheetTransportResponse {
+        $this->callHistory[] = [
+            'method' => 'attachRowSyncId',
+            'args'   => [
+                'tabName'          => $tabName,
+                'rowIndex'         => $rowIndex,
+                'syncId'           => $syncId,
+                'registrationId'   => $registrationId,
+                'expectedChecksum' => $expectedChecksum,
+            ],
+        ];
+
+        if ($this->forcedResponse !== null) {
+            return $this->forcedResponse;
+        }
+
+        if (isset($this->remoteSheets[$tabName][$rowIndex])) {
+            $this->remoteSheets[$tabName][$rowIndex]['SERTIF_SYNC_ID'] = $syncId;
+            if ($registrationId) {
+                $this->remoteSheets[$tabName][$rowIndex]['SERTIF_REGISTRATION_ID'] = $registrationId;
+            }
+            $this->remoteSheets[$tabName][$rowIndex]['SERTIF_SYNC_STATUS'] = 'synced';
+            $this->remoteSheets[$tabName][$rowIndex]['SERTIF_LAST_SYNC_AT'] = now()->toIso8601String();
+        }
+
+        return SpreadsheetTransportResponse::ok(rowIndex: $rowIndex, context: [
+            'success'   => true,
+            'row_index' => $rowIndex,
+            'sync_id'   => $syncId,
+            'message'   => 'Mock sync ID attached.',
+        ]);
     }
 
     public function reset(): void

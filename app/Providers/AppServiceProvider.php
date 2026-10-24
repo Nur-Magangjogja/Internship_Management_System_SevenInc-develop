@@ -20,6 +20,28 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
+            \App\Services\CloudStorage\CloudStorageInterface::class,
+            function ($app) {
+                return $app->make(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+            }
+        );
+
+        $this->app->bind(
+            \App\Services\CloudStorage\CloudStorageProviderInterface::class,
+            function ($app) {
+                // S17.18G: Arsitektur penyimpanan tunggal Google Apps Script DriveApp gateway.
+                // Ketergantungan runtime terhadap CLOUD_STORAGE_PROVIDER telah dihapus total.
+                $gasDriver = new \App\Services\CloudStorage\GoogleAppsScriptDriveDriver();
+                if ($gasDriver->isConfigured()) {
+                    return $gasDriver;
+                }
+
+                // Buffer penampung lokal privat sementara saat remote belum terkonfigurasi/offline
+                return new \App\Services\CloudStorage\LocalStorageFallbackDriver();
+            }
+        );
+
+        $this->app->bind(
             \App\Services\SpreadsheetTransport\SpreadsheetTransportInterface::class,
             function ($app) {
                 $driver = new \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport();

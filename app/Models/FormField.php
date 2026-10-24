@@ -113,15 +113,15 @@ class FormField extends Model
     public static function detectDefaultGroup(?string $key, ?string $type = null): string
     {
         $dataDiriKeys = [
-            'fullname', 'student_id', 'birth_place', 'born_date',
+            'fullname', 'student_id', 'born_date',
             'gender', 'religion', 'institution_name', 'faculty',
-            'study_program', 'current_city', 'email', 'phone_number',
+            'study_program', 'email', 'phone_number',
             'current_status',
         ];
         $pilihanDurasiKeys = [
             'internship_interest', 'start_date', 'end_date', 'planned_duration',
             'internship_type', 'wfo_readiness', 'schedule_shift_readiness',
-            'internship_arrangement', 'has_laptop', 'owned_tools',
+            'has_laptop', 'owned_tools',
             'internship_reason', 'design_software', 'video_software',
             'programming_languages', 'digital_marketing_type',
         ];

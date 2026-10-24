@@ -38,7 +38,7 @@
                 </div>
 
                 <div>
-                    <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">NIM / NIS</label>
+                    <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</label>
                     <input type="text" id="info-nim" readonly
                         class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#E8F5E9] px-3 py-2.5 text-[13px] text-[#1B3A34] outline-none cursor-not-allowed opacity-80">
                 </div>

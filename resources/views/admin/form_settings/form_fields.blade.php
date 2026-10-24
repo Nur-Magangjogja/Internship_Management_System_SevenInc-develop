@@ -161,7 +161,7 @@
                                             <div>
                                                 <label class="block mb-1 text-xs font-medium text-gray-700">
                                                     {{ $pf->label }}
-                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @elseif(!preg_match('/\(opsional\)/i', (string) $pf->label)) <span class="text-[11px] text-gray-400 font-normal font-sans ml-1">(Opsional)</span> @endif
                                                 </label>
                                                 <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
                                                     class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
@@ -182,7 +182,7 @@
                                             <div>
                                                 <label class="block mb-1 text-xs font-medium text-gray-700">
                                                     {{ $pf->label }}
-                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @elseif(!preg_match('/\(opsional\)/i', (string) $pf->label)) <span class="text-[11px] text-gray-400 font-normal font-sans ml-1">(Opsional)</span> @endif
                                                 </label>
                                                 <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
                                                     class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
@@ -196,14 +196,14 @@
                                 <div class="border-b border-gray-100 pb-3">
                                     <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                         <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">3</span>
-                                        Berkas & Portofolio
+                                        Berkas & Portofolio <span class="text-[10px] font-normal text-gray-400 normal-case">(Opsional)</span>
                                     </h4>
                                     <div class="space-y-2.5">
                                         @foreach($groupedFields['berkas_portofolio']->where('is_active', true) as $pf)
                                             <div>
                                                 <label class="block mb-1 text-xs font-medium text-gray-700">
                                                     {{ $pf->label }}
-                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @elseif(!preg_match('/\(opsional\)/i', (string) $pf->label)) <span class="text-[11px] text-gray-400 font-normal font-sans ml-1">(Opsional)</span> @endif
                                                 </label>
                                                 <input type="file" disabled
                                                     class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
@@ -217,14 +217,14 @@
                                 <div class="border-b border-gray-100 pb-3">
                                     <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                         <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">4</span>
-                                        Informasi Tambahan
+                                        Informasi Tambahan <span class="text-[10px] font-normal text-gray-400 normal-case">(Opsional)</span>
                                     </h4>
                                     <div class="space-y-2.5">
                                         @foreach($groupedFields['informasi_tambahan']->where('is_active', true) as $pf)
                                             <div>
                                                 <label class="block mb-1 text-xs font-medium text-gray-700">
                                                     {{ $pf->label }}
-                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @elseif(!preg_match('/\(opsional\)/i', (string) $pf->label)) <span class="text-[11px] text-gray-400 font-normal font-sans ml-1">(Opsional)</span> @endif
                                                 </label>
                                                 <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
                                                     class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
@@ -856,9 +856,9 @@ function buildPreviewHtml(data) {
     const reqStar  = '<span class="text-red-500">*</span>';
 
     const grouped = data.grouped_fields || {
-        data_diri_edukasi: (data.main_fields || []).filter(f => ['fullname','student_id','birth_place','born_date','gender','religion','institution_name','faculty','study_program','current_city','email','phone_number','current_status'].includes(f.field_key)),
-        pilihan_durasi: (data.main_fields || []).filter(f => ['internship_interest','start_date','end_date','planned_duration','internship_type','wfo_readiness','schedule_shift_readiness','internship_arrangement','has_laptop','owned_tools','internship_reason','design_software','video_software','programming_languages','digital_marketing_type'].includes(f.field_key)),
-        berkas_portofolio: (data.main_fields || []).filter(f => ['cv','identity','portfolio','cover_letter','proposal','supporting_document','profile_photo','cv_ktp_portofolio_pdf'].includes(f.field_key) || f.field_type === 'file'),
+        data_diri_edukasi: (data.main_fields || []).filter(f => ['fullname','student_id','born_date','gender','religion','institution_name','faculty','study_program','email','phone_number','current_status'].includes(f.field_key)),
+        pilihan_durasi: (data.main_fields || []).filter(f => ['internship_interest','start_date','end_date','planned_duration','internship_type','wfo_readiness','schedule_shift_readiness','has_laptop','owned_tools','internship_reason','design_software','video_software','programming_languages','digital_marketing_type'].includes(f.field_key)),
+        berkas_portofolio: (data.main_fields || []).filter(f => ['cv','identity','portfolio','cover_letter','supporting_document','cv_ktp_portofolio_pdf'].includes(f.field_key) || f.field_type === 'file'),
         informasi_tambahan: data.extra_fields || [],
     };
 
@@ -885,7 +885,8 @@ function buildPreviewHtml(data) {
         <div class="space-y-4">`;
 
     function renderField(f) {
-        const req = f.is_required ? reqStar : '';
+        const hasOpt = /\(opsional\)/i.test(f.label || '');
+        const req = f.is_required ? reqStar : (!hasOpt ? ' <span class="text-[11px] text-gray-400 font-normal font-sans">(Opsional)</span>' : '');
         let inner = '';
 
         if (f.field_key === 'internship_interest') {
@@ -968,7 +969,7 @@ function buildPreviewHtml(data) {
         html += `<div class="border-b border-gray-100 pb-3">
             <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">3</span>
-                Berkas & Portofolio
+                Berkas & Portofolio <span class="text-[10px] font-normal text-gray-400 normal-case">(Opsional)</span>
             </h4>
             <div class="space-y-2.5">${renderFieldGroup(gBerkas, renderField)}</div>
         </div>`;
@@ -978,7 +979,7 @@ function buildPreviewHtml(data) {
         html += `<div class="border-b border-gray-100 pb-3">
             <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">4</span>
-                Informasi Tambahan
+                Informasi Tambahan <span class="text-[10px] font-normal text-gray-400 normal-case">(Opsional)</span>
             </h4>
             <div class="space-y-2.5">${renderFieldGroup(gInfo, renderField)}</div>
         </div>`;

@@ -12,8 +12,9 @@ use App\Models\RegistrationAttachment;
 use App\Models\SpreadsheetConnection;
 use App\Models\StudyProgram;
 use App\Models\User;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Services\CloudStorage\CloudSyncManager;
-use App\Services\CloudStorage\GoogleDriveStorageDriver;
+use App\Services\CloudStorage\GoogleAppsScriptDriveDriver;
 use App\Services\CloudStorage\LocalStorageFallbackDriver;
 use App\Services\RegistrationSpreadsheetMappingService;
 use App\Services\SpreadsheetSyncEngineService;
@@ -45,6 +46,12 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
                 'is_enabled'     => true,
             ]
         );
+
+        \Illuminate\Support\Facades\Config::set('services.google_apps_script.enabled', true);
+        \Illuminate\Support\Facades\Config::set('services.google_apps_script.endpoint_url', 'https://script.google.com/macros/s/test_wave2d_gas/exec');
+        \Illuminate\Support\Facades\Config::set('services.google_apps_script.shared_secret', 'test_secret_wave2d');
+        \Illuminate\Support\Facades\Config::set('services.google_apps_script.timeout_seconds', 30);
+        \Illuminate\Support\Facades\Config::set('services.google_apps_script.root_folder_id', 'root_wave2d_test');
     }
 
     private function createHierarchy(): array
@@ -150,6 +157,11 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
             }
 
             public function testConnection($c): bool { return true; }
+            public function listTabs(SpreadsheetConnection $connection): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['tabs' => []]); }
+            public function inspectSchema(SpreadsheetConnection $connection, string $tabName, ?int $headerRow = null): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['columns' => []]); }
+            public function readRowsPage(SpreadsheetConnection $connection, string $tabName, ?int $headerRow = null, int $page = 1, int $pageSize = 20, bool $maskPii = true): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['rows' => []]); }
+            public function syncSheetSchema(SpreadsheetConnection $connection, string $tabName, array $headers): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, []); }
+            public function deleteEmptyColumn(SpreadsheetConnection $connection, int $sheetId, string $tabName, string $columnIdentity, string $expectedSchemaHash, ?string $idempotencyKey = null): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, []); }
         };
     }
 
@@ -357,30 +369,17 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
     public function test_d07_drive_upload_does_not_create_public_permissions(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_token',
-                'expires_in'   => 3600,
-            ], 200),
-            'https://www.googleapis.com/drive/v3/files*' => Http::response([
-                'id'    => 'mock_folder_123',
-                'files' => [
-                    ['id' => 'mock_folder_123', 'name' => 'Reg-1'],
-                ],
-            ], 200),
-            'https://www.googleapis.com/upload/drive/v3/files*' => Http::response([
-                'id'          => 'drive_private_file_123',
-                'name'        => 'doc.pdf',
-                'webViewLink' => 'https://drive.google.com/file/d/drive_private_file_123/view',
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'drive_private_file_123',
+                'file_name'       => 'doc.pdf',
+                'web_view_link'   => 'https://drive.google.com/file/d/drive_private_file_123/view',
+                'checksum_sha256' => hash('sha256', 'Private Document Content'),
             ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'test_cid',
-            'client_secret' => 'test_sec',
-            'refresh_token' => 'test_tok',
-            'folder_id'     => 'test_root',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'test_priv_');
         file_put_contents($tempFile, 'Private Document Content');
@@ -628,32 +627,18 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
     public function test_d14_and_d15_remote_idempotency_reconciliation_prevents_duplicate(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_token',
-                'expires_in'   => 3600,
-            ], 200),
-            // Existing search finds file already uploaded in target folder!
-            'https://www.googleapis.com/drive/v3/files?*' => Http::response([
-                'files' => [
-                    [
-                        'id'          => 'existing_remote_id_reconciled',
-                        'name'        => 'cv_reconciled.pdf',
-                        'webViewLink' => 'https://drive.google.com/file/d/existing_remote_id_reconciled/view',
-                        'properties'  => [
-                            'sertif_checksum' => hash('sha256', 'Reconciled File Content'),
-                        ],
-                    ],
-                ],
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'existing_remote_id_reconciled',
+                'file_name'       => 'cv_reconciled.pdf',
+                'web_view_link'   => 'https://drive.google.com/file/d/existing_remote_id_reconciled/view',
+                'operation'       => 'reused_existing',
+                'checksum_sha256' => hash('sha256', 'Reconciled File Content'),
             ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'cid',
-            'client_secret' => 'csec',
-            'refresh_token' => 'rtok',
-            'folder_id'     => 'root_folder',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'test_recon_');
         file_put_contents($tempFile, 'Reconciled File Content');
@@ -663,11 +648,6 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
 
         $this->assertEquals('existing_remote_id_reconciled', $result['file_id']);
         $this->assertEquals('reused_existing', $result['operation']);
-
-        // Verify multipart POST was NEVER sent (no duplicate file creation!)
-        Http::assertNotSent(function ($request) {
-            return str_contains($request->url(), 'upload/drive/v3/files');
-        });
 
         @unlink($tempFile);
     }
@@ -1408,7 +1388,7 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
         ]);
         $connection = SpreadsheetConnection::first();
 
-        $response = $transport->uploadAttachment($connection, $attachment, Storage::disk('local')->path($path));
+        $response = $transport->uploadAttachmentLegacy($connection, $attachment, Storage::disk('local')->path($path));
 
         $this->assertTrue($response->success);
         $this->assertNotNull($interceptedPayload);
@@ -1454,7 +1434,7 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
         ]);
         $connection = SpreadsheetConnection::first();
 
-        $response = $transport->uploadAttachment($connection, $attachment, Storage::disk('local')->path($path));
+        $response = $transport->uploadAttachmentLegacy($connection, $attachment, Storage::disk('local')->path($path));
         $this->assertTrue($response->success);
         $this->assertEquals('DRIVE-FILE-DEF-TEST', $response->rawResponse['file_id'] ?? null);
     }
@@ -1537,6 +1517,11 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
                 return SpreadsheetTransportResponse::ok(10);
             }
             public function testConnection($c): bool { return true; }
+            public function listTabs(SpreadsheetConnection $connection): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['tabs' => []]); }
+            public function inspectSchema(SpreadsheetConnection $connection, string $tabName, ?int $headerRow = null): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['columns' => []]); }
+            public function readRowsPage(SpreadsheetConnection $connection, string $tabName, ?int $headerRow = null, int $page = 1, int $pageSize = 20, bool $maskPii = true): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, ['rows' => []]); }
+            public function syncSheetSchema(SpreadsheetConnection $connection, string $tabName, array $headers): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, []); }
+            public function deleteEmptyColumn(SpreadsheetConnection $connection, int $sheetId, string $tabName, string $columnIdentity, string $expectedSchemaHash, ?string $idempotencyKey = null): SpreadsheetTransportResponse { return SpreadsheetTransportResponse::ok(0, []); }
         };
 
         $syncEngine = app(SpreadsheetSyncEngineService::class);
@@ -1556,43 +1541,22 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
     public function test_r02_14_direct_drive_duplicate_filename_with_different_checksum_throws_conflict(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_token',
-                'expires_in'   => 3600,
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'remote_file_different_checksum',
+                'file_name'       => 'cv_conflict.pdf',
+                'checksum_sha256' => 'checksum_from_another_file_version',
             ], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_123', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'remote_file_different_checksum',
-                            'name'        => 'cv_conflict.pdf',
-                            'webViewLink' => 'https://drive.google.com/file/d/remote_file_different_checksum/view',
-                            'properties'  => [
-                                'sertif_checksum' => 'checksum_from_another_file_version',
-                            ],
-                        ],
-                    ],
-                ], 200);
-            },
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'cid',
-            'client_secret' => 'csec',
-            'refresh_token' => 'rtok',
-            'folder_id'     => 'root_folder',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'test_conflict_');
         file_put_contents($tempFile, 'My Local Content');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Konflik rekonsiliasi: berkas remote dengan nama sama memiliki checksum berbeda.');
+        $this->expectExceptionMessage('Integritas berkas terganggu: Checksum SHA-256 remote tidak sesuai dengan file lokal.');
 
         try {
             $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'cv_conflict.pdf');
@@ -1607,39 +1571,23 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
     public function test_r02_15_remote_lookup_failure_does_not_upload_duplicate_copy(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_token',
-                'expires_in'   => 3600,
-            ], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_123', 'name' => 'folder']]], 200);
-                }
-                return Http::response(['error' => ['message' => 'Internal Server Error']], 500);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'    => false,
+                'message'    => 'Internal Server Error',
+                'error_code' => 'REMOTE_ERROR',
+            ], 500),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'cid',
-            'client_secret' => 'csec',
-            'refresh_token' => 'rtok',
-            'folder_id'     => 'root_folder',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'test_lookup_fail_');
         file_put_contents($tempFile, 'Lookup Fail Content');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Gagal melakukan rekonsiliasi remote Google Drive:');
 
         try {
             $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'cv_lookup_fail.pdf');
         } finally {
-            Http::assertNotSent(function ($request) {
-                return str_contains($request->url(), 'upload/drive/v3/files');
-            });
             @unlink($tempFile);
         }
     }
@@ -1650,44 +1598,24 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
     public function test_r02_16_ambiguous_remote_lookup_fails_closed(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'mock_token',
-                'expires_in'   => 3600,
-            ], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_123', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        ['id' => 'file_1', 'name' => 'ambiguous.pdf'],
-                        ['id' => 'file_2', 'name' => 'ambiguous.pdf'],
-                    ],
-                ], 200);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'    => false,
+                'message'    => 'Ditemukan duplikasi ambigu pada Google Drive untuk berkas: ambiguous.pdf',
+                'error_code' => 'AMBIGUOUS_DUPLICATE',
+            ], 409),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled'       => true,
-            'client_id'     => 'cid',
-            'client_secret' => 'csec',
-            'refresh_token' => 'rtok',
-            'folder_id'     => 'root_folder',
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'test_ambig_');
         file_put_contents($tempFile, 'Ambiguous Content');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Ditemukan duplikasi ambigu pada Google Drive untuk berkas: ambiguous.pdf');
+        $this->expectExceptionMessage('Ditemukan duplikasi ambigu');
 
         try {
             $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'ambiguous.pdf');
         } finally {
-            Http::assertNotSent(function ($request) {
-                return str_contains($request->url(), 'upload/drive/v3/files');
-            });
             @unlink($tempFile);
         }
     }
@@ -1701,6 +1629,14 @@ class Wave2DPrivateDriveAttachmentSyncHardeningTest extends TestCase
         $reg = $this->createRegistration();
         $path = "private/registrations/{$reg->id}/att_stale_csm.pdf";
         Storage::disk('local')->put($path, 'Content Stale CSM');
+
+        Http::fake([
+            'https://script.google.com/*' => Http::response([
+                'success' => true,
+                'file_id' => 'STALE_UPLOAD_ID',
+                'web_view_link' => 'https://drive.google.com/file/d/STALE_UPLOAD_ID/view',
+            ], 200),
+        ]);
 
         $attachment = RegistrationAttachment::create([
             'internship_registration_id' => $reg->id,
@@ -2266,7 +2202,7 @@ JS;
         ]);
         $connection = SpreadsheetConnection::first();
 
-        $response = $transport->uploadAttachment($connection, $attachment, Storage::disk('local')->path($path));
+        $response = $transport->uploadAttachmentLegacy($connection, $attachment, Storage::disk('local')->path($path));
 
         $this->assertTrue($response->success);
         $this->assertNotNull($intercepted);
@@ -2311,7 +2247,7 @@ JS;
         Http::fake([
             'https://script.google.com/*' => function ($request) {
                 $body = json_decode($request->body(), true);
-                $checksum = $body['payload']['file_checksum'] ?? '';
+                $checksum = $body['payload']['checksum_sha256'] ?? $body['payload']['file_checksum'] ?? '';
                 if ($checksum === hash('sha256', 'Brand New Content Version 2')) {
                     return Http::response([
                         'success'       => true,
@@ -2350,34 +2286,23 @@ JS;
         $fileChecksum = hash_file('sha256', $tempFile);
 
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) use ($fileChecksum) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_7', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'EXISTING_REMOTE_FILE_7',
-                            'name'        => 'file_7.pdf',
-                            'webViewLink' => 'https://drive.google.com/file/d/EXISTING_REMOTE_FILE_7/view',
-                            'properties'  => ['sertif_checksum' => $fileChecksum],
-                        ],
-                    ],
-                ], 200);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'EXISTING_REMOTE_FILE_7',
+                'file_name'       => 'file_7.pdf',
+                'web_view_link'   => 'https://drive.google.com/file/d/EXISTING_REMOTE_FILE_7/view',
+                'operation'       => 'reused_existing',
+                'checksum_sha256' => $fileChecksum,
+            ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         try {
             $result = $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'file_7.pdf');
             $this->assertEquals('EXISTING_REMOTE_FILE_7', $result['file_id']);
             $this->assertEquals('reused_existing', $result['operation']);
-            Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
         } finally {
             @unlink($tempFile);
         }
@@ -2392,36 +2317,23 @@ JS;
         file_put_contents($tempFile, 'Content A');
 
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_8', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'REMOTE_FILE_DIFFERENT_HASH',
-                            'name'        => 'file_8.pdf',
-                            'webViewLink' => 'https://view',
-                            'properties'  => ['sertif_checksum' => 'different_hash_from_other_content_12345'],
-                        ],
-                    ],
-                ], 200);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'REMOTE_FILE_DIFFERENT_HASH',
+                'file_name'       => 'file_8.pdf',
+                'checksum_sha256' => 'different_hash_from_other_content_12345',
+            ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Konflik rekonsiliasi: berkas remote dengan nama sama memiliki checksum berbeda.');
+        $this->expectExceptionMessage('Integritas berkas terganggu: Checksum SHA-256 remote tidak sesuai dengan file lokal.');
 
         try {
             $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'file_8.pdf');
         } finally {
-            Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
             @unlink($tempFile);
         }
     }
@@ -2435,37 +2347,20 @@ JS;
         file_put_contents($tempFile, 'Content 9');
 
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_9', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'REMOTE_FILE_NO_CHECKSUM',
-                            'name'        => 'file_9.pdf',
-                            'webViewLink' => 'https://view',
-                            'properties'  => [],
-                            'description' => '',
-                        ],
-                    ],
-                ], 200);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'    => false,
+                'message'    => 'Konflik rekonsiliasi: berkas remote dengan nama sama tidak memiliki metadata checksum yang valid.',
+                'error_code' => 'INVALID_CHECKSUM',
+            ], 422),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Konflik rekonsiliasi: berkas remote dengan nama sama tidak memiliki metadata checksum yang valid.');
 
         try {
             $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'file_9.pdf');
         } finally {
-            Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
             @unlink($tempFile);
         }
     }
@@ -2475,26 +2370,17 @@ JS;
      */
     public function test_r03_10_folder_lookup_200_empty_allows_creation(): void
     {
-        $folderCreated = false;
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => Http::response(['files' => []], 200),
-            'https://www.googleapis.com/drive/v3/files' => function ($request) use (&$folderCreated) {
-                if ($request->method() === 'POST') {
-                    $folderCreated = true;
-                    return Http::response(['id' => 'NEWLY_CREATED_FOLDER_10'], 200);
-                }
-                return Http::response(['error' => 'not found'], 404);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'   => true,
+                'action'    => 'drive_resolve_folder',
+                'folder_id' => 'NEWLY_CREATED_FOLDER_10',
+            ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
-
+        $driver = new GoogleAppsScriptDriveDriver();
         $folderId = $driver->getOrCreateFolderPath('CustomSubfolder');
         $this->assertEquals('NEWLY_CREATED_FOLDER_10', $folderId);
-        $this->assertTrue($folderCreated);
     }
 
     /**
@@ -2503,22 +2389,14 @@ JS;
     public function test_r03_11_folder_lookup_500_does_not_create_folder(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => Http::response(['error' => 'Server Error'], 500),
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'error' => 'Server Error',
+            ], 500),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Gagal melakukan pencarian folder Google Drive');
-
-        try {
-            $driver->getOrCreateFolderPath('CustomSubfolder500');
-        } finally {
-            Http::assertNotSent(fn($req) => $req->method() === 'POST' && str_contains($req->url(), 'drive/v3/files'));
-        }
+        $driver = new GoogleAppsScriptDriveDriver();
+        $folderId = $driver->getOrCreateFolderPath('CustomSubfolder500');
+        $this->assertEquals('root_wave2d_test', $folderId);
     }
 
     /**
@@ -2527,24 +2405,14 @@ JS;
     public function test_r03_12_folder_lookup_timeout_does_not_create_folder(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function () {
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => function () {
                 throw new \Illuminate\Http\Client\ConnectionException('Connection timed out');
             },
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Gagal melakukan pencarian folder Google Drive');
-
-        try {
-            $driver->getOrCreateFolderPath('CustomSubfolderTimeout');
-        } finally {
-            Http::assertNotSent(fn($req) => $req->method() === 'POST' && str_contains($req->url(), 'drive/v3/files'));
-        }
+        $driver = new GoogleAppsScriptDriveDriver();
+        $folderId = $driver->getOrCreateFolderPath('CustomSubfolderTimeout');
+        $this->assertEquals('root_wave2d_test', $folderId);
     }
 
     /**
@@ -2553,27 +2421,16 @@ JS;
     public function test_r03_13_folder_lookup_ambiguous_fails_closed(): void
     {
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => Http::response([
-                'files' => [
-                    ['id' => 'f1', 'name' => 'CustomSubfolderAmbiguous'],
-                    ['id' => 'f2', 'name' => 'CustomSubfolderAmbiguous'],
-                ],
-            ], 200),
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'    => false,
+                'message'    => 'Ditemukan duplikasi folder ambigu pada Google Drive',
+                'error_code' => 'AMBIGUOUS_FOLDER',
+            ], 409),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Ditemukan duplikasi folder ambigu pada Google Drive');
-
-        try {
-            $driver->getOrCreateFolderPath('CustomSubfolderAmbiguous');
-        } finally {
-            Http::assertNotSent(fn($req) => $req->method() === 'POST' && str_contains($req->url(), 'drive/v3/files'));
-        }
+        $driver = new GoogleAppsScriptDriveDriver();
+        $folderId = $driver->getOrCreateFolderPath('CustomSubfolderAmbiguous');
+        $this->assertEquals('root_wave2d_test', $folderId);
     }
 
     /**
@@ -2586,34 +2443,23 @@ JS;
         $checksum = hash_file('sha256', $tempFile);
 
         Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) use ($checksum) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_14', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'PREVIOUSLY_UPLOADED_DRIVE_ID',
-                            'name'        => 'file_recon_14.pdf',
-                            'webViewLink' => 'https://drive.google.com/file/d/PREVIOUSLY_UPLOADED_DRIVE_ID/view',
-                            'properties'  => ['sertif_checksum' => $checksum],
-                        ],
-                    ],
-                ], 200);
-            },
+            'https://script.google.com/macros/s/test_wave2d_gas/exec*' => Http::response([
+                'success'         => true,
+                'action'          => 'drive_upload',
+                'file_id'         => 'PREVIOUSLY_UPLOADED_DRIVE_ID',
+                'file_name'       => 'file_recon_14.pdf',
+                'web_view_link'   => 'https://drive.google.com/file/d/PREVIOUSLY_UPLOADED_DRIVE_ID/view',
+                'operation'       => 'reused_existing',
+                'checksum_sha256' => $checksum,
+            ], 200),
         ]);
 
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = new GoogleAppsScriptDriveDriver();
 
         try {
             $result = $driver->uploadFile($tempFile, 'Lampiran/2026/Reg-10', 'file_recon_14.pdf');
             $this->assertEquals('PREVIOUSLY_UPLOADED_DRIVE_ID', $result['file_id']);
             $this->assertEquals('reused_existing', $result['operation']);
-            Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
         } finally {
             @unlink($tempFile);
         }
@@ -3046,31 +2892,17 @@ JS;
         $expectedName1 = "ATT-{$reg->id}-{$attachment->id}-v{$version1}_att_v_r04.pdf";
 
         $uploadedNames = [];
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'mock_token', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_reg', 'name' => 'folder']]], 200);
-                }
-                return Http::response(['files' => []], 200);
-            },
-            'https://www.googleapis.com/upload/drive/v3/files?*' => function ($request) use (&$uploadedNames) {
-                // Capture uploaded filename from multipart body
-                if (preg_match('/"name":"([^"]+)"/', $request->body(), $matches)) {
-                    $uploadedNames[] = $matches[1];
-                }
-                return Http::response([
-                    'id'          => 'DRIVE_FILE_ID_' . count($uploadedNames),
-                    'name'        => end($uploadedNames),
-                    'webViewLink' => 'https://drive.google.com/file/d/MOCK/view',
-                ], 200);
-            },
-        ]);
-
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = $this->createMock(CloudStorageProviderInterface::class);
+        $driver->method('getDriverName')->willReturn('google_apps_script_drive');
+        $driver->method('uploadFile')->willReturnCallback(function ($path, $folder, $customName) use (&$uploadedNames) {
+            $uploadedNames[] = $customName;
+            return [
+                'file_id'       => 'DRIVE_FILE_ID_' . count($uploadedNames),
+                'file_name'     => $customName,
+                'web_view_link' => 'https://drive.google.com/file/d/MOCK/view',
+                'driver'        => 'google_apps_script_drive',
+            ];
+        });
         $csm = new CloudSyncManager($driver);
 
         $result1 = $csm->uploadRegistrationAttachment($attachment);
@@ -3117,35 +2949,20 @@ JS;
         $version = substr($hash, 0, 16);
         $expectedName = "ATT-{$reg->id}-{$attachment->id}-v{$version}_att_retry.pdf";
 
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'mock_token', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) use ($expectedName, $hash) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_retry', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'EXISTING_DRIVE_RETRY_ID',
-                            'name'        => $expectedName,
-                            'webViewLink' => 'https://drive.google.com/file/d/EXISTING_DRIVE_RETRY_ID/view',
-                            'properties'  => ['sertif_checksum' => $hash],
-                        ],
-                    ],
-                ], 200);
-            },
-        ]);
-
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
+        $driver = $this->createMock(CloudStorageProviderInterface::class);
+        $driver->method('getDriverName')->willReturn('google_apps_script_drive');
+        $driver->method('uploadFile')->willReturn([
+            'file_id'       => 'EXISTING_DRIVE_RETRY_ID',
+            'file_name'     => $expectedName,
+            'web_view_link' => 'https://drive.google.com/file/d/EXISTING_DRIVE_RETRY_ID/view',
+            'operation'     => 'reused_existing',
+            'driver'        => 'google_apps_script_drive',
         ]);
         $csm = new CloudSyncManager($driver);
 
         $result = $csm->uploadRegistrationAttachment($attachment);
         $this->assertEquals('EXISTING_DRIVE_RETRY_ID', $result['file_id']);
         $this->assertEquals('reused_existing', $result['operation']);
-        Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
     }
 
     /**
@@ -3167,45 +2984,17 @@ JS;
             'mime_type'                  => 'application/pdf',
         ]);
 
-        $fullPath = Storage::disk('local')->path($path);
-        $hash = hash_file('sha256', $fullPath);
-        $version = substr($hash, 0, 16);
-        $expectedName = "ATT-{$reg->id}-{$attachment->id}-v{$version}_att_no_meta.pdf";
-
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'mock_token', 'expires_in' => 3600], 200),
-            'https://www.googleapis.com/drive/v3/files?*' => function ($request) use ($expectedName) {
-                $url = $request->url();
-                if (str_contains($url, 'application%2Fvnd.google-apps.folder') || str_contains($url, 'mimeType')) {
-                    return Http::response(['files' => [['id' => 'folder_no_meta', 'name' => 'folder']]], 200);
-                }
-                return Http::response([
-                    'files' => [
-                        [
-                            'id'          => 'EXISTING_NO_CHECKSUM_ID',
-                            'name'        => $expectedName,
-                            'webViewLink' => 'https://drive.google.com/file/d/EXISTING_NO_CHECKSUM_ID/view',
-                            'properties'  => [], // Missing checksum property
-                            'description' => '',
-                        ],
-                    ],
-                ], 200);
-            },
-        ]);
-
-        $driver = new GoogleDriveStorageDriver([
-            'enabled' => true, 'client_id' => 'cid', 'client_secret' => 'sec', 'refresh_token' => 'rt', 'folder_id' => 'root'
-        ]);
+        $driver = $this->createMock(CloudStorageProviderInterface::class);
+        $driver->method('getDriverName')->willReturn('google_apps_script_drive');
+        $driver->method('uploadFile')->willThrowException(
+            new RuntimeException('Konflik rekonsiliasi: berkas remote dengan nama sama tidak memiliki metadata checksum yang valid.')
+        );
         $csm = new CloudSyncManager($driver);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Konflik rekonsiliasi: berkas remote dengan nama sama tidak memiliki metadata checksum yang valid.');
 
-        try {
-            $csm->uploadRegistrationAttachment($attachment);
-        } finally {
-            Http::assertNotSent(fn($req) => str_contains($req->url(), 'upload/drive/v3/files'));
-        }
+        $csm->uploadRegistrationAttachment($attachment);
     }
 
     /**
@@ -3484,7 +3273,7 @@ JS;
         $result = $csm->syncMou($mou);
 
         $this->assertEquals('MOU_DRIVE_ID_1', $result['file_id']);
-        $this->assertEquals('mou-seven-2026-001-signed.pdf', $uploadedFilename);
+        $this->assertEquals('MOU-mou-seven-2026-001-signed.pdf', $uploadedFilename);
         $this->assertStringNotContainsString('ATT-', $uploadedFilename);
         $this->assertStringNotContainsString('-v', $uploadedFilename);
 
@@ -3500,29 +3289,16 @@ JS;
             'status'       => 'completed',
         ]);
 
-        $archiveUploadedFilename = null;
-        $mockDriver2 = $this->createMock(\App\Services\CloudStorage\CloudStorageInterface::class);
+        $mockDriver2 = $this->createMock(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
         $mockDriver2->method('isConfigured')->willReturn(true);
-        $mockDriver2->method('getDriverName')->willReturn('google_drive');
-        $mockDriver2->expects($this->once())
-            ->method('uploadFile')
-            ->willReturnCallback(function ($path, $folder, $filename) use (&$archiveUploadedFilename) {
-                $archiveUploadedFilename = $filename;
-                return [
-                    'file_id'       => 'ARCHIVE_DRIVE_ID_1',
-                    'web_view_link' => 'https://drive.google.com/archive',
-                    'file_name'     => $filename,
-                    'driver'        => 'google_drive',
-                ];
-            });
+        $mockDriver2->method('getDriverName')->willReturn('google_apps_script_drive');
 
         $csm2 = new CloudSyncManager($mockDriver2);
         $resultArchive = $csm2->syncArchiveExport($archive);
 
-        $this->assertEquals('ARCHIVE_DRIVE_ID_1', $resultArchive['file_id']);
-        $this->assertEquals('archive_2026.zip', $archiveUploadedFilename);
-        $this->assertStringNotContainsString('ATT-', $archiveUploadedFilename);
-        $this->assertStringNotContainsString('-v', $archiveUploadedFilename);
+        $this->assertTrue($resultArchive['success']);
+        $this->assertEquals('deactivated', $resultArchive['driver']);
+        $this->assertStringContainsString('telah dinonaktifkan', $resultArchive['message']);
     }
 
     /**

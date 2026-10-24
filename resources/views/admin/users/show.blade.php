@@ -118,7 +118,7 @@
                     <p class="text-[#1B3A34]">{{ $internship->fullname ?: '-' }}</p>
                 </div>
                 <div>
-                    <p class="text-[11px] font-semibold uppercase tracking-wide text-[#4B5F5A]">NIM / NPM</p>
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-[#4B5F5A]">Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional</p>
                     <p class="text-[#1B3A34]">{{ $internship->student_id ?: '-' }}</p>
                 </div>
                 <div>

@@ -25,6 +25,11 @@
     </div>
 
     <!-- Alert Errors -->
+    @if (session('success'))
+        <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
+            {{ session('success') }}
+        </div>
+    @endif
     @if (session('error'))
         <div class="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
             {{ session('error') }}
@@ -37,6 +42,20 @@
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
+        </div>
+    @endif
+
+    @if (!empty($pausedQueuesSummary['total_count']) && $pausedQueuesSummary['total_count'] > 0)
+        <div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <h4 class="font-bold text-amber-950">⏸️ Antrean Sinkronisasi Dibekukan (paused_target_rebind)</h4>
+                <p class="text-xs text-amber-800 mt-0.5">
+                    Terdapat <strong>{{ $pausedQueuesSummary['total_count'] }}</strong> antrean sinkronisasi yang dibekukan karena pergantian target Spreadsheet.
+                </p>
+            </div>
+            <a href="{{ route('admin.spreadsheet-connections.show', $connection) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition">
+                Rekonsiliasi Antrean &rarr;
+            </a>
         </div>
     @endif
 
@@ -163,6 +182,43 @@
                 </div>
             </div>
         </form>
+    </div>
+
+    <!-- Otorisasi & Pengujian Target Card -->
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm max-w-2xl mt-6">
+        <h3 class="text-base font-bold text-slate-800 mb-1">Pengujian &amp; Otorisasi Target</h3>
+        <p class="text-xs text-slate-500 mb-4">
+            Uji koneksi read-only atau otorisasi target secara resmi pada Google Apps Script Gateway.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <form action="{{ route('admin.spreadsheet-connections.test', $connection) }}" method="POST">
+                @csrf
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-100"
+                >
+                    <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    Uji Koneksi (Read-Only)
+                </button>
+            </form>
+
+            <form action="{{ route('admin.spreadsheet-connections.activate-target', $connection) }}" method="POST" onsubmit="return confirm('Otorisasi dan aktifkan target Spreadsheet \'{{ $connection->spreadsheet_id }}\' pada Google Apps Script Gateway? Perhatian: Seluruh pekerjaan pending yang belum selesai akan dibekukan.');">
+                @csrf
+                <button
+                    type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    Aktifkan Target (Otorisasi)
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 @endsection

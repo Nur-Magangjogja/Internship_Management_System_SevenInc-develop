@@ -321,9 +321,22 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        // 6. Inisialisasi data Grafik Pemagang Diterima (Grafik Kedua)
+        try {
+            $acceptedChart = app(\App\Services\Admin\AcceptedInternAnalyticsService::class)->getChartData('monthly');
+        } catch (\Throwable) {
+            $acceptedChart = [
+                'period'   => 'monthly',
+                'labels'   => [],
+                'datasets' => [],
+                'summary'  => ['total_accepted' => 0, 'total_direct' => 0, 'total_integrated' => 0, 'has_data' => false],
+            ];
+        }
+
         return view('dashboard.index', compact(
             'counts',
             'chart',
+            'acceptedChart',
             'users',
             'allReports',
             'allLeaves',
@@ -333,5 +346,33 @@ class DashboardController extends Controller
             'recentPartnershipLogs',
             'expiringMous'
         ));
+    }
+
+    /**
+     * GET /admin/dashboard/accepted-interns-chart
+     * API Endpoint untuk memfilter dan memuat data Grafik Pemagang Diterima secara asinkron.
+     */
+    public function acceptedInternsChart(Request $request, \App\Services\Admin\AcceptedInternAnalyticsService $analyticsService)
+    {
+        $period = (string) $request->input('period', 'monthly');
+        $options = $request->all();
+
+        try {
+            $data = $analyticsService->getChartData($period, $options);
+            return response()->json([
+                'success' => true,
+                'data'    => $data,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat memproses data analitik pemagang: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

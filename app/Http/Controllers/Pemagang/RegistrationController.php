@@ -30,7 +30,7 @@ class RegistrationController extends Controller
         $lifecycle    = app(\App\Services\RegistrationLifecycleService::class);
         $registration = $lifecycle->getOpenOrDraftRegistration($user)
             ?? \App\Models\InternshipRegistration::where('user_id', $user->id)->latest('id')->first();
-        $registration?->loadMissing(['institution', 'city', 'facultyRel', 'studyProgramRel', 'division', 'brandRel']);
+        $registration?->loadMissing(['institution', 'city', 'facultyRel', 'studyProgramRel', 'division', 'brandRel', 'attachments']);
 
         // Ambil divisi aktif dari DB; fallback ke list hardcode jika DB kosong
         $divisions = \App\Models\Division::active()->pluck('name');
@@ -581,21 +581,36 @@ class RegistrationController extends Controller
             ? $this->draftRules()
             : $this->submitRules();
 
+        // Jika skema aktif mengatur field, sesuaikan aturan validasi agar pertanyaan yang dinonaktifkan
+        // atau dijadikan opsional oleh admin tidak memblokir submit pemagang.
+        if ($boundSchema && !$isDraft) {
+            $schemaFields = $boundSchema->fields()->get()->keyBy('field_key');
+            foreach ($rules as $fieldKey => $rule) {
+                if ($schemaField = $schemaFields->get($fieldKey)) {
+                    if (!$schemaField->is_active || !$schemaField->is_required) {
+                        if (is_string($rule)) {
+                            $rules[$fieldKey] = str_replace('required', 'nullable', $rule);
+                        } elseif (is_array($rule)) {
+                            $rules[$fieldKey] = array_map(fn($r) => $r === 'required' ? 'nullable' : $r, $rule);
+                        }
+                    }
+                }
+            }
+        }
+
         $validated = $request->validate($rules, [
             'phone_number.regex'               => 'No. HP hanya boleh berisi angka (10-15 digit).',
-            'phone_number.required'            => 'No. HP wajib diisi.',
+            'phone_number.required'            => 'No. HP aktif wajib diisi.',
             'fullname.required'                => 'Nama lengkap wajib diisi.',
-            'student_id.required'              => 'NIM/NPM wajib diisi.',
+            'student_id.required'              => 'Nomor Induk Mahasiswa / Nomor Induk Siswa Nasional wajib diisi.',
             'email.required'                   => 'Email wajib diisi.',
             'gender.required'                  => 'Jenis kelamin wajib dipilih.',
-            'birth_place.required'             => 'Tempat lahir wajib diisi.',
             'religion.required'                => 'Agama wajib dipilih.',
-            'institution_name.required'        => 'Nama universitas/sekolah wajib diisi.',
+            'institution_name.required'        => 'Asal sekolah/kampus wajib diisi.',
             'study_program.required'           => 'Program studi wajib diisi.',
             'faculty.required'                 => 'Fakultas wajib diisi.',
-            'current_city.required'            => 'Kota domisili wajib diisi.',
             'internship_reason.required'       => 'Alasan magang wajib diisi.',
-            'internship_interest.required'     => 'Divisi yang diminati wajib dipilih.',
+            'internship_interest.required'     => 'Program magang/PKL yang diminati wajib dipilih.',
             'wfo_readiness.required'           => 'Kesiapan WFO Yogyakarta wajib dipilih.',
             'schedule_shift_readiness.required' => 'Kesanggupan jadwal & shifting wajib dipilih.',
             'has_laptop.required'               => 'Kepemilikan laptop wajib dipilih.',
@@ -1196,7 +1211,6 @@ class RegistrationController extends Controller
             // Data Diri
             'fullname'                 => 'required|string|max:150',
             'gender'                   => 'required|string|in:Laki-laki,Perempuan',
-            'current_city'             => 'required|string|max:255',
             'email'                    => 'required|email|max:255',
             'phone_number'             => 'required|regex:/^[0-9]{10,15}$/',
 
@@ -1279,6 +1293,27 @@ class RegistrationController extends Controller
         // 2. Fallback untuk dokumen legacy pada public disk
         if (Storage::disk('public')->exists($filePath)) {
             return Storage::disk('public')->download($filePath, $originalName);
+        }
+
+        // 3. Fallback: Unduh dari cloud storage provider privat jika berkas tersedia di Google Drive
+        if (!empty($attachment->drive_file_id)) {
+            try {
+                $driver = app(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+                if ($driver->isConfigured()) {
+                    $bytes = $driver->downloadFileBytes($attachment->drive_file_id);
+                    // Simpan ke private local disk untuk cache selanjutnya
+                    Storage::disk('local')->put($filePath, $bytes);
+
+                    return response($bytes, 200, [
+                        'Content-Type'        => $attachment->mime_type ?: 'application/octet-stream',
+                        'Content-Disposition' => 'attachment; filename="' . addslashes($originalName) . '"',
+                        'Content-Length'      => strlen($bytes),
+                        'Cache-Control'       => 'private, no-transform',
+                    ]);
+                }
+            } catch (\Throwable $cloudEx) {
+                \Illuminate\Support\Facades\Log::warning("Gagal mengunduh lampiran #{$attachment->id} dari cloud storage: " . $cloudEx->getMessage());
+            }
         }
 
         abort(404, 'Berkas dokumen tidak ditemukan di penyimpanan server.');

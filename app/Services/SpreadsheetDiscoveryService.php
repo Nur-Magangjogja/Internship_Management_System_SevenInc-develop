@@ -75,8 +75,16 @@ class SpreadsheetDiscoveryService
                     ->first();
             }
 
-            $effectiveHeaderRow = $profile?->header_row ?? ($tab['header_row'] ?? SpreadsheetTabProfile::defaultHeaderRowSuggestion($tabName, $connection->connection_key));
-            $effectiveDataStartRow = $profile?->data_start_row ?? ($effectiveHeaderRow + 1);
+            // Auto-heal legacy TEMPLATE_TAHUN profile if still defaulting to 1/2
+            if ($profile && $profile->tab_name === 'TEMPLATE_TAHUN' && $profile->header_row === 1 && $profile->data_start_row === 2) {
+                $profile->header_row = 12;
+                $profile->data_start_row = 13;
+                $profile->save();
+            }
+
+            $defaultHeaderRow = SpreadsheetTabProfile::defaultHeaderRowSuggestion($tabName, $connection->connection_key);
+            $effectiveHeaderRow = $profile?->header_row ?? $defaultHeaderRow;
+            $effectiveDataStartRow = $profile?->data_start_row ?? SpreadsheetTabProfile::defaultDataStartRowSuggestion($tabName, $connection->connection_key, $effectiveHeaderRow);
 
             $tabs[] = array_merge($tab, [
                 'header_row'     => $effectiveHeaderRow,
@@ -192,13 +200,23 @@ class SpreadsheetDiscoveryService
             }
         }
 
-        // Check if an explicit profile exists for this tab/sheetId
-        if ($headerRow === null && $sheetId !== null) {
-            $profile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
-                ->where('sheet_id', (int) $sheetId)
-                ->first();
-            if ($profile) {
-                $headerRow = $profile->header_row;
+        // Resolve explicit profile or default convention suggestion if headerRow is not explicitly provided
+        if ($headerRow === null) {
+            if ($sheetId !== null) {
+                $profile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
+                    ->where('sheet_id', (int) $sheetId)
+                    ->first();
+                if ($profile) {
+                    if ($profile->tab_name === 'TEMPLATE_TAHUN' && $profile->header_row === 1 && $profile->data_start_row === 2) {
+                        $profile->header_row = 12;
+                        $profile->data_start_row = 13;
+                        $profile->save();
+                    }
+                    $headerRow = $profile->header_row;
+                }
+            }
+            if ($headerRow === null) {
+                $headerRow = SpreadsheetTabProfile::defaultHeaderRowSuggestion($cleanTab, $connection->connection_key);
             }
         }
 
@@ -214,12 +232,14 @@ class SpreadsheetDiscoveryService
         }
 
         $context = $response->context;
+        $effectiveHeaderRow = $context['header_row'] ?? $headerRow;
+        $effectiveDataStartRow = $effectiveHeaderRow + 1;
         return [
             'success'       => true,
             'tab_name'      => $context['tab_name'] ?? $cleanTab,
             'sheet_id'      => $sheetId,
-            'header_row'    => $context['header_row'] ?? ($headerRow ?? 1),
-            'data_start_row'=> ($context['header_row'] ?? ($headerRow ?? 1)) + 1,
+            'header_row'    => $effectiveHeaderRow,
+            'data_start_row'=> $effectiveDataStartRow,
             'last_row'      => $context['last_row'] ?? 0,
             'last_column'   => $context['last_column'] ?? 0,
             'columns_count' => $context['columns_count'] ?? count($context['columns'] ?? []),
@@ -366,7 +386,7 @@ class SpreadsheetDiscoveryService
                 'spreadsheet_connection_id' => $connection->id,
                 'snapshot_id'               => $snapshot->id,
                 'expected_schema_hash'      => $snapshot->schema_hash,
-                'year'                      => $year ?? ($snapshot->header_row === 12 ? (int) $snapshot->tab_name : (int) now()->year),
+                'year'                      => $year ?? (preg_match('/^\d{4}$/', $snapshot->tab_name) ? (int) $snapshot->tab_name : (int) now()->year),
                 'form_schema_id'            => $targetSchema?->id,
                 'version'                   => 1,
                 'status'                    => SheetMappingProposal::STATUS_DRAFT,
@@ -732,7 +752,8 @@ class SpreadsheetDiscoveryService
         string $tabName,
         ?int $headerRow = null,
         int $page = 1,
-        int $pageSize = 20
+        int $pageSize = 20,
+        ?int $sheetId = null
     ): array {
         $cleanTab = trim($tabName);
         if ($cleanTab === '') {
@@ -742,6 +763,26 @@ class SpreadsheetDiscoveryService
                 'message'    => 'Nama tab spreadsheet tidak boleh kosong.',
                 'rows'       => [],
             ];
+        }
+
+        // Resolve explicit profile or default convention suggestion if headerRow is not explicitly provided
+        if ($headerRow === null) {
+            if ($sheetId !== null) {
+                $profile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
+                    ->where('sheet_id', (int) $sheetId)
+                    ->first();
+                if ($profile) {
+                    if ($profile->tab_name === 'TEMPLATE_TAHUN' && $profile->header_row === 1 && $profile->data_start_row === 2) {
+                        $profile->header_row = 12;
+                        $profile->data_start_row = 13;
+                        $profile->save();
+                    }
+                    $headerRow = $profile->header_row;
+                }
+            }
+            if ($headerRow === null) {
+                $headerRow = SpreadsheetTabProfile::defaultHeaderRowSuggestion($cleanTab, $connection->connection_key);
+            }
         }
 
         $response = $this->transport->readRowsPage(
@@ -765,7 +806,7 @@ class SpreadsheetDiscoveryService
         return [
             'success'     => true,
             'tab_name'    => $context['tab_name'] ?? $cleanTab,
-            'header_row'  => $context['header_row'] ?? 1,
+            'header_row'  => $context['header_row'] ?? $headerRow,
             'page'        => $context['page'] ?? $page,
             'page_size'   => $context['page_size'] ?? $pageSize,
             'total_rows'  => $context['total_rows'] ?? 0,
@@ -916,9 +957,9 @@ class SpreadsheetDiscoveryService
         $schema = $targetSchema ?? FormSchema::where('status', FormSchema::STATUS_PUBLISHED)->latest('published_at')->first() ?? FormSchema::latest('id')->first();
 
         if ($schema) {
-            $schemaFields = $schema->fields()->get();
+            $schemaFields = $schema->fields()->where('is_active', true)->where('is_archived', false)->get();
             foreach ($schemaFields as $f) {
-                if (!isset($seenKeys[$f->field_key])) {
+                if (!isset($seenKeys[$f->field_key]) && !in_array($f->field_key, ['birth_place', 'current_city'], true)) {
                     $fields[] = [
                         'field_key'   => $f->field_key,
                         'label'       => $f->label,
@@ -931,7 +972,7 @@ class SpreadsheetDiscoveryService
             }
         }
 
-        $registries = FormFieldRegistry::all();
+        $registries = FormFieldRegistry::whereNotIn('field_key', ['birth_place', 'current_city'])->get();
         foreach ($registries as $reg) {
             if (!isset($seenKeys[$reg->field_key])) {
                 $fields[] = [
