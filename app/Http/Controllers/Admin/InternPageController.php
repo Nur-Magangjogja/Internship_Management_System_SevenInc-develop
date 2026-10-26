@@ -13,13 +13,23 @@ class InternPageController extends Controller
 {
     protected function renderIndex(array $data)
     {
-        $yearsCreated = IR::selectRaw('YEAR(created_at) as y')->distinct()->pluck('y')->filter()->all();
-        $yearsStart   = IR::selectRaw('YEAR(start_date) as y')->distinct()->pluck('y')->filter()->all();
-        $allYears     = array_values(array_unique(array_merge($yearsCreated, $yearsStart, [(int) date('Y')])));
+        $yearsCreated = IR::selectRaw('YEAR(created_at) as y')->whereNotNull('created_at')->distinct()->pluck('y')->filter()->map(fn ($y) => (int) $y)->all();
+        $yearsStart   = IR::selectRaw('YEAR(start_date) as y')->whereNotNull('start_date')->distinct()->pluck('y')->filter()->map(fn ($y) => (int) $y)->all();
+
+        $yearBasis = request('year_basis', request('year_by', 'created_at'));
+        if (!in_array($yearBasis, ['created_at', 'start_date'], true)) {
+            $yearBasis = 'created_at';
+        }
+
+        $basisYears = $yearBasis === 'start_date' ? $yearsStart : $yearsCreated;
+        $allYears   = array_values(array_unique(array_merge($basisYears, $yearsCreated, $yearsStart, [(int) date('Y')])));
         rsort($allYears);
 
         $default = [
             'years'         => $allYears,
+            'yearsCreated'  => $yearsCreated,
+            'yearsStart'    => $yearsStart,
+            'yearBasis'     => $yearBasis,
             'divisions'     => Division::where('is_active', true)->orderBy('name')->get(),
             'brands'        => Brand::orderBy('name')->get(),
             'cities'        => \App\Models\City::orderBy('name')->get(),

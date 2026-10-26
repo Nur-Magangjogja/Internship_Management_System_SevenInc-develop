@@ -414,15 +414,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            {{-- Baris 2: Filter Tambahan (Tahun & Follow-Up) --}}
+            {{-- Baris 2: Filter Tambahan (Basis Tahun, Tahun & Follow-Up) --}}
+            @php
+                $activeYearBasis = $yearBasis ?? request('year_basis', 'created_at');
+                if (!in_array($activeYearBasis, ['created_at', 'start_date'], true)) {
+                    $activeYearBasis = 'created_at';
+                }
+                $yearLabelPrefix = $activeYearBasis === 'start_date' ? 'Tahun Mulai' : 'Tahun Daftar';
+            @endphp
             <div class="flex flex-col sm:flex-row items-center gap-3 w-full">
+                {{-- Filter Basis Tahun (Definisi Eksplisit) --}}
+                <div class="relative w-full sm:w-52 lg:w-56 shrink-0">
+                    <div class="relative flex items-center">
+                        <select id="year-basis-filter" aria-label="Basis Filter Tahun" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-3.5 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="created_at" {{ $activeYearBasis === 'created_at' ? 'selected' : '' }}>Basis: Tahun Pendaftaran</option>
+                            <option value="start_date" {{ $activeYearBasis === 'start_date' ? 'selected' : '' }}>Basis: Tahun Mulai Magang</option>
+                        </select>
+                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- Filter Tahun --}}
                 <div class="relative w-full sm:w-48 lg:w-52 shrink-0">
                     <div class="relative flex items-center">
-                        <select id="year-filter" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
-                            <option value="">Semua Tahun</option>
+                        <select id="year-filter" aria-label="Filter Tahun" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="">Semua {{ $yearLabelPrefix }}</option>
                             @foreach($years as $yr)
-                                <option value="{{ $yr }}" {{ (string)request('year', '') === (string)$yr ? 'selected' : '' }}>Tahun {{ $yr }}</option>
+                                <option value="{{ $yr }}" {{ (string)request('year', '') === (string)$yr ? 'selected' : '' }}>{{ $yearLabelPrefix }} {{ $yr }}</option>
                             @endforeach
                         </select>
                         <div class="pointer-events-none absolute left-3 flex items-center text-[#4B5F5A]">
@@ -2604,14 +2626,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let __formFields = @json($formFields ?? []); // cache form_fields dari server / API
 
     async function loadPage(page = 1) {
-        const searchQuery = (searchInput?.value || '').trim();
-        const followupVal = (document.getElementById('followup-filter')?.value || '').trim();
-        const yearVal     = (document.getElementById('year-filter')?.value || '').trim();
+        const searchQuery  = (searchInput?.value || '').trim();
+        const followupVal  = (document.getElementById('followup-filter')?.value || '').trim();
+        const yearVal      = (document.getElementById('year-filter')?.value || '').trim();
+        const yearBasisVal = (document.getElementById('year-basis-filter')?.value || 'created_at').trim();
         const params = new URLSearchParams({
-            scope:    activeFilter,
-            mode:     MODE,
-            page:     String(page),
-            per_page: '10',
+            scope:      activeFilter,
+            mode:       MODE,
+            page:       String(page),
+            per_page:   '10',
+            year_basis: yearBasisVal,
         });
 
         // Filter tahun
@@ -2668,7 +2692,33 @@ document.addEventListener('DOMContentLoaded', () => {
     window.reloadInterns   = (p) => loadPage(p || window.__CURRENT_PAGE || 1);
 
     // ── Init ─────────────────────────────────────────────────────────────────────
+    const yearBasisFilterEl = document.getElementById('year-basis-filter');
     const yearFilterEl = document.getElementById('year-filter');
+
+    function syncYearFilterOptionLabels() {
+        if (!yearFilterEl) return;
+        const basis = yearBasisFilterEl?.value === 'start_date' ? 'Tahun Mulai' : 'Tahun Daftar';
+        Array.from(yearFilterEl.options).forEach((opt) => {
+            if (!opt.value) {
+                opt.textContent = `Semua ${basis}`;
+            } else {
+                opt.textContent = `${basis} ${opt.value}`;
+            }
+        });
+    }
+
+    if (yearBasisFilterEl) {
+        const initialBasis = new URLSearchParams(location.search).get('year_basis') || new URLSearchParams(location.search).get('year_by');
+        if (initialBasis && ['created_at', 'start_date'].includes(initialBasis)) {
+            yearBasisFilterEl.value = initialBasis;
+            syncYearFilterOptionLabels();
+        }
+        yearBasisFilterEl.addEventListener('change', () => {
+            syncYearFilterOptionLabels();
+            loadPage(1);
+        });
+    }
+
     if (yearFilterEl) {
         const initialYear = new URLSearchParams(location.search).get('year');
         if (initialYear) yearFilterEl.value = initialYear;

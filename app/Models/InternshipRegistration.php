@@ -46,7 +46,6 @@ class InternshipRegistration extends Model
     ];
 
     protected $fillable = [
-        'public_uuid',
         'user_id',
         'email',
         'fullname', 'born_date', 'birth_place', 'student_id', 'gender', 'religion', 'phone_number',

@@ -113,16 +113,36 @@ class SpreadsheetSyncEngineService
             ]
         );
 
-        // If existing record was previously synced or failed, do NOT re-sync if already synced
+        // If existing record was previously synced or failed, compare checksum or protect paused state
         if ($rowSync->wasRecentlyCreated === false) {
-            // Guardrail: Data yang sudah ter-sync (STATUS_SYNCED) tidak perlu dilakukan sync ulang
-            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+            if ($rowSync->isPausedForTargetRebind()) {
                 return $rowSync;
+            }
+
+            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+                $hasPriorVerifiedSync = !empty($rowSync->last_synced_at)
+                    && !empty($rowSync->row_index)
+                    && !empty($rowSync->payload_checksum);
+
+                if ($hasPriorVerifiedSync && $rowSync->target_sheet_tab === $targetTab) {
+                    try {
+                        $freshPayload = $this->buildPayloadForRecord($rowSync);
+                        $freshChecksum = $this->calculatePayloadChecksum($connection, $targetTab, $freshPayload);
+                        if ($rowSync->payload_checksum === $freshChecksum) {
+                            return $rowSync;
+                        }
+                    } catch (Throwable) {
+                        // Allow transition to pending so worker records payload error cleanly
+                    }
+                }
             }
 
             $updated = DB::table('spreadsheet_row_syncs')
                 ->where('id', $rowSync->id)
-                ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PROCESSING)
+                ->whereNotIn('sync_status', [
+                    SpreadsheetRowSync::STATUS_PROCESSING,
+                    SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
+                ])
                 ->where(function ($query) {
                     $query->whereNull('locked_at')
                           ->orWhere('locked_at', '<', now()->subMinutes(5));
@@ -140,39 +160,6 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync, $connection) {
-                    if (!app()->runningInConsole()) {
-                        ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
-                            $rowSync->id,
-                            null,
-                            $connection?->spreadsheet_id,
-                            $rowSync->target_sheet_tab,
-                            $rowSync->schema_version,
-                            $connection?->id
-                        );
-                    } else {
-                        ProcessSpreadsheetRowSyncJob::dispatch(
-                            $rowSync->id,
-                            null,
-                            $connection?->spreadsheet_id,
-                            $rowSync->target_sheet_tab,
-                            $rowSync->schema_version,
-                            $connection?->id
-                        );
-                    }
-                });
-            }
-        } else {
-            DB::afterCommit(function () use ($rowSync, $connection) {
-                if (!app()->runningInConsole()) {
-                    ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
-                        $rowSync->id,
-                        null,
-                        $connection?->spreadsheet_id,
-                        $rowSync->target_sheet_tab,
-                        $rowSync->schema_version,
-                        $connection?->id
-                    );
-                } else {
                     ProcessSpreadsheetRowSyncJob::dispatch(
                         $rowSync->id,
                         null,
@@ -181,7 +168,18 @@ class SpreadsheetSyncEngineService
                         $rowSync->schema_version,
                         $connection?->id
                     );
-                }
+                });
+            }
+        } else {
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                ProcessSpreadsheetRowSyncJob::dispatch(
+                    $rowSync->id,
+                    null,
+                    $connection?->spreadsheet_id,
+                    $rowSync->target_sheet_tab,
+                    $rowSync->schema_version,
+                    $connection?->id
+                );
             });
         }
 
@@ -225,14 +223,34 @@ class SpreadsheetSyncEngineService
         );
 
         if ($rowSync->wasRecentlyCreated === false) {
-            // Guardrail: Data yang sudah ter-sync (STATUS_SYNCED) tidak perlu dilakukan sync ulang
-            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+            if ($rowSync->isPausedForTargetRebind()) {
                 return $rowSync;
+            }
+
+            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+                $hasPriorVerifiedSync = !empty($rowSync->last_synced_at)
+                    && !empty($rowSync->row_index)
+                    && !empty($rowSync->payload_checksum);
+
+                if ($hasPriorVerifiedSync && $rowSync->target_sheet_tab === $targetTab) {
+                    try {
+                        $freshPayload = $this->buildPayloadForRecord($rowSync);
+                        $freshChecksum = $this->calculatePayloadChecksum($connection, $targetTab, $freshPayload);
+                        if ($rowSync->payload_checksum === $freshChecksum) {
+                            return $rowSync;
+                        }
+                    } catch (Throwable) {
+                        // Allow transition to pending so worker records payload error cleanly
+                    }
+                }
             }
 
             $updated = DB::table('spreadsheet_row_syncs')
                 ->where('id', $rowSync->id)
-                ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PROCESSING)
+                ->whereNotIn('sync_status', [
+                    SpreadsheetRowSync::STATUS_PROCESSING,
+                    SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
+                ])
                 ->where(function ($query) {
                     $query->whereNull('locked_at')
                           ->orWhere('locked_at', '<', now()->subMinutes(5));
@@ -250,39 +268,6 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync, $connection) {
-                    if (!app()->runningInConsole()) {
-                        ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
-                            $rowSync->id,
-                            null,
-                            $connection?->spreadsheet_id,
-                            $rowSync->target_sheet_tab,
-                            $rowSync->schema_version,
-                            $connection?->id
-                        );
-                    } else {
-                        ProcessSpreadsheetRowSyncJob::dispatch(
-                            $rowSync->id,
-                            null,
-                            $connection?->spreadsheet_id,
-                            $rowSync->target_sheet_tab,
-                            $rowSync->schema_version,
-                            $connection?->id
-                        );
-                    }
-                });
-            }
-        } else {
-            DB::afterCommit(function () use ($rowSync, $connection) {
-                if (!app()->runningInConsole()) {
-                    ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
-                        $rowSync->id,
-                        null,
-                        $connection?->spreadsheet_id,
-                        $rowSync->target_sheet_tab,
-                        $rowSync->schema_version,
-                        $connection?->id
-                    );
-                } else {
                     ProcessSpreadsheetRowSyncJob::dispatch(
                         $rowSync->id,
                         null,
@@ -291,7 +276,18 @@ class SpreadsheetSyncEngineService
                         $rowSync->schema_version,
                         $connection?->id
                     );
-                }
+                });
+            }
+        } else {
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                ProcessSpreadsheetRowSyncJob::dispatch(
+                    $rowSync->id,
+                    null,
+                    $connection?->spreadsheet_id,
+                    $rowSync->target_sheet_tab,
+                    $rowSync->schema_version,
+                    $connection?->id
+                );
             });
         }
 
@@ -336,9 +332,9 @@ class SpreadsheetSyncEngineService
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
 
-        // Guardrail: Data yang sudah berstatus synced tidak perlu dilakukan sync ulang kecuali dipaksa ($force)
-        if (!$force && $rowSync->isSynced()) {
-            return true;
+        if ($rowSync->isPausedForTargetRebind()) {
+            \Illuminate\Support\Facades\Log::warning("processSyncRecord: Job #{$rowSync->id} dalam status 'paused_target_rebind'. Menolak eksekusi otomatis.");
+            return false;
         }
 
         // 1. Atomic claim lease to prevent race condition across concurrent workers (Guardrail 1)
@@ -356,10 +352,13 @@ class SpreadsheetSyncEngineService
                 return false;
             }
         } else {
-            // Fail-closed: Never claim a record currently marked as processing, even if lock timestamp is stale
+            // Fail-closed: Never claim a record currently marked as processing or paused_target_rebind
             $claimed = DB::table('spreadsheet_row_syncs')
                 ->where('id', $rowSync->id)
-                ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PROCESSING)
+                ->whereNotIn('sync_status', [
+                    SpreadsheetRowSync::STATUS_PROCESSING,
+                    SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
+                ])
                 ->where(function ($statusQuery) use ($force) {
                     // 1. PENDING: eligible if next_retry_at is null OR <= now()
                     $statusQuery->where(function ($pendingQ) use ($force) {
@@ -378,12 +377,9 @@ class SpreadsheetSyncEngineService
                             $retryingQ->whereNotNull('next_retry_at')
                                       ->where('next_retry_at', '<=', now());
                         }
-                    });
-
-                    // 3. SYNCED: strictly allowed only if force retry is requested
-                    if ($force) {
-                        $statusQuery->orWhere('sync_status', SpreadsheetRowSync::STATUS_SYNCED);
-                    }
+                    })
+                    // 3. SYNCED: allowed for target-aware checksum idempotency / delta verification
+                    ->orWhere('sync_status', SpreadsheetRowSync::STATUS_SYNCED);
                 })
                 ->where(function ($lq) {
                     $lq->whereNull('locked_at')
@@ -416,8 +412,15 @@ class SpreadsheetSyncEngineService
             return false;
         }
 
-        if ($connection && !empty($snapshotSpreadsheetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $snapshotSpreadsheetId) {
-            $errMsg = "Target spreadsheet koneksi diubah dari '{$snapshotSpreadsheetId}' menjadi '{$connection->spreadsheet_id}'. Job dibekukan untuk rekonsiliasi admin.";
+        $hasPriorVerifiedSync = !empty($rowSync->last_synced_at)
+            && !empty($rowSync->row_index)
+            && !empty($rowSync->payload_checksum);
+
+        $effectiveExpectedTargetId = $snapshotSpreadsheetId
+            ?? (!$hasPriorVerifiedSync ? $rowSync->target_spreadsheet_id : null);
+
+        if ($connection && !empty($effectiveExpectedTargetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $effectiveExpectedTargetId) {
+            $errMsg = "Target spreadsheet koneksi diubah dari '{$effectiveExpectedTargetId}' menjadi '{$connection->spreadsheet_id}'. Job dibekukan untuk rekonsiliasi admin.";
             $this->updateGuardedByFence($rowSync, $fenceToken, [
                 'sync_status'     => SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
                 'last_attempt_at' => now(),
@@ -592,15 +595,17 @@ class SpreadsheetSyncEngineService
         // 7. Handle Transport Outcome
         if ($response->success) {
             $updated = $this->updateGuardedByFence($rowSync, $fenceToken, [
-                'sync_status'      => SpreadsheetRowSync::STATUS_SYNCED,
-                'payload_checksum' => $targetChecksum,
-                'last_synced_at'   => now(),
-                'last_attempt_at'  => now(),
-                'row_index'        => $response->rowIndex,
-                'error_message'    => null,
-                'locked_at'        => null,
-                'locked_by'        => null,
-                'next_retry_at'    => null,
+                'sync_status'           => SpreadsheetRowSync::STATUS_SYNCED,
+                'target_spreadsheet_id' => $connection->spreadsheet_id,
+                'target_generation'     => $connection->target_generation ?? 1,
+                'payload_checksum'      => $targetChecksum,
+                'last_synced_at'        => now(),
+                'last_attempt_at'       => now(),
+                'row_index'             => $response->rowIndex,
+                'error_message'         => null,
+                'locked_at'             => null,
+                'locked_by'             => null,
+                'next_retry_at'         => null,
             ]);
 
             if ($updated && $entity instanceof InternshipRegistration) {
@@ -903,10 +908,19 @@ class SpreadsheetSyncEngineService
 
     /**
      * Recovery scanner for pending or retrying sync records that are due (Guardrail 2).
+     * Processes queues by active connection, priority (pending before retrying), and valid due status.
      */
-    public function scanAndDispatchPendingSyncs(int $limit = 50): int
+    public function scanAndDispatchPendingSyncs(int $limit = 50, bool $dryRun = false, ?string $connectionKey = null): int
     {
-        $dueSyncs = SpreadsheetRowSync::where(function ($query) {
+        $dueSyncs = SpreadsheetRowSync::with('spreadsheetConnection')
+            ->whereHas('spreadsheetConnection', function ($connQuery) use ($connectionKey) {
+                $connQuery->where('is_enabled', true);
+                if (!empty($connectionKey)) {
+                    $connQuery->where('connection_key', $connectionKey);
+                }
+            })
+            ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND)
+            ->where(function ($query) {
                 // Case 1: Pending records due for execution (not actively locked)
                 $query->where(function ($q) {
                     $q->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
@@ -926,8 +940,15 @@ class SpreadsheetSyncEngineService
                 $query->whereNull('locked_at')
                       ->orWhere('locked_at', '<', now()->subMinutes(5));
             })
+            ->orderByRaw("CASE WHEN sync_status = ? THEN 0 ELSE 1 END ASC", [SpreadsheetRowSync::STATUS_PENDING])
+            ->orderBy('next_retry_at', 'asc')
+            ->orderBy('id', 'asc')
             ->limit($limit)
             ->get();
+
+        if ($dryRun) {
+            return $dueSyncs->count();
+        }
 
         $dispatched = 0;
 
@@ -1033,19 +1054,51 @@ class SpreadsheetSyncEngineService
                 'internship_registration_id' => $registration->id,
             ],
             [
-                'public_uuid'         => (string) Str::uuid(),
-                'external_sync_id'    => $externalSyncId,
-                'main_sheet_tab'      => $mainTab,
-                'extension_sheet_tab' => $extensionTab,
-                'form_schema_version' => $version,
-                'sync_status'         => SpreadsheetSidecarSync::STATUS_PENDING,
-                'next_retry_at'       => now(),
+                'public_uuid'           => (string) Str::uuid(),
+                'external_sync_id'      => $externalSyncId,
+                'main_sheet_tab'        => $mainTab,
+                'extension_sheet_tab'   => $extensionTab,
+                'target_spreadsheet_id' => $connection->spreadsheet_id,
+                'target_generation'     => $connection->target_generation ?? 1,
+                'form_schema_version'   => $version,
+                'sync_status'           => SpreadsheetSidecarSync::STATUS_PENDING,
+                'next_retry_at'         => now(),
             ]
         );
 
         if (!$sidecarSync->wasRecentlyCreated) {
+            if ($sidecarSync->isPausedForTargetRebind()) {
+                return $sidecarSync;
+            }
+
+            if ($sidecarSync->sync_status === SpreadsheetSidecarSync::STATUS_SYNCED) {
+                $hasPriorSidecarSync = !empty($sidecarSync->last_synced_at)
+                    && !empty($sidecarSync->row_index)
+                    && !empty($sidecarSync->payload_checksum);
+
+                if ($hasPriorSidecarSync && $sidecarSync->extension_sheet_tab === $extensionTab) {
+                    try {
+                        $sidecarData = $this->registrationMappingService->buildSidecarPayload($registration);
+                        $answers = $sidecarData['answers'] ?? [];
+                        $formVersion = $sidecarData['form_schema_version'] ?? '';
+                        $freshChecksum = hash('sha256', json_encode([
+                            'connection' => $connection->id,
+                            'tab'        => $extensionTab,
+                            'version'    => $formVersion,
+                            'answers'    => $answers,
+                        ]));
+                        if ($sidecarSync->payload_checksum === $freshChecksum) {
+                            return $sidecarSync;
+                        }
+                    } catch (Throwable) {
+                        // Allow transition to pending on payload error
+                    }
+                }
+            }
+
             $updated = DB::table('spreadsheet_sidecar_syncs')
                 ->where('id', $sidecarSync->id)
+                ->where('sync_status', '!=', SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND)
                 ->where(function ($query) {
                     $query->where(function ($q) {
                         $q->where('sync_status', '!=', SpreadsheetSidecarSync::STATUS_PROCESSING)
@@ -1074,7 +1127,7 @@ class SpreadsheetSyncEngineService
                 ]);
 
             if ($updated > 0) {
-                $rowSync->refresh();
+                $sidecarSync->refresh();
                 DB::afterCommit(function () use ($sidecarSync, $connection) {
                     ProcessSidecarSyncJob::dispatch(
                         $sidecarSync->id,
@@ -1113,6 +1166,11 @@ class SpreadsheetSyncEngineService
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
 
+        if ($sidecarSync->isPausedForTargetRebind()) {
+            \Illuminate\Support\Facades\Log::warning("processSidecarSyncRecord: Job sidecar #{$sidecarSync->id} dalam status 'paused_target_rebind'. Menolak eksekusi otomatis.");
+            return false;
+        }
+
         // 1. Atomic claim lease
         if ($preClaimedFence !== null) {
             // Verify DB has an active, valid lease owned by this fence token
@@ -1130,6 +1188,7 @@ class SpreadsheetSyncEngineService
         } else {
             $claimed = DB::table('spreadsheet_sidecar_syncs')
                 ->where('id', $sidecarSync->id)
+                ->where('sync_status', '!=', SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND)
                 ->where(function ($query) use ($force) {
                     // Branch A: Record is not in processing, and matches retry/sync eligibility
                     $query->where(function ($q) use ($force) {
@@ -1191,8 +1250,12 @@ class SpreadsheetSyncEngineService
             return false;
         }
 
-        if ($connection && !empty($snapshotSpreadsheetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $snapshotSpreadsheetId) {
-            $errMsg = "Target spreadsheet koneksi diubah dari '{$snapshotSpreadsheetId}' menjadi '{$connection->spreadsheet_id}'. Job sidecar dibekukan untuk rekonsiliasi admin.";
+        $hasPriorSidecarVerified = !empty($sidecarSync->last_synced_at) && !empty($sidecarSync->row_index);
+        $effectiveSidecarExpectedTargetId = $snapshotSpreadsheetId
+            ?? (!$hasPriorSidecarVerified ? $sidecarSync->target_spreadsheet_id : null);
+
+        if ($connection && !empty($effectiveSidecarExpectedTargetId) && !empty($connection->spreadsheet_id) && $connection->spreadsheet_id !== $effectiveSidecarExpectedTargetId) {
+            $errMsg = "Target spreadsheet koneksi diubah dari '{$effectiveSidecarExpectedTargetId}' menjadi '{$connection->spreadsheet_id}'. Job sidecar dibekukan untuk rekonsiliasi admin.";
             $this->updateSidecarGuardedByFence($sidecarSync, $fenceToken, [
                 'sync_status'     => SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND,
                 'last_attempt_at' => now(),
@@ -1446,6 +1509,10 @@ class SpreadsheetSyncEngineService
         $mainStatus = $mainSync?->sync_status ?? 'pending';
         $sidecarStatus = $sidecarSync?->sync_status ?? 'pending';
 
+        if ($mainStatus === SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND || $sidecarStatus === SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND) {
+            return SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND;
+        }
+
         if ($mainStatus === SpreadsheetRowSync::STATUS_SYNCED && $sidecarStatus === SpreadsheetSidecarSync::STATUS_SYNCED) {
             return 'synced';
         }
@@ -1491,7 +1558,7 @@ class SpreadsheetSyncEngineService
 
         // 4. Antrekan sidecar sync record
         $sidecarSync = $this->queueSidecarSyncForRegistration($registration);
-        if (!$sidecarSync) {
+        if (!$sidecarSync || $sidecarSync->isPausedForTargetRebind()) {
             return null;
         }
 
@@ -1511,6 +1578,7 @@ class SpreadsheetSyncEngineService
 
         DB::table('spreadsheet_sidecar_syncs')
             ->where('id', $sidecarSync->id)
+            ->where('sync_status', '!=', SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND)
             ->update([
                 'sync_status'      => SpreadsheetSidecarSync::STATUS_PENDING,
                 'attempt_count'    => 0,
@@ -1555,9 +1623,17 @@ class SpreadsheetSyncEngineService
     /**
      * Recovery scanner for pending, retrying, or stale processing sidecar sync records that are due.
      */
-    public function scanAndDispatchPendingSidecarSyncs(int $limit = 50, bool $dryRun = false): int
+    public function scanAndDispatchPendingSidecarSyncs(int $limit = 50, bool $dryRun = false, ?string $connectionKey = null): int
     {
-        $dueSyncs = SpreadsheetSidecarSync::where(function ($query) {
+        $dueSyncs = SpreadsheetSidecarSync::with('spreadsheetConnection')
+            ->whereHas('spreadsheetConnection', function ($connQuery) use ($connectionKey) {
+                $connQuery->where('is_enabled', true);
+                if (!empty($connectionKey)) {
+                    $connQuery->where('connection_key', $connectionKey);
+                }
+            })
+            ->where('sync_status', '!=', SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND)
+            ->where(function ($query) {
                 // Case 1: Pending records due for execution (not actively locked)
                 $query->where(function ($q) {
                     $q->where('sync_status', SpreadsheetSidecarSync::STATUS_PENDING)
@@ -1587,6 +1663,12 @@ class SpreadsheetSyncEngineService
                       ->where('locked_at', '<', now()->subSeconds(300));
                 });
             })
+            ->orderByRaw("CASE WHEN sync_status = ? THEN 0 WHEN sync_status = ? THEN 1 ELSE 2 END ASC", [
+                SpreadsheetSidecarSync::STATUS_PENDING,
+                SpreadsheetSidecarSync::STATUS_RETRYING,
+            ])
+            ->orderBy('next_retry_at', 'asc')
+            ->orderBy('id', 'asc')
             ->limit($limit)
             ->get();
 

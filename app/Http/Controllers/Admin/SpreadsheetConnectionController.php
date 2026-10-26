@@ -312,22 +312,9 @@ class SpreadsheetConnectionController extends Controller
                     ->with('error', 'Gagal memicu retry: Record sedang diproses oleh worker aktif atau tidak eligible.');
             }
 
-            if (!app()->runningUnitTests()) {
-                $freshSync = $spreadsheetRowSync->fresh();
-                if ($freshSync && $freshSync->isPending()) {
-                    $syncEngine->processSyncRecord($freshSync, force: true);
-                }
-                $freshSync = $spreadsheetRowSync->fresh();
-                if ($freshSync && $freshSync->isFailed()) {
-                    return redirect()
-                        ->back()
-                        ->with('error', "Retry baris {$freshSync->external_sync_id} gagal: " . ($freshSync->error_message ?? 'Kesalahan tidak diketahui.'));
-                }
-            }
-
             return redirect()
                 ->back()
-                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijalankan.");
+                ->with('success', "Proses retry sinkronisasi baris {$spreadsheetRowSync->external_sync_id} telah dijadwalkan.");
         } catch (Exception $e) {
             return redirect()
                 ->back()
@@ -345,16 +332,6 @@ class SpreadsheetConnectionController extends Controller
         try {
             $count = $syncEngine->retryAllFailed($spreadsheetConnection, Auth::user());
 
-            if (!app()->runningUnitTests() && $count > 0) {
-                $pendingSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
-                    ->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
-                    ->get();
-
-                foreach ($pendingSyncs as $pendingSync) {
-                    $syncEngine->processSyncRecord($pendingSync, force: true);
-                }
-            }
-
             return redirect()
                 ->back()
                 ->with('success', "Berhasil menjadwalkan ulang retry untuk {$count} baris yang gagal.");
@@ -366,83 +343,43 @@ class SpreadsheetConnectionController extends Controller
     }
 
     /**
-     * Global background sync tick (dijalankan otomatis setiap 5 detik dari layout dashboard global).
+     * Endpoint monitoring ringkasan status sinkronisasi global (Read-Only, tanpa remote write / mutasi antrean).
      */
     public function globalSyncTick()
     {
-        $activeConnection = SpreadsheetConnection::where('is_enabled', true)
+        Gate::authorize('view-sync-monitoring');
+
+        $activeConnectionCount = SpreadsheetConnection::where('is_enabled', true)
             ->whereNotNull('spreadsheet_id')
-            ->first();
+            ->count();
 
-        if (!$activeConnection) {
-            return response()->json(['success' => true, 'processed' => 0, 'pending_count' => 0]);
-        }
-
-        $pendingSyncs = SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
-            ->where(function ($nq) {
-                $nq->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
-            })
-            ->where(function ($lq) {
-                $lq->whereNull('locked_at')->orWhere('locked_at', '<', now()->subMinutes(5));
-            })
-            ->limit(2)
-            ->get();
-
-        $processed = 0;
-        if ($pendingSyncs->isNotEmpty()) {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            foreach ($pendingSyncs as $pendingSync) {
-                try {
-                    $syncEngine->processSyncRecord($pendingSync, force: false);
-                    $processed++;
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning("Global sync tick error on row #{$pendingSync->id}: " . $e->getMessage());
-                }
-            }
-        }
-
-        $remainingPending = SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PENDING)->count();
+        $stats = [
+            'pending_count'    => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PENDING)->count(),
+            'retrying_count'   => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)->count(),
+            'processing_count' => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PROCESSING)->count(),
+            'failed_count'     => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_FAILED)->count(),
+            'paused_count'     => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND)->count(),
+            'synced_count'     => SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_SYNCED)->count(),
+        ];
 
         return response()->json([
-            'success'       => true,
-            'processed'     => $processed,
-            'pending_count' => $remainingPending,
+            'success'            => true,
+            'readonly'           => true,
+            'processed'          => 0,
+            'active_connections' => $activeConnectionCount,
+            'pending_count'      => $stats['pending_count'],
+            'stats'              => $stats,
         ]);
     }
 
     /**
-     * Endpoint polling status sinkronisasi baris dan statistik untuk live refresh otomatis (per 5 detik).
+     * Endpoint monitoring status sinkronisasi baris dan statistik (Read-Only, tanpa remote write / mutasi antrean).
      */
     public function syncStatus(Request $request, SpreadsheetConnection $spreadsheetConnection)
     {
+        Gate::authorize('view-sync-monitoring', $spreadsheetConnection);
+
         $spreadsheetConnection->refresh();
-
-        // Auto-process pending sync records (memastikan sinkronisasi berjalan saat worker queue tidak aktif)
-        if ($spreadsheetConnection->is_enabled && !empty($spreadsheetConnection->spreadsheet_id)) {
-            $pendingSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
-                ->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
-                ->where(function ($nq) {
-                    $nq->whereNull('next_retry_at')
-                       ->orWhere('next_retry_at', '<=', now());
-                })
-                ->where(function ($lq) {
-                    $lq->whereNull('locked_at')
-                       ->orWhere('locked_at', '<', now()->subMinutes(5));
-                })
-                ->limit(2)
-                ->get();
-
-            if ($pendingSyncs->isNotEmpty()) {
-                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-                foreach ($pendingSyncs as $pendingSync) {
-                    try {
-                        $syncEngine->processSyncRecord($pendingSync, force: false);
-                    } catch (\Throwable $t) {
-                        \Illuminate\Support\Facades\Log::warning("Auto-sync error on row #{$pendingSync->id}: " . $t->getMessage());
-                    }
-                }
-            }
-        }
 
         $page = max(1, (int) $request->get('page', 1));
         $rowSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
@@ -477,6 +414,7 @@ class SpreadsheetConnectionController extends Controller
 
         return response()->json([
             'success'         => true,
+            'readonly'        => true,
             'stats'           => $stats,
             'rows_html'       => $rowsHtml,
             'pagination_html' => $paginationHtml,

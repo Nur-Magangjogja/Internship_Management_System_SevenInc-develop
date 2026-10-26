@@ -2150,13 +2150,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
+    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'superadmin'], true))
     // ==========================================
-    // Live Auto-Refresh (Polling per 5 Detik)
+    // Live Monitoring Refresh (Read-Only, Hanya Halaman & Role Admin, Berhenti Saat Tab Tidak Aktif)
     // ==========================================
     const syncStatusUrl = @json(route('admin.spreadsheet-connections.sync-status', $connection));
     let isPollingSync = false;
 
-    async function pollSyncMonitoringStatus() {
+    async function pollSyncMonitoringStatus(force = false) {
+        if (!force && (document.hidden || document.visibilityState === 'hidden')) {
+            return;
+        }
         if (isPollingSync) return;
         isPollingSync = true;
 
@@ -2213,22 +2217,27 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Interval refresh setiap 5 detik
-    const syncPollInterval = setInterval(pollSyncMonitoringStatus, 5000);
-    window.addEventListener('spreadsheet-sync-updated', pollSyncMonitoringStatus);
+    // Interval monitoring read-only setiap 15 detik hanya saat halaman aktif
+    const syncPollInterval = setInterval(() => pollSyncMonitoringStatus(false), 15000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && document.visibilityState === 'visible') {
+            pollSyncMonitoringStatus(false);
+        }
+    });
 
     const btnManualRefresh = document.getElementById('btn-manual-sync-refresh');
     if (btnManualRefresh) {
         btnManualRefresh.addEventListener('click', function () {
             const icon = this.querySelector('svg');
             if (icon) icon.classList.add('animate-spin');
-            pollSyncMonitoringStatus().finally(() => {
+            pollSyncMonitoringStatus(true).finally(() => {
                 setTimeout(() => {
                     if (icon) icon.classList.remove('animate-spin');
                 }, 500);
             });
         });
     }
+    @endif
 });
 </script>
 @endsection

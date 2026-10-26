@@ -96,6 +96,9 @@ class SpreadsheetConnectionService
             }
         }
 
+        $driveFolderUrl = $connection->drive_folder_url;
+        $driveFolderId = $connection->drive_folder_id;
+
         if ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION && array_key_exists('drive_folder_url', $data)) {
             $driveFolderUrl = isset($data['drive_folder_url']) ? trim((string) $data['drive_folder_url']) : null;
             $driveFolderId = null;
@@ -111,37 +114,70 @@ class SpreadsheetConnectionService
                 }
             }
 
-            $connection->drive_folder_url = $driveFolderUrl ?: null;
-            $connection->drive_folder_id = $driveFolderId;
+            $driveFolderUrl = $driveFolderUrl ?: null;
         }
 
-        $oldSpreadsheetId = $connection->getOriginal('spreadsheet_id');
-        $targetChanged = !empty($oldSpreadsheetId) && !empty($spreadsheetId) && $oldSpreadsheetId !== $spreadsheetId;
-        if ($targetChanged) {
-            $connection->previous_spreadsheet_id = $oldSpreadsheetId;
-            // Freeze seluruh pekerjaan sinkronisasi aktif untuk koneksi ini (HOTFIX 1)
-            try {
-                app(\App\Services\SpreadsheetQueueReconciliationService::class)->freezePendingJobs($connection, $oldSpreadsheetId, $actor);
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning("freezePendingJobs warning: " . $e->getMessage());
+        try {
+            DB::transaction(function () use (
+                $connection,
+                $data,
+                $spreadsheetUrl,
+                $spreadsheetId,
+                $appsScriptUrl,
+                $driveFolderUrl,
+                $driveFolderId,
+                $actor
+            ) {
+                if ($connection->exists) {
+                    DB::table('spreadsheet_connections')
+                        ->where('id', $connection->id)
+                        ->lockForUpdate()
+                        ->first();
+                }
+
+                $oldSpreadsheetId = $connection->getOriginal('spreadsheet_id') ?? $connection->spreadsheet_id;
+                $targetChanged = !empty($oldSpreadsheetId) && $oldSpreadsheetId !== $spreadsheetId;
+
+                if ($targetChanged) {
+                    // Fail-closed: Jika freezePendingJobs gagal, lempar exception agar transaksi rollback dan ID tidak diganti
+                    app(\App\Services\SpreadsheetQueueReconciliationService::class)->freezePendingJobs(
+                        $connection,
+                        $oldSpreadsheetId,
+                        $actor,
+                        $spreadsheetId
+                    );
+
+                    $connection->previous_spreadsheet_id = $oldSpreadsheetId;
+                    $connection->target_generation = ((int) ($connection->target_generation ?? 1)) + 1;
+                }
+
+                if ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION && array_key_exists('drive_folder_url', $data)) {
+                    $connection->drive_folder_url = $driveFolderUrl;
+                    $connection->drive_folder_id = $driveFolderId;
+                }
+
+                $connection->display_name = $data['display_name'] ?? $connection->display_name;
+                $connection->spreadsheet_url = $spreadsheetUrl;
+                $connection->spreadsheet_id = $spreadsheetId;
+                $connection->apps_script_endpoint_url = $appsScriptUrl;
+                $connection->updated_by = $actor?->id;
+
+                // Reset status to untested / not_configured if URL or endpoint changed
+                if ($connection->isDirty('spreadsheet_url') || $connection->isDirty('apps_script_endpoint_url')) {
+                    $connection->connection_status = (empty($spreadsheetUrl) || empty($appsScriptUrl))
+                        ? SpreadsheetConnection::STATUS_NOT_CONFIGURED
+                        : SpreadsheetConnection::STATUS_UNTESTED;
+                    $connection->last_error_summary = null;
+                }
+
+                $connection->save();
+            });
+        } catch (Throwable $e) {
+            if ($connection->exists) {
+                $connection->refresh();
             }
+            throw $e;
         }
-
-        $connection->display_name = $data['display_name'] ?? $connection->display_name;
-        $connection->spreadsheet_url = $spreadsheetUrl;
-        $connection->spreadsheet_id = $spreadsheetId;
-        $connection->apps_script_endpoint_url = $appsScriptUrl;
-        $connection->updated_by = $actor?->id;
-
-        // Reset status to untested / not_configured if URL or endpoint changed
-        if ($connection->isDirty('spreadsheet_url') || $connection->isDirty('apps_script_endpoint_url')) {
-            $connection->connection_status = (empty($spreadsheetUrl) || empty($appsScriptUrl))
-                ? SpreadsheetConnection::STATUS_NOT_CONFIGURED
-                : SpreadsheetConnection::STATUS_UNTESTED;
-            $connection->last_error_summary = null;
-        }
-
-        $connection->save();
 
         $after = $connection->only([
             'display_name',

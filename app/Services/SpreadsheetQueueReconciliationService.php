@@ -39,62 +39,87 @@ class SpreadsheetQueueReconciliationService
      * Bekukan seluruh pekerjaan sinkronisasi yang masih pending, retrying, atau sedang diproses
      * saat target Spreadsheet diganti oleh Admin.
      */
-    public function freezePendingJobs(SpreadsheetConnection $connection, ?string $oldSpreadsheetId = null, ?User $actor = null): array
-    {
+    public function freezePendingJobs(
+        SpreadsheetConnection $connection,
+        ?string $oldSpreadsheetId = null,
+        ?User $actor = null,
+        ?string $newSpreadsheetId = null
+    ): array {
         $oldId = $oldSpreadsheetId ?: ($connection->previous_spreadsheet_id ?: 'target lama');
-        $reason = "Target spreadsheet dialihkan dari '{$oldId}' ke target baru ('{$connection->spreadsheet_id}'). Antrean dibekukan untuk rekonsiliasi admin.";
+        $targetNewId = $newSpreadsheetId ?: ($connection->spreadsheet_id ?: 'target baru');
+        $reason = "Target spreadsheet dialihkan dari '{$oldId}' ke target baru ('{$targetNewId}'). Antrean dibekukan untuk rekonsiliasi admin.";
 
-        // 1. Bekukan SpreadsheetRowSync yang aktif/antre
-        $activeStatuses = [
-            SpreadsheetRowSync::STATUS_PENDING,
-            SpreadsheetRowSync::STATUS_PROCESSING,
-            SpreadsheetRowSync::STATUS_RETRYING,
-        ];
+        return DB::transaction(function () use ($connection, $oldId, $targetNewId, $reason, $actor) {
+            // 1. Bekukan SpreadsheetRowSync yang aktif/antre dengan row-level locking
+            $activeStatuses = [
+                SpreadsheetRowSync::STATUS_PENDING,
+                SpreadsheetRowSync::STATUS_PROCESSING,
+                SpreadsheetRowSync::STATUS_RETRYING,
+            ];
 
-        $frozenRowCount = DB::table('spreadsheet_row_syncs')
-            ->where('spreadsheet_connection_id', $connection->id)
-            ->whereIn('sync_status', $activeStatuses)
-            ->update([
-                'sync_status'     => SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
-                'locked_at'       => null,
-                'locked_by'       => null,
-                'next_retry_at'   => null,
-                'error_message'   => $reason,
-                'updated_at'      => now(),
-            ]);
+            $rowIds = DB::table('spreadsheet_row_syncs')
+                ->where('spreadsheet_connection_id', $connection->id)
+                ->whereIn('sync_status', $activeStatuses)
+                ->lockForUpdate()
+                ->pluck('id')
+                ->all();
 
-        // 2. Bekukan SpreadsheetSidecarSync yang aktif/antre
-        $frozenSidecarCount = DB::table('spreadsheet_sidecar_syncs')
-            ->where('spreadsheet_connection_id', $connection->id)
-            ->whereIn('sync_status', $activeStatuses)
-            ->update([
-                'sync_status'     => SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND,
-                'locked_at'       => null,
-                'locked_by'       => null,
-                'next_retry_at'   => null,
-                'error_message'   => $reason,
-                'updated_at'      => now(),
-            ]);
+            $frozenRowCount = 0;
+            if (!empty($rowIds)) {
+                $frozenRowCount = DB::table('spreadsheet_row_syncs')
+                    ->whereIn('id', $rowIds)
+                    ->update([
+                        'sync_status'   => SpreadsheetRowSync::STATUS_PAUSED_TARGET_REBIND,
+                        'locked_at'     => null,
+                        'locked_by'     => null,
+                        'next_retry_at' => null,
+                        'error_message' => $reason,
+                        'updated_at'    => now(),
+                    ]);
+            }
 
-        ActivityLogger::log(
-            action: 'spreadsheet_jobs_frozen_target_rebind',
-            description: "Membekukan {$frozenRowCount} row syncs dan {$frozenSidecarCount} sidecar syncs untuk koneksi '{$connection->display_name}' karena pergantian target spreadsheet.",
-            subject: $connection,
-            actor: $actor,
-            metadata: [
-                'connection_key'       => $connection->connection_key,
-                'old_spreadsheet_id'   => $oldId,
-                'new_spreadsheet_id'   => $connection->spreadsheet_id,
+            // 2. Bekukan SpreadsheetSidecarSync yang aktif/antre dengan row-level locking
+            $sidecarIds = DB::table('spreadsheet_sidecar_syncs')
+                ->where('spreadsheet_connection_id', $connection->id)
+                ->whereIn('sync_status', $activeStatuses)
+                ->lockForUpdate()
+                ->pluck('id')
+                ->all();
+
+            $frozenSidecarCount = 0;
+            if (!empty($sidecarIds)) {
+                $frozenSidecarCount = DB::table('spreadsheet_sidecar_syncs')
+                    ->whereIn('id', $sidecarIds)
+                    ->update([
+                        'sync_status'   => SpreadsheetSidecarSync::STATUS_PAUSED_TARGET_REBIND,
+                        'locked_at'     => null,
+                        'locked_by'     => null,
+                        'next_retry_at' => null,
+                        'error_message' => $reason,
+                        'updated_at'    => now(),
+                    ]);
+            }
+
+            ActivityLogger::log(
+                action: 'spreadsheet_jobs_frozen_target_rebind',
+                description: "Membekukan {$frozenRowCount} row syncs dan {$frozenSidecarCount} sidecar syncs untuk koneksi '{$connection->display_name}' karena pergantian target spreadsheet.",
+                subject: $connection,
+                actor: $actor,
+                metadata: [
+                    'connection_key'       => $connection->connection_key,
+                    'old_spreadsheet_id'   => $oldId,
+                    'new_spreadsheet_id'   => $targetNewId,
+                    'frozen_row_count'     => $frozenRowCount,
+                    'frozen_sidecar_count' => $frozenSidecarCount,
+                ]
+            );
+
+            return [
                 'frozen_row_count'     => $frozenRowCount,
                 'frozen_sidecar_count' => $frozenSidecarCount,
-            ]
-        );
-
-        return [
-            'frozen_row_count'     => $frozenRowCount,
-            'frozen_sidecar_count' => $frozenSidecarCount,
-            'total_frozen'         => $frozenRowCount + $frozenSidecarCount,
-        ];
+                'total_frozen'         => $frozenRowCount + $frozenSidecarCount,
+            ];
+        });
     }
 
     /**

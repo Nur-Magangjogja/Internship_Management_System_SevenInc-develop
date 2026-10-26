@@ -232,14 +232,17 @@ class InternApiController extends Controller
             $q->where('followup_status', $req->get('followup_status'));
         }
 
-        // Filter tahun (berdasarkan start_date atau created_at)
+        // Filter tahun dengan definisi basis kolom yang eksplisit (tanpa menggabungkan YEAR(start_date) OR YEAR(created_at))
+        $yearBasis = $req->get('year_basis', $req->get('year_by', 'created_at'));
+        if (!in_array($yearBasis, ['created_at', 'start_date'], true)) {
+            $yearBasis = 'created_at';
+        }
+
         if ($req->filled('year')) {
             $year = (int) $req->get('year');
-            if ($year > 0) {
-                $q->where(function ($yq) use ($year) {
-                    $yq->whereYear('start_date', $year)
-                       ->orWhereYear('created_at', $year);
-                });
+            if ($year >= 2000 && $year <= 2100) {
+                $q->whereNotNull($yearBasis)
+                  ->whereYear($yearBasis, $year);
             }
         }
 
@@ -633,6 +636,11 @@ class InternApiController extends Controller
             'data'            => $rows,
             'meta'            => $meta,
             'links'           => $links,
+            'year_filter'     => [
+                'year'       => $req->filled('year') ? (int) $req->get('year') : null,
+                'year_basis' => $yearBasis,
+                'basis_label'=> $yearBasis === 'start_date' ? 'Tahun Mulai Magang' : 'Tahun Pendaftaran',
+            ],
             'select_options'  => $selectOptions,
             'certificate_templates' => $certificateTemplates,
             'form_fields'     => $formFields,

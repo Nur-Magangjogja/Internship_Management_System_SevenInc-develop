@@ -36,6 +36,7 @@ class SpreadsheetSyncRecoveryCommand extends Command
         $limit = max(1, (int) $this->option('limit'));
         $dryRun = (bool) $this->option('dry-run');
         $includeSidecar = (bool) $this->option('include-sidecar');
+        $connectionKey = $this->option('connection') ? trim((string) $this->option('connection')) : null;
 
         if ($dryRun) {
             $this->warn('[DRY-RUN] Mode simulasi aktif: Tidak ada mutasi database atau job dispatch yang dijalankan.');
@@ -44,31 +45,10 @@ class SpreadsheetSyncRecoveryCommand extends Command
         $this->info('Memulai pemindaian recovery antrean sinkronisasi...');
 
         // 1. Scan and dispatch spreadsheet row syncs
+        $dispatchedRows = $syncEngine->scanAndDispatchPendingSyncs($limit, $dryRun, $connectionKey);
         if ($dryRun) {
-            $dueRows = SpreadsheetRowSync::where(function ($query) {
-                    $query->where(function ($q) {
-                        $q->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
-                          ->where(function ($nq) {
-                              $nq->whereNull('next_retry_at')
-                                 ->orWhere('next_retry_at', '<=', now());
-                          });
-                    })
-                    ->orWhere(function ($q) {
-                        $q->where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)
-                          ->whereNotNull('next_retry_at')
-                          ->where('next_retry_at', '<=', now());
-                    });
-                })
-                ->where(function ($query) {
-                    $query->whereNull('locked_at')
-                          ->orWhere('locked_at', '<', now()->subMinutes(5));
-                })
-                ->limit($limit)
-                ->count();
-            $this->line("[DRY-RUN] Ditemukan {$dueRows} baris spreadsheet utama yang memenuhi syarat pemulihan.");
-            $dispatchedRows = $dueRows;
+            $this->line("[DRY-RUN] Ditemukan {$dispatchedRows} baris spreadsheet utama yang memenuhi syarat pemulihan.");
         } else {
-            $dispatchedRows = $syncEngine->scanAndDispatchPendingSyncs($limit);
             $this->line("Ditemukan {$dispatchedRows} baris spreadsheet sinkronisasi yang siap diproses ulang.");
         }
 
@@ -96,7 +76,7 @@ class SpreadsheetSyncRecoveryCommand extends Command
         // 3. Optional Sidecar Recovery Scanner
         $dispatchedSidecars = 0;
         if ($includeSidecar) {
-            $dispatchedSidecars = $syncEngine->scanAndDispatchPendingSidecarSyncs($limit, $dryRun);
+            $dispatchedSidecars = $syncEngine->scanAndDispatchPendingSidecarSyncs($limit, $dryRun, $connectionKey);
             if ($dryRun) {
                 $this->line("[DRY-RUN] Ditemukan {$dispatchedSidecars} baris sidecar custom fields yang memenuhi syarat pemulihan.");
             } else {
