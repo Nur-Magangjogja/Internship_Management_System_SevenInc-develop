@@ -366,6 +366,125 @@ class SpreadsheetConnectionController extends Controller
     }
 
     /**
+     * Global background sync tick (dijalankan otomatis setiap 5 detik dari layout dashboard global).
+     */
+    public function globalSyncTick()
+    {
+        $activeConnection = SpreadsheetConnection::where('is_enabled', true)
+            ->whereNotNull('spreadsheet_id')
+            ->first();
+
+        if (!$activeConnection) {
+            return response()->json(['success' => true, 'processed' => 0, 'pending_count' => 0]);
+        }
+
+        $pendingSyncs = SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
+            ->where(function ($nq) {
+                $nq->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+            })
+            ->where(function ($lq) {
+                $lq->whereNull('locked_at')->orWhere('locked_at', '<', now()->subMinutes(5));
+            })
+            ->limit(2)
+            ->get();
+
+        $processed = 0;
+        if ($pendingSyncs->isNotEmpty()) {
+            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+            foreach ($pendingSyncs as $pendingSync) {
+                try {
+                    $syncEngine->processSyncRecord($pendingSync, force: false);
+                    $processed++;
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Global sync tick error on row #{$pendingSync->id}: " . $e->getMessage());
+                }
+            }
+        }
+
+        $remainingPending = SpreadsheetRowSync::where('sync_status', SpreadsheetRowSync::STATUS_PENDING)->count();
+
+        return response()->json([
+            'success'       => true,
+            'processed'     => $processed,
+            'pending_count' => $remainingPending,
+        ]);
+    }
+
+    /**
+     * Endpoint polling status sinkronisasi baris dan statistik untuk live refresh otomatis (per 5 detik).
+     */
+    public function syncStatus(Request $request, SpreadsheetConnection $spreadsheetConnection)
+    {
+        $spreadsheetConnection->refresh();
+
+        // Auto-process pending sync records (memastikan sinkronisasi berjalan saat worker queue tidak aktif)
+        if ($spreadsheetConnection->is_enabled && !empty($spreadsheetConnection->spreadsheet_id)) {
+            $pendingSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+                ->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)
+                ->where(function ($nq) {
+                    $nq->whereNull('next_retry_at')
+                       ->orWhere('next_retry_at', '<=', now());
+                })
+                ->where(function ($lq) {
+                    $lq->whereNull('locked_at')
+                       ->orWhere('locked_at', '<', now()->subMinutes(5));
+                })
+                ->limit(2)
+                ->get();
+
+            if ($pendingSyncs->isNotEmpty()) {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                foreach ($pendingSyncs as $pendingSync) {
+                    try {
+                        $syncEngine->processSyncRecord($pendingSync, force: false);
+                    } catch (\Throwable $t) {
+                        \Illuminate\Support\Facades\Log::warning("Auto-sync error on row #{$pendingSync->id}: " . $t->getMessage());
+                    }
+                }
+            }
+        }
+
+        $page = max(1, (int) $request->get('page', 1));
+        $rowSyncs = SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+            ->latest('id')
+            ->paginate(15, ['*'], 'page', $page);
+
+        $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
+
+        $stats = [
+            'total'    => SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)->count(),
+            'synced'   => SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)->where('sync_status', SpreadsheetRowSync::STATUS_SYNCED)->count(),
+            'pending'  => SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)->where('sync_status', SpreadsheetRowSync::STATUS_PENDING)->count(),
+            'retrying' => SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)->where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)->count(),
+            'failed'   => SpreadsheetRowSync::where('spreadsheet_connection_id', $spreadsheetConnection->id)->where('sync_status', SpreadsheetRowSync::STATUS_FAILED)->count(),
+            'paused'   => (int) ($pausedQueuesSummary['total_count'] ?? 0),
+        ];
+
+        $outboxEvents = $spreadsheetConnection->outboxEvents()->limit(10)->get();
+
+        $rowsHtml = view('admin.spreadsheet-connections.partials.sync-rows', [
+            'rowSyncs'   => $rowSyncs,
+            'connection' => $spreadsheetConnection,
+        ])->render();
+
+        $paginationHtml = $rowSyncs->hasPages() ? (string) view('admin.spreadsheet-connections.partials.sync-pagination', [
+            'rowSyncs' => $rowSyncs,
+        ])->render() : '';
+
+        $outboxHtml = view('admin.spreadsheet-connections.partials.outbox-events', [
+            'outboxEvents' => $outboxEvents,
+        ])->render();
+
+        return response()->json([
+            'success'         => true,
+            'stats'           => $stats,
+            'rows_html'       => $rowsHtml,
+            'pagination_html' => $paginationHtml,
+            'outbox_html'     => $outboxHtml,
+        ]);
+    }
+
+    /**
      * Mendaftarkan versi schema tahunan baru beserta column mappings untuk koneksi ini.
      */
     public function storeSchema(Request $request, SpreadsheetConnection $spreadsheetConnection)

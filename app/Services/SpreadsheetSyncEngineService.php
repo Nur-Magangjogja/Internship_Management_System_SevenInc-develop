@@ -113,9 +113,13 @@ class SpreadsheetSyncEngineService
             ]
         );
 
-        // If existing record was previously synced or failed, atomically reset to pending for re-sync
-        // strictly without overtaking or wiping an active worker's processing lease (S17.17 Final Hardening)
+        // If existing record was previously synced or failed, do NOT re-sync if already synced
         if ($rowSync->wasRecentlyCreated === false) {
+            // Guardrail: Data yang sudah ter-sync (STATUS_SYNCED) tidak perlu dilakukan sync ulang
+            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+                return $rowSync;
+            }
+
             $updated = DB::table('spreadsheet_row_syncs')
                 ->where('id', $rowSync->id)
                 ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PROCESSING)
@@ -136,6 +140,39 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync, $connection) {
+                    if (!app()->runningInConsole()) {
+                        ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
+                            $rowSync->id,
+                            null,
+                            $connection?->spreadsheet_id,
+                            $rowSync->target_sheet_tab,
+                            $rowSync->schema_version,
+                            $connection?->id
+                        );
+                    } else {
+                        ProcessSpreadsheetRowSyncJob::dispatch(
+                            $rowSync->id,
+                            null,
+                            $connection?->spreadsheet_id,
+                            $rowSync->target_sheet_tab,
+                            $rowSync->schema_version,
+                            $connection?->id
+                        );
+                    }
+                });
+            }
+        } else {
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                if (!app()->runningInConsole()) {
+                    ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
+                        $rowSync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $rowSync->target_sheet_tab,
+                        $rowSync->schema_version,
+                        $connection?->id
+                    );
+                } else {
                     ProcessSpreadsheetRowSyncJob::dispatch(
                         $rowSync->id,
                         null,
@@ -144,18 +181,7 @@ class SpreadsheetSyncEngineService
                         $rowSync->schema_version,
                         $connection?->id
                     );
-                });
-            }
-        } else {
-            DB::afterCommit(function () use ($rowSync, $connection) {
-                ProcessSpreadsheetRowSyncJob::dispatch(
-                    $rowSync->id,
-                    null,
-                    $connection?->spreadsheet_id,
-                    $rowSync->target_sheet_tab,
-                    $rowSync->schema_version,
-                    $connection?->id
-                );
+                }
             });
         }
 
@@ -199,6 +225,11 @@ class SpreadsheetSyncEngineService
         );
 
         if ($rowSync->wasRecentlyCreated === false) {
+            // Guardrail: Data yang sudah ter-sync (STATUS_SYNCED) tidak perlu dilakukan sync ulang
+            if ($rowSync->sync_status === SpreadsheetRowSync::STATUS_SYNCED) {
+                return $rowSync;
+            }
+
             $updated = DB::table('spreadsheet_row_syncs')
                 ->where('id', $rowSync->id)
                 ->where('sync_status', '!=', SpreadsheetRowSync::STATUS_PROCESSING)
@@ -219,6 +250,39 @@ class SpreadsheetSyncEngineService
             if ($updated > 0) {
                 $rowSync->refresh();
                 DB::afterCommit(function () use ($rowSync, $connection) {
+                    if (!app()->runningInConsole()) {
+                        ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
+                            $rowSync->id,
+                            null,
+                            $connection?->spreadsheet_id,
+                            $rowSync->target_sheet_tab,
+                            $rowSync->schema_version,
+                            $connection?->id
+                        );
+                    } else {
+                        ProcessSpreadsheetRowSyncJob::dispatch(
+                            $rowSync->id,
+                            null,
+                            $connection?->spreadsheet_id,
+                            $rowSync->target_sheet_tab,
+                            $rowSync->schema_version,
+                            $connection?->id
+                        );
+                    }
+                });
+            }
+        } else {
+            DB::afterCommit(function () use ($rowSync, $connection) {
+                if (!app()->runningInConsole()) {
+                    ProcessSpreadsheetRowSyncJob::dispatchAfterResponse(
+                        $rowSync->id,
+                        null,
+                        $connection?->spreadsheet_id,
+                        $rowSync->target_sheet_tab,
+                        $rowSync->schema_version,
+                        $connection?->id
+                    );
+                } else {
                     ProcessSpreadsheetRowSyncJob::dispatch(
                         $rowSync->id,
                         null,
@@ -227,18 +291,7 @@ class SpreadsheetSyncEngineService
                         $rowSync->schema_version,
                         $connection?->id
                     );
-                });
-            }
-        } else {
-            DB::afterCommit(function () use ($rowSync, $connection) {
-                ProcessSpreadsheetRowSyncJob::dispatch(
-                    $rowSync->id,
-                    null,
-                    $connection?->spreadsheet_id,
-                    $rowSync->target_sheet_tab,
-                    $rowSync->schema_version,
-                    $connection?->id
-                );
+                }
             });
         }
 
@@ -283,6 +336,11 @@ class SpreadsheetSyncEngineService
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
 
+        // Guardrail: Data yang sudah berstatus synced tidak perlu dilakukan sync ulang kecuali dipaksa ($force)
+        if (!$force && $rowSync->isSynced()) {
+            return true;
+        }
+
         // 1. Atomic claim lease to prevent race condition across concurrent workers (Guardrail 1)
         if ($preClaimedFence !== null) {
             // Verify DB has an active, valid lease owned by this fence token
@@ -320,9 +378,12 @@ class SpreadsheetSyncEngineService
                             $retryingQ->whereNotNull('next_retry_at')
                                       ->where('next_retry_at', '<=', now());
                         }
-                    })
-                    // 3. SYNCED: allowed for idempotent checksum verification
-                    ->orWhere('sync_status', SpreadsheetRowSync::STATUS_SYNCED);
+                    });
+
+                    // 3. SYNCED: strictly allowed only if force retry is requested
+                    if ($force) {
+                        $statusQuery->orWhere('sync_status', SpreadsheetRowSync::STATUS_SYNCED);
+                    }
                 })
                 ->where(function ($lq) {
                     $lq->whereNull('locked_at')

@@ -42,5 +42,41 @@
 
     @stack('modals')
     @stack('scripts')
+
+    @auth
+    <script>
+        (function() {
+            const globalSyncTickUrl = @json(route('admin.spreadsheet-connections.global-sync-tick'));
+            let isSyncTicking = false;
+
+            async function runGlobalSyncTick() {
+                if (isSyncTicking) return;
+                isSyncTicking = true;
+                try {
+                    const res = await fetch(globalSyncTickUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.processed > 0 && window.dispatchEvent) {
+                            window.dispatchEvent(new CustomEvent('spreadsheet-sync-updated', { detail: data }));
+                        }
+                    }
+                } catch (e) {
+                    // silent fail
+                } finally {
+                    isSyncTicking = false;
+                }
+            }
+
+            // Jalankan global sync tick setiap 5 detik di seluruh halaman admin
+            setInterval(runGlobalSyncTick, 5000);
+        })();
+    </script>
+    @endauth
 </body>
 </html>

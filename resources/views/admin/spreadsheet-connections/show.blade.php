@@ -561,43 +561,8 @@
                             <th class="px-4 py-2.5">Waktu Dibuat</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @forelse ($outboxEvents as $event)
-                            <tr class="hover:bg-slate-50/70 transition">
-                                <td class="px-4 py-2 font-mono font-medium text-slate-800">
-                                    {{ $event->event_type }}
-                                </td>
-                                <td class="px-4 py-2 font-mono text-slate-600 text-[11px] truncate max-w-xs" title="{{ $event->idempotency_key }}">
-                                    {{ $event->idempotency_key }}
-                                </td>
-                                <td class="px-4 py-2 text-center font-mono">
-                                    {{ $event->attempt_count }} / {{ $event->max_attempts }}
-                                </td>
-                                <td class="px-4 py-2 text-center">
-                                    @php
-                                        $evBadge = match($event->status) {
-                                            'verified' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                            'pending' => 'bg-blue-50 text-blue-700 border-blue-200',
-                                            'processing' => 'bg-purple-50 text-purple-700 border-purple-200',
-                                            'failed' => 'bg-rose-50 text-rose-700 border-rose-200',
-                                            default => 'bg-slate-100 text-slate-600 border-slate-200',
-                                        };
-                                    @endphp
-                                    <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border {{ $evBadge }}">
-                                        {{ ucfirst($event->status) }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-2 font-mono text-slate-500 text-[11px]">
-                                    {{ $event->created_at ? $event->created_at->format('d M Y H:i:s') : '-' }}
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="5" class="px-4 py-4 text-center text-slate-400 italic">
-                                    Belum ada antrean event outbox. Event dibuat otomatis saat Form Builder dipublikasikan.
-                                </td>
-                            </tr>
-                        @endforelse
+                    <tbody id="outbox-events-tbody" class="divide-y divide-slate-100">
+                        @include('admin.spreadsheet-connections.partials.outbox-events', ['outboxEvents' => $outboxEvents])
                     </tbody>
                 </table>
             </div>
@@ -1087,8 +1052,25 @@
     <div class="mt-12 space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-3">
             <div>
-                <h2 class="text-lg font-bold text-slate-800">Pemantauan Antrean & Status Sinkronisasi Baris</h2>
-                <p class="text-xs text-slate-500">Pelacakan status outbound outbox, identitas stabil SERTIF_SYNC_ID, dan riwayat retry.</p>
+                <div class="flex items-center gap-2.5">
+                    <h2 class="text-lg font-bold text-slate-800">Pemantauan Antrean & Status Sinkronisasi Baris</h2>
+                    <span id="sync-live-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Auto-refresh aktif setiap 5 detik">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Live Update 5s
+                    </span>
+                    <button
+                        type="button"
+                        id="btn-manual-sync-refresh"
+                        class="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                        title="Perbarui data sekarang"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Pelacakan status outbound outbox, identitas stabil SERTIF_SYNC_ID, dan riwayat retry.</p>
             </div>
             @if (($stats['failed'] ?? 0) > 0 || ($stats['retrying'] ?? 0) > 0)
                 <form action="{{ route('admin.spreadsheet-connections.retry-failed', $connection) }}" method="POST">
@@ -1112,27 +1094,27 @@
         <div class="grid grid-cols-2 sm:grid-cols-6 gap-4">
             <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Total Baris</span>
-                <p class="text-xl font-bold text-slate-800 mt-1">{{ number_format($stats['total'] ?? 0) }}</p>
+                <p id="stat-total-rows" class="text-xl font-bold text-slate-800 mt-1">{{ number_format($stats['total'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Tersinkronisasi</span>
-                <p class="text-xl font-bold text-emerald-700 mt-1">{{ number_format($stats['synced'] ?? 0) }}</p>
+                <p id="stat-synced-rows" class="text-xl font-bold text-emerald-700 mt-1">{{ number_format($stats['synced'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Antrean Pending</span>
-                <p class="text-xl font-bold text-blue-700 mt-1">{{ number_format($stats['pending'] ?? 0) }}</p>
+                <p id="stat-pending-rows" class="text-xl font-bold text-blue-700 mt-1">{{ number_format($stats['pending'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Dalam Retry</span>
-                <p class="text-xl font-bold text-amber-700 mt-1">{{ number_format($stats['retrying'] ?? 0) }}</p>
+                <p id="stat-retrying-rows" class="text-xl font-bold text-amber-700 mt-1">{{ number_format($stats['retrying'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl border border-rose-200 bg-rose-50/50 p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-rose-700">Gagal Permanen</span>
-                <p class="text-xl font-bold text-rose-700 mt-1">{{ number_format($stats['failed'] ?? 0) }}</p>
+                <p id="stat-failed-rows" class="text-xl font-bold text-rose-700 mt-1">{{ number_format($stats['failed'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl border border-amber-300 bg-amber-50/70 p-4 shadow-sm">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-amber-800">Antrean Dibekukan</span>
-                <p class="text-xl font-bold text-amber-800 mt-1">{{ number_format($pausedQueuesSummary['total_count'] ?? 0) }}</p>
+                <p id="stat-paused-rows" class="text-xl font-bold text-amber-800 mt-1">{{ number_format($pausedQueuesSummary['total_count'] ?? 0) }}</p>
             </div>
         </div>
 
@@ -1212,99 +1194,15 @@
                             <th class="px-4 py-3 text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        @forelse ($rowSyncs as $sync)
-                            <tr class="hover:bg-slate-50/80 transition">
-                                <td class="px-4 py-3 text-center text-slate-400 font-mono">
-                                    {{ $loop->iteration + ($rowSyncs->currentPage() - 1) * $rowSyncs->perPage() }}
-                                </td>
-                                <td class="px-4 py-3 font-mono font-semibold text-slate-800">
-                                    {{ $sync->external_sync_id }}
-                                </td>
-                                <td class="px-4 py-3 font-mono text-slate-600">
-                                    [{{ $sync->target_sheet_tab }}]
-                                </td>
-                                <td class="px-4 py-3">
-                                    @php
-                                        $statusClass = match($sync->sync_status) {
-                                            'synced'               => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                            'pending'              => 'bg-blue-50 text-blue-700 border-blue-200',
-                                            'processing'           => 'bg-purple-50 text-purple-700 border-purple-200',
-                                            'retrying'             => 'bg-amber-50 text-amber-700 border-amber-200',
-                                            'paused_target_rebind' => 'bg-amber-100 text-amber-900 border-amber-300 font-bold',
-                                            'failed'               => 'bg-rose-50 text-rose-700 border-rose-200',
-                                            default                => 'bg-slate-100 text-slate-700 border-slate-200',
-                                        };
-                                    @endphp
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border {{ $statusClass }}">
-                                        {{ $sync->sync_status === 'paused_target_rebind' ? 'Dibekukan (Target Berubah)' : ucfirst($sync->sync_status) }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 font-mono text-slate-600">
-                                    {{ $sync->attempt_count }} / {{ $sync->max_attempts }}
-                                </td>
-                                <td class="px-4 py-3 text-slate-600 font-mono text-[11px]">
-                                    {{ $sync->last_synced_at ? $sync->last_synced_at->format('d M Y H:i:s') : ($sync->last_attempt_at ? $sync->last_attempt_at->format('d M Y H:i:s') : '-') }}
-                                </td>
-                                <td class="px-4 py-3 text-slate-600 max-w-xs truncate" title="{{ $sync->error_message }}">
-                                    {{ $sync->error_message ?: '-' }}
-                                </td>
-                                <td class="px-4 py-3 text-right">
-                                    @if ($sync->isPausedForTargetRebind())
-                                        <div class="inline-flex items-center gap-1">
-                                            <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" class="inline" onsubmit="return confirm('Pindahkan antrean baris ini ke target baru?');">
-                                                @csrf
-                                                <input type="hidden" name="decision" value="rebind_new_target">
-                                                <input type="hidden" name="row_sync_id" value="{{ $sync->id }}">
-                                                <button type="submit" class="px-2 py-0.5 text-[10px] font-semibold rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200" title="Pindah ke target baru (deduplikasi remote)">
-                                                    Pindah
-                                                </button>
-                                            </form>
-                                            <form action="{{ route('admin.spreadsheet-connections.reconcile-queue', $connection) }}" method="POST" class="inline" onsubmit="return confirm('Batalkan antrean sinkronisasi ini? Data pendaftar tetap utuh.');">
-                                                @csrf
-                                                <input type="hidden" name="decision" value="cancel_sync">
-                                                <input type="hidden" name="row_sync_id" value="{{ $sync->id }}">
-                                                <button type="submit" class="px-2 py-0.5 text-[10px] font-semibold rounded bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200" title="Batalkan antrean tanpa menghapus registrasi">
-                                                    Batal
-                                                </button>
-                                            </form>
-                                        </div>
-                                    @elseif ($sync->canRetry() || $sync->isSynced())
-                                        <form action="{{ route('admin.spreadsheet-connections.retry-row', [$connection, $sync]) }}" method="POST" class="inline-block">
-                                            @csrf
-                                            <button
-                                                type="submit"
-                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                                                title="{{ $sync->isSynced() ? 'Sinkronkan ulang baris ini' : 'Retry baris ini' }}"
-                                            >
-                                                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <polyline points="23 4 23 10 17 10"/>
-                                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                                                </svg>
-                                                {{ $sync->isSynced() ? 'Sync Ulang' : 'Retry' }}
-                                            </button>
-                                        </form>
-                                    @else
-                                        <span class="text-slate-300">-</span>
-                                    @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="8" class="px-6 py-8 text-center text-slate-400 italic">
-                                    Belum ada antrean sinkronisasi baris untuk koneksi ini.
-                                </td>
-                            </tr>
-                        @endforelse
+                    <tbody id="sync-rows-tbody" class="divide-y divide-slate-100 bg-white">
+                        @include('admin.spreadsheet-connections.partials.sync-rows', ['rowSyncs' => $rowSyncs, 'connection' => $connection])
                     </tbody>
                 </table>
             </div>
 
-            @if ($rowSyncs->hasPages())
-                <div class="p-4 border-t border-slate-200 bg-slate-50">
-                    {{ $rowSyncs->links() }}
-                </div>
-            @endif
+            <div id="sync-pagination-container">
+                @include('admin.spreadsheet-connections.partials.sync-pagination', ['rowSyncs' => $rowSyncs])
+            </div>
         </div>
     </div>
 </div>
@@ -2251,6 +2149,86 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('Kesalahan jaringan: ' + e.message);
         }
     };
+
+    // ==========================================
+    // Live Auto-Refresh (Polling per 5 Detik)
+    // ==========================================
+    const syncStatusUrl = @json(route('admin.spreadsheet-connections.sync-status', $connection));
+    let isPollingSync = false;
+
+    async function pollSyncMonitoringStatus() {
+        if (isPollingSync) return;
+        isPollingSync = true;
+
+        try {
+            const page = new URLSearchParams(window.location.search).get('page') || 1;
+            const resp = await fetch(`${syncStatusUrl}?page=${encodeURIComponent(page)}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.success) {
+                    if (data.stats) {
+                        const st = data.stats;
+                        const elTotal = document.getElementById('stat-total-rows');
+                        const elSynced = document.getElementById('stat-synced-rows');
+                        const elPending = document.getElementById('stat-pending-rows');
+                        const elRetrying = document.getElementById('stat-retrying-rows');
+                        const elFailed = document.getElementById('stat-failed-rows');
+                        const elPaused = document.getElementById('stat-paused-rows');
+
+                        if (elTotal) elTotal.textContent = Number(st.total || 0).toLocaleString();
+                        if (elSynced) elSynced.textContent = Number(st.synced || 0).toLocaleString();
+                        if (elPending) elPending.textContent = Number(st.pending || 0).toLocaleString();
+                        if (elRetrying) elRetrying.textContent = Number(st.retrying || 0).toLocaleString();
+                        if (elFailed) elFailed.textContent = Number(st.failed || 0).toLocaleString();
+                        if (elPaused) elPaused.textContent = Number(st.paused || 0).toLocaleString();
+                    }
+
+                    const rowsTbody = document.getElementById('sync-rows-tbody');
+                    if (rowsTbody && data.rows_html) {
+                        rowsTbody.innerHTML = data.rows_html;
+                    }
+
+                    const paginContainer = document.getElementById('sync-pagination-container');
+                    if (paginContainer && data.pagination_html !== undefined) {
+                        paginContainer.innerHTML = data.pagination_html;
+                    }
+
+                    const outboxTbody = document.getElementById('outbox-events-tbody');
+                    if (outboxTbody && data.outbox_html) {
+                        outboxTbody.innerHTML = data.outbox_html;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Sync live refresh poll error:', e);
+        } finally {
+            isPollingSync = false;
+        }
+    }
+
+    // Interval refresh setiap 5 detik
+    const syncPollInterval = setInterval(pollSyncMonitoringStatus, 5000);
+    window.addEventListener('spreadsheet-sync-updated', pollSyncMonitoringStatus);
+
+    const btnManualRefresh = document.getElementById('btn-manual-sync-refresh');
+    if (btnManualRefresh) {
+        btnManualRefresh.addEventListener('click', function () {
+            const icon = this.querySelector('svg');
+            if (icon) icon.classList.add('animate-spin');
+            pollSyncMonitoringStatus().finally(() => {
+                setTimeout(() => {
+                    if (icon) icon.classList.remove('animate-spin');
+                }, 500);
+            });
+        });
+    }
 });
 </script>
 @endsection

@@ -428,6 +428,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
 
     // Integrasi Google Spreadsheet -> admin.spreadsheet-connections.*
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
+        Route::get('/global-sync-tick', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'globalSyncTick'])->name('global-sync-tick');
         Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
         Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
         Route::get('/{spreadsheetConnection}/schema-history', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'schemaHistory'])->name('schema-history');
@@ -439,6 +440,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/{spreadsheetConnection}/reconcile-queue', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'reconcileQueue'])->name('reconcile-queue');
         Route::post('/{spreadsheetConnection}/sync-rows/{spreadsheetRowSync}/retry', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryRow'])->name('retry-row');
         Route::post('/{spreadsheetConnection}/retry-failed', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'retryAllFailed'])->name('retry-failed');
+        Route::get('/{spreadsheetConnection}/sync-status', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'syncStatus'])->name('sync-status');
         Route::post('/{spreadsheetConnection}/schemas', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'storeSchema'])->name('schemas.store');
         Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/activate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'activateSchema'])->name('schemas.activate');
         Route::post('/{spreadsheetConnection}/schemas/{schemaVersion}/deactivate', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'deactivateSchema'])->name('schemas.deactivate');
