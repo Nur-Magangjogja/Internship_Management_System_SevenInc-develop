@@ -1555,6 +1555,29 @@ class FormBuilderService
                     $newlyStoredFiles[] = $storedPath;
                     $valString = $storedPath;
                     $label = basename($storedPath);
+
+                    if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
+                        $attData = [
+                            'internship_registration_id' => $registration->id,
+                            'attachment_type'            => $rawKey,
+                            'category'                   => $rawKey,
+                            'file_path'                  => $storedPath,
+                            'original_name'              => $val->getClientOriginalName(),
+                            'file_size'                  => $val->getSize(),
+                            'mime_type'                  => $val->getMimeType() ?: 'application/octet-stream',
+                            'drive_sync_status'          => \App\Models\RegistrationAttachment::STATUS_PENDING,
+                        ];
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'document_version')) {
+                            $attData['document_version'] = 1;
+                        }
+                        \App\Models\RegistrationAttachment::updateOrCreate(
+                            [
+                                'internship_registration_id' => $registration->id,
+                                'attachment_type'            => $rawKey,
+                            ],
+                            $attData
+                        );
+                    }
                 } else {
                     $valString = is_array($val) ? json_encode($val) : (is_null($val) ? null : (string) $val);
 

@@ -77,10 +77,19 @@ class RegistrationSpreadsheetMappingService
      * - Follow-up sekolah/kampus (misal: "menunggu jawaban", "belum ACC"): tidak membatalkan penerimaan admin.
      * - Role 'pemagang', keberadaan LOA/MemberCard tanpa bukti transisi admin, atau metadata row_index mentah TIDAK mencukupi.
      */
-    public function isEligibleForSync(InternshipRegistration $registration, ?\App\Models\SpreadsheetRowSync $rowSync = null): bool
+    public function isEligibleForSync(
+        InternshipRegistration $registration,
+        ?\App\Models\SpreadsheetRowSync $rowSync = null,
+        bool $allowPendaftar = false
+    ): bool
     {
         if ($registration->is_draft || empty($registration->internship_status)) {
             return false;
+        }
+
+        // Jika pendaftar diizinkan secara eksplisit (misal admin mengedit data di /admin/interns/pendaftar)
+        if ($allowPendaftar) {
+            return true;
         }
 
         $status = $registration->internship_status;
@@ -379,13 +388,18 @@ class RegistrationSpreadsheetMappingService
     public function buildOutboundRowPayload(
         InternshipRegistration $registration,
         ?SpreadsheetSchemaVersion $schema = null,
-        ?\App\Models\SpreadsheetRowSync $rowSync = null
+        ?\App\Models\SpreadsheetRowSync $rowSync = null,
+        bool $allowPendaftar = false
     ): array {
-        if ($registration->is_draft || empty($registration->internship_status) || $registration->internship_status === InternshipRegistration::STATUS_NEW) {
+        if ($registration->is_draft || empty($registration->internship_status)) {
             throw new DomainException('Pendaftaran berstatus draft/belum submitted tidak eligible untuk sinkronisasi Spreadsheet.');
         }
 
-        if (!$this->isEligibleForSync($registration, $rowSync)) {
+        if (!$allowPendaftar && $registration->internship_status === InternshipRegistration::STATUS_NEW) {
+            throw new DomainException('Pendaftaran berstatus draft/belum submitted tidak eligible untuk sinkronisasi Spreadsheet.');
+        }
+
+        if (!$this->isEligibleForSync($registration, $rowSync, $allowPendaftar)) {
             throw new DomainException('NOT_ELIGIBLE_UNACCEPTED: Pendaftaran tidak eligible untuk sinkronisasi Spreadsheet tanpa verifikasi penerimaan admin.');
         }
 

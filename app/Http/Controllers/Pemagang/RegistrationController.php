@@ -1032,25 +1032,7 @@ class RegistrationController extends Controller
                         ]);
                     }
 
-                    // 5. Proposal
-                    if ($request->hasFile('proposal')) {
-                        $file = $request->file('proposal');
-                        if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'proposal',
-                                'category'          => 'proposal',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
-                        }
-                    }
-
-                    // 6. Dokumen Pendukung Tambahan (supporting_document / other_Portfolio - Bisa multi-file)
+                    // 5. Dokumen Pendukung Tambahan (supporting_document / other_Portfolio - Bisa multi-file)
                     $supportingRaw = $request->file('supporting_document') ?: $request->file('other_Portfolio');
                     if ($supportingRaw) {
                         $files = is_array($supportingRaw) ? $supportingRaw : [$supportingRaw];
@@ -1069,24 +1051,6 @@ class RegistrationController extends Controller
                                 ]);
                             }
                         }
-                    }
-
-                    // 7. Foto Profil (profile_photo / photo)
-                    $photoFile = $request->file('profile_photo') ?: $request->file('photo');
-                    if ($photoFile && $photoFile->isValid()) {
-                        $path = $this->storeFile($photoFile, 'uploads');
-                        $storedRegistrationFiles[] = ['disk' => 'public', 'path' => $path];
-                        $intern->profile_photo = $path;
-                        $intern->save();
-                        $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                            'attachment_type'   => 'profile_photo',
-                            'category'          => 'profile_photo',
-                            'file_path'         => $path,
-                            'original_name'     => $photoFile->getClientOriginalName(),
-                            'file_size'         => $photoFile->getSize(),
-                            'mime_type'         => $photoFile->getMimeType() ?: 'image/jpeg',
-                            'drive_sync_status' => 'pending',
-                        ]);
                     }
 
                     // 8. Berkas Gabungan Legacy (Kompatibilitas Penuh)
@@ -1177,17 +1141,27 @@ class RegistrationController extends Controller
         }
 
         // Sinkronisasi berkas pendaftaran ke Google Drive (CloudSyncManager)
-        if (!empty($createdAttachments)) {
+        $attachmentsToSync = collect($createdAttachments)->filter();
+        if ($intern) {
+            $pendingAtts = $intern->attachments()
+                ->where('drive_sync_status', 'pending')
+                ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
+                ->where('attachment_type', '!=', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                ->get();
+            $attachmentsToSync = $attachmentsToSync->merge($pendingAtts)->unique('id');
+        }
+
+        if ($attachmentsToSync->isNotEmpty()) {
             $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
-            foreach ($createdAttachments as $createdAtt) {
-                if (!$createdAtt) {
+            foreach ($attachmentsToSync as $attToSync) {
+                if (!$attToSync) {
                     continue;
                 }
                 try {
-                    $syncManager->syncRegistrationAttachment($createdAtt, $user);
+                    $syncManager->syncRegistrationAttachment($attToSync, $user);
                 } catch (\Throwable $driveEx) {
-                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$createdAtt->id}: " . $driveEx->getMessage());
-                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($createdAtt->id);
+                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$attToSync->id}: " . $driveEx->getMessage());
+                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($attToSync->id);
                 }
             }
         }
@@ -1251,10 +1225,8 @@ class RegistrationController extends Controller
             'portfolio'                => 'nullable|array',
             'portfolio.*'              => 'nullable|file|mimes:pdf,zip,rar,mp4,doc,docx,png,jpg,jpeg|max:10240',
             'cover_letter'             => 'nullable|file|mimes:pdf,doc,docx|max:10240',
-            'proposal'                 => 'nullable|file|mimes:pdf,doc,docx|max:10240',
             'supporting_document'      => 'nullable|array',
             'supporting_document.*'    => 'nullable|file|mimes:pdf,doc,docx,zip,rar,png,jpg,jpeg|max:10240',
-            'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'cv_ktp_portofolio_pdf'    => 'nullable|file|mimes:pdf|max:10240',
             'portofolio_visual'        => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
             'design_software'          => 'nullable|string|max:255',

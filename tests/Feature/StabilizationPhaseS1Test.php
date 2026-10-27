@@ -277,19 +277,20 @@ class StabilizationPhaseS1Test extends TestCase
     /**
      * 12. Granular authorization pada route grup /pemagang/*.
      * - Role 'user' diizinkan pendaftaran & pengaturan akun.
-     * - Role 'user' ditolak dari dashboard, dokumen, membercard, webinar (khusus role 'pemagang').
+     * - Role 'user' (calon pemagang) boleh mengakses dashboard, form pendaftaran, dan pengaturan.
+     * - Role 'user' ditolak dari fitur pemagang aktif (dokumen, membercard, webinar).
      */
     public function test_pemagang_routes_granular_authorization(): void
     {
         $regularUser = $this->makeUser('user');
         $pemagang = $this->makeUser('pemagang');
 
-        // User reguler boleh buka form pendaftaran & pengaturan
+        // User reguler (calon pemagang) boleh buka dashboard, form pendaftaran & pengaturan
+        $this->actingAs($regularUser)->get(route('pemagang.dashboard'))->assertStatus(200);
         $this->actingAs($regularUser)->get(route('pemagang.registration.form'))->assertStatus(200);
         $this->actingAs($regularUser)->get(route('pemagang.settings'))->assertStatus(200);
 
         // User reguler ditolak dari fitur modul pemagang aktif
-        $this->actingAs($regularUser)->getJson(route('pemagang.dashboard'))->assertStatus(403);
         $this->actingAs($regularUser)->getJson(route('pemagang.documents'))->assertStatus(403);
         $this->actingAs($regularUser)->getJson(route('pemagang.membercard'))->assertStatus(403);
         $this->actingAs($regularUser)->getJson(route('pemagang.webinar.index'))->assertStatus(403);

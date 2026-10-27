@@ -132,7 +132,10 @@ Route::middleware('guest')->group(function () {
 
 /* =================== USER ROUTES (Legacy — dipertahankan untuk kompatibilitas) =================== */
 // Redirect user.dashboard ke pemagang.dashboard supaya link lama tidak broken
-Route::get('/user/dashboard', fn() => redirect()->route('pemagang.dashboard'))
+Route::get('/user/dashboard', function () {
+    session()->reflash();
+    return redirect()->route('pemagang.dashboard');
+})
     ->name('user.dashboard')
     ->middleware('auth');
 
@@ -831,8 +834,11 @@ Route::get('/registration/documents/{attachment}', [PemagangRegistration::class,
     ->middleware('auth');
 
 /* =================== PEMAGANG & USER ROUTES =================== */
-// Pendaftaran & Pengaturan Akun (diakses oleh user calon pemagang dan pemagang aktif)
+// Dashboard, Pendaftaran & Pengaturan Akun (diakses oleh user calon pemagang dan pemagang aktif)
 Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pemagang.')->group(function () {
+    // Dashboard
+    Route::get('/dashboard', [PemagangDashboard::class, 'index'])->name('dashboard');
+
     // Form Pendaftaran
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
@@ -846,9 +852,6 @@ Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pem
 
 // Modul Pemagang Aktif / Selesai (khusus role:pemagang)
 Route::middleware(['auth', 'role:pemagang'])->prefix('pemagang')->name('pemagang.')->group(function () {
-    // Dashboard
-    Route::get('/dashboard', [PemagangDashboard::class, 'index'])->name('dashboard');
-
     // Dokumen Saya
     Route::get('/dokumen', [PemagangDocument::class, 'index'])->name('documents');
 

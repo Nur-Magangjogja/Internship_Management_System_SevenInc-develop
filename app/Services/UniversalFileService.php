@@ -40,9 +40,9 @@ class UniversalFileService
     }
 
     /**
-     * Resolusi folder path hierarkis target sesuai standar REGISTRASI -> TAHUN -> NAMA PEMAGANG.
+     * Resolusi folder path hierarkis target sesuai standar REGISTRASI -> TAHUN -> NAMA PEMAGANG -> SUBFOLDER BERKAS.
      */
-    public function resolveFolderPath(string $category, string $ownerType, int|string $ownerId, ?int $year = null): string
+    public function resolveFolderPath(string $category, string $ownerType, int|string $ownerId, ?int $year = null, bool $includeSubfolder = false): string
     {
         $currentYear = $year ?: (int) date('Y');
 
@@ -66,10 +66,14 @@ class UniversalFileService
                 : null;
 
             if ($reg) {
+                if ($includeSubfolder && !in_array($category, ['registration_folder', 'applicant_root', 'GENERAL'], true)) {
+                    return $reg->getDriveAttachmentFolderPath($category);
+                }
                 return $reg->getDriveApplicantFolderPath();
             }
 
-            return "REGISTRASI/{$currentYear}/pemagang_REG{$ownerId}";
+            $sub = in_array($category, ['registration_folder', 'applicant_root', 'GENERAL'], true) ? '' : '/' . ucfirst($category);
+            return "REGISTRASI/{$currentYear}/pemagang_REG{$ownerId}" . ($includeSubfolder ? $sub : '');
         }
 
         return match ($category) {
@@ -215,8 +219,8 @@ class UniversalFileService
             'created_by'                 => $actor?->id,
         ]);
 
-        // 3. Resolusi folder anak sesuai struktur hierarki
-        $folderPath = $this->resolveFolderPath($category, $ownerType, $ownerId);
+        // 3. Resolusi folder anak sesuai struktur hierarki (disesuaikan dengan subfolder pengaturan form)
+        $folderPath = $this->resolveFolderPath($category, $ownerType, $ownerId, includeSubfolder: true);
 
         try {
             $registry->update(['sync_status' => CloudFileRegistry::STATUS_UPLOADING]);

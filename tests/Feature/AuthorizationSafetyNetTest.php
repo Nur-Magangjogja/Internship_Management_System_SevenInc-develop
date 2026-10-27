@@ -246,4 +246,20 @@ class AuthorizationSafetyNetTest extends TestCase
         $response = $this->actingAs($pemagang)->get(route('pemagang.documents'));
         $response->assertStatus(200);
     }
+
+    /**
+     * 14. Calon pemagang (role 'user') can access dashboard directly and via legacy redirect without loop
+     */
+    public function test_calon_pemagang_can_access_dashboard_without_redirect_loop(): void
+    {
+        $calonPemagang = $this->makeUser('user');
+
+        // Calon pemagang dapat mengakses dashboard langsung (HTTP 200)
+        $response = $this->actingAs($calonPemagang)->get(route('pemagang.dashboard'));
+        $response->assertStatus(200);
+
+        // Akses via legacy /user/dashboard diarahkan ke pemagang.dashboard tanpa circular loop
+        $legacyResponse = $this->actingAs($calonPemagang)->get(route('user.dashboard'));
+        $legacyResponse->assertRedirect(route('pemagang.dashboard'));
+    }
 }

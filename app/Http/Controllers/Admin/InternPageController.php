@@ -28,7 +28,9 @@ class InternPageController extends Controller
         $formFields = [];
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
-                $targetYear = (int) now()->year;
+                $targetYear = (request()->filled('year') && (int) request('year') >= 2020)
+                    ? (int) request('year')
+                    : (int) now()->year;
                 if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
                     app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
                 }
@@ -38,17 +40,17 @@ class InternPageController extends Controller
 
                 if ($activeSchema) {
                     $formFields = $activeSchema->fields()
-                        ->active()
+                        ->where('is_archived', false)
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
                 } else {
-                    $formFields = \App\Models\FormField::active()
+                    $formFields = \App\Models\FormField::where('is_archived', false)
                         ->whereNull('form_schema_id')
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();

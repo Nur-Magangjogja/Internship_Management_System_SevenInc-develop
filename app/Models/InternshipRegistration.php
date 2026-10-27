@@ -648,6 +648,109 @@ class InternshipRegistration extends Model
     }
 
     /**
+     * Resolusi nama subfolder Google Drive untuk berkas lampiran berdasarkan pengaturan form (FormField / Snapshot).
+     */
+    public function resolveAttachmentDriveSubfolder(string|RegistrationAttachment $attachmentOrType): string
+    {
+        $type = $attachmentOrType instanceof RegistrationAttachment
+            ? ($attachmentOrType->attachment_type ?: $attachmentOrType->category)
+            : (string) $attachmentOrType;
+
+        if ($attachmentOrType instanceof RegistrationAttachment) {
+            if ($attachmentOrType->mime_type === 'application/vnd.google-apps.folder'
+                || $type === RegistrationAttachment::TYPE_LEGACY_BUNDLE
+                || $attachmentOrType->category === RegistrationAttachment::TYPE_LEGACY_BUNDLE) {
+                return '';
+            }
+        }
+
+        $type = strtolower(trim((string) $type));
+        if ($type === '' || in_array($type, [RegistrationAttachment::TYPE_LEGACY_BUNDLE, 'legacy_bundle', 'folder', 'registration_folder', 'applicant_root', 'general'], true)) {
+            return '';
+        }
+
+        // Canonical mapping alias
+        $canonicalKey = match ($type) {
+            'identity', 'ktm_ktp', 'ktm', 'ktp'                          => 'identity',
+            'portfolio', 'portofolio'                                    => 'portfolio',
+            'cover_letter', 'internship_letter', 'surat_pengantar'        => 'cover_letter',
+            'proposal'                                                   => 'proposal',
+            'supporting_document', 'dokumen_pendukung', 'other_portfolio' => 'supporting_document',
+            'profile_photo', 'photo', 'pasfoto'                          => 'profile_photo',
+            'cv'                                                         => 'cv',
+            default                                                      => $type,
+        };
+
+        $resolvedLabel = null;
+
+        // 1. Prioritas 1: Ambil label dari snapshot form pendaftar jika ada
+        try {
+            $snapshot = $this->relationLoaded('formSnapshot') ? $this->formSnapshot : $this->formSnapshot()->first();
+            if ($snapshot && !empty($snapshot->schema_snapshot['fields'])) {
+                foreach ($snapshot->schema_snapshot['fields'] as $f) {
+                    $fKey = strtolower(trim((string) ($f['field_key'] ?? '')));
+                    if (($fKey === $canonicalKey || $fKey === $type) && !empty($f['label'])) {
+                        $resolvedLabel = (string) $f['label'];
+                        break;
+                    }
+                }
+            }
+        } catch (\Throwable) {}
+
+        // 2. Prioritas 2: Ambil label dari master FormField di database (pengaturan form aktif)
+        if (empty($resolvedLabel) && \Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
+            try {
+                $formField = \App\Models\FormField::whereIn('field_key', array_unique([$canonicalKey, $type]))
+                    ->where('is_archived', false)
+                    ->orderBy('is_active', 'desc')
+                    ->latest('id')
+                    ->first();
+
+                if ($formField && !empty($formField->label)) {
+                    $resolvedLabel = (string) $formField->label;
+                }
+            } catch (\Throwable) {}
+        }
+
+        // 3. Prioritas 3: Fallback ke label standar yang rapi
+        if (empty($resolvedLabel)) {
+            $resolvedLabel = match ($canonicalKey) {
+                'cv'                  => 'Curriculum Vitae (CV)',
+                'identity'            => 'KTM atau KTP',
+                'portfolio'           => 'Portofolio',
+                'cover_letter'        => 'Surat Pengantar',
+                'proposal'            => 'Proposal Magang',
+                'supporting_document' => 'Dokumen Pendukung',
+                'profile_photo'       => 'Foto Profil',
+                default               => RegistrationAttachment::getCategoryLabel($canonicalKey),
+            };
+        }
+
+        // Sanitasi karakter agar aman digunakan sebagai nama folder Google Drive
+        $clean = preg_replace('~[\\/\\\\]+~', ' - ', $resolvedLabel);
+        $clean = preg_replace('~[\*:"?<>|]~', '', $clean);
+        $clean = trim(preg_replace('~\s+~', ' ', $clean));
+
+        return $clean !== '' ? $clean : ucfirst($canonicalKey);
+    }
+
+    /**
+     * Bangun jalur folder Google Drive lengkap untuk berkas lampiran tertentu:
+     * REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}/{SUBFOLDER_BERKAS}
+     */
+    public function getDriveAttachmentFolderPath(string|RegistrationAttachment $attachmentOrType): string
+    {
+        $subfolder = $this->resolveAttachmentDriveSubfolder($attachmentOrType);
+        $base = $this->getDriveApplicantFolderPath();
+
+        if ($subfolder === '') {
+            return $base;
+        }
+
+        return "{$base}/{$subfolder}";
+    }
+
+    /**
      * Resolusi Google Drive Folder ID pendaftar yang telah dibentuk selama proses registrasi/sinkronisasi.
      * Mengembalikan ID folder pendaftar dari registration_attachments tanpa mencampuradukkan leaf folder dokumen.
      */

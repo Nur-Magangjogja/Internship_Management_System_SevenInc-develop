@@ -197,8 +197,8 @@ class CloudSyncManager
         $applicantName = $attachment->registration?->fullname ?? ($attachment->registration?->user?->name ?? ($attachment->registration?->name ?? 'Pemagang'));
         $cleanName = Str::slug($applicantName, '_') ?: 'pemagang';
         $remoteFolder = $attachment->registration
-            ? $attachment->registration->getDriveApplicantFolderPath()
-            : "REGISTRASI/{$year}/{$cleanName}_REG{$regId}";
+            ? $attachment->registration->getDriveAttachmentFolderPath($attachment)
+            : "REGISTRASI/{$year}/{$cleanName}_REG{$regId}/" . ($attachment->category ?? 'Berkas');
 
         $fileChecksum = hash_file('sha256', $fullPath);
         $contentVersion = substr($fileChecksum, 0, 16);
@@ -252,11 +252,34 @@ class CloudSyncManager
         $rootFolderId = method_exists($this->driver, 'getRootFolderId') ? $this->driver->getRootFolderId() : null;
 
         if ($isRealDrive && !empty($folderId) && $regId && $folderId !== $rootFolderId) {
-            $folderUrl = $uploadResult['folder_url'] ?? "https://drive.google.com/drive/folders/{$folderId}";
             $expectedRootMarker = 'drive_root:' . ($rootFolderId ?: 'default');
             $applicantSlug = $attachment->registration
                 ? $attachment->registration->getDriveApplicantFolderName()
                 : ('pemagang_REG' . $regId);
+
+            // Resolusi ID folder induk pemagang: REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}
+            $applicantFolderPath = $attachment->registration
+                ? $attachment->registration->getDriveApplicantFolderPath()
+                : "REGISTRASI/" . date('Y') . "/{$applicantSlug}";
+
+            $applicantFolderId = null;
+            if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry') && !empty($rootFolderId)) {
+                $existingApplicantFolder = \App\Models\CloudFolderRegistry::where('canonical_root_id', (string) $rootFolderId)
+                    ->where('folder_path', $applicantFolderPath)
+                    ->value('drive_folder_id');
+                if (!empty($existingApplicantFolder)) {
+                    $applicantFolderId = $existingApplicantFolder;
+                }
+            }
+
+            if (empty($applicantFolderId) && method_exists($this->driver, 'getOrCreateFolderPath')) {
+                try {
+                    $applicantFolderId = $this->driver->getOrCreateFolderPath($applicantFolderPath);
+                } catch (\Throwable) {}
+            }
+
+            $effectiveMainFolderId = $applicantFolderId ?: $folderId;
+            $mainFolderUrl = "https://drive.google.com/drive/folders/{$effectiveMainFolderId}";
 
             try {
                 \App\Models\RegistrationAttachment::updateOrCreate(
@@ -270,8 +293,8 @@ class CloudSyncManager
                         'original_name'       => 'Folder_' . $applicantSlug,
                         'file_size'           => 0,
                         'mime_type'           => 'application/vnd.google-apps.folder',
-                        'drive_file_id'       => $folderId,
-                        'drive_web_view_link' => $folderUrl,
+                        'drive_file_id'       => $effectiveMainFolderId,
+                        'drive_web_view_link' => $mainFolderUrl,
                         'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
                         'drive_synced_at'     => now(),
                         'drive_error_message' => null,
@@ -279,13 +302,24 @@ class CloudSyncManager
                 );
 
                 if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry') && !empty($rootFolderId)) {
+                    if (!empty($applicantFolderId)) {
+                        \App\Models\CloudFolderRegistry::findOrRegisterFolder(
+                            canonicalRootId: (string) $rootFolderId,
+                            folderPath: $applicantFolderPath,
+                            driveFolderId: (string) $applicantFolderId,
+                            ownerType: 'registration',
+                            ownerId: (int) $regId,
+                            category: 'registration_folder'
+                        );
+                    }
+
                     \App\Models\CloudFolderRegistry::findOrRegisterFolder(
                         canonicalRootId: (string) $rootFolderId,
                         folderPath: $remoteFolder,
                         driveFolderId: (string) $folderId,
                         ownerType: 'registration',
                         ownerId: (int) $regId,
-                        category: 'registration_folder'
+                        category: 'attachment_subfolder'
                     );
                 }
             } catch (\Throwable) {

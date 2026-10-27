@@ -13,7 +13,7 @@
 --}}
 
 @php
-    $renderField = function(\App\Models\FormField $field) use ($reg, $old, $input, $label, $radio, $divisions, $toDateInput, $cities, $institutions, $faculties, $studyPrograms) {
+    $renderField = function(\App\Models\FormField $field, bool $isHalf = false) use ($reg, $old, $input, $label, $radio, $divisions, $toDateInput, $cities, $institutions, $faculties, $studyPrograms) {
         $val = $old($field->field_key);
         $hasOptText = (bool) preg_match('/\(opsional\)/i', (string) $field->label);
         $req = $field->is_required
@@ -25,7 +25,9 @@
                     : '';
         $required = $field->is_required ? 'required' : '';
 
-        $html = '<label class="' . $label . '">' . e($field->label) . ' ' . $req . '</label>';
+        $labelHtml = '<label class="' . $label . '">' . e($field->label) . ' ' . $req . '</label>';
+        $controlHtml = '';
+        $descHtml = '';
 
         switch ($field->field_type) {
             case 'text':
@@ -59,29 +61,29 @@
                 
                 if ($field->field_key === 'social_media_instagram') {
                     $igPh = $ph ?: 'username_kamu';
-                    $html .= '<div class="flex items-center gap-0">'
-                        . '<span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>'
+                    $controlHtml = '<div class="flex items-center gap-0 w-full max-w-full">'
+                        . '<span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500 shrink-0">@</span>'
                         . '<input type="text" name="social_media_instagram" ' . $required
                         . ' placeholder="' . $igPh . '"'
-                        . ' class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"'
+                        . ' class="block flex-1 min-w-0 w-full rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"'
                         . ' value="' . e($val) . '">'
                         . '</div>';
                 } else {
-                    $html .= '<input type="' . $field->field_type . '" name="' . e($field->field_key) . '" '
-                        . $required . ' placeholder="' . $ph . '" class="' . $input . $extraClass . '" '
+                    $controlHtml = '<input type="' . $field->field_type . '" name="' . e($field->field_key) . '" '
+                        . $required . ' placeholder="' . $ph . '" class="' . $input . $extraClass . ' w-full max-w-full" '
                         . $extra . $listAttr . ' value="' . e($val) . '">';
                 }
                 break;
 
             case 'date':
                 $dateVal = is_callable($toDateInput) ? $toDateInput($val) : (is_string($val) ? $val : '');
-                $html .= '<input type="date" name="' . e($field->field_key) . '" '
-                    . $required . ' class="' . $input . '" value="' . e($dateVal) . '">';
+                $controlHtml = '<input type="date" name="' . e($field->field_key) . '" '
+                    . $required . ' class="' . $input . ' w-full max-w-full" value="' . e($dateVal) . '">';
                 break;
 
             case 'textarea':
-                $html .= '<textarea name="' . e($field->field_key) . '" ' . $required
-                    . ' rows="3" placeholder="' . $ph . '" class="' . $input . ' resize-none">'
+                $controlHtml = '<textarea name="' . e($field->field_key) . '" ' . $required
+                    . ' rows="3" placeholder="' . $ph . '" class="' . $input . ' w-full max-w-full resize-none">'
                     . e($val) . '</textarea>';
                 break;
 
@@ -122,26 +124,26 @@
                                . e($opt['label']) . '</option>';
                     }
                 }
-                $html .= '<select name="' . e($field->field_key) . '" ' . $required
-                    . ' class="' . $input . '">' . $opts . '</select>';
+                $controlHtml = '<select name="' . e($field->field_key) . '" ' . $required
+                    . ' class="' . $input . ' w-full max-w-full">' . $opts . '</select>';
 
                 // Tampilkan keterangan jika ada description di opsi
                 $hasDesc = collect($field->options ?? [])->contains(fn($o) => !empty($o['description']));
                 if ($hasDesc) {
-                    $html .= '<div class="mt-2 space-y-1 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2" id="desc-' . e($field->field_key) . '">';
+                    $descHtml = '<div class="mt-2 space-y-1 rounded-lg bg-gray-50 border border-gray-100 p-3 max-w-full" id="desc-' . e($field->field_key) . '">';
                     foreach ($field->options ?? [] as $opt) {
                         if (!empty($opt['description'])) {
-                            $html .= '<p class="text-xs text-gray-500 leading-snug hidden desc-item" data-for-value="' . e($opt['value']) . '">'
+                            $descHtml .= '<p class="text-xs text-gray-500 leading-snug hidden desc-item" data-for-value="' . e($opt['value']) . '">'
                                 . '<span class="font-semibold text-gray-700">' . e($opt['label']) . ':</span> '
                                 . e($opt['description'])
                                 . '</p>';
                         }
                     }
                     // Tampilkan semua keterangan saat pertama load jika belum dipilih
-                    $html .= '<p class="text-xs text-gray-400 italic desc-hint">Pilih jenis magang untuk melihat keterangan.</p>';
-                    $html .= '</div>';
+                    $descHtml .= '<p class="text-xs text-gray-400 italic desc-hint">Pilih jenis magang untuk melihat keterangan.</p>';
+                    $descHtml .= '</div>';
                     // JS inline untuk show/hide desc
-                    $html .= '<script>
+                    $descHtml .= '<script>
 (function(){
     var sel = document.querySelector("select[name=\"' . e($field->field_key) . '\"]");
     var box = document.getElementById("desc-' . e($field->field_key) . '");
@@ -167,7 +169,7 @@
                 break;
 
             case 'radio':
-                $radioHtml = '<div class="flex gap-4">';
+                $radioHtml = '<div class="flex flex-wrap items-center gap-4 sm:gap-6 pt-1 min-h-[42px]">';
                 $valLower = strtolower(trim((string)$val));
                 foreach ($field->options ?? [] as $opt) {
                     $optValLower = strtolower((string) $opt['value']);
@@ -181,13 +183,13 @@
                             || (in_array($optValLower, ['0', 'tidak', 'false'], true) && in_array($valLower, ['0', 'tidak', 'false'], true))
                         ));
                     $checked = $isMatch ? 'checked' : '';
-                    $radioHtml .= '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">'
+                    $radioHtml .= '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">'
                         . '<input type="radio" name="' . e($field->field_key) . '" value="' . e($opt['value']) . '" '
                         . 'class="' . $radio . '" ' . $checked . ($field->is_required ? ' required' : '') . '>'
-                        . e($opt['label']) . '</label>';
+                        . '<span class="break-words">' . e($opt['label']) . '</span></label>';
                 }
                 $radioHtml .= '</div>';
-                $html .= $radioHtml;
+                $controlHtml = $radioHtml;
                 break;
 
             case 'checkbox':
@@ -195,8 +197,8 @@
                     ? $val
                     : array_map('trim', explode(',', (string) $val));
                 $savedArr = array_map(fn($v) => strtolower(trim((string)$v)), $rawArr);
-                $groupCls  = 'border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden';
-                $itemCls   = 'flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition cursor-pointer';
+                $groupCls  = 'border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden w-full bg-white';
+                $itemCls   = 'flex items-center gap-3 px-3.5 py-2.5 hover:bg-gray-50 transition cursor-pointer select-none';
                 $checkHtml = '<div class="' . $groupCls . '">';
                 foreach ($field->options ?? [] as $opt) {
                     $optValLower = strtolower((string) $opt['value']);
@@ -210,11 +212,11 @@
                     $checkHtml .= '<label class="' . $itemCls . '">'
                         . '<input type="checkbox" name="' . e($field->field_key) . '[]" value="' . e($opt['value']) . '" '
                         . 'class="' . $radio . '" ' . $checked . '>'
-                        . '<span class="text-sm text-gray-700">' . e($opt['label']) . '</span>'
+                        . '<span class="text-sm text-gray-700 break-words">' . e($opt['label']) . '</span>'
                         . '</label>';
                 }
                 $checkHtml .= '</div>';
-                $html .= $checkHtml;
+                $controlHtml = $checkHtml;
                 break;
 
             case 'file':
@@ -256,39 +258,65 @@
                 }
                 $effectiveRequired = ($field->is_required && !$hasExistingFile) ? 'required' : '';
 
-                $html .= '<input type="file" name="' . e($inputName) . '" ' . $multiAttr . ' ' . $acceptAttr . ' '
-                    . $effectiveRequired . ' class="' . $input . ' file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:text-white cursor-pointer">';
+                $prevFileHtml = '';
                 if ($reg && !empty($reg->{$field->field_key})) {
-                    $html .= '<p class="text-xs text-gray-400 mt-1">File sebelumnya: '
+                    $prevFileHtml = '<p class="text-xs text-gray-400 mt-1.5">File sebelumnya: '
                            . e(basename($reg->{$field->field_key})) . '</p>';
                 }
-                break;
+
+                $fileInputHtml = '<input type="file" name="' . e($inputName) . '" ' . $multiAttr . ' ' . $acceptAttr . ' '
+                    . $effectiveRequired . ' class="' . $input . ' w-full max-w-full file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:text-white file:bg-emerald-700 hover:file:bg-emerald-800 cursor-pointer">';
+
+                if ($isHalf) {
+                    return '<div class="form-half-col p-3.5 sm:p-4 rounded-lg border border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition w-full h-full flex flex-col justify-between">'
+                        . '<div class="form-label-wrap">' . $labelHtml . '</div>'
+                        . '<div class="form-control-wrap mt-auto">' . $fileInputHtml . '</div>'
+                        . (($prevFileHtml || $ht) ? '<div class="form-helper-wrap">' . $prevFileHtml . $ht . '</div>' : '')
+                        . '</div>';
+                }
+
+                return '<div class="p-3.5 sm:p-4 rounded-lg border border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition w-full">'
+                    . $labelHtml
+                    . $fileInputHtml
+                    . $prevFileHtml
+                    . $ht
+                    . '</div>';
         }
 
-        $html .= $ht;
-        return $html;
+        if ($isHalf) {
+            $out = '<div class="form-half-col">';
+            $out .= '<div class="form-label-wrap">' . $labelHtml . '</div>';
+            $out .= '<div class="form-control-wrap">' . $controlHtml . '</div>';
+            if ($ht || !empty($descHtml)) {
+                $out .= '<div class="form-helper-wrap">' . $ht . ($descHtml ?? '') . '</div>';
+            }
+            $out .= '</div>';
+            return $out;
+        }
+
+        return $labelHtml . $controlHtml . ($descHtml ?? '') . $ht;
     };
 
-    // Kelompokkan field berdasarkan column_span untuk grid rendering
+    // Render fields dalam responsive CSS grid (1 kolom di mobile, 2 kolom di web/desktop)
+    // Jarak gap antar-kolom dan antar-baris proporsional serta terlindung dari overflow horizontal
     $renderGroup = function($fields) use ($renderField) {
-        $out = '';
-        $arr = $fields->values()->all();
-        $len = count($arr);
-        $i   = 0;
-        while ($i < $len) {
-            $f = $arr[$i];
-            if ($f->column_span === 2 && ($i + 1) < $len && $arr[$i + 1]->column_span === 2) {
-                // Pasangkan dua half-width dalam grid
-                $out .= '<div class="grid grid-cols-2 gap-4">';
-                $out .= '<div>' . $renderField($f) . '</div>';
-                $out .= '<div>' . $renderField($arr[$i + 1]) . '</div>';
-                $out .= '</div>';
-                $i += 2;
-            } else {
-                $out .= '<div>' . $renderField($f) . '</div>';
-                $i++;
-            }
+        $fieldsList = $fields instanceof \Illuminate\Support\Collection ? $fields : collect($fields);
+        if ($fieldsList->isEmpty()) return '';
+
+        $out = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">';
+        foreach ($fieldsList->values() as $f) {
+            // Field ber-tipe textarea, checkbox banyak pilihan, atau column_span === 1 span 2 kolom di layar desktop
+            $isFullWidth = ($f->column_span !== 2)
+                || $f->field_type === 'textarea'
+                || ($f->field_type === 'checkbox' && count($f->options ?? []) > 2);
+
+            $colSpan = $isFullWidth ? 'col-span-1 md:col-span-2' : 'col-span-1';
+
+            $out .= '<div class="' . $colSpan . ' min-w-0 w-full">';
+            $out .= $renderField($f, !$isFullWidth);
+            $out .= '</div>';
         }
+        $out .= '</div>';
         return $out;
     };
 
@@ -327,9 +355,7 @@
         </h3>
         <p class="text-xs text-gray-500 mt-1">Lengkapi data pribadi, kontak aktif, dan asal universitas / sekolah Anda.</p>
     </div>
-    <div class="space-y-4">
-        {!! $renderGroup($gDataDiri) !!}
-    </div>
+    {!! $renderGroup($gDataDiri) !!}
 </div>
 @endif
 
@@ -343,9 +369,7 @@
         </h3>
         <p class="text-xs text-gray-500 mt-1">Pilih program magang, estimasi durasi, kesiapan WFO di Yogyakarta, serta keahlian kerja.</p>
     </div>
-    <div class="space-y-4">
-        {!! $renderGroup($gPilihan) !!}
-    </div>
+    {!! $renderGroup($gPilihan) !!}
 </div>
 @endif
 
@@ -364,34 +388,34 @@
         $attachmentsList = ($reg && $reg->attachments) ? $reg->attachments : collect();
     @endphp
     @if($attachmentsList->isNotEmpty() || $reg?->profile_photo)
-    <div class="mb-5 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+    <div class="mb-5 p-3.5 sm:p-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
         <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             Berkas Tersimpan di Server ({{ $attachmentsList->count() }} file):
         </h4>
         <div class="space-y-2">
             @foreach($attachmentsList as $att)
-            <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white border border-gray-200 rounded-lg text-xs">
-                <div class="flex items-center gap-2 min-w-0">
-                    <span class="px-2 py-0.5 rounded font-semibold text-[10px] bg-emerald-100 text-emerald-800 uppercase">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 bg-white border border-gray-200 rounded-lg text-xs overflow-hidden">
+                <div class="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+                    <span class="px-2 py-0.5 rounded font-semibold text-[10px] bg-emerald-100 text-emerald-800 uppercase shrink-0">
                         {{ \App\Models\RegistrationAttachment::getCategoryLabel($att->attachment_type ?? '') }}
                     </span>
-                    <a href="{{ route('pemagang.registration.attachment.download', $att->id) }}" target="_blank" class="text-blue-600 font-medium hover:underline truncate max-w-xs" title="{{ $att->original_name ?: basename($att->file_path) }}">
+                    <a href="{{ route('pemagang.registration.attachment.download', $att->id) }}" target="_blank" class="text-blue-600 font-medium hover:underline truncate max-w-[200px] sm:max-w-xs md:max-w-md" title="{{ $att->original_name ?: basename($att->file_path) }}">
                         {{ $att->original_name ?: basename($att->file_path) }}
                     </a>
-                    <span class="text-gray-400">({{ round(($att->file_size ?: 0) / 1024, 1) }} KB)</span>
+                    <span class="text-gray-400 shrink-0">({{ round(($att->file_size ?: 0) / 1024, 1) }} KB)</span>
                     @if(($att->drive_sync_status ?? '') === 'synced')
-                        <span class="text-[10px] text-emerald-600 font-medium flex items-center gap-1"><i class="fas fa-cloud-check"></i> Google Drive</span>
+                        <span class="text-[10px] text-emerald-600 font-medium flex items-center gap-1 shrink-0"><i class="fas fa-cloud-check"></i> Google Drive</span>
                     @else
-                        <span class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><i class="fas fa-hard-drive"></i> Lokal Privat</span>
+                        <span class="text-[10px] text-gray-400 font-medium flex items-center gap-1 shrink-0"><i class="fas fa-hard-drive"></i> Lokal Privat</span>
                     @endif
                 </div>
 
                 @if(!$reg || $reg->is_draft || in_array($reg->internship_status, ['new', 'waiting']))
-                <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')">
+                <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')" class="shrink-0 self-end sm:self-auto">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 transition">
+                    <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded hover:bg-red-50 transition text-xs">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         Hapus
                     </button>
@@ -403,9 +427,7 @@
     </div>
     @endif
 
-    <div class="space-y-4">
-        {!! $renderGroup($gBerkas) !!}
-    </div>
+    {!! $renderGroup($gBerkas) !!}
 </div>
 @endif
 
@@ -419,8 +441,9 @@
     $unrenderedCustomFields = !empty($customFields)
         ? $customFields->reject(fn($cf) => in_array($cf->field_key, $renderedGroupKeys, true))->values()
         : collect();
+    $combinedInfoFields = collect($gInfo)->merge($unrenderedCustomFields)->values();
 @endphp
-@if($gInfo->isNotEmpty() || $unrenderedCustomFields->isNotEmpty())
+@if($combinedInfoFields->isNotEmpty())
 <div id="section-4-informasi-tambahan" class="border-b border-gray-100 pb-6 pt-5">
     <div class="mb-4">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
@@ -429,16 +452,7 @@
         </h3>
         <p class="text-xs text-gray-500 mt-1">Data dosen/guru pembimbing, akun sosial media, info kost, dan aktivitas harian lainnya.</p>
     </div>
-    <div class="space-y-4">
-        @if($gInfo->isNotEmpty())
-            {!! $renderGroup($gInfo) !!}
-        @endif
-
-        {{-- Custom fields yang belum termasuk dalam 4 grup --}}
-        @if($unrenderedCustomFields->isNotEmpty())
-            {!! $renderGroup($unrenderedCustomFields) !!}
-        @endif
-    </div>
+    {!! $renderGroup($combinedInfoFields) !!}
 </div>
 @endif
 

@@ -73,6 +73,7 @@
           <label for="password" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Password <span style="color:#ef4444;">*</span></label>
           <div style="position:relative;">
             <input type="password" id="password" name="password" required placeholder="Min. 8 karakter"
+                   autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                    style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid {{ $errors->has('password') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;box-sizing:border-box;"
                    onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('password') ? '#ef4444' : '#e5e7eb' }}'">
             <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"
@@ -88,6 +89,7 @@
           <label for="password_confirmation" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Konfirmasi <span style="color:#ef4444;">*</span></label>
           <div style="position:relative;">
             <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi password"
+                   autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                    style="width:100%;padding:10px 38px 10px 14px;border:1.5px solid {{ $errors->has('password_confirmation') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;box-sizing:border-box;"
                    onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('password_confirmation') ? '#ef4444' : '#e5e7eb' }}'">
             <button type="button" class="toggle-register-password-btn" onclick="toggleRegisterPasswords()" aria-label="Lihat password"

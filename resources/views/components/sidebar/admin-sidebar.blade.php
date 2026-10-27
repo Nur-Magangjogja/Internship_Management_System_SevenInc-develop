@@ -207,6 +207,10 @@
                                 {!! $icon[$item['icon']] !!}
                             </span>
                             <span class="admin-sidebar-label truncate">{{ $item['label'] }}</span>
+
+                            @if ($item['route'] === 'admin.spreadsheet-connections.index' && \App\Models\SpreadsheetConnection::anyUnconnectedLinksExist())
+                                <span class="admin-sidebar-label ml-auto flex h-2 w-2 rounded-full bg-amber-400 ring-2 ring-amber-400/40 animate-pulse" title="Tanda: Link Spreadsheet atau Google Drive belum terhubung ke SertIF"></span>
+                            @endif
                         </a>
                     @endforeach
                 </div>

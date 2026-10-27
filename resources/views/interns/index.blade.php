@@ -1964,6 +1964,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const phAttr = f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : '';
             const inputClass = 'w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition';
 
+            const isFieldInactive = (f.is_active === false || f.is_active === 0 || f.is_active === '0');
+            const nonaktifBadge = isFieldInactive
+                ? '<span class="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200" title="Kolom ini dinonaktifkan di form pendaftaran pemagang, namun tetap dapat diisi oleh Admin/HR Staff">Nonaktif di Form Pemagang</span>'
+                : '';
+            const labelHtml = `<label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}${nonaktifBadge}</label>`;
+
             // Penanganan khusus untuk Divisi / Minat Magang jika options kosong di schema
             if ((f.field_key === 'internship_interest' || f.field_key === 'division_first_choice') && (!f.options || f.options.length === 0)) {
                 const divisions = @json($divisions ?? []);
@@ -1975,7 +1981,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `<option value="${d.name}" ${isSel ? 'selected' : ''}>${d.name}</option>`;
                 }).join('');
                 return `<div class="${spanClass}">
-                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                    ${labelHtml}
                     <select name="${f.field_key}" class="${inputClass}">
                         <option value="">${escapeHtml(f.placeholder || '-- Pilih Divisi --')}</option>${opts}
                     </select>
@@ -2021,7 +2027,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         <select name="${f.field_key}" class="${inputClass}">
                             <option value="">${escapeHtml(f.placeholder || '-- Pilih --')}</option>
                             ${extraOpt}
@@ -2037,6 +2043,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const sO = String(oVal).toLowerCase().trim();
                         const sL = String(oLbl || '').toLowerCase().trim();
                         if (sR === sO || sR === sL) return true;
+
+                        if ((sR === 'pria' || sR === 'male' || sR === 'laki-laki') && (sO === 'laki-laki' || sL === 'laki-laki')) return true;
+                        if ((sR === 'wanita' || sR === 'female' || sR === 'perempuan') && (sO === 'perempuan' || sL === 'perempuan')) return true;
 
                         const truthy = ['1', 'true', 'ya', 'yes', 'y', 'punya'];
                         const falsy  = ['0', 'false', 'tidak', 'no', 'n'];
@@ -2062,7 +2071,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
                         ${helperHtml}
                     </div>`;
@@ -2071,25 +2080,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     const curVals = Array.isArray(rawVal)
                         ? rawVal.map(x => String(x).toLowerCase().trim())
                         : String(rawVal || '').split(',').map(s => s.trim().toLowerCase());
+                    const matchedOpts = new Set();
                     const opts = (f.options || []).map(o => {
                         const optVal = (typeof o === 'object') ? (o.value ?? o) : o;
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
                         const sOpt = String(optVal).toLowerCase().trim();
                         const sLbl = String(optLbl).toLowerCase().trim();
-                        const chk = (curVals.includes(sOpt) || curVals.includes(sLbl)) ? 'checked' : '';
+                        const isChk = (curVals.includes(sOpt) || curVals.includes(sLbl));
+                        if (isChk) {
+                            matchedOpts.add(sOpt);
+                            matchedOpts.add(sLbl);
+                        }
+                        const chk = isChk ? 'checked' : '';
                         return `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
                             <input type="checkbox" name="${f.field_key}[]" value="${escapeHtml(optVal)}" ${chk} class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${escapeHtml(optLbl)}
                         </label>`;
                     }).join('');
+
+                    let extraOpts = '';
+                    const rawSplits = Array.isArray(rawVal) ? rawVal : String(rawVal || '').split(',');
+                    rawSplits.forEach(item => {
+                        const sItem = String(item).trim();
+                        if (sItem && sItem !== '-' && !matchedOpts.has(sItem.toLowerCase())) {
+                            extraOpts += `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
+                                <input type="checkbox" name="${f.field_key}[]" value="${escapeHtml(sItem)}" checked class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${escapeHtml(sItem)} <span class="text-[10.5px] text-[#4B5F5A]">(Data Tersimpan)</span>
+                            </label>`;
+                        }
+                    });
+
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
-                        <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
+                        ${labelHtml}
+                        <div class="flex flex-wrap gap-3 mt-1.5">${opts}${extraOpts}</div>
                         ${helperHtml}
                     </div>`;
                 }
                 case 'textarea':
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         <textarea name="${f.field_key}" rows="2" ${phAttr} class="${inputClass} resize-none">${v}</textarea>
                         ${helperHtml}
                     </div>`;
@@ -2097,7 +2124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const rawDateVal = it[f.field_key + '_raw'] !== undefined ? it[f.field_key + '_raw'] : rawVal;
                     const dateV = (fmtStr(rawDateVal) === '-') ? '' : fmtStr(rawDateVal);
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         <input type="date" name="${f.field_key}" value="${dateV}" class="${inputClass}">
                         ${helperHtml}
                     </div>`;
@@ -2106,8 +2133,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     let fileInfo = '';
                     const aliasAttKey = ATTACHMENT_KEY_ALIASES[f.field_key];
                     const attObj = (it.attachments && (it.attachments[f.field_key] || it.attachments[f.field_key.toLowerCase()] || (aliasAttKey && it.attachments[aliasAttKey]))) || (it[f.field_key] && typeof it[f.field_key] === 'object' ? it[f.field_key] : null);
-                    const fileUrl = attObj?.url || attObj?.drive_link || (typeof rawVal === 'string' && (rawVal.startsWith('http') || rawVal.includes('.')) ? rawVal : null);
-                    const fileName = attObj?.name || 'Berkas Terlampir';
+                    let fileUrl = attObj?.url || attObj?.drive_link || null;
+                    let fileName = attObj?.name || 'Berkas Terlampir';
+
+                    if (!fileUrl && typeof rawVal === 'string' && rawVal.trim() !== '' && rawVal !== '-') {
+                        const trimmedVal = rawVal.trim();
+                        if (trimmedVal.startsWith('http://') || trimmedVal.startsWith('https://')) {
+                            fileUrl = trimmedVal;
+                            fileName = trimmedVal.split('/').pop().split('?')[0] || 'Berkas Terlampir';
+                        } else if (trimmedVal.includes('.') || trimmedVal.includes('/')) {
+                            fileUrl = `/storage/${trimmedVal.replace(/^\/+/, '')}`;
+                            fileName = trimmedVal.split('/').pop() || 'Berkas Terlampir';
+                        }
+                    }
 
                     if (fileUrl) {
                         fileInfo = `<div class="mb-1.5 flex items-center gap-2">
@@ -2120,7 +2158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         ${fileInfo}
                         <input type="file" name="${f.field_key}" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-[6px] file:border-0 file:text-xs file:font-semibold file:bg-[#E8F5E9] file:text-[#1F5F3F] hover:file:bg-[#d4edd9] border border-[#DCE7E1] rounded-[8px] p-1 bg-[#F4F8F6]">
                         ${helperHtml}
@@ -2130,7 +2168,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (f.field_key === 'social_media_instagram') {
                         const cleanIg = String(v || '').replace(/^@+/, '');
                         return `<div class="${spanClass}">
-                            <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                            ${labelHtml}
                             <div class="relative flex items-center">
                                 <span class="inline-flex items-center px-3 py-2 text-[13px] font-semibold text-[#4B5F5A] bg-[#E8F0EC] border border-r-0 border-[#DCE7E1] rounded-l-[8px]">@</span>
                                 <input type="text" name="${f.field_key}" value="${escapeHtml(cleanIg)}" ${phAttr} class="w-full rounded-r-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
@@ -2155,7 +2193,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         datalistHtml = `<datalist id="faculties-list">${(@json($faculties ?? [])).map(c => `<option value="${c.name}">`).join('')}</datalist>`;
                     }
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        ${labelHtml}
                         <input type="${f.field_type || 'text'}" ${listAttr} ${phAttr} name="${f.field_key}" value="${v}" class="${inputClass}">
                         ${datalistHtml}
                         ${helperHtml}

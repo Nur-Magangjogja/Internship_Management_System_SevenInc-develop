@@ -77,14 +77,15 @@
                                 type="password"
                                 id="password"
                                 name="password"
+                                autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                                 placeholder="Minimal 8 karakter"
                                 class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 pr-10 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
                             >
                             <button
                                 type="button"
                                 onclick="togglePassword('password', this)"
-                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus:outline-none"
-                                aria-label="Lihat atau sembunyikan kata sandi"
+                                class="toggle-hr-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus:outline-none"
+                                aria-label="Lihat kata sandi"
                             >
                                 <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/>
@@ -102,14 +103,15 @@
                                 type="password"
                                 id="password_confirmation"
                                 name="password_confirmation"
+                                autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                                 placeholder="Ketik ulang kata sandi baru"
                                 class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 pr-10 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
                             >
                             <button
                                 type="button"
                                 onclick="togglePassword('password_confirmation', this)"
-                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus:outline-none"
-                                aria-label="Lihat atau sembunyikan kata sandi"
+                                class="toggle-hr-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus:outline-none"
+                                aria-label="Lihat kata sandi"
                             >
                                 <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/>
@@ -142,17 +144,23 @@
 @push('scripts')
 <script>
 function togglePassword(fieldId, btn) {
-    const input = document.getElementById(fieldId);
-    if (!input) return;
-    const isHidden = input.type === 'password';
-    input.type = isHidden ? 'text' : 'password';
-    const icon = btn.querySelector('.eye-icon');
-    if (!icon) return;
-    if (isHidden) {
-        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
-    } else {
-        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
-    }
+    const p1 = document.getElementById('password');
+    const p2 = document.getElementById('password_confirmation');
+    const isHidden = (p1 || p2)?.type === 'password';
+    const newType = isHidden ? 'text' : 'password';
+    const newLabel = isHidden ? 'Sembunyikan kata sandi' : 'Lihat kata sandi';
+    const newIcon = isHidden
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+
+    if (p1) p1.type = newType;
+    if (p2) p2.type = newType;
+
+    document.querySelectorAll('.toggle-hr-password-btn').forEach(b => {
+        b.setAttribute('aria-label', newLabel);
+        const icon = b.querySelector('.eye-icon');
+        if (icon) icon.innerHTML = newIcon;
+    });
 }
 </script>
 @endpush

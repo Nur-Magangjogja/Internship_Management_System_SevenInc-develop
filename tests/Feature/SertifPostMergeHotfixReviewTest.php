@@ -849,7 +849,8 @@ class SertifPostMergeHotfixReviewTest extends TestCase
             customMimeType: 'application/pdf'
         );
 
-        $this->assertSame([$expectedFolderPath], $capturedRemotePaths);
+        $expectedCvFolder = $reg->getDriveAttachmentFolderPath(\App\Models\CloudFileRegistry::CATEGORY_CV);
+        $this->assertSame([$expectedCvFolder], $capturedRemotePaths);
         $this->assertSame('1APPLICANT_FOLDER_THEO_123', $fileRecord->drive_folder_id);
 
         // 3. Meski pemagang hanya memiliki berkas CV, kolom Spreadsheet wajib berisi link FOLDER pemagang (/drive/folders/...),

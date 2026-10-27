@@ -768,25 +768,57 @@ class InternAssessmentController extends Controller
                 return response()->download($fullPath, $filename, ['Content-Type' => 'application/pdf']);
             }
 
-            // 2. Render PDF dari template aktif
+            // 2. Issue dokumen resmi dari template aktif agar tersimpan sebagai GeneratedDocument dan tersinkron ke Google Drive
             try {
-                $context = $issuanceService->buildContext($assessment->intern, 'assessment', [
-                    'document_number' => $assessment->assessment_number,
-                    'template_id'     => $activeTemplate->id,
-                ], isLiveIssuance: true);
+                $issued = $issuanceService->issueDocument(
+                    intern: $assessment->intern,
+                    documentType: 'assessment',
+                    options: [
+                        'document_number' => $assessment->assessment_number,
+                        'template_id'     => $activeTemplate->id,
+                    ],
+                    actor: $user
+                );
 
-                $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
-
-                $tmpPath = storage_path('app/tmp/' . $filename);
-                if (!is_dir(dirname($tmpPath))) {
-                    mkdir(dirname($tmpPath), 0775, true);
+                if ($issued && \Illuminate\Support\Facades\Storage::disk('local')->exists($issued->file_path)) {
+                    $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($issued->file_path);
+                    return response()->download($fullPath, $filename, ['Content-Type' => 'application/pdf']);
                 }
-                file_put_contents($tmpPath, $pdfBinary);
-
-                return response()->download($tmpPath, $filename, ['Content-Type' => 'application/pdf'])
-                    ->deleteFileAfterSend(true);
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal generate surat penilaian dari template aktif: " . $e->getMessage() . " — mencoba fallback legacy view");
+                \Illuminate\Support\Facades\Log::warning("Gagal issue assessment dari template: " . $e->getMessage() . " — mencoba render langsung");
+                try {
+                    $context = $issuanceService->buildContext($assessment->intern, 'assessment', [
+                        'document_number' => $assessment->assessment_number,
+                        'template_id'     => $activeTemplate->id,
+                    ], isLiveIssuance: true);
+
+                    $pdfBinary = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderPdfBinary($activeTemplate, $context['variables'], isLiveIssuance: true);
+
+                    $tmpPath = storage_path('app/tmp/' . $filename);
+                    if (!is_dir(dirname($tmpPath))) {
+                        mkdir(dirname($tmpPath), 0775, true);
+                    }
+                    file_put_contents($tmpPath, $pdfBinary);
+
+                    try {
+                        $pubService = app(\App\Services\DocumentPublishingService::class);
+                        $pubService->publishInternDocument(
+                            intern: $assessment->intern,
+                            documentType: 'assessment',
+                            customDocNumber: $assessment->assessment_number,
+                            actor: $user,
+                            pdfBinary: $pdfBinary,
+                            template: $activeTemplate
+                        );
+                    } catch (\Throwable $ePub) {
+                        \Illuminate\Support\Facades\Log::warning("Gagal publish assessment template fallback ke Drive: " . $ePub->getMessage());
+                    }
+
+                    return response()->download($tmpPath, $filename, ['Content-Type' => 'application/pdf'])
+                        ->deleteFileAfterSend(true);
+                } catch (\Throwable $eDirect) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal direct render assessment: " . $eDirect->getMessage());
+                }
             }
         }
 
@@ -889,6 +921,20 @@ class InternAssessmentController extends Controller
         if (!file_exists($tmpPath) || filesize($tmpPath) === 0) {
             if (file_exists($tmpPath)) @unlink($tmpPath);
             return back()->with('error', 'Gagal menghasilkan dokumen penilaian PDF.');
+        }
+
+        try {
+            $pubService = app(\App\Services\DocumentPublishingService::class);
+            $pubService->publishInternDocument(
+                intern: $assessment->intern,
+                documentType: 'assessment',
+                customDocNumber: $assessment->assessment_number,
+                actor: $user,
+                pdfBinary: file_get_contents($tmpPath),
+                template: null
+            );
+        } catch (\Throwable $ePub) {
+            \Illuminate\Support\Facades\Log::warning("Gagal publish assessment fallback ke Drive: " . $ePub->getMessage());
         }
 
         return response()->download($tmpPath, $filename, ['Content-Type' => 'application/pdf'])

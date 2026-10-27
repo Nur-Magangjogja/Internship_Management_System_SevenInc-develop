@@ -61,6 +61,7 @@
           <label for="password" class="block text-sm font-medium text-gray-800 dark:text-gray-200">Password</label>
           <div class="relative mt-1">
             <input type="password" id="password" name="password" required autocomplete="current-password"
+                   autocorrect="off" autocapitalize="none" spellcheck="false"
                    placeholder="••••••••"
                    class="w-full px-4 pr-10 py-2 rounded-lg border
                           bg-white text-gray-900 placeholder-gray-400

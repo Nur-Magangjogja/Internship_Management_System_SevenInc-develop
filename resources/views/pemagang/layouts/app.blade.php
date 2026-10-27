@@ -81,15 +81,13 @@
           $hasSubmitted = $reg && !$reg->is_draft;
         @endphp
 
-        {{-- Dashboard — hanya setelah submit form --}}
-        @if($hasSubmitted)
+        {{-- Dashboard --}}
         <a href="{{ route('pemagang.dashboard') }}"
            @click="mobileSidebarOpen = false"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 text-sm transition {{ request()->routeIs('pemagang.dashboard') ? 'active' : '' }}">
           <i class="fas fa-home w-4 text-center text-white/70"></i>
           Dashboard
         </a>
-        @endif
 
         {{-- Daftar Magang — selalu tampil --}}
         <a href="{{ route('pemagang.registration.form') }}"
@@ -233,7 +231,7 @@
       </header>
 
       {{-- ===== CONTENT ===== --}}
-      <main class="flex-1 p-6">
+      <main class="flex-1 p-3.5 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden">
 
         {{-- Flash messages --}}
         @if(session('success'))

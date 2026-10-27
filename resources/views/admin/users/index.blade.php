@@ -29,6 +29,10 @@
                             id="delete_admin_password"
                             name="admin_password"
                             required
+                            autocomplete="current-password"
+                            autocorrect="off"
+                            autocapitalize="none"
+                            spellcheck="false"
                             placeholder="Masukkan kata sandi admin"
                             class="w-full rounded-[9px] border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-red-500 focus:outline-none"
                         >
@@ -69,6 +73,10 @@
                         id="restore_admin_password"
                         name="admin_password"
                         required
+                        autocomplete="current-password"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
                         placeholder="Masukkan kata sandi admin"
                         class="w-full rounded-[9px] border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
                     >
@@ -196,8 +204,15 @@
                             <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
                                 Password <span class="text-[#D32F2F]">*</span>
                             </label>
-                            <input type="password" name="password" required placeholder="Min. 8 karakter"
-                                class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2.5 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            <div class="relative">
+                                <input type="password" id="modal_admin_password" name="password" required placeholder="Min. 8 karakter"
+                                    autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
+                                    class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                                <button type="button" class="toggle-modal-admin-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34] focus:outline-none"
+                                    onclick="toggleModalAdminPasswords()" aria-label="Lihat password">
+                                    <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                </button>
+                            </div>
                             @error('password')
                                 <p class="mt-1 text-[11px] text-red-500">{{ $message }}</p>
                             @enderror
@@ -206,8 +221,15 @@
                             <label class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
                                 Konfirmasi Password <span class="text-[#D32F2F]">*</span>
                             </label>
-                            <input type="password" name="password_confirmation" required placeholder="Ulangi password"
-                                class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2.5 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            <div class="relative">
+                                <input type="password" id="modal_admin_password_confirmation" name="password_confirmation" required placeholder="Ulangi password"
+                                    autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
+                                    class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                                <button type="button" class="toggle-modal-admin-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34] focus:outline-none"
+                                    onclick="toggleModalAdminPasswords()" aria-label="Lihat password">
+                                    <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -507,6 +529,25 @@ function openAddUserModal() {
 }
 function closeAddUserModal() {
     document.getElementById('addUserModal').classList.add('hidden');
+}
+function toggleModalAdminPasswords() {
+    const p1 = document.getElementById('modal_admin_password');
+    const p2 = document.getElementById('modal_admin_password_confirmation');
+    const isHidden = (p1 || p2)?.type === 'password';
+    const newType = isHidden ? 'text' : 'password';
+    const newLabel = isHidden ? 'Sembunyikan password' : 'Lihat password';
+    const newIcon = isHidden
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+
+    if (p1) p1.type = newType;
+    if (p2) p2.type = newType;
+
+    document.querySelectorAll('.toggle-modal-admin-password-btn').forEach(b => {
+        b.setAttribute('aria-label', newLabel);
+        const icon = b.querySelector('.eye-icon');
+        if (icon) icon.innerHTML = newIcon;
+    });
 }
 
 // ── Delete modal ──────────────────────────────────────────────────────────────

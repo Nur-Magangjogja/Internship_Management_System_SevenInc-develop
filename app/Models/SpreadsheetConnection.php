@@ -75,6 +75,54 @@ class SpreadsheetConnection extends Model
             && $this->active_spreadsheet_id !== $this->spreadsheet_id;
     }
 
+    /**
+     * Memeriksa apakah link folder Google Drive sudah terhubung dan valid.
+     */
+    public function isDriveConnected(): bool
+    {
+        return !empty($this->drive_folder_url) && !empty($this->drive_folder_id);
+    }
+
+    /**
+     * Memeriksa apakah link Google Spreadsheet sudah terhubung dan valid.
+     */
+    public function isSpreadsheetConnected(): bool
+    {
+        return !empty($this->spreadsheet_url) && !empty($this->spreadsheet_id);
+    }
+
+    /**
+     * Memeriksa apakah link penghubung (Spreadsheet atau Drive) belum terhubung ke database SertIF.
+     */
+    public function hasUnconnectedLinks(): bool
+    {
+        // Untuk koneksi registrasi, baik spreadsheet maupun drive folder wajib terhubung
+        if ($this->connection_key === self::KEY_REGISTRATION) {
+            return !$this->isSpreadsheetConnected() || !$this->isDriveConnected() || $this->connection_status !== self::STATUS_CONNECTED;
+        }
+
+        // Untuk koneksi lainnya, spreadsheet wajib terhubung dan status connected
+        return !$this->isSpreadsheetConnected() || $this->connection_status !== self::STATUS_CONNECTED;
+    }
+
+    /**
+     * Memeriksa apakah terdapat koneksi aktif yang link penghubungnya belum terhubung ke database SertIF.
+     */
+    public static function anyUnconnectedLinksExist(): bool
+    {
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('spreadsheet_connections')) {
+                return false;
+            }
+
+            return static::where('is_enabled', true)
+                ->get()
+                ->contains(fn (SpreadsheetConnection $c) => $c->hasUnconnectedLinks());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     protected static function booted(): void
     {
         static::creating(function (SpreadsheetConnection $connection) {

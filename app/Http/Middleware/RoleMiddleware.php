@@ -43,6 +43,16 @@ class RoleMiddleware
                 abort(403, 'Anda tidak memiliki akses ke halaman tersebut.');
             }
 
+            // Cegah circular redirection loop jika request saat ini sudah berada di endpoint dashboard
+            if (
+                $request->routeIs('pemagang.dashboard') ||
+                $request->routeIs('user.dashboard') ||
+                $request->is('pemagang/dashboard') ||
+                $request->is('user/dashboard')
+            ) {
+                abort(403, 'Anda tidak memiliki akses ke halaman tersebut.');
+            }
+
             if ($userRole === 'admin') {
                 return redirect()->route('admin.dashboard.index')
                     ->with('error', 'Anda tidak memiliki akses ke halaman tersebut.');

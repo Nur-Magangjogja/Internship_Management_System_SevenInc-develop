@@ -439,20 +439,20 @@ class InternApiController extends Controller
                 'wfo_readiness' => $r->wfo_readiness,
                 'schedule_shift_readiness' => $r->schedule_shift_readiness,
                 'has_laptop'    => $r->has_laptop,
-                'design_software' => $r->skills->where('skill_category', 'design')->pluck('skill_name')->implode(', '),
-                'video_software' => $r->skills->where('skill_category', 'video')->pluck('skill_name')->implode(', '),
-                'programming_languages' => $r->skills->where('skill_category', 'programming')->pluck('skill_name')->implode(', '),
-                'digital_marketing_type' => $r->skills->where('skill_category', 'digital_marketing')->pluck('skill_name')->implode(', '),
+                'design_software' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'design')->pluck('skill_name')->implode(', ') : '') ?: ($r->design_software ?? ''),
+                'video_software' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'video')->pluck('skill_name')->implode(', ') : '') ?: ($r->video_software ?? ''),
+                'programming_languages' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'programming')->pluck('skill_name')->implode(', ') : '') ?: ($r->programming_languages ?? ''),
+                'digital_marketing_type' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'digital_marketing')->pluck('skill_name')->implode(', ') : '') ?: ($r->digital_marketing_type ?? ''),
                 'digital_marketing_type_other' => $r->digital_marketing_type_other,
                 'laptop_equipment' => $this->labelize($this->mapLaptop, $r->laptop_equipment),
-                'owned_tools' => $r->tools->pluck('tool_name')->implode(', '),
+                'owned_tools' => ($r->relationLoaded('tools') ? $r->tools->pluck('tool_name')->implode(', ') : '') ?: ($r->owned_tools ?? ''),
                 'owned_tools_other' => $r->owned_tools_other,
                 'start_date' => $this->formatIndoDateOut($r->start_date),
                 'start_date_raw' => $r->start_date,
                 'end_date' => $this->formatIndoDateOut($r->end_date),
                 'end_date_raw' => $r->end_date,
-                'internship_info_sources' => $r->internship_info_sources,
-                'referral_source' => $r->internship_info_sources,
+                'internship_info_sources' => ($r->relationLoaded('infoSources') ? $r->infoSources->pluck('source_name')->implode(', ') : '') ?: ($r->internship_info_sources ?? ''),
+                'referral_source' => ($r->relationLoaded('infoSources') ? $r->infoSources->pluck('source_name')->implode(', ') : '') ?: ($r->internship_info_sources ?? ''),
                 'internship_info_other' => $r->internship_info_other,
                 'current_activities' => $r->current_activities,
                 'boarding_info' => $this->labelize($this->mapYesNo, $r->boarding_info),
@@ -635,25 +635,25 @@ class InternApiController extends Controller
 
                 if ($activeSchema) {
                     $formFields = $activeSchema->fields()
-                        ->active()
+                        ->where('is_archived', false)
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
                 } else {
-                    $formFields = \App\Models\FormField::active()
+                    $formFields = \App\Models\FormField::where('is_archived', false)
                         ->whereNull('form_schema_id')
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
 
                     if (empty($formFields)) {
-                        $formFields = \App\Models\FormField::active()
+                        $formFields = \App\Models\FormField::where('is_archived', false)
                             ->orderBy('sort_order')
-                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                             ->unique('field_key')
                             ->values()
                             ->toArray();

@@ -984,13 +984,6 @@ class InternController extends Controller
             );
         }
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (baik perubahan status maupun atribut)
-        try {
-            app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForRegistration($intern);
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet queue sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
-        }
-
         try {
             \App\Services\ContactMatchingService::ensureContactAndFollowUpCycle($intern);
         } catch (\Throwable $contactErr) {
@@ -1010,7 +1003,7 @@ class InternController extends Controller
                     'cv', 'identity', 'ktm_ktp', 'portfolio', 'cover_letter', 'internship_letter',
                     'proposal', 'supporting_document', 'other_Portfolio', 'profile_photo', 'photo',
                 ]);
-                $customKeys = \App\Models\FormField::active()
+                $customKeys = \App\Models\FormField::where('is_archived', false)
                     ->whereNotNull('field_key')
                     ->pluck('field_key')
                     ->filter(fn($k) => !in_array($k, $excludedCoreKeys, true))
@@ -1046,6 +1039,17 @@ class InternController extends Controller
             }
         } catch (\Throwable $caErr) {
             \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
+        }
+
+        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (secara langsung agar baris dan kolom terhubung real-time)
+        try {
+            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+            $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+            if ($rowSync) {
+                $syncEngine->processSyncRecord($rowSync, force: true, allowPendaftar: true);
+            }
+        } catch (\Throwable $sheetErr) {
+            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
         }
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);

@@ -17,6 +17,7 @@ class GeneratedDocument extends Model
     public const TYPE_ASSESSMENT     = 'assessment';
     public const TYPE_RECOMMENDATION = 'recommendation';
     public const TYPE_MOU            = 'mou';
+    public const TYPE_MEMBERCARD     = 'membercard';
 
     public const STATUS_DRAFT        = 'DRAFT';
     public const STATUS_GENERATED    = 'GENERATED';
