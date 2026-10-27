@@ -83,7 +83,7 @@ class FormFieldSeeder extends Seeder
                 'field_type'  => 'text',
                 'label'       => 'Program Studi',
                 'placeholder' => 'Rekayasa Perangkat Lunak',
-                'is_required' => true,
+                'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => FormField::GROUP_DATA_DIRI,
                 'sort_order'  => 50,

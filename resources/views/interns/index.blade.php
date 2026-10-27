@@ -1577,82 +1577,94 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const SECTION_ORDER = [
-        'Data Pribadi',
-        'Data Akademik',
-        'Informasi Magang',
-        'Keahlian & Alat',
-        'Berkas & Dokumen',
+        'Data Diri & Edukasi',
+        'Pilihan & Durasi',
+        'Berkas & Portofolio',
         'Informasi Tambahan',
     ];
 
+    const GROUP_TO_SECTION_MAP = {
+        data_diri_edukasi:  'Data Diri & Edukasi',
+        data_pribadi:       'Data Diri & Edukasi',
+        data_akademik:      'Data Diri & Edukasi',
+        pilihan_durasi:     'Pilihan & Durasi',
+        informasi_magang:   'Pilihan & Durasi',
+        berkas_portofolio:  'Berkas & Portofolio',
+        berkas_dokumen:     'Berkas & Portofolio',
+        berkas:             'Berkas & Portofolio',
+        dokumen:            'Berkas & Portofolio',
+        informasi_tambahan: 'Informasi Tambahan',
+        keahlian_alat:      'Informasi Tambahan',
+    };
+
     const SYSTEM_SECTION_MAP = {
-        fullname:            'Data Pribadi',
-        birth_place:         'Data Pribadi',
-        born_date:           'Data Pribadi',
-        religion:            'Data Pribadi',
-        student_id:          'Data Pribadi',
-        gender:              'Data Pribadi',
-        email:               'Data Pribadi',
-        phone_number:        'Data Pribadi',
-        current_city:        'Data Pribadi',
+        fullname:                 'Data Diri & Edukasi',
+        birth_place:              'Data Diri & Edukasi',
+        born_date:                'Data Diri & Edukasi',
+        religion:                 'Data Diri & Edukasi',
+        student_id:               'Data Diri & Edukasi',
+        gender:                   'Data Diri & Edukasi',
+        email:                    'Data Diri & Edukasi',
+        phone_number:             'Data Diri & Edukasi',
+        current_city:             'Data Diri & Edukasi',
+        institution_name:         'Data Diri & Edukasi',
+        study_program:            'Data Diri & Edukasi',
+        faculty:                  'Data Diri & Edukasi',
 
-        institution_name:    'Data Akademik',
-        study_program:       'Data Akademik',
-        faculty:             'Data Akademik',
+        internship_type:          'Pilihan & Durasi',
+        internship_arrangement:   'Pilihan & Durasi',
+        internship_interest:      'Pilihan & Durasi',
+        division_first_choice:    'Pilihan & Durasi',
+        internship_reason:        'Pilihan & Durasi',
+        reason_first_choice:      'Pilihan & Durasi',
+        division_second_choice:   'Pilihan & Durasi',
+        reason_second_choice:     'Pilihan & Durasi',
+        willing_other_division:   'Pilihan & Durasi',
+        current_status:           'Pilihan & Durasi',
+        english_book_ability:     'Pilihan & Durasi',
+        English_book_ability:     'Pilihan & Durasi',
+        start_date:               'Pilihan & Durasi',
+        end_date:                 'Pilihan & Durasi',
+        planned_duration:         'Pilihan & Durasi',
+        internship_duration:      'Pilihan & Durasi',
+        wfo_readiness:            'Pilihan & Durasi',
+        schedule_shift_readiness: 'Pilihan & Durasi',
+        supervisor_name:          'Pilihan & Durasi',
+        supervisor_contact:       'Pilihan & Durasi',
 
-        internship_type:          'Informasi Magang',
-        internship_arrangement:   'Informasi Magang',
-        internship_interest:      'Informasi Magang',
-        internship_reason:        'Informasi Magang',
-        current_status:           'Informasi Magang',
-        english_book_ability:     'Informasi Magang',
-        start_date:               'Informasi Magang',
-        end_date:                 'Informasi Magang',
-        planned_duration:         'Informasi Magang',
-        wfo_readiness:            'Informasi Magang',
-        schedule_shift_readiness: 'Informasi Magang',
+        cv:                       'Berkas & Portofolio',
+        identity:                 'Berkas & Portofolio',
+        ktm_ktp:                  'Berkas & Portofolio',
+        portfolio:                'Berkas & Portofolio',
+        cover_letter:             'Berkas & Portofolio',
+        internship_letter:        'Berkas & Portofolio',
+        proposal:                 'Berkas & Portofolio',
+        supporting_document:      'Berkas & Portofolio',
+        other_Portfolio:          'Berkas & Portofolio',
+        profile_photo:            'Berkas & Portofolio',
+        photo:                    'Berkas & Portofolio',
 
-        has_laptop:            'Keahlian & Alat',
-        owned_tools:           'Keahlian & Alat',
-        design_software:       'Keahlian & Alat',
-        video_software:        'Keahlian & Alat',
-        programming_languages: 'Keahlian & Alat',
-        digital_marketing_type:'Keahlian & Alat',
-
-        cv:                  'Berkas & Dokumen',
-        identity:            'Berkas & Dokumen',
-        portfolio:           'Berkas & Dokumen',
-        cover_letter:        'Berkas & Dokumen',
-        proposal:            'Berkas & Dokumen',
-        supporting_document: 'Berkas & Dokumen',
-        profile_photo:       'Berkas & Dokumen',
-
-        supervisor_name:         'Informasi Tambahan',
-        supervisor_contact:      'Informasi Tambahan',
-        boarding_info:           'Informasi Tambahan',
-        social_media_instagram:  'Informasi Tambahan',
-        internship_info_sources: 'Informasi Tambahan',
-        current_activities:      'Informasi Tambahan',
+        has_laptop:               'Informasi Tambahan',
+        owned_tools:              'Informasi Tambahan',
+        design_software:          'Informasi Tambahan',
+        video_software:           'Informasi Tambahan',
+        programming_languages:    'Informasi Tambahan',
+        digital_marketing_type:   'Informasi Tambahan',
+        boarding_info:            'Informasi Tambahan',
+        family_status:            'Informasi Tambahan',
+        parent_wa_contact:        'Informasi Tambahan',
+        social_media_instagram:   'Informasi Tambahan',
+        internship_info_sources:  'Informasi Tambahan',
+        referral_source:          'Informasi Tambahan',
+        current_activities:       'Informasi Tambahan',
+        smoking_status:           'Informasi Tambahan',
     };
 
     function getFieldSection(f) {
         if (f.group_name && f.group_name.trim() !== '' && f.group_name !== 'main') {
-            if (f.group_name === 'data_diri_edukasi') {
-                return SYSTEM_SECTION_MAP[f.field_key] || 'Data Pribadi';
+            if (GROUP_TO_SECTION_MAP[f.group_name]) {
+                return GROUP_TO_SECTION_MAP[f.group_name];
             }
-            if (f.group_name === 'pilihan_durasi') {
-                return SYSTEM_SECTION_MAP[f.field_key] || 'Informasi Magang';
-            }
-            if (f.group_name === 'berkas_portofolio' || f.group_name === 'berkas' || f.group_name === 'dokumen' || f.group_name === 'berkas_dokumen') {
-                return 'Berkas & Dokumen';
-            }
-            if (f.group_name === 'informasi_tambahan') {
-                return SYSTEM_SECTION_MAP[f.field_key] || 'Informasi Tambahan';
-            }
-            if (f.group_name === 'data_pribadi') return 'Data Pribadi';
-            if (f.group_name === 'data_akademik') return 'Data Akademik';
-            if (f.group_name === 'informasi_magang') return 'Informasi Magang';
-            if (f.group_name === 'keahlian_alat') return 'Keahlian & Alat';
             return f.group_name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         }
 
@@ -1660,10 +1672,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return SYSTEM_SECTION_MAP[f.field_key];
         }
         if (f.field_type === 'file') {
-            return 'Berkas & Dokumen';
+            return 'Berkas & Portofolio';
         }
         return 'Informasi Tambahan';
     }
+
+    const ATTACHMENT_KEY_ALIASES = {
+        ktm_ktp:             'identity',
+        identity:            'ktm_ktp',
+        internship_letter:   'cover_letter',
+        cover_letter:        'internship_letter',
+        photo:               'profile_photo',
+        profile_photo:       'photo',
+        other_Portfolio:     'supporting_document',
+        supporting_document: 'other_Portfolio',
+    };
 
     /**
      * Mapping field_key → nilai dari objek data intern.
@@ -1671,15 +1694,29 @@ document.addEventListener('DOMContentLoaded', () => {
     function getFieldValue(it, fieldKey) {
         if (!it) return '-';
 
-        // Cek lampiran berkas pendaftaran jika ada
-        if (it.attachments && it.attachments[fieldKey]) {
-            return it.attachments[fieldKey];
+        // Cek lampiran berkas pendaftaran jika ada (termasuk alias key 2026)
+        if (it.attachments) {
+            if (it.attachments[fieldKey]) {
+                return it.attachments[fieldKey];
+            }
+            const aliasAttKey = ATTACHMENT_KEY_ALIASES[fieldKey];
+            if (aliasAttKey && it.attachments[aliasAttKey]) {
+                return it.attachments[aliasAttKey];
+            }
         }
 
         let v = it[fieldKey];
 
-        if (fieldKey === 'internship_interest') {
-            v = it.division_name || it.internship_interest || v;
+        if (fieldKey === 'internship_interest' || fieldKey === 'division_first_choice') {
+            v = it.division_name || it.internship_interest || it.division_first_choice || v;
+        } else if (fieldKey === 'internship_reason' || fieldKey === 'reason_first_choice') {
+            v = it.internship_reason || it.reason_first_choice || v;
+        } else if (fieldKey === 'planned_duration' || fieldKey === 'internship_duration') {
+            v = it.planned_duration || it.internship_duration || v;
+        } else if (fieldKey === 'english_book_ability' || fieldKey === 'English_book_ability') {
+            v = it.english_book_ability || it.English_book_ability || v;
+        } else if (fieldKey === 'internship_info_sources' || fieldKey === 'referral_source') {
+            v = it.internship_info_sources || it.referral_source || v;
         } else if (fieldKey === 'brand') {
             v = it.brand_name || it.brand || v;
         } else if (fieldKey === 'has_laptop') {
@@ -1773,7 +1810,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const spanClass = (f.column_span === 1 || f.field_type === 'textarea' || f.field_type === 'file') ? 'col-span-2' : '';
                         fieldsHtml += `<div class="${spanClass}">` + detailRow(f.label, val) + '</div>';
                     });
-                    if (sName === 'Informasi Magang' && (it.brand || it.brand_name)) {
+                    if ((sName === 'Pilihan & Durasi' || sName === 'Informasi Magang') && (it.brand || it.brand_name)) {
                         fieldsHtml += detailRow('Brand', it.brand_name || it.brand);
                     }
                 }
@@ -1801,7 +1838,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasBirthPlace = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'birth_place') ? 'true' : 'false' }};
             const hasReligion = {{ \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'religion') ? 'true' : 'false' }};
             fieldsHtml = `
-                ${sectionHtml('Data Pribadi')}
+                ${sectionHtml('Data Diri & Edukasi')}
                 ${detailRow('Nama Lengkap', it.fullname)}
                 ${hasBirthPlace ? detailRow('Tempat Lahir', it.birth_place) : ''}
                 ${detailRow('Tahun Lahir', it.born_date)}
@@ -1811,13 +1848,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${detailRow('Email', it.email)}
                 ${detailRow('No. HP / WA', it.phone_number)}
                 ${detailRow('Kota Tinggal', it.current_city)}
-
-                ${sectionHtml('Data Akademik')}
                 ${detailRow('Asal Sekolah / Kampus', it.institution_name)}
                 ${detailRow('Program Studi', it.study_program)}
                 ${detailRow('Fakultas', it.faculty)}
 
-                ${sectionHtml('Informasi Magang')}
+                ${sectionHtml('Pilihan & Durasi')}
                 ${detailRow('Jenis Magang', it.internship_type)}
                 ${detailRow('Sistem Kerja', it.internship_arrangement)}
                 ${detailRow('Minat Program', it.internship_interest)}
@@ -1830,15 +1865,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${detailRow('Tgl Mulai', it.start_date)}
                 ${detailRow('Tgl Selesai', it.end_date)}
 
-                ${sectionHtml('Keahlian & Alat')}
+                ${sectionHtml('Informasi Tambahan')}
                 ${detailRow('Software Desain', it.design_software)}
                 ${detailRow('Software Video', it.video_software)}
                 ${detailRow('Bahasa Pemrograman', it.programming_languages)}
                 ${detailRow('Materi Digital Marketing', it.digital_marketing_type)}
                 ${detailRow('Memiliki Laptop', (it.has_laptop === true || it.has_laptop === 1 || it.has_laptop === '1' || String(it.has_laptop).toLowerCase() === 'ya') ? 'Ya, Punya Sendiri' : ((it.has_laptop === false || it.has_laptop === 0 || it.has_laptop === '0' || String(it.has_laptop).toLowerCase() === 'tidak') ? 'Tidak' : '-'))}
                 ${detailRow('Alat yang Dimiliki', it.owned_tools)}
-
-                ${sectionHtml('Informasi Tambahan')}
                 ${detailRow('Kegiatan Lain', it.current_activities)}
                 ${detailRow('Butuh Info Kost', it.boarding_info)}
 
@@ -1887,13 +1920,6 @@ document.addEventListener('DOMContentLoaded', () => {
         openModal(appModal);
     }
 
-    function detailRow(label, val) {
-        return `<div>
-            <p class="text-[10.5px] font-semibold uppercase tracking-wide text-[#4B5F5A] mb-0.5">${label}</p>
-            <p class="text-[13px] font-medium text-[#1B3A34] break-words">${fmtStr(val)}</p>
-        </div>`;
-    }
-
     // ── Modal: Edit ──────────────────────────────────────────────────────────────
     function openEditModal(it) {
         document.getElementById('appModalTitle').textContent = 'Edit Data Pemagang';
@@ -1918,27 +1944,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Helper: render satu edit field berdasarkan definisi FormField
         function renderEditField(f, it) {
-            const rawVal  = it[f.field_key] !== undefined ? it[f.field_key] : '';
+            let rawVal = it[f.field_key] !== undefined ? it[f.field_key] : '';
+            if (f.field_key === 'internship_interest' || f.field_key === 'division_first_choice') {
+                rawVal = it.division_name || it.internship_interest || it.division_first_choice || rawVal;
+            } else if (f.field_key === 'internship_reason' || f.field_key === 'reason_first_choice') {
+                rawVal = it.internship_reason || it.reason_first_choice || rawVal;
+            } else if (f.field_key === 'planned_duration' || f.field_key === 'internship_duration') {
+                rawVal = it.planned_duration || it.internship_duration || rawVal;
+            } else if (f.field_key === 'english_book_ability' || f.field_key === 'English_book_ability') {
+                rawVal = it.english_book_ability || it.English_book_ability || rawVal;
+            } else if (f.field_key === 'internship_info_sources' || f.field_key === 'referral_source') {
+                rawVal = it.internship_info_sources || it.referral_source || rawVal;
+            }
+
             const v       = (fmtStr(rawVal) === '-') ? '' : fmtStr(rawVal);
             const spanClass = (f.column_span === 1 || f.field_type === 'file') ? 'sm:col-span-2' : '';
             const reqMark = f.is_required ? '<span class="text-red-500 ml-0.5">*</span>' : '';
+            const helperHtml = f.helper_text ? `<p class="mt-1 text-[11px] text-[#4B5F5A]">${escapeHtml(f.helper_text)}</p>` : '';
+            const phAttr = f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : '';
             const inputClass = 'w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition';
 
-            // Penanganan khusus untuk Divisi / Minat Magang
-            if (f.field_key === 'internship_interest') {
+            // Penanganan khusus untuk Divisi / Minat Magang jika options kosong di schema
+            if ((f.field_key === 'internship_interest' || f.field_key === 'division_first_choice') && (!f.options || f.options.length === 0)) {
                 const divisions = @json($divisions ?? []);
                 const curDivId = it.division_id ? String(it.division_id) : '';
-                const curDivName = (it.division_name || it.internship_interest || '').toLowerCase().trim();
+                const curDivName = (it.division_name || it.internship_interest || it.division_first_choice || '').toLowerCase().trim();
                 const opts = divisions.map(d => {
                     const isSel = (curDivId && String(d.id) === curDivId) ||
                                   (curDivName && (d.name.toLowerCase() === curDivName || (d.slug && d.slug.toLowerCase() === curDivName)));
                     return `<option value="${d.name}" ${isSel ? 'selected' : ''}>${d.name}</option>`;
                 }).join('');
                 return `<div class="${spanClass}">
-                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                    <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                     <select name="${f.field_key}" class="${inputClass}">
-                        <option value="">-- Pilih Divisi --</option>${opts}
+                        <option value="">${escapeHtml(f.placeholder || '-- Pilih Divisi --')}</option>${opts}
                     </select>
+                    ${helperHtml}
                 </div>`;
             }
 
@@ -1970,22 +2011,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
                         const sel = (!hasMatch && isSelectMatch(rawVal, optVal, optLbl)) ? 'selected' : '';
                         if (sel) hasMatch = true;
-                        return `<option value="${optVal}" ${sel}>${optLbl}</option>`;
+                        return `<option value="${escapeHtml(optVal)}" ${sel}>${escapeHtml(optLbl)}</option>`;
                     }).join('');
 
                     // Safety preservation: Jika nilai lama ada tapi tidak cocok dengan opsi mana pun, buat opsi pilihan otomatis agar data tidak terhapus
                     let extraOpt = '';
                     if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '' && fmtStr(rawVal) !== '-' && !hasMatch) {
-                        extraOpt = `<option value="${rawVal}" selected>${rawVal} (Data Tersimpan)</option>`;
+                        extraOpt = `<option value="${escapeHtml(rawVal)}" selected>${escapeHtml(rawVal)} (Data Tersimpan)</option>`;
                     }
 
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         <select name="${f.field_key}" class="${inputClass}">
-                            <option value="">-- Pilih --</option>
+                            <option value="">${escapeHtml(f.placeholder || '-- Pilih --')}</option>
                             ${extraOpt}
                             ${opts}
                         </select>
+                        ${helperHtml}
                     </div>`;
                 }
                 case 'radio': {
@@ -2016,12 +2058,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const optLbl = (typeof o === 'object') ? (o.label ?? o.value ?? o) : o;
                         const chk = isChecked(rawVal, optVal, optLbl) ? 'checked' : '';
                         return `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
-                            <input type="radio" name="${f.field_key}" value="${optVal}" ${chk} class="accent-[#2D8659]"> ${optLbl}
+                            <input type="radio" name="${f.field_key}" value="${escapeHtml(optVal)}" ${chk} class="accent-[#2D8659]"> ${escapeHtml(optLbl)}
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
+                        ${helperHtml}
                     </div>`;
                 }
                 case 'checkbox': {
@@ -2035,30 +2078,34 @@ document.addEventListener('DOMContentLoaded', () => {
                         const sLbl = String(optLbl).toLowerCase().trim();
                         const chk = (curVals.includes(sOpt) || curVals.includes(sLbl)) ? 'checked' : '';
                         return `<label class="inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer text-[#1B3A34]">
-                            <input type="checkbox" name="${f.field_key}[]" value="${optVal}" ${chk} class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${optLbl}
+                            <input type="checkbox" name="${f.field_key}[]" value="${escapeHtml(optVal)}" ${chk} class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-0"> ${escapeHtml(optLbl)}
                         </label>`;
                     }).join('');
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         <div class="flex flex-wrap gap-3 mt-1.5">${opts}</div>
+                        ${helperHtml}
                     </div>`;
                 }
                 case 'textarea':
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
-                        <textarea name="${f.field_key}" rows="2" class="${inputClass} resize-none">${v}</textarea>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                        <textarea name="${f.field_key}" rows="2" ${phAttr} class="${inputClass} resize-none">${v}</textarea>
+                        ${helperHtml}
                     </div>`;
                 case 'date': {
                     const rawDateVal = it[f.field_key + '_raw'] !== undefined ? it[f.field_key + '_raw'] : rawVal;
                     const dateV = (fmtStr(rawDateVal) === '-') ? '' : fmtStr(rawDateVal);
                     return `<div class="${spanClass}">
-                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${f.label}${reqMark}</label>
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         <input type="date" name="${f.field_key}" value="${dateV}" class="${inputClass}">
+                        ${helperHtml}
                     </div>`;
                 }
                 case 'file': {
                     let fileInfo = '';
-                    const attObj = (it.attachments && (it.attachments[f.field_key] || it.attachments[f.field_key.toLowerCase()])) || (it[f.field_key] && typeof it[f.field_key] === 'object' ? it[f.field_key] : null);
+                    const aliasAttKey = ATTACHMENT_KEY_ALIASES[f.field_key];
+                    const attObj = (it.attachments && (it.attachments[f.field_key] || it.attachments[f.field_key.toLowerCase()] || (aliasAttKey && it.attachments[aliasAttKey]))) || (it[f.field_key] && typeof it[f.field_key] === 'object' ? it[f.field_key] : null);
                     const fileUrl = attObj?.url || attObj?.drive_link || (typeof rawVal === 'string' && (rawVal.startsWith('http') || rawVal.includes('.')) ? rawVal : null);
                     const fileName = attObj?.name || 'Berkas Terlampir';
 
@@ -2076,10 +2123,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
                         ${fileInfo}
                         <input type="file" name="${f.field_key}" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-[6px] file:border-0 file:text-xs file:font-semibold file:bg-[#E8F5E9] file:text-[#1F5F3F] hover:file:bg-[#d4edd9] border border-[#DCE7E1] rounded-[8px] p-1 bg-[#F4F8F6]">
-                        ${f.helper_text ? `<p class="mt-1 text-[11px] text-[#4B5F5A]">${escapeHtml(f.helper_text)}</p>` : ''}
+                        ${helperHtml}
                     </div>`;
                 }
                 default: {
+                    if (f.field_key === 'social_media_instagram') {
+                        const cleanIg = String(v || '').replace(/^@+/, '');
+                        return `<div class="${spanClass}">
+                            <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
+                            <div class="relative flex items-center">
+                                <span class="inline-flex items-center px-3 py-2 text-[13px] font-semibold text-[#4B5F5A] bg-[#E8F0EC] border border-r-0 border-[#DCE7E1] rounded-l-[8px]">@</span>
+                                <input type="text" name="${f.field_key}" value="${escapeHtml(cleanIg)}" ${phAttr} class="w-full rounded-r-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                            </div>
+                            ${helperHtml}
+                        </div>`;
+                    }
+
                     let datalistHtml = '';
                     let listAttr = '';
                     if (f.field_key === 'current_city') {
@@ -2097,8 +2156,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     return `<div class="${spanClass}">
                         <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">${escapeHtml(f.label)}${reqMark}</label>
-                        <input type="${f.field_type || 'text'}" ${listAttr} name="${f.field_key}" value="${v}" class="${inputClass}">
+                        <input type="${f.field_type || 'text'}" ${listAttr} ${phAttr} name="${f.field_key}" value="${v}" class="${inputClass}">
                         ${datalistHtml}
+                        ${helperHtml}
                     </div>`;
                 }
             }

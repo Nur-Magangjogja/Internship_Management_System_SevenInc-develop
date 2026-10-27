@@ -795,4 +795,84 @@ class SertifPostMergeHotfixReviewTest extends TestCase
         // 4. LEGACY_SOURCE_READONLY protection remains active by default
         $this->assertTrue((bool) config('spreadsheet.legacy_source_readonly', true));
     }
+
+    /**
+     * Skenario 12: Pembuatan folder Drive pemagang menggunakan REGISTRASI/{TAHUN}/{NAMA_PEMAGANG},
+     * tidak membuat folder dengan nama raw Folder ID, dan kolom Spreadsheet selalu diisi link folder per pemagang.
+     */
+    public function test_drive_folder_hierarchy_and_spreadsheet_applicant_folder_link_population(): void
+    {
+        $reg = $this->createAcceptedRegistration([
+            'fullname'   => 'Theo Pratama',
+            'created_at' => Carbon::create(2026, 10, 26, 10, 0, 0),
+        ]);
+
+        $expectedFolderPath = "REGISTRASI/2026/theo_pratama_REG{$reg->id}";
+        $this->assertSame($expectedFolderPath, $reg->getDriveApplicantFolderPath());
+
+        // 1. UniversalFileService::resolveFolderPath menghasilkan REGISTRASI/{TAHUN}/{NAMA_PEMAGANG} (bukan REG-{id}/CV)
+        $capturedRemotePaths = [];
+        $mockDriver = $this->createMock(\App\Services\CloudStorage\CloudStorageProviderInterface::class);
+        $mockDriver->method('getDriverName')->willReturn('google_apps_script_drive');
+        $mockDriver->method('getOrCreateFolderPath')->willReturn('1APPLICANT_FOLDER_THEO_123');
+        $mockDriver->method('uploadFile')->willReturnCallback(function ($localPath, $remoteFolderPath, $customFileName) use (&$capturedRemotePaths) {
+            $capturedRemotePaths[] = $remoteFolderPath;
+            return [
+                'file_id'       => '1FILE_CV_THEO_999',
+                'web_view_link' => 'https://drive.google.com/file/d/1FILE_CV_THEO_999/view',
+                'folder_id'     => '1APPLICANT_FOLDER_THEO_123',
+                'folder_url'    => 'https://drive.google.com/drive/folders/1APPLICANT_FOLDER_THEO_123',
+                'operation'     => 'created',
+            ];
+        });
+
+        \App\Models\CloudStorageSetting::getEffectiveSettings()->update([
+            'canonical_parent_folder_url' => 'https://drive.google.com/drive/folders/1ROOT_FOLDER_777',
+            'canonical_parent_folder_id'  => '1ROOT_FOLDER_777',
+            'is_verified'                 => true,
+            'connection_status'           => \App\Models\CloudStorageSetting::STATUS_CONNECTED,
+        ]);
+
+        $universalService = new \App\Services\UniversalFileService($mockDriver);
+        $this->assertSame(
+            $expectedFolderPath,
+            $universalService->resolveFolderPath(\App\Models\CloudFileRegistry::CATEGORY_CV, 'registration', $reg->id)
+        );
+
+        // 2. UniversalFileService::put meneruskan $folderPath (bukan raw drive_folder_id) ke uploadFile
+        $fileRecord = $universalService->put(
+            fileOrContent: 'PDF Content Theo',
+            category: \App\Models\CloudFileRegistry::CATEGORY_CV,
+            ownerType: 'registration',
+            ownerId: $reg->id,
+            customFileName: 'CV_Theo.pdf',
+            customMimeType: 'application/pdf'
+        );
+
+        $this->assertSame([$expectedFolderPath], $capturedRemotePaths);
+        $this->assertSame('1APPLICANT_FOLDER_THEO_123', $fileRecord->drive_folder_id);
+
+        // 3. Meski pemagang hanya memiliki berkas CV, kolom Spreadsheet wajib berisi link FOLDER pemagang (/drive/folders/...),
+        // BUKAN link file tunggal (/file/d/.../view)
+        \App\Models\RegistrationAttachment::create([
+            'internship_registration_id' => $reg->id,
+            'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_CV,
+            'category'                   => \App\Models\RegistrationAttachment::TYPE_CV,
+            'file_path'                  => "private/registrations/2026/{$reg->id}/cv.pdf",
+            'original_name'              => 'CV_Theo.pdf',
+            'file_size'                  => 1024,
+            'mime_type'                  => 'application/pdf',
+            'drive_file_id'              => '1FILE_CV_THEO_999',
+            'drive_web_view_link'        => 'https://drive.google.com/file/d/1FILE_CV_THEO_999/view',
+            'drive_sync_status'          => \App\Models\RegistrationAttachment::STATUS_SYNCED,
+            'drive_synced_at'            => now(),
+        ]);
+
+        $mappingService = app(\App\Services\RegistrationSpreadsheetMappingService::class);
+        $payload = $mappingService->buildOutboundRowPayload($reg->fresh());
+        $uploadColHeader = 'Silakan Upload (berupa file Pdf) : CV, Scan KTM/KTP dan Portofolio max. 10 MB';
+        $resolvedLink = $payload[$uploadColHeader] ?? ($payload['Upload PDF CV + scan KTM/KTP + portofolio max 10MB'] ?? null);
+
+        $this->assertSame('https://drive.google.com/drive/folders/1APPLICANT_FOLDER_THEO_123', $resolvedLink);
+    }
 }

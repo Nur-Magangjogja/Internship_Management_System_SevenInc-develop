@@ -275,8 +275,8 @@
         </div>
         @endif
 
-        {{-- Tanggal Mulai Magang (Pastikan selalu ada input start_date jika skema belum menyediakannya di mainFields) --}}
-        @if($mainFields->where('field_key', 'start_date')->isEmpty())
+        {{-- Tanggal Mulai Magang (Pastikan selalu ada input start_date jika skema belum menyediakannya sama sekali) --}}
+        @if(!in_array('start_date', $definedFieldKeys) && $mainFields->where('field_key', 'start_date')->isEmpty() && $extraFields->where('field_key', 'start_date')->isEmpty())
         <div>
           <label class="{{ $label }}">Kapan Berencana Mulai Magang/PKL? <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span></label>
           <input type="date" name="start_date"

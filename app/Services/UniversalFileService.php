@@ -40,24 +40,45 @@ class UniversalFileService
     }
 
     /**
-     * Resolusi folder path hierarkis target sesuai standar Addendum Final V4 Bagian 5.2.
+     * Resolusi folder path hierarkis target sesuai standar REGISTRASI -> TAHUN -> NAMA PEMAGANG.
      */
     public function resolveFolderPath(string $category, string $ownerType, int|string $ownerId, ?int $year = null): string
     {
         $currentYear = $year ?: (int) date('Y');
 
+        if ($ownerType === 'registration' || in_array($category, [
+            CloudFileRegistry::CATEGORY_CV,
+            CloudFileRegistry::CATEGORY_IDENTITY,
+            CloudFileRegistry::CATEGORY_PORTFOLIO,
+            CloudFileRegistry::CATEGORY_RECOMMENDATION_LETTER,
+            CloudFileRegistry::CATEGORY_PROPOSAL,
+            'supporting_document',
+            'dokumen_pendukung',
+            'cover_letter',
+            'surat_pengantar',
+            'ktm_ktp',
+            'portofolio',
+            'pasfoto',
+            'profile_photo',
+        ], true)) {
+            $reg = is_numeric($ownerId)
+                ? \App\Models\InternshipRegistration::withTrashed()->find((int) $ownerId)
+                : null;
+
+            if ($reg) {
+                return $reg->getDriveApplicantFolderPath();
+            }
+
+            return "REGISTRASI/{$currentYear}/pemagang_REG{$ownerId}";
+        }
+
         return match ($category) {
-            CloudFileRegistry::CATEGORY_CV => "REGISTRASI/{$currentYear}/REG-{$ownerId}/CV",
-            CloudFileRegistry::CATEGORY_IDENTITY => "REGISTRASI/{$currentYear}/REG-{$ownerId}/IDENTITAS",
-            CloudFileRegistry::CATEGORY_PORTFOLIO => "REGISTRASI/{$currentYear}/REG-{$ownerId}/PORTOFOLIO",
-            CloudFileRegistry::CATEGORY_RECOMMENDATION_LETTER => "REGISTRASI/{$currentYear}/REG-{$ownerId}/SURAT-PENGANTAR",
-            CloudFileRegistry::CATEGORY_PROPOSAL => "REGISTRASI/{$currentYear}/REG-{$ownerId}/PROPOSAL",
             CloudFileRegistry::CATEGORY_BRAND_LOGO,
             CloudFileRegistry::CATEGORY_BRAND_SIGNATURE => "SYSTEM-ASSETS/BRANDS/{$ownerId}",
             CloudFileRegistry::CATEGORY_INSTITUTION_LOGO,
             CloudFileRegistry::CATEGORY_INSTITUTION_SIGNATURE => "SYSTEM-ASSETS/INSTITUTIONS/{$ownerId}",
             CloudFileRegistry::CATEGORY_ISSUED_DOCUMENT => "GENERATED-DOCUMENTS/ISSUED/{$currentYear}/{$ownerId}",
-            default => "REGISTRASI/{$currentYear}/REG-{$ownerId}/UMUM",
+            default => "REGISTRASI/{$currentYear}/pemagang_REG{$ownerId}",
         };
     }
 
@@ -203,12 +224,19 @@ class UniversalFileService
             $folderRegistry = $this->getOrCreateFolder($folderPath, $ownerType, (int) $ownerId, $category);
             $registry->update(['drive_folder_id' => $folderRegistry->drive_folder_id]);
 
-            // 4. Unggah ke Google Drive API
+            // 4. Unggah ke Google Drive API menggunakan jalur hierarki relatif ($folderPath),
+            // BUKAN raw drive_folder_id, agar Apps Script tidak membuat folder bernama ID di bawah root.
             $uploadResult = $this->driver->uploadFile(
                 localFullPath: $localAbsPath,
-                remoteFolderPath: $folderRegistry->drive_folder_id,
+                remoteFolderPath: $folderPath,
                 customFileName: $logicalFileName
             );
+
+            $resolvedFolderId = $uploadResult['folder_id'] ?? $folderRegistry->drive_folder_id;
+            if (!empty($resolvedFolderId) && $resolvedFolderId !== $folderRegistry->drive_folder_id) {
+                $folderRegistry->update(['drive_folder_id' => $resolvedFolderId]);
+                $registry->update(['drive_folder_id' => $resolvedFolderId]);
+            }
 
             $driveFileId = $uploadResult['file_id'] ?? null;
             if (empty($driveFileId)) {

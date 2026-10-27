@@ -57,9 +57,20 @@
                     }
                 }
                 
-                $html .= '<input type="' . $field->field_type . '" name="' . e($field->field_key) . '" '
-                    . $required . ' placeholder="' . $ph . '" class="' . $input . $extraClass . '" '
-                    . $extra . $listAttr . ' value="' . e($val) . '">';
+                if ($field->field_key === 'social_media_instagram') {
+                    $igPh = $ph ?: 'username_kamu';
+                    $html .= '<div class="flex items-center gap-0">'
+                        . '<span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>'
+                        . '<input type="text" name="social_media_instagram" ' . $required
+                        . ' placeholder="' . $igPh . '"'
+                        . ' class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"'
+                        . ' value="' . e($val) . '">'
+                        . '</div>';
+                } else {
+                    $html .= '<input type="' . $field->field_type . '" name="' . e($field->field_key) . '" '
+                        . $required . ' placeholder="' . $ph . '" class="' . $input . $extraClass . '" '
+                        . $extra . $listAttr . ' value="' . e($val) . '">';
+                }
                 break;
 
             case 'date':
@@ -207,7 +218,7 @@
                 break;
 
             case 'file':
-                $isMultiFile = in_array($field->field_key, ['portfolio', 'supporting_document'], true);
+                $isMultiFile = in_array($field->field_key, ['portfolio', 'supporting_document', 'other_Portfolio'], true);
                 $inputName = $isMultiFile ? ($field->field_key . '[]') : $field->field_key;
                 $multiAttr = $isMultiFile ? 'multiple' : '';
 
@@ -216,7 +227,7 @@
                 if (is_array($exts) && !empty($exts)) {
                     $acceptList = array_map(fn($ext) => '.' . ltrim(strtolower((string) $ext), '.'), $exts);
                     $acceptAttr = 'accept="' . e(implode(',', $acceptList)) . '"';
-                } elseif (in_array($field->field_key, ['cv_ktp_portofolio_pdf', 'cv', 'cover_letter'], true)) {
+                } elseif (in_array($field->field_key, ['cv_ktp_portofolio_pdf', 'cv', 'cover_letter', 'internship_letter'], true)) {
                     $acceptAttr = 'accept=".pdf,application/pdf"';
                 } else {
                     $acceptAttr = 'accept=".pdf,.jpg,.jpeg,.png"';
@@ -225,10 +236,22 @@
                 // Jika berkas sudah pernah diunggah sebelumnya, jangan paksa required ulang saat update
                 $hasExistingFile = false;
                 if ($reg) {
-                    if (!empty($reg->{$field->field_key})) {
+                    if (!empty($reg->{$field->field_key}) || ($field->field_key === 'photo' && !empty($reg->profile_photo))) {
                         $hasExistingFile = true;
                     } elseif ($reg->relationLoaded('attachments') || method_exists($reg, 'attachments')) {
-                        $hasExistingFile = $reg->attachments->where('document_category', $field->field_key)->isNotEmpty();
+                        $aliasTypes = match ($field->field_key) {
+                            'ktm_ktp', 'identity'                   => ['identity', 'ktm_ktp', 'ktm', 'ktp'],
+                            'internship_letter', 'cover_letter'     => ['cover_letter', 'surat_pengantar', 'internship_letter'],
+                            'photo', 'profile_photo'                => ['profile_photo', 'pasfoto', 'photo'],
+                            'other_Portfolio', 'supporting_document'=> ['supporting_document', 'dokumen_pendukung', 'other_Portfolio'],
+                            'portfolio'                             => ['portfolio', 'portofolio'],
+                            default                                 => [$field->field_key],
+                        };
+                        $hasExistingFile = $reg->attachments->filter(function ($att) use ($aliasTypes) {
+                            return in_array($att->attachment_type ?? '', $aliasTypes, true)
+                                || in_array($att->category ?? '', $aliasTypes, true)
+                                || in_array($att->document_category ?? '', $aliasTypes, true);
+                        })->isNotEmpty();
                     }
                 }
                 $effectiveRequired = ($field->is_required && !$hasExistingFile) ? 'required' : '';
@@ -280,13 +303,19 @@
     }
 
     $gDataDiri = $groupedFields['data_diri_edukasi'] ?? collect();
-    $gPilihan  = collect($groupedFields['pilihan_durasi'] ?? [])->reject(fn($f) => $f->field_key === 'internship_arrangement')->values();
+    $gPilihan  = collect($groupedFields['pilihan_durasi'] ?? [])->values();
     $gBerkas   = $groupedFields['berkas_portofolio'] ?? collect();
     $gInfo     = $groupedFields['informasi_tambahan'] ?? collect();
+    $hasActiveArrangementField = $gDataDiri->contains('field_key', 'internship_arrangement')
+        || $gPilihan->contains('field_key', 'internship_arrangement')
+        || $gBerkas->contains('field_key', 'internship_arrangement')
+        || $gInfo->contains('field_key', 'internship_arrangement');
 @endphp
 
-{{-- Sistem Magang selalu Onsite, tidak ditampilkan ke pengguna --}}
+{{-- Fallback default Onsite hanya jika field internship_arrangement dinonaktifkan pada pengaturan form --}}
+@if(!$hasActiveArrangementField)
 <input type="hidden" name="internship_arrangement" value="Onsite">
+@endif
 
 {{-- ==================== 1. DATA DIRI & EDUKASI ==================== --}}
 @if($gDataDiri->isNotEmpty())
@@ -381,7 +410,17 @@
 @endif
 
 {{-- ==================== 4. INFORMASI TAMBAHAN ==================== --}}
-@if($gInfo->isNotEmpty() || (!empty($customFields) && $customFields->isNotEmpty()))
+@php
+    $renderedGroupKeys = $gDataDiri->pluck('field_key')
+        ->merge($gPilihan->pluck('field_key'))
+        ->merge($gBerkas->pluck('field_key'))
+        ->merge($gInfo->pluck('field_key'))
+        ->all();
+    $unrenderedCustomFields = !empty($customFields)
+        ? $customFields->reject(fn($cf) => in_array($cf->field_key, $renderedGroupKeys, true))->values()
+        : collect();
+@endphp
+@if($gInfo->isNotEmpty() || $unrenderedCustomFields->isNotEmpty())
 <div id="section-4-informasi-tambahan" class="border-b border-gray-100 pb-6 pt-5">
     <div class="mb-4">
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
@@ -391,29 +430,13 @@
         <p class="text-xs text-gray-500 mt-1">Data dosen/guru pembimbing, akun sosial media, info kost, dan aktivitas harian lainnya.</p>
     </div>
     <div class="space-y-4">
-        @foreach($gInfo as $field)
-            @if($field->field_key === 'social_media_instagram')
-            <div>
-                <label class="{{ $label }}">{{ $field->label }}@if($field->is_required) <span class="text-red-500">*</span>@elseif(!preg_match('/\(opsional\)/i', (string) $field->label)) <span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span>@endif</label>
-                <div class="flex items-center gap-0">
-                    <span class="inline-flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-sm text-gray-500">@</span>
-                    <input type="text" name="social_media_instagram"
-                        placeholder="{{ $field->placeholder ?? 'username_kamu' }}"
-                        class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 px-3 py-2.5 text-sm"
-                        value="{{ old('social_media_instagram', ($reg?->social_media_instagram !== '-' ? $reg?->social_media_instagram : '')) }}">
-                </div>
-                @if($field->helper_text)
-                <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
-                @endif
-            </div>
-            @else
-            <div>{!! $renderField($field) !!}</div>
-            @endif
-        @endforeach
+        @if($gInfo->isNotEmpty())
+            {!! $renderGroup($gInfo) !!}
+        @endif
 
         {{-- Custom fields yang belum termasuk dalam 4 grup --}}
-        @if(!empty($customFields) && $customFields->isNotEmpty())
-            {!! $renderGroup($customFields) !!}
+        @if($unrenderedCustomFields->isNotEmpty())
+            {!! $renderGroup($unrenderedCustomFields) !!}
         @endif
     </div>
 </div>

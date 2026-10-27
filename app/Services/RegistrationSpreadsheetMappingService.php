@@ -673,7 +673,7 @@ class RegistrationSpreadsheetMappingService
     }
 
     /**
-     * Resolve valid Google Drive link for registration attachment if synced (1 unified folder/bundle link).
+     * Resolve valid Google Drive link for registration attachment if synced (1 unified folder/bundle link per applicant).
      */
     protected function resolveAttachmentUrl(InternshipRegistration $registration): ?string
     {
@@ -684,15 +684,72 @@ class RegistrationSpreadsheetMappingService
             ->whereNotNull('drive_web_view_link')
             ->get();
 
+        // 1. Utamakan tautan folder Google Drive asli milik pemagang (bukan placeholder 1folder_reg_* / REG-{id}/CV)
+        $realFolderAtt = $attachments->first(function ($att) {
+            $link = (string) $att->drive_web_view_link;
+            $fileId = (string) $att->drive_file_id;
+            $cat  = (string) ($att->getRawOriginal('category') ?? $att->category);
+            $type = (string) $att->attachment_type;
+            $mime = (string) $att->mime_type;
+
+            $isFolderRecord = str_contains($link, '/drive/folders/')
+                || $mime === 'application/vnd.google-apps.folder'
+                || in_array($cat, [\App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE, 'legacy_bundle', 'folder'], true)
+                || in_array($type, [\App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE, 'legacy_bundle', 'folder'], true);
+
+            if (!$isFolderRecord) {
+                return false;
+            }
+
+            return !str_starts_with($fileId, '1folder_reg_')
+                && !str_starts_with($fileId, '1demo_')
+                && !str_contains($link, '1folder_reg_');
+        });
+
+        if ($realFolderAtt) {
+            $link = (string) $realFolderAtt->drive_web_view_link;
+            if (str_contains($link, '/drive/folders/')) {
+                return $link;
+            }
+            return "https://drive.google.com/drive/folders/{$realFolderAtt->drive_file_id}";
+        }
+
+        // 2. Cek CloudFolderRegistry untuk folder kanonikal pemagang: REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+                $expectedPath = $registration->getDriveApplicantFolderPath();
+                $folderReg = \App\Models\CloudFolderRegistry::where('folder_path', $expectedPath)
+                    ->whereNotNull('drive_folder_id')
+                    ->latest('id')
+                    ->first();
+
+                if (!$folderReg) {
+                    $folderReg = \App\Models\CloudFolderRegistry::where('owner_type', 'registration')
+                        ->where('owner_id', $registration->id)
+                        ->where('folder_path', 'NOT LIKE', '%/REG-%')
+                        ->whereNotNull('drive_folder_id')
+                        ->latest('id')
+                        ->first();
+                }
+
+                if ($folderReg && !empty($folderReg->drive_folder_id)) {
+                    return "https://drive.google.com/drive/folders/{$folderReg->drive_folder_id}";
+                }
+            }
+        } catch (\Throwable) {
+            // Abaikan jika tabel belum tersedia di unit test ringan
+        }
+
         if ($attachments->isEmpty()) {
             return null;
         }
 
+        // 3. Jika hanya ada 1 lampiran dan belum ada folder kanonikal (misal pada unit test terisolasi)
         if ($attachments->count() === 1) {
             return $attachments->first()->drive_web_view_link;
         }
 
-        // 1. Utamakan tautan 1 folder penyimpanan Google Drive atau bundle gabungan jika tersedia
+        // 4. Cek folder/bundle (termasuk seeder demo jika ada)
         $folderOrBundle = $attachments->first(function ($att) {
             $link = (string) $att->drive_web_view_link;
             $cat  = (string) ($att->getRawOriginal('category') ?? $att->category);
@@ -707,7 +764,7 @@ class RegistrationSpreadsheetMappingService
             return (string) $folderOrBundle->drive_web_view_link;
         }
 
-        // 2. Jika data multi-upload berasal dari seeder demo (1demo_*), kembalikan 1 link folder penyimpanan terpadu pendaftar
+        // 5. Jika data multi-upload berasal dari seeder demo (1demo_*), kembalikan 1 link folder penyimpanan terpadu pendaftar
         $hasDemoAttachment = $attachments->contains(function ($att) {
             return str_starts_with((string) $att->drive_file_id, '1demo_')
                 || str_contains((string) $att->drive_web_view_link, '1demo_');
@@ -718,7 +775,7 @@ class RegistrationSpreadsheetMappingService
             return "https://drive.google.com/drive/folders/1folder_reg_{$registration->id}_{$slug}?usp=sharing";
         }
 
-        // 3. Fallback: kembalikan 1 tautan utama saja (jangan digabung dengan newline)
+        // 6. Fallback: kembalikan 1 tautan utama saja (jangan digabung dengan newline)
         $primary = $attachments->firstWhere('category', \App\Models\RegistrationAttachment::TYPE_CV)
             ?? $attachments->first();
 

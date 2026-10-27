@@ -288,11 +288,10 @@ class DocumentPublishingService
                     }
                     $remoteFolder = "Dokumen_Diterbitkan/{$typeFolder}";
                 } else {
-                    // Belum ada mapping permanen pada registrasi: gunakan struktur Registrasi/{year}/{applicantName}_REG{id}
-                    $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
+                    // Belum ada mapping permanen pada registrasi: gunakan struktur REGISTRASI/{year}/{applicantName}_REG{id}
                     $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
                     $regId = $intern->id;
-                    $applicantFolderRelative = "Registrasi/{$year}/{$applicantName}_REG{$regId}";
+                    $applicantFolderRelative = $intern->getDriveApplicantFolderPath();
 
                     // Gunakan configured drive folder ID dari koneksi registrasi pemagang jika menggunakan path
                     if (method_exists($this->cloudDriver, 'setRootFolderId')) {

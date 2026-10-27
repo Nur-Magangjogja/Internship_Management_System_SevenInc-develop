@@ -513,6 +513,36 @@ class InternshipRegistration extends Model
         return $this->division ? $this->division->name : null;
     }
 
+    public function getDivisionFirstChoiceAttribute()
+    {
+        return $this->internship_interest;
+    }
+
+    public function getReasonFirstChoiceAttribute()
+    {
+        return $this->attributes['internship_reason'] ?? null;
+    }
+
+    public function getInternshipDurationAttribute()
+    {
+        return $this->attributes['planned_duration'] ?? null;
+    }
+
+    public function getEnglishBookAbilityAttribute($value = null)
+    {
+        return $value ?? ($this->attributes['english_book_ability'] ?? null);
+    }
+
+    public function getReferralSourceAttribute()
+    {
+        return $this->internship_info_sources;
+    }
+
+    public function getPhotoAttribute()
+    {
+        return $this->attributes['profile_photo'] ?? null;
+    }
+
     public function getBrandAttribute()
     {
         return $this->brandRel ? $this->brandRel->name : null;
@@ -594,6 +624,30 @@ class InternshipRegistration extends Model
     }
 
     /**
+     * Bangun nama folder Google Drive kanonikal untuk pendaftar ini: {nama_pemagang}_REG{id}
+     */
+    public function getDriveApplicantFolderName(): string
+    {
+        $applicantName = $this->fullname ?: ($this->user?->name ?: ($this->name ?: 'Pemagang'));
+        $cleanName = \Illuminate\Support\Str::slug($applicantName, '_');
+        if ($cleanName === '') {
+            $cleanName = 'pemagang';
+        }
+
+        return "{$cleanName}_REG{$this->id}";
+    }
+
+    /**
+     * Bangun jalur folder Google Drive kanonikal untuk pendaftar ini: REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}
+     */
+    public function getDriveApplicantFolderPath(): string
+    {
+        $year = $this->created_at ? $this->created_at->format('Y') : date('Y');
+
+        return "REGISTRASI/{$year}/" . $this->getDriveApplicantFolderName();
+    }
+
+    /**
      * Resolusi Google Drive Folder ID pendaftar yang telah dibentuk selama proses registrasi/sinkronisasi.
      * Mengembalikan ID folder pendaftar dari registration_attachments tanpa mencampuradukkan leaf folder dokumen.
      */
@@ -619,14 +673,20 @@ class InternshipRegistration extends Model
 
         if ($folderAtt && !empty($folderAtt->drive_file_id)) {
             $id = trim((string) $folderAtt->drive_file_id);
-            if (!empty($folderAtt->drive_web_view_link) && str_contains($folderAtt->drive_web_view_link, '/drive/folders/')) {
-                $extracted = \App\Models\CloudStorageSetting::extractDriveFolderId($folderAtt->drive_web_view_link);
-                if (!empty($extracted)) {
-                    return $extracted;
+            $isPlaceholder = str_starts_with($id, '1folder_reg_')
+                || str_starts_with($id, '1demo_')
+                || str_starts_with($id, 'local_sim_');
+
+            if (!$isPlaceholder) {
+                if (!empty($folderAtt->drive_web_view_link) && str_contains($folderAtt->drive_web_view_link, '/drive/folders/')) {
+                    $extracted = \App\Models\CloudStorageSetting::extractDriveFolderId($folderAtt->drive_web_view_link);
+                    if (!empty($extracted) && !str_starts_with($extracted, '1folder_reg_')) {
+                        return $extracted;
+                    }
                 }
-            }
-            if (!str_starts_with($id, 'drive_root:')) {
-                return $id;
+                if (!str_starts_with($id, 'drive_root:')) {
+                    return $id;
+                }
             }
         }
 
@@ -638,8 +698,29 @@ class InternshipRegistration extends Model
 
         if ($linkAtt) {
             $extracted = \App\Models\CloudStorageSetting::extractDriveFolderId($linkAtt->drive_web_view_link);
-            if (!empty($extracted)) {
+            if (!empty($extracted) && !str_starts_with($extracted, '1folder_reg_')) {
                 return $extracted;
+            }
+        }
+
+        // 3. Cek dari CloudFolderRegistry untuk jalur kanonikal REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}
+        if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+            $expectedPath = $this->getDriveApplicantFolderPath();
+            $folderReg = \App\Models\CloudFolderRegistry::where('folder_path', $expectedPath)
+                ->whereNotNull('drive_folder_id')
+                ->latest('id')
+                ->first();
+
+            if ($folderReg && !empty($folderReg->drive_folder_id)) {
+                return trim((string) $folderReg->drive_folder_id);
+            }
+        }
+
+        // Fallback ke placeholder jika memang dari unit test/seeder
+        if ($folderAtt && !empty($folderAtt->drive_file_id)) {
+            $id = trim((string) $folderAtt->drive_file_id);
+            if (!str_starts_with($id, 'drive_root:')) {
+                return $id;
             }
         }
 

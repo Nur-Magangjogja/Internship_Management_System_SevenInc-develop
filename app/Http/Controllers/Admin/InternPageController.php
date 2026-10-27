@@ -25,6 +25,39 @@ class InternPageController extends Controller
         $allYears   = array_values(array_unique(array_merge($basisYears, $yearsCreated, $yearsStart, [(int) date('Y')])));
         rsort($allYears);
 
+        $formFields = [];
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
+                $targetYear = (int) now()->year;
+                if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
+                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                }
+                $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                    ?: \App\Models\FormSchema::activePublished()->first()
+                    ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
+
+                if ($activeSchema) {
+                    $formFields = $activeSchema->fields()
+                        ->active()
+                        ->orderBy('sort_order')
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->unique('field_key')
+                        ->values()
+                        ->toArray();
+                } else {
+                    $formFields = \App\Models\FormField::active()
+                        ->whereNull('form_schema_id')
+                        ->orderBy('sort_order')
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->unique('field_key')
+                        ->values()
+                        ->toArray();
+                }
+            }
+        } catch (\Throwable $e) {
+            // abaikan jika tabel belum siap
+        }
+
         $default = [
             'years'         => $allYears,
             'yearsCreated'  => $yearsCreated,
@@ -36,6 +69,7 @@ class InternPageController extends Controller
             'institutions'  => \App\Models\Institution::where('is_active', true)->orderBy('name')->get(),
             'faculties'     => \App\Models\Faculty::orderBy('name')->get(),
             'studyPrograms' => \App\Models\StudyProgram::orderBy('name')->get(),
+            'formFields'    => $formFields,
         ];
 
         return view('interns.index', array_merge($default, $data));

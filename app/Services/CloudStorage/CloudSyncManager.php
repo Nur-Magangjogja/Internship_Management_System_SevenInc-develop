@@ -195,8 +195,10 @@ class CloudSyncManager
         $year = $attachment->registration?->created_at ? $attachment->registration->created_at->format('Y') : date('Y');
         $regId = $attachment->internship_registration_id;
         $applicantName = $attachment->registration?->fullname ?? ($attachment->registration?->user?->name ?? ($attachment->registration?->name ?? 'Pemagang'));
-        $cleanName = Str::slug($applicantName, '_');
-        $remoteFolder = "Registrasi/{$year}/{$cleanName}_REG{$regId}";
+        $cleanName = Str::slug($applicantName, '_') ?: 'pemagang';
+        $remoteFolder = $attachment->registration
+            ? $attachment->registration->getDriveApplicantFolderPath()
+            : "REGISTRASI/{$year}/{$cleanName}_REG{$regId}";
 
         $fileChecksum = hash_file('sha256', $fullPath);
         $contentVersion = substr($fileChecksum, 0, 16);
@@ -245,7 +247,51 @@ class CloudSyncManager
         ]);
 
         $regId = $attachment->internship_registration_id;
-        $remoteFolder = $uploadResult['remote_folder'] ?? "Pemagang/Reg-{$regId}";
+        $remoteFolder = $uploadResult['remote_folder'] ?? "REGISTRASI/" . date('Y') . "/pemagang_REG{$regId}";
+        $folderId = $uploadResult['folder_id'] ?? null;
+        $rootFolderId = method_exists($this->driver, 'getRootFolderId') ? $this->driver->getRootFolderId() : null;
+
+        if ($isRealDrive && !empty($folderId) && $regId && $folderId !== $rootFolderId) {
+            $folderUrl = $uploadResult['folder_url'] ?? "https://drive.google.com/drive/folders/{$folderId}";
+            $expectedRootMarker = 'drive_root:' . ($rootFolderId ?: 'default');
+            $applicantSlug = $attachment->registration
+                ? $attachment->registration->getDriveApplicantFolderName()
+                : ('pemagang_REG' . $regId);
+
+            try {
+                \App\Models\RegistrationAttachment::updateOrCreate(
+                    [
+                        'internship_registration_id' => $regId,
+                        'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                    ],
+                    [
+                        'category'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                        'file_path'           => $expectedRootMarker,
+                        'original_name'       => 'Folder_' . $applicantSlug,
+                        'file_size'           => 0,
+                        'mime_type'           => 'application/vnd.google-apps.folder',
+                        'drive_file_id'       => $folderId,
+                        'drive_web_view_link' => $folderUrl,
+                        'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
+                        'drive_synced_at'     => now(),
+                        'drive_error_message' => null,
+                    ]
+                );
+
+                if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry') && !empty($rootFolderId)) {
+                    \App\Models\CloudFolderRegistry::findOrRegisterFolder(
+                        canonicalRootId: (string) $rootFolderId,
+                        folderPath: $remoteFolder,
+                        driveFolderId: (string) $folderId,
+                        ownerType: 'registration',
+                        ownerId: (int) $regId,
+                        category: 'registration_folder'
+                    );
+                }
+            } catch (\Throwable) {
+                // Abaikan jika gagal menyimpan metadata folder di unit test ringan
+            }
+        }
 
         ActivityLogger::log(
             action: 'attachment_drive_synced',
@@ -454,11 +500,8 @@ class CloudSyncManager
         $remoteFolder = "Generated_Documents/General/" . Str::studly($doc->document_type);
 
         if ($intern) {
-            $year = $intern->created_at ? $intern->created_at->format('Y') : date('Y');
-            $applicantName = Str::slug($intern->fullname ?? 'pemagang', '_');
-            $regId = $intern->id;
             $typeFolder = strtoupper($doc->document_type);
-            $remoteFolder = "Registrasi/{$year}/{$applicantName}_REG{$regId}/Dokumen_Diterbitkan/{$typeFolder}";
+            $remoteFolder = $intern->getDriveApplicantFolderPath() . "/Dokumen_Diterbitkan/{$typeFolder}";
 
             if (method_exists($this->driver, 'setRootFolderId')) {
                 try {

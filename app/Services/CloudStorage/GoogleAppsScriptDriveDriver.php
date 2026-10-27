@@ -128,6 +128,23 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         $fileChecksum = hash_file('sha256', $localFullPath);
         $fileSize = filesize($localFullPath);
 
+        // Proteksi anti-folder-ID: jika pemanggil tidak sengaja mengirimkan drive_folder_id mentah sebagai remoteFolderPath,
+        // kembalikan ke folder_path yang terdaftar di CloudFolderRegistry agar Apps Script tidak membuat folder bernama ID.
+        $cleanFolderPath = trim(str_replace('\\', '/', $remoteFolderPath), '/');
+        if ($cleanFolderPath !== '' && !str_contains($cleanFolderPath, '/')) {
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+                    $registeredPath = \App\Models\CloudFolderRegistry::where('drive_folder_id', $cleanFolderPath)
+                        ->value('folder_path');
+                    if (!empty($registeredPath)) {
+                        $cleanFolderPath = $registeredPath;
+                    }
+                }
+            } catch (\Throwable) {
+                // Abaikan jika tabel belum tersedia di unit test ringan
+            }
+        }
+
         $transport = app(GoogleAppsScriptTransport::class);
         $uploadTimeout = max(90, min(300, (int) ceil($fileSize / (100 * 1024)) * 3));
         $transport->setTimeoutSeconds($uploadTimeout);
@@ -137,7 +154,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
             [
                 'action'          => 'drive_upload',
                 'drive_folder_id' => $this->rootFolderId,
-                'folder_path'     => $remoteFolderPath,
+                'folder_path'     => $cleanFolderPath,
                 'file_name'       => $fileName,
                 'mime_type'       => $mimeType,
                 'file_content'    => $fileContent,
@@ -153,7 +170,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
                 [
                     'action'          => 'upload_file',
                     'drive_folder_id' => $this->rootFolderId,
-                    'folder_path'     => $remoteFolderPath,
+                    'folder_path'     => $cleanFolderPath,
                     'file_name'       => $fileName,
                     'mime_type'       => $mimeType,
                     'file_content'    => $fileContent,
@@ -181,11 +198,14 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
             }
         }
 
+        $resolvedFolderId = $data['folder_id'] ?? $this->rootFolderId;
+
         return [
             'file_id'       => $remoteFileId,
             'web_view_link' => $data['web_view_link'] ?? "https://drive.google.com/file/d/{$remoteFileId}/view",
             'file_name'     => $data['file_name'] ?? $fileName,
-            'folder_id'     => $data['folder_id'] ?? $this->rootFolderId,
+            'folder_id'     => $resolvedFolderId,
+            'folder_url'    => !empty($resolvedFolderId) ? "https://drive.google.com/drive/folders/{$resolvedFolderId}" : null,
             'driver'        => $this->getDriverName(),
             'operation'     => $data['operation'] ?? 'created',
             'checksum'      => $data['checksum_sha256'] ?? $fileChecksum,

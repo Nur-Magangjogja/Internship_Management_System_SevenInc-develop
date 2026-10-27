@@ -206,6 +206,7 @@ class FormFieldController extends Controller
                 'options'          => $options,
                 'validation_rules' => $validationRules,
             ]);
+            $this->formBuilderService->syncDraftToActivePublished($currentDraft);
         } catch (\Throwable $e) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
@@ -289,6 +290,9 @@ class FormFieldController extends Controller
 
         try {
             $updated = $this->formBuilderService->updateFieldInDraft($field, $updateData);
+            if ($field->schema) {
+                $this->formBuilderService->syncDraftToActivePublished($field->schema);
+            }
         } catch (\Throwable $e) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
@@ -394,6 +398,9 @@ class FormFieldController extends Controller
     public function archive(FormField $field)
     {
         $this->formBuilderService->archiveField($field);
+        if ($field->schema) {
+            $this->formBuilderService->syncDraftToActivePublished($field->schema);
+        }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json([
@@ -424,6 +431,7 @@ class FormFieldController extends Controller
         }
 
         $field->update(['is_active' => !$field->is_active]);
+        $this->formBuilderService->syncDraftToActivePublished($field->schema);
         $status = $field->is_active ? 'diaktifkan' : 'dinonaktifkan';
 
         if (request()->wantsJson() || request()->ajax()) {
@@ -456,6 +464,7 @@ class FormFieldController extends Controller
         }
 
         $field->update(['is_required' => !$field->is_required]);
+        $this->formBuilderService->syncDraftToActivePublished($field->schema);
         $status = $field->is_required ? 'dijadikan wajib' : 'dijadikan opsional';
 
         if (request()->wantsJson() || request()->ajax()) {
@@ -548,6 +557,7 @@ class FormFieldController extends Controller
                 ]);
             }
             \Illuminate\Support\Facades\DB::commit();
+            $this->formBuilderService->syncDraftToActivePublished($schema);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\DB::rollBack();
             return response()->json([
@@ -569,6 +579,7 @@ class FormFieldController extends Controller
     public function destroy(FormField $field)
     {
         $targetYear = $field->schema?->year ?? (int) now()->year;
+        $schema     = $field->schema;
 
         if ($field->is_system) {
             if (request()->wantsJson() || request()->ajax()) {
@@ -586,6 +597,9 @@ class FormFieldController extends Controller
 
         try {
             $this->formBuilderService->deleteFieldFromDraft($field);
+            if ($schema) {
+                $this->formBuilderService->syncDraftToActivePublished($schema);
+            }
         } catch (\Throwable $e) {
             if (request()->wantsJson() || request()->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
