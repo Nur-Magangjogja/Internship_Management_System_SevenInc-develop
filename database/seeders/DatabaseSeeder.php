@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             Spreadsheet2026SchemaSeeder::class,
             SpreadsheetFollowUpSchemaSeeder::class,
             FormFieldSeeder::class,
+            DocumentTemplateSeeder::class,
             DummyPemagangSeeder::class,
             InternshipRegistrationSeeder::class,
         ]);

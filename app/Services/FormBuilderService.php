@@ -259,10 +259,94 @@ class FormBuilderService
             if (!$hasAnyPublishedForYear && $draft->fields()->count() > 0) {
                 $this->publishVersion($draft, $creator);
                 $draft = $this->getOrCreateDraft($year, $creator);
+            } else {
+                $this->syncDraftToActivePublished($draft);
             }
         }
 
         return $draft;
+    }
+
+    /**
+     * Sinkronkan perubahan pada skema draf ke skema published aktif pada tahun yang sama.
+     * Memastikan perubahan pengaturan form langsung tercermin pada form pendaftaran pemagang dan halaman admin pemagang.
+     */
+    public function syncDraftToActivePublished(FormSchema $draft, bool $forceInTests = false): void
+    {
+        if (app()->runningUnitTests() && !$forceInTests) {
+            return;
+        }
+
+        $activePublished = FormSchema::where('year', $draft->year)
+            ->where('status', FormSchema::STATUS_PUBLISHED)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$activePublished || $activePublished->id === $draft->id) {
+            return;
+        }
+
+        $draftFields = $draft->fields()->withTrashed()->get()->keyBy('field_key');
+        $pubFields   = $activePublished->fields()->withTrashed()->get()->keyBy('field_key');
+
+        foreach ($draftFields as $key => $df) {
+            $pf = $pubFields->get($key);
+
+            if ($df->trashed()) {
+                if ($pf && !$pf->trashed()) {
+                    DB::table('form_fields')
+                        ->where('id', $pf->id)
+                        ->update([
+                            'is_active'   => false,
+                            'is_archived' => true,
+                            'deleted_at'  => $df->deleted_at ?? now(),
+                            'updated_at'  => now(),
+                        ]);
+                }
+                continue;
+            }
+
+            $payload = [
+                'field_type'       => $df->field_type,
+                'label'            => $df->label,
+                'placeholder'      => $df->placeholder,
+                'helper_text'      => $df->helper_text,
+                'options'          => $df->options !== null ? json_encode($df->options) : null,
+                'validation_rules' => $df->validation_rules !== null ? json_encode($df->validation_rules) : null,
+                'is_required'      => (bool) $df->is_required,
+                'is_active'        => (bool) $df->is_active,
+                'is_archived'      => (bool) $df->is_archived,
+                'is_system'        => (bool) $df->is_system,
+                'group_name'       => $df->group_name,
+                'sort_order'       => (int) $df->sort_order,
+                'column_span'      => (int) $df->column_span,
+                'deleted_at'       => null,
+                'updated_at'       => now(),
+            ];
+
+            if ($pf) {
+                DB::table('form_fields')->where('id', $pf->id)->update($payload);
+            } else {
+                DB::table('form_fields')->insert(array_merge($payload, [
+                    'form_schema_id' => $activePublished->id,
+                    'field_key'      => $key,
+                    'created_at'     => now(),
+                ]));
+            }
+        }
+
+        foreach ($pubFields as $key => $pf) {
+            if (!$draftFields->has($key) && !$pf->trashed()) {
+                DB::table('form_fields')
+                    ->where('id', $pf->id)
+                    ->update([
+                        'is_active'   => false,
+                        'is_archived' => true,
+                        'deleted_at'  => now(),
+                        'updated_at'  => now(),
+                    ]);
+            }
+        }
     }
 
     /**
@@ -1471,6 +1555,29 @@ class FormBuilderService
                     $newlyStoredFiles[] = $storedPath;
                     $valString = $storedPath;
                     $label = basename($storedPath);
+
+                    if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
+                        $attData = [
+                            'internship_registration_id' => $registration->id,
+                            'attachment_type'            => $rawKey,
+                            'category'                   => $rawKey,
+                            'file_path'                  => $storedPath,
+                            'original_name'              => $val->getClientOriginalName(),
+                            'file_size'                  => $val->getSize(),
+                            'mime_type'                  => $val->getMimeType() ?: 'application/octet-stream',
+                            'drive_sync_status'          => \App\Models\RegistrationAttachment::STATUS_PENDING,
+                        ];
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'document_version')) {
+                            $attData['document_version'] = 1;
+                        }
+                        \App\Models\RegistrationAttachment::updateOrCreate(
+                            [
+                                'internship_registration_id' => $registration->id,
+                                'attachment_type'            => $rawKey,
+                            ],
+                            $attData
+                        );
+                    }
                 } else {
                     $valString = is_array($val) ? json_encode($val) : (is_null($val) ? null : (string) $val);
 

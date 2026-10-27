@@ -98,9 +98,20 @@
 
                 <!-- Spreadsheet URL -->
                 <div>
-                    <label for="spreadsheet_url" class="block text-sm font-semibold text-slate-700 mb-1">
-                        URL Dokumen Google Spreadsheet
-                    </label>
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="spreadsheet_url" class="block text-sm font-semibold text-slate-700">
+                            URL Dokumen Google Spreadsheet
+                        </label>
+                        @if ($connection->isSpreadsheetConnected())
+                            <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Terhubung
+                            </span>
+                        @else
+                            <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                <span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span> Belum Terhubung
+                            </span>
+                        @endif
+                    </div>
                     <input
                         type="url"
                         name="spreadsheet_url"
@@ -135,9 +146,20 @@
                 @if ($connection->connection_key === 'registration')
                     <!-- Google Drive Folder URL / ID for Uploaded Intern Files -->
                     <div>
-                        <label for="drive_folder_url" class="block text-sm font-semibold text-slate-700 mb-1">
-                            URL / ID Folder Google Drive (Penyimpanan Berkas Upload Pemagang)
-                        </label>
+                        <div class="flex items-center justify-between mb-1">
+                            <label for="drive_folder_url" class="block text-sm font-semibold text-slate-700">
+                                URL / ID Folder Google Drive (Penyimpanan Berkas Upload Pemagang)
+                            </label>
+                            @if ($connection->isDriveConnected())
+                                <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Terhubung
+                                </span>
+                            @else
+                                <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span> Belum Terhubung
+                                </span>
+                            @endif
+                        </div>
                         <input
                             type="text"
                             name="drive_folder_url"

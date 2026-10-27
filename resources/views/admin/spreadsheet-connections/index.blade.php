@@ -3,10 +3,34 @@
 @section('content')
 <div class="px-6 py-8">
     <!-- Header -->
+    @php
+        $unconnectedConnections = $connections->filter(fn($c) => $c->hasUnconnectedLinks());
+        $hasAnyUnconnected = $unconnectedConnections->isNotEmpty();
+    @endphp
+
     <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Spreadsheet</h1>
-            <p class="text-sm text-slate-500">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Spreadsheet</h1>
+                @if ($hasAnyUnconnected)
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-sm animate-pulse">
+                        <svg class="h-3.5 w-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        Tanda: Link Belum Terhubung ke SertIF
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-sm">
+                        <svg class="h-3.5 w-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Semua Link Terhubung ke SertIF
+                    </span>
+                @endif
+            </div>
+            <p class="text-sm text-slate-500 mt-1">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
         </div>
         <div class="flex items-center gap-3">
             <a
@@ -58,6 +82,37 @@
         </div>
     </div>
 
+    @if ($hasAnyUnconnected)
+        <!-- Peringatan Global Link Penghubung Belum Terhubung -->
+        <div class="mb-8 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 text-amber-900 shadow-sm">
+            <div class="flex items-start gap-3.5">
+                <div class="p-2.5 rounded-lg bg-amber-200 text-amber-800 shrink-0 mt-0.5">
+                    <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <h3 class="text-sm font-bold text-amber-950 flex items-center gap-2">
+                        <span>Peringatan Integrasi: Link Penghubung Google Drive / Spreadsheet Belum Terhubung ke SertIF</span>
+                    </h3>
+                    <p class="text-xs text-amber-800 mt-1 leading-relaxed">
+                        Terdapat <strong>{{ $unconnectedConnections->count() }} koneksi</strong> yang link penghubung Google Spreadsheet atau Google Drive-nya belum terhubung ke database SertIF. Pastikan URL Google Spreadsheet dan Folder Google Drive sudah diatur serta pengujian koneksi berhasil (*Connected*) agar sinkronisasi data pendaftar dan berkas upload berjalan otomatis.
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                        @foreach ($unconnectedConnections as $uc)
+                            <a href="{{ route('admin.spreadsheet-connections.edit', $uc) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-900 font-semibold hover:bg-amber-100 shadow-xs transition">
+                                <span>{{ $uc->display_name }}</span>
+                                <span class="text-amber-600 font-bold">&rarr; Edit Konfigurasi</span>
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <!-- Connection Cards -->
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         @foreach ($connections as $conn)
@@ -89,14 +144,70 @@
 
                     <!-- Details List -->
                     <div class="space-y-3 text-xs border-t border-slate-100 pt-4">
+                        <!-- Tanda Status Link Penghubung SertIF -->
+                        @if ($conn->hasUnconnectedLinks())
+                            <div class="rounded-lg border border-amber-300 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-xs">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                                        <span class="font-bold text-amber-950">⚠️ Tanda: Link Penghubung Belum Terhubung ke SertIF</span>
+                                    </div>
+                                    <a href="{{ route('admin.spreadsheet-connections.edit', $conn) }}" class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 underline shrink-0">
+                                        Hubungkan &rarr;
+                                    </a>
+                                </div>
+                                <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                    @if (!$conn->isSpreadsheetConnected())
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
+                                            ✕ Link Spreadsheet Belum Diisi
+                                        </span>
+                                    @endif
+                                    @if ($conn->connection_key === \App\Models\SpreadsheetConnection::KEY_REGISTRATION && !$conn->isDriveConnected())
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
+                                            ✕ Link Folder Drive Belum Diisi
+                                        </span>
+                                    @endif
+                                    @if ($conn->connection_status !== \App\Models\SpreadsheetConnection::STATUS_CONNECTED)
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 font-medium">
+                                            ! Status: {{ ucfirst(str_replace('_', ' ', $conn->connection_status ?? 'untested')) }} (Perlu Uji Koneksi)
+                                        </span>
+                                    @endif
+                                </div>
+                            </div>
+                        @else
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-900 flex items-center justify-between shadow-xs">
+                                <div class="flex items-center gap-2">
+                                    <span class="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                    <span class="font-medium">Seluruh link Spreadsheet &amp; Google Drive terhubung ke database SertIF.</span>
+                                </div>
+                                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">Terhubung</span>
+                            </div>
+                        @endif
+
                         <div>
-                            <span class="font-medium text-slate-500 block">URL Spreadsheet:</span>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="font-medium text-slate-500">URL Spreadsheet:</span>
+                                @if ($conn->isSpreadsheetConnected())
+                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        <span class="h-1 w-1 rounded-full bg-emerald-500"></span> Terhubung
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                        <span class="h-1 w-1 rounded-full bg-rose-500"></span> Belum Terhubung
+                                    </span>
+                                @endif
+                            </div>
                             @if ($conn->spreadsheet_url)
-                                <a href="{{ $conn->spreadsheet_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono">
+                                <a href="{{ $conn->spreadsheet_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono block">
                                     {{ $conn->spreadsheet_url }}
                                 </a>
                             @else
-                                <span class="text-slate-400 italic">Belum dikonfigurasi</span>
+                                <div class="flex items-center justify-between text-slate-400 italic">
+                                    <span>Belum dikonfigurasi</span>
+                                    <a href="{{ route('admin.spreadsheet-connections.edit', $conn) }}" class="not-italic text-xs text-blue-600 hover:underline font-normal font-sans">
+                                        + Atur Link Spreadsheet
+                                    </a>
+                                </div>
                             @endif
                         </div>
 
@@ -153,16 +264,32 @@
 
                         @if ($conn->connection_key === 'registration')
                             <div>
-                                <span class="font-medium text-slate-500 block">Folder Penyimpanan Berkas Pemagang (Google Drive):</span>
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="font-medium text-slate-500">Folder Penyimpanan Berkas Pemagang (Google Drive):</span>
+                                    @if ($conn->isDriveConnected())
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            <span class="h-1 w-1 rounded-full bg-emerald-500"></span> Terhubung
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                            <span class="h-1 w-1 rounded-full bg-rose-500"></span> Belum Terhubung
+                                        </span>
+                                    @endif
+                                </div>
                                 @if ($conn->drive_folder_url)
-                                    <a href="{{ $conn->drive_folder_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono">
+                                    <a href="{{ $conn->drive_folder_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-mono block">
                                         {{ $conn->drive_folder_url }}
                                     </a>
                                     @if ($conn->drive_folder_id)
                                         <span class="block text-[11px] font-mono text-slate-500 mt-0.5">Folder ID: {{ $conn->drive_folder_id }}</span>
                                     @endif
                                 @else
-                                    <span class="text-slate-400 italic">Belum dikonfigurasi (klik Edit Konfigurasi untuk mengatur folder Drive)</span>
+                                    <div class="flex items-center justify-between text-slate-400 italic">
+                                        <span>Belum dikonfigurasi</span>
+                                        <a href="{{ route('admin.spreadsheet-connections.edit', $conn) }}" class="not-italic text-xs text-blue-600 hover:underline font-normal font-sans">
+                                            + Atur Folder Drive
+                                        </a>
+                                    </div>
                                 @endif
                             </div>
                         @endif

@@ -68,10 +68,10 @@ class SpreadsheetSyncEngineService
      * Enqueue outbound sync record for an InternshipRegistration.
      * Nonblocking and strictly transactional.
      */
-    public function queueSyncForRegistration(InternshipRegistration $registration): ?SpreadsheetRowSync
+    public function queueSyncForRegistration(InternshipRegistration $registration, bool $allowPendaftar = false): ?SpreadsheetRowSync
     {
         // Guardrail: Draft registrations are strictly excluded from spreadsheet sync
-        if (!$this->registrationMappingService->isEligibleForSync($registration)) {
+        if (!$this->registrationMappingService->isEligibleForSync($registration, allowPendaftar: $allowPendaftar)) {
             return null;
         }
 
@@ -327,7 +327,8 @@ class SpreadsheetSyncEngineService
         ?string $requestedFenceToken = null,
         ?string $snapshotSpreadsheetId = null,
         ?string $snapshotTabName = null,
-        ?string $snapshotSchemaVersion = null
+        ?string $snapshotSchemaVersion = null,
+        bool $allowPendaftar = false
     ): bool {
         $transport = $customTransport ?? $this->transport;
         $fenceToken = $preClaimedFence ?? ($requestedFenceToken ?: (string) Str::uuid());
@@ -458,7 +459,7 @@ class SpreadsheetSyncEngineService
         // 2.5 Acceptance Gate: Pre-flight eligibility verification for InternshipRegistration (S17.17 / S17.18B)
         $entity = $rowSync->syncable()->first();
         if ($entity instanceof InternshipRegistration) {
-            if (!$this->registrationMappingService->isEligibleForSync($entity, $rowSync)) {
+            if (!$this->registrationMappingService->isEligibleForSync($entity, $rowSync, $allowPendaftar)) {
                 $status = $entity->internship_status;
                 if (in_array($status, [InternshipRegistration::STATUS_EXITED, InternshipRegistration::STATUS_REJECTED], true)) {
                     if (!$this->registrationMappingService->hasVerifiedAdminAcceptance($entity)) {
@@ -505,7 +506,7 @@ class SpreadsheetSyncEngineService
 
         // 3. Build fresh outbound payload dynamically from current domain state
         try {
-            $payload = $this->buildPayloadForRecord($rowSync);
+            $payload = $this->buildPayloadForRecord($rowSync, $allowPendaftar);
         } catch (Throwable $e) {
             $errMsg = 'Gagal membentuk payload data: ' . $this->sanitizeErrorMessage($e->getMessage());
             $this->updateGuardedByFence($rowSync, $fenceToken, [
@@ -572,7 +573,7 @@ class SpreadsheetSyncEngineService
 
         // 6. Check for mid-flight source update during HTTP request (Guardrail 1)
         try {
-            $postHttpPayload = $this->buildPayloadForRecord($rowSync);
+            $postHttpPayload = $this->buildPayloadForRecord($rowSync, $allowPendaftar);
             $postHttpChecksum = $this->calculatePayloadChecksum($connection, $rowSync->target_sheet_tab, $postHttpPayload);
         } catch (Throwable) {
             $postHttpChecksum = $targetChecksum;
@@ -707,7 +708,7 @@ class SpreadsheetSyncEngineService
     /**
      * Build outbound payload for a SpreadsheetRowSync record.
      */
-    protected function buildPayloadForRecord(SpreadsheetRowSync $rowSync): array
+    protected function buildPayloadForRecord(SpreadsheetRowSync $rowSync, bool $allowPendaftar = false): array
     {
         $entity = $rowSync->syncable()->first();
 
@@ -716,7 +717,7 @@ class SpreadsheetSyncEngineService
         }
 
         if ($entity instanceof InternshipRegistration) {
-            $payload = $this->registrationMappingService->buildOutboundRowPayload($entity, null, $rowSync);
+            $payload = $this->registrationMappingService->buildOutboundRowPayload($entity, null, $rowSync, $allowPendaftar);
             $payload['SERTIF_SYNC_ID'] = $rowSync->external_sync_id;
             $payload['SERTIF_SYNC_STATUS'] = 'synced';
             return $payload;
@@ -1728,9 +1729,13 @@ class SpreadsheetSyncEngineService
         }
 
         try {
-            @set_time_limit(180);
+            if (!app()->runningInConsole()) {
+                @set_time_limit(180);
+            }
 
             $expectedRootMarker = 'drive_root:' . ($connection->drive_folder_id ?: 'default');
+            $applicantFolderPath = $registration->getDriveApplicantFolderPath();
+            $applicantFolderSlug = $registration->getDriveApplicantFolderName();
 
             $existingFolder = $registration->attachments()
                 ->where(function ($q) {
@@ -1739,13 +1744,25 @@ class SpreadsheetSyncEngineService
                 })
                 ->first();
 
+            // Pastikan existingFolder bukan folder salah dari pola lama REG-{id}/CV
+            $isLegacyWrongSubfolder = false;
+            if ($existingFolder && !empty($existingFolder->drive_file_id) && \Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+                $isLegacyWrongSubfolder = \App\Models\CloudFolderRegistry::where('drive_folder_id', $existingFolder->drive_file_id)
+                    ->where('folder_path', 'LIKE', '%/REG-%')
+                    ->exists();
+            }
+
             $hasRealFolderForCurrentRoot = $existingFolder
+                && !$isLegacyWrongSubfolder
                 && $existingFolder->drive_sync_status === \App\Models\RegistrationAttachment::STATUS_SYNCED
                 && !empty($existingFolder->drive_file_id)
                 && !str_starts_with((string) $existingFolder->drive_file_id, '1folder_reg_')
                 && !str_starts_with((string) $existingFolder->drive_file_id, '1demo_')
                 && !str_starts_with((string) $existingFolder->drive_file_id, 'local_sim_')
-                && $existingFolder->file_path === $expectedRootMarker;
+                && (
+                    $existingFolder->file_path === $expectedRootMarker
+                    || str_starts_with((string) $existingFolder->file_path, 'drive_root:')
+                );
 
             $fileAttachments = $registration->attachments()
                 ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
@@ -1767,6 +1784,51 @@ class SpreadsheetSyncEngineService
                 $fileAttachments = collect([$defaultAtt]);
             }
 
+            // Jika seluruh berkas pendaftar SUDAH tersinkronisasi ke Google Drive (misal saat submit form registrasi),
+            // namun record folder pendaftar (TYPE_LEGACY_BUNDLE) belum tercatat atau masih placeholder:
+            // cukup resolusi folder REGISTRASI/{TAHUN}/{NAMA_PEMAGANG} tanpa mengunggah ulang berkas!
+            $allFilesAlreadySynced = $fileAttachments->every(function ($att) {
+                return $att->drive_sync_status === \App\Models\RegistrationAttachment::STATUS_SYNCED
+                    && !empty($att->drive_file_id)
+                    && !str_starts_with((string) $att->drive_file_id, '1demo_')
+                    && !str_starts_with((string) $att->drive_file_id, '1folder_reg_')
+                    && !str_starts_with((string) $att->drive_file_id, 'local_sim_');
+            });
+
+            if ($allFilesAlreadySynced && !$hasRealFolderForCurrentRoot) {
+                $universalService = app(\App\Services\UniversalFileService::class);
+                $folderReg = $universalService->getOrCreateFolder(
+                    folderPath: $applicantFolderPath,
+                    ownerType: 'registration',
+                    ownerId: $registration->id,
+                    category: 'registration_folder'
+                );
+
+                if (!empty($folderReg->drive_folder_id)) {
+                    $resolvedFolderUrl = "https://drive.google.com/drive/folders/{$folderReg->drive_folder_id}";
+                    \App\Models\RegistrationAttachment::updateOrCreate(
+                        [
+                            'internship_registration_id' => $registration->id,
+                            'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                        ],
+                        [
+                            'category'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
+                            'file_path'           => $expectedRootMarker,
+                            'original_name'       => 'Folder_' . $applicantFolderSlug,
+                            'file_size'           => 0,
+                            'mime_type'           => 'application/vnd.google-apps.folder',
+                            'drive_file_id'       => $folderReg->drive_folder_id,
+                            'drive_web_view_link' => $resolvedFolderUrl,
+                            'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
+                            'drive_synced_at'     => now(),
+                            'drive_error_message' => null,
+                        ]
+                    );
+                    $registration->unsetRelation('attachments');
+                    return;
+                }
+            }
+
             foreach ($fileAttachments as $att) {
                 $isFakeOrUnsynced = $att->drive_sync_status !== \App\Models\RegistrationAttachment::STATUS_SYNCED
                     || empty($att->drive_file_id)
@@ -1774,7 +1836,7 @@ class SpreadsheetSyncEngineService
                     || str_starts_with((string) $att->drive_file_id, '1folder_reg_')
                     || str_starts_with((string) $att->drive_file_id, 'local_sim_');
 
-                if ($hasRealFolderForCurrentRoot && !$isFakeOrUnsynced) {
+                if (!$isFakeOrUnsynced) {
                     continue;
                 }
 
@@ -1801,9 +1863,16 @@ class SpreadsheetSyncEngineService
                 if ($transport instanceof \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport) {
                     // Master Plan V1 Addendum Final V4 F6 Cutover: Seluruh uploader Apps Script dipindahkan ke UniversalFileService
                     $universalService = app(\App\Services\UniversalFileService::class);
+                    $attCategory = match ($att->attachment_type ?: $att->category) {
+                        'identity', 'ktm_ktp', 'ktm', 'ktp'       => \App\Models\CloudFileRegistry::CATEGORY_IDENTITY,
+                        'portfolio', 'portofolio'                 => \App\Models\CloudFileRegistry::CATEGORY_PORTFOLIO,
+                        'cover_letter', 'surat_pengantar'         => \App\Models\CloudFileRegistry::CATEGORY_RECOMMENDATION_LETTER,
+                        'proposal'                                => \App\Models\CloudFileRegistry::CATEGORY_PROPOSAL,
+                        default                                   => \App\Models\CloudFileRegistry::CATEGORY_CV,
+                    };
                     $regRecord = $universalService->put(
                         fileOrContent: $localFullPath,
-                        category: \App\Models\CloudFileRegistry::CATEGORY_CV,
+                        category: $attCategory,
                         ownerType: 'registration',
                         ownerId: $registration->id,
                         customFileName: $att->original_name,
@@ -1813,10 +1882,11 @@ class SpreadsheetSyncEngineService
                     $viewLink = "https://drive.google.com/file/d/{$fileId}/view";
                     $folderId = $regRecord->drive_folder_id;
                     $folderUrl = "https://drive.google.com/drive/folders/{$folderId}";
-                    $uploadResp = \App\Services\SpreadsheetTransport\SpreadsheetTransportResponse::success([
+                    $uploadResp = \App\Services\SpreadsheetTransport\SpreadsheetTransportResponse::success(null, [
                         'file_id'       => $fileId,
                         'web_view_link' => $viewLink,
                         'folder_id'     => $folderId,
+                        'folder_url'    => $folderUrl,
                     ]);
                 } else {
                     $uploadResp = $transport->uploadAttachment($connection, $att, $localFullPath);
@@ -1838,7 +1908,27 @@ class SpreadsheetSyncEngineService
                     }
 
                     if (!empty($folderId) || !empty($folderUrl)) {
-                        $resolvedFolderUrl = $folderUrl ?: "https://drive.google.com/drive/folders/{$folderId}";
+                        // Pastikan TYPE_LEGACY_BUNDLE selalu menggunakan ID folder induk pemagang (applicantFolderPath)
+                        $applicantFolderId = null;
+                        if (\Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+                            $applicantFolderId = \App\Models\CloudFolderRegistry::where('folder_path', $applicantFolderPath)
+                                ->value('drive_folder_id');
+                        }
+                        if (empty($applicantFolderId) && isset($universalService)) {
+                            try {
+                                $appFolderReg = $universalService->getOrCreateFolder(
+                                    folderPath: $applicantFolderPath,
+                                    ownerType: 'registration',
+                                    ownerId: $registration->id,
+                                    category: 'registration_folder'
+                                );
+                                $applicantFolderId = $appFolderReg->drive_folder_id;
+                            } catch (\Throwable) {}
+                        }
+
+                        $effectiveApplicantFolderId = $applicantFolderId ?: ($folderId ?: basename((string) $folderUrl));
+                        $resolvedFolderUrl = "https://drive.google.com/drive/folders/{$effectiveApplicantFolderId}";
+
                         \App\Models\RegistrationAttachment::updateOrCreate(
                             [
                                 'internship_registration_id' => $registration->id,
@@ -1847,10 +1937,10 @@ class SpreadsheetSyncEngineService
                             [
                                 'category'            => \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE,
                                 'file_path'           => $expectedRootMarker,
-                                'original_name'       => 'Folder_' . Str::slug($registration->fullname ?: 'Pemagang', '_') . '_REG' . $registration->id,
+                                'original_name'       => 'Folder_' . $applicantFolderSlug,
                                 'file_size'           => 0,
                                 'mime_type'           => 'application/vnd.google-apps.folder',
-                                'drive_file_id'       => $folderId ?: basename($resolvedFolderUrl),
+                                'drive_file_id'       => $effectiveApplicantFolderId,
                                 'drive_web_view_link' => $resolvedFolderUrl,
                                 'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_SYNCED,
                                 'drive_synced_at'     => now(),

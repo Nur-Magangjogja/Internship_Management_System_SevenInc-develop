@@ -290,6 +290,34 @@ class DocumentGeneratorService
             }
         }
 
+        // 2.5 Pastikan GeneratedDocument tercatat dan tersinkronkan ke Google Drive
+        try {
+            $genDoc = \App\Models\GeneratedDocument::where('internship_registration_id', $intern->id)
+                ->where('document_type', 'loa')
+                ->latest('id')
+                ->first();
+
+            $pubService = app(\App\Services\DocumentPublishingService::class);
+            if (!$genDoc) {
+                $fileContent = Storage::disk('local')->exists($relPath) ? Storage::disk('local')->get($relPath) : null;
+                if ($fileContent) {
+                    $activeTpl = isset($template) && $template && $template->exists ? $template : null;
+                    $genDoc = $pubService->publishInternDocument(
+                        intern: $intern,
+                        documentType: 'loa',
+                        customDocNumber: $loaNumber,
+                        actor: $actor,
+                        pdfBinary: $fileContent,
+                        template: $activeTpl
+                    );
+                }
+            } elseif ($genDoc->status !== \App\Models\GeneratedDocument::STATUS_SYNCED) {
+                $pubService->syncDocumentToDrive($genDoc, $actor);
+            }
+        } catch (\Throwable $eSync) {
+            \Illuminate\Support\Facades\Log::warning("Gagal memastikan sinkronisasi Drive untuk LOA Pemagang #{$intern->id}: " . $eSync->getMessage());
+        }
+
         // 3. Pastikan record InternLoa selalu tersinkron
         $internLoa = InternLoa::where('intern_id', $intern->id)->latest('id')->first();
         if (!$internLoa) {

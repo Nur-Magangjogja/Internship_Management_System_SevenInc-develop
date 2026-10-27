@@ -893,6 +893,11 @@ function buildPreviewHtml(data) {
             let opts = `<option value="">-- Pilih Divisi --</option>`;
             (data.divisions || []).forEach(d => { opts += `<option>${escHtml(d)}</option>`; });
             inner = `<select class="${inputCls}" disabled>${opts}</select>`;
+        } else if (f.field_key === 'social_media_instagram') {
+            inner = `<div class="flex items-center gap-0">
+                <span class="inline-flex items-center px-2.5 py-2 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 text-xs text-gray-500">@</span>
+                <input type="text" placeholder="${escHtml(f.placeholder || 'username_kamu')}" class="block flex-1 rounded-r-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs" disabled>
+            </div>`;
         } else if (['text', 'email', 'tel', 'number', 'url'].includes(f.field_type)) {
             inner = `<input type="${escHtml(f.field_type)}" placeholder="${escHtml(f.placeholder || '')}" class="${inputCls}" disabled>`;
         } else if (f.field_type === 'date') {

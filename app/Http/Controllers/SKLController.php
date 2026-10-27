@@ -156,9 +156,10 @@ class SKLController extends Controller
                 /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
                 $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
                 $activeTemplate = $issuanceService->resolveActiveTemplate('skl', failClosed: false);
+                $issued = null;
                 if ($activeTemplate && $activeTemplate->exists) {
                     try {
-                        $issuanceService->issueDocument(
+                        $issued = $issuanceService->issueDocument(
                             intern: $intern,
                             documentType: 'skl',
                             options: [
@@ -169,6 +170,47 @@ class SKLController extends Controller
                         );
                     } catch (\Throwable $eIssue) {
                         Log::warning("Gagal issue SKL template di batch: " . $eIssue->getMessage());
+                    }
+                }
+
+                if (!$issued) {
+                    try {
+                        $pdfData = [
+                            'companyName'            => $validated['company_name'] ?? $companyName,
+                            'companyAddress'         => $companyAddress,
+                            'companyCity'            => $validated['company_city'] ?? 'Yogyakarta',
+                            'leaderName'             => $validated['leader_name'] ?? $brandData?->signatory_name ?? 'Ari Setia Husbana',
+                            'leaderTitle'            => $validated['leader_title'] ?? $brandData?->signatory_position ?? 'HRD',
+                            'letterNumber'           => $letterNumber,
+                            'logoData'               => $this->resolveBase64Image($request, 'logo', $logoPath ?? $brandData?->logo, 'images/logos/logo_seveninc.png'),
+                            'stampData'              => $this->resolveBase64Image($request, 'stamp', $stampPath ?? $brandData?->stamp, 'images/mou/stamp-sample.png'),
+                            'sigData'                => $this->resolveBase64Image($request, 'sig', $brandData?->signature, 'images/signature/ttd_arisetiahusbana.png'),
+                            'participantName'        => $participantName,
+                            'participantId'          => $participantId,
+                            'participantMajor'       => $participantMajor,
+                            'participantInstitute'   => $participantInstitute,
+                            'divisionName'           => $divisionName,
+                            'startStr'               => $startStr,
+                            'endStr'                 => $endStr,
+                            'letterDateStr'          => $letterDateStr,
+                            'activityDescription'    => $validated['activity_description'] ?? 'Telah menyelesaikan seluruh rangkaian kegiatan program magang.',
+                            'participantAchievement' => $validated['participant_achievement'] ?? 'Sangat Baik',
+                        ];
+                        $html = view('user.skl', $pdfData)->render();
+                        $pdf = Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+                        $pdfBinary = $pdf->output();
+
+                        $pubService = app(\App\Services\DocumentPublishingService::class);
+                        $pubService->publishInternDocument(
+                            intern: $intern,
+                            documentType: 'skl',
+                            customDocNumber: $letterNumber,
+                            actor: $request->user(),
+                            pdfBinary: $pdfBinary,
+                            template: null
+                        );
+                    } catch (\Throwable $eFallback) {
+                        Log::warning("Gagal issue fallback SKL: " . $eFallback->getMessage());
                     }
                 }
 
@@ -480,6 +522,22 @@ class SKLController extends Controller
                     }
                     file_put_contents($tmpPath, $pdfBinary);
 
+                    if (file_exists($tmpPath) && filesize($tmpPath) > 0) {
+                        try {
+                            $pubService = app(\App\Services\DocumentPublishingService::class);
+                            $pubService->publishInternDocument(
+                                intern: $ir,
+                                documentType: 'skl',
+                                customDocNumber: $context['document_number'] ?? null,
+                                actor: $authUser,
+                                pdfBinary: file_get_contents($tmpPath),
+                                template: $activeTemplate
+                            );
+                        } catch (\Throwable $ePub) {
+                            \Illuminate\Support\Facades\Log::warning("Gagal publish SKL template fallback ke Drive: " . $ePub->getMessage());
+                        }
+                    }
+
                     return response()->download($tmpPath, $fileName, ['Content-Type' => 'application/pdf'])
                         ->deleteFileAfterSend(true);
                 } catch (\Throwable $errRender) {
@@ -571,6 +629,22 @@ class SKLController extends Controller
                 \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->save($tmpPath);
             } else {
                 file_put_contents($tmpPath, '%PDF-1.4 fallback');
+            }
+        }
+
+        if (file_exists($tmpPath) && filesize($tmpPath) > 0) {
+            try {
+                $pubService = app(\App\Services\DocumentPublishingService::class);
+                $pubService->publishInternDocument(
+                    intern: $ir,
+                    documentType: 'skl',
+                    customDocNumber: $sklRecord->skl_number,
+                    actor: $authUser,
+                    pdfBinary: file_get_contents($tmpPath),
+                    template: null
+                );
+            } catch (\Throwable $ePub) {
+                \Illuminate\Support\Facades\Log::warning("Gagal publish SKL fallback ke Drive: " . $ePub->getMessage());
             }
         }
 

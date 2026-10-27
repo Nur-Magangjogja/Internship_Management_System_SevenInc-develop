@@ -113,10 +113,11 @@
                             type="password"
                             id="current_password"
                             name="current_password"
+                            autocomplete="current-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                             placeholder="Masukkan password saat ini"
                             class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]"
                         >
-                        <button type="button" onclick="togglePassword('current_password', this)"
+                        <button type="button" onclick="togglePassword('current_password', this)" aria-label="Lihat password"
                             class="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34]">
                             <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
@@ -136,10 +137,11 @@
                             type="password"
                             id="password"
                             name="password"
+                            autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                             placeholder="Min. 8 karakter"
                             class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]"
                         >
-                        <button type="button" onclick="togglePassword('password', this)"
+                        <button type="button" class="toggle-new-password-btn" onclick="togglePassword('password', this)" aria-label="Lihat password"
                             class="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34]">
                             <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
@@ -159,10 +161,11 @@
                             type="password"
                             id="password_confirmation"
                             name="password_confirmation"
+                            autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
                             placeholder="Ulangi password baru"
                             class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]"
                         >
-                        <button type="button" onclick="togglePassword('password_confirmation', this)"
+                        <button type="button" class="toggle-new-password-btn" onclick="togglePassword('password_confirmation', this)" aria-label="Lihat password"
                             class="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34]">
                             <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
@@ -200,14 +203,37 @@
 @push('scripts')
 <script>
 function togglePassword(fieldId, btn) {
+    if (fieldId === 'password' || fieldId === 'password_confirmation') {
+        const pw = document.getElementById('password');
+        const pwConf = document.getElementById('password_confirmation');
+        const isHidden = (pw || pwConf)?.type === 'password';
+        const newType = isHidden ? 'text' : 'password';
+        const newLabel = isHidden ? 'Sembunyikan password' : 'Lihat password';
+        const newIcon = isHidden
+            ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+            : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+
+        if (pw) pw.type = newType;
+        if (pwConf) pwConf.type = newType;
+
+        document.querySelectorAll('.toggle-new-password-btn').forEach(b => {
+            b.setAttribute('aria-label', newLabel);
+            const icon = b.querySelector('.eye-icon');
+            if (icon) icon.innerHTML = newIcon;
+        });
+        return;
+    }
+
     const input = document.getElementById(fieldId);
+    if (!input) return;
     const isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
+    btn.setAttribute('aria-label', isHidden ? 'Sembunyikan password' : 'Lihat password');
     const icon = btn.querySelector('.eye-icon');
-    if (isHidden) {
-        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
-    } else {
-        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+    if (icon) {
+        icon.innerHTML = isHidden
+            ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+            : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
     }
 }
 

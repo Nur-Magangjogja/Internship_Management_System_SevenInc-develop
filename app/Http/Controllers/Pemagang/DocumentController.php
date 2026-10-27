@@ -255,6 +255,34 @@ class DocumentController extends Controller
             ->timeout(60)
             ->savePdf($tmpPath);
 
+        // Simpan salinan permanen dan sinkronisasikan ke Google Drive
+        $permRelPath = "documents/{$reg->id}/{$filename}";
+        if (file_exists($tmpPath)) {
+            \Illuminate\Support\Facades\Storage::disk('local')->put($permRelPath, file_get_contents($tmpPath));
+
+            try {
+                $genDoc = \App\Models\GeneratedDocument::updateOrCreate(
+                    [
+                        'internship_registration_id' => $reg->id,
+                        'document_type'              => \App\Models\GeneratedDocument::TYPE_MEMBERCARD,
+                    ],
+                    [
+                        'public_uuid'     => (string) \Illuminate\Support\Str::uuid(),
+                        'document_number' => $membercard->member_code,
+                        'template_type'   => 'membercard',
+                        'file_path'       => $permRelPath,
+                        'file_name'       => $filename,
+                        'file_size_bytes' => filesize($tmpPath),
+                        'status'          => \App\Models\GeneratedDocument::STATUS_GENERATED,
+                    ]
+                );
+
+                app(\App\Services\CloudStorage\CloudSyncManager::class)->syncGeneratedDocument($genDoc);
+            } catch (\Throwable $syncEx) {
+                \Illuminate\Support\Facades\Log::warning("Drive sync failed for membercard #{$membercard->id}: " . $syncEx->getMessage());
+            }
+        }
+
         // Update status has_downloaded
         if (!$membercard->has_downloaded) {
             $membercard->update([

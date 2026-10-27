@@ -418,36 +418,41 @@ class InternApiController extends Controller
                 'city_id'       => $r->city_id,
                 'current_city'  => $r->current_city,
                 'internship_reason' => $r->internship_reason,
+                'reason_first_choice' => $r->internship_reason,
                 'internship_type' => $this->labelize($this->mapType, $r->internship_type),
                 'internship_arrangement' => $this->labelize($this->mapArrangement, $r->internship_arrangement),
                 'current_status' => $this->labelize($this->mapCurrentStatus, $r->current_status),
                 'english_book_ability' => $r->english_book_ability,
+                'English_book_ability' => $r->english_book_ability,
                 'supervisor_contact' => $r->supervisor_contact,
                 'supervisor_name' => $r->supervisor_name,
                 'division_id'   => $r->division_id,
                 'division_name' => $r->division?->name,
                 'internship_interest' => $r->division?->name ?: $this->labelize($this->mapInterest, $r->internship_interest),
+                'division_first_choice' => $r->division?->name ?: $this->labelize($this->mapInterest, $r->internship_interest),
                 'internship_interest_other' => $r->internship_interest_other,
                 'brand_id'      => $r->brand_id,
                 'brand_name'    => $r->brandRel?->name,
                 'brand'         => $r->brand,
                 'planned_duration' => $r->planned_duration,
+                'internship_duration' => $r->planned_duration,
                 'wfo_readiness' => $r->wfo_readiness,
                 'schedule_shift_readiness' => $r->schedule_shift_readiness,
                 'has_laptop'    => $r->has_laptop,
-                'design_software' => $r->skills->where('skill_category', 'design')->pluck('skill_name')->implode(', '),
-                'video_software' => $r->skills->where('skill_category', 'video')->pluck('skill_name')->implode(', '),
-                'programming_languages' => $r->skills->where('skill_category', 'programming')->pluck('skill_name')->implode(', '),
-                'digital_marketing_type' => $r->skills->where('skill_category', 'digital_marketing')->pluck('skill_name')->implode(', '),
+                'design_software' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'design')->pluck('skill_name')->implode(', ') : '') ?: ($r->design_software ?? ''),
+                'video_software' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'video')->pluck('skill_name')->implode(', ') : '') ?: ($r->video_software ?? ''),
+                'programming_languages' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'programming')->pluck('skill_name')->implode(', ') : '') ?: ($r->programming_languages ?? ''),
+                'digital_marketing_type' => ($r->relationLoaded('skills') ? $r->skills->where('skill_category', 'digital_marketing')->pluck('skill_name')->implode(', ') : '') ?: ($r->digital_marketing_type ?? ''),
                 'digital_marketing_type_other' => $r->digital_marketing_type_other,
                 'laptop_equipment' => $this->labelize($this->mapLaptop, $r->laptop_equipment),
-                'owned_tools' => $r->tools->pluck('tool_name')->implode(', '),
+                'owned_tools' => ($r->relationLoaded('tools') ? $r->tools->pluck('tool_name')->implode(', ') : '') ?: ($r->owned_tools ?? ''),
                 'owned_tools_other' => $r->owned_tools_other,
                 'start_date' => $this->formatIndoDateOut($r->start_date),
                 'start_date_raw' => $r->start_date,
                 'end_date' => $this->formatIndoDateOut($r->end_date),
                 'end_date_raw' => $r->end_date,
-                'internship_info_sources' => $r->internship_info_sources,
+                'internship_info_sources' => ($r->relationLoaded('infoSources') ? $r->infoSources->pluck('source_name')->implode(', ') : '') ?: ($r->internship_info_sources ?? ''),
+                'referral_source' => ($r->relationLoaded('infoSources') ? $r->infoSources->pluck('source_name')->implode(', ') : '') ?: ($r->internship_info_sources ?? ''),
                 'internship_info_other' => $r->internship_info_other,
                 'current_activities' => $r->current_activities,
                 'boarding_info' => $this->labelize($this->mapYesNo, $r->boarding_info),
@@ -512,6 +517,22 @@ class InternApiController extends Controller
                 ];
             }
 
+            $attAliases = [
+                'identity'            => 'ktm_ktp',
+                'ktm_ktp'             => 'identity',
+                'cover_letter'        => 'internship_letter',
+                'internship_letter'   => 'cover_letter',
+                'profile_photo'       => 'photo',
+                'photo'               => 'profile_photo',
+                'supporting_document' => 'other_Portfolio',
+                'other_Portfolio'     => 'supporting_document',
+            ];
+            foreach ($attAliases as $srcKey => $aliasKey) {
+                if (isset($attMap[$srcKey]) && !isset($attMap[$aliasKey])) {
+                    $attMap[$aliasKey] = $attMap[$srcKey];
+                }
+            }
+
             $rowObj['attachments'] = $attMap;
             foreach ($attMap as $ak => $av) {
                 if (!isset($rowObj[$ak])) {
@@ -521,6 +542,12 @@ class InternApiController extends Controller
 
             if ($r->relationLoaded('customAnswers')) {
                 foreach ($r->customAnswers as $ca) {
+                    if (isset($attMap[$ca->field_key])) {
+                        continue;
+                    }
+                    if (!empty($rowObj[$ca->field_key]) && ($ca->answer_value === null || $ca->answer_value === '')) {
+                        continue;
+                    }
                     $rowObj[$ca->field_key] = $ca->answer_value;
                 }
             }
@@ -596,32 +623,37 @@ class InternApiController extends Controller
         $formFields = [];
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
-                $targetYear = (int) now()->year;
+                $targetYear = ($req->filled('year') && (int) $req->get('year') >= 2020)
+                    ? (int) $req->get('year')
+                    : (int) now()->year;
+                if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
+                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                }
                 $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
                     ?: \App\Models\FormSchema::activePublished()->first()
                     ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
 
                 if ($activeSchema) {
                     $formFields = $activeSchema->fields()
-                        ->active()
+                        ->where('is_archived', false)
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
                 } else {
-                    $formFields = \App\Models\FormField::active()
+                    $formFields = \App\Models\FormField::where('is_archived', false)
                         ->whereNull('form_schema_id')
                         ->orderBy('sort_order')
-                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                        ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                         ->unique('field_key')
                         ->values()
                         ->toArray();
 
                     if (empty($formFields)) {
-                        $formFields = \App\Models\FormField::active()
+                        $formFields = \App\Models\FormField::where('is_archived', false)
                             ->orderBy('sort_order')
-                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
+                            ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_active', 'is_system', 'helper_text', 'placeholder'])
                             ->unique('field_key')
                             ->values()
                             ->toArray();

@@ -76,8 +76,15 @@
                         <label for="password" class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
                             Password <span class="text-[#D32F2F]">*</span>
                         </label>
-                        <input type="password" id="password" name="password" required placeholder="Min. 8 karakter"
-                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                        <div class="relative">
+                            <input type="password" id="password" name="password" required placeholder="Min. 8 karakter"
+                                autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
+                                class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <button type="button" class="toggle-admin-user-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34] focus:outline-none"
+                                onclick="toggleAdminUserPasswords()" aria-label="Lihat password">
+                                <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
                         @error('password')
                             <p class="mt-1 text-[11px] text-red-500">{{ $message }}</p>
                         @enderror
@@ -86,8 +93,15 @@
                         <label for="password_confirmation" class="mb-1.5 block text-[12.5px] font-semibold text-[#1B3A34]">
                             Konfirmasi <span class="text-[#D32F2F]">*</span>
                         </label>
-                        <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi password"
-                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                        <div class="relative">
+                            <input type="password" id="password_confirmation" name="password_confirmation" required placeholder="Ulangi password"
+                                autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false"
+                                class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2.5 pr-10 text-[13px] text-[#1B3A34] outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <button type="button" class="toggle-admin-user-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5F5A] transition hover:text-[#1B3A34] focus:outline-none"
+                                onclick="toggleAdminUserPasswords()" aria-label="Lihat password">
+                                <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -106,4 +120,28 @@
         </div>
     </div>
 </div>
+
+@push('scripts')
+<script>
+function toggleAdminUserPasswords() {
+    const p1 = document.getElementById('password');
+    const p2 = document.getElementById('password_confirmation');
+    const isHidden = (p1 || p2)?.type === 'password';
+    const newType = isHidden ? 'text' : 'password';
+    const newLabel = isHidden ? 'Sembunyikan password' : 'Lihat password';
+    const newIcon = isHidden
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+
+    if (p1) p1.type = newType;
+    if (p2) p2.type = newType;
+
+    document.querySelectorAll('.toggle-admin-user-password-btn').forEach(b => {
+        b.setAttribute('aria-label', newLabel);
+        const icon = b.querySelector('.eye-icon');
+        if (icon) icon.innerHTML = newIcon;
+    });
+}
+</script>
+@endpush
 @endsection

@@ -83,7 +83,7 @@ class FormFieldSeeder extends Seeder
                 'field_type'  => 'text',
                 'label'       => 'Program Studi',
                 'placeholder' => 'Rekayasa Perangkat Lunak',
-                'is_required' => true,
+                'is_required' => false,
                 'is_system'   => true,
                 'group_name'  => FormField::GROUP_DATA_DIRI,
                 'sort_order'  => 50,
@@ -254,11 +254,21 @@ class FormFieldSeeder extends Seeder
             [
                 'field_key'   => 'schedule_shift_readiness',
                 'field_type'  => 'select',
-                'label'       => 'Kesanggupan Jadwal Senin - Sabtu & Shifting',
-                'placeholder' => '-- Pilih Kesanggupan --',
+                'label'       => 'Hari magang adalah Senin - Sabtu.',
+                'placeholder' => 'Jam magangnya dijadwalkan shifting bergantian antara :',
                 'options'     => [
-                    ['value' => 'Sanggup',       'label' => 'Sanggup'],
-                    ['value' => 'Tidak Sanggup', 'label' => 'Tidak Sanggup'],
+                    [
+                        'value' => 'Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB).',
+                        'label' => 'Kantor 1 : Shift pagi (06.30 - 13.00 WIB) / Shift siang (13.00 - 21.00 WIB).',
+                    ],
+                    [
+                        'value' => 'Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB).',
+                        'label' => 'Kantor 2 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) / Shift siang (13.00 - 21.00 WIB).',
+                    ],
+                    [
+                        'value' => 'Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB).',
+                        'label' => 'Kantor 4 :  Shift pagi (06.30 - 13.00 WIB) / Shift Middle (09.00 - 17.00 WIB) /  Shift siang (13.00 - 21.00 WIB).',
+                    ],
                 ],
                 'is_required' => false,
                 'is_active'   => false,

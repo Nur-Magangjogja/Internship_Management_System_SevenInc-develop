@@ -576,23 +576,74 @@ class RegistrationController extends Controller
             }
         }
 
+        // Normalisasi alias field_key dari FormFieldSeeder 2026 ke kolom inti registrasi
+        $aliasInputMerge = [];
+        if ($request->has('division_first_choice') && !$request->filled('internship_interest')) {
+            $aliasInputMerge['internship_interest'] = $request->input('division_first_choice');
+        }
+        if ($request->has('reason_first_choice') && !$request->filled('internship_reason')) {
+            $aliasInputMerge['internship_reason'] = $request->input('reason_first_choice');
+        }
+        if ($request->has('internship_duration') && !$request->filled('planned_duration')) {
+            $aliasInputMerge['planned_duration'] = $request->input('internship_duration');
+        }
+        if ($request->has('English_book_ability') && !$request->filled('english_book_ability')) {
+            $aliasInputMerge['english_book_ability'] = $request->input('English_book_ability');
+        }
+        if ($request->has('referral_source') && !$request->filled('internship_info_sources')) {
+            $refSrc = $request->input('referral_source');
+            $aliasInputMerge['internship_info_sources'] = is_array($refSrc)
+                ? $refSrc
+                : ($refSrc !== null && $refSrc !== '' ? [$refSrc] : []);
+        }
+        if (!empty($aliasInputMerge)) {
+            $request->merge($aliasInputMerge);
+        }
+
         // Aturan validasi core — draft boleh isi sebagian, submit wajib semua
         $rules = $isDraft
             ? $this->draftRules()
             : $this->submitRules();
 
         // Jika skema aktif mengatur field, sesuaikan aturan validasi agar pertanyaan yang dinonaktifkan
-        // atau dijadikan opsional oleh admin tidak memblokir submit pemagang.
+        // atau dijadikan opsional oleh admin tidak memblokir submit pemagang, dan pertanyaan wajib ditegakkan.
         if ($boundSchema && !$isDraft) {
             $schemaFields = $boundSchema->fields()->get()->keyBy('field_key');
+            $hasSystemFieldsInSchema = $schemaFields->where('is_system', true)->isNotEmpty();
+            $ruleAliasMap = [
+                'internship_interest'     => 'division_first_choice',
+                'internship_reason'       => 'reason_first_choice',
+                'planned_duration'        => 'internship_duration',
+                'english_book_ability'    => 'English_book_ability',
+                'internship_info_sources' => 'referral_source',
+                'identity'                => 'ktm_ktp',
+                'cover_letter'            => 'internship_letter',
+                'supporting_document'     => 'other_Portfolio',
+                'profile_photo'           => 'photo',
+            ];
+
             foreach ($rules as $fieldKey => $rule) {
-                if ($schemaField = $schemaFields->get($fieldKey)) {
+                $schemaField = $schemaFields->get($fieldKey)
+                    ?? (isset($ruleAliasMap[$fieldKey]) ? $schemaFields->get($ruleAliasMap[$fieldKey]) : null);
+
+                if ($schemaField) {
                     if (!$schemaField->is_active || !$schemaField->is_required) {
                         if (is_string($rule)) {
                             $rules[$fieldKey] = str_replace('required', 'nullable', $rule);
                         } elseif (is_array($rule)) {
                             $rules[$fieldKey] = array_map(fn($r) => $r === 'required' ? 'nullable' : $r, $rule);
                         }
+                    } elseif ($schemaField->is_active && $schemaField->is_required && $schemaField->field_type !== 'file') {
+                        if (is_string($rule) && str_contains($rule, 'nullable') && !str_contains($rule, 'required')) {
+                            $rules[$fieldKey] = str_replace('nullable', 'required', $rule);
+                        }
+                    }
+                } elseif ($hasSystemFieldsInSchema && !$request->has($fieldKey)) {
+                    // Field legacy yang tidak ada pada skema dinamis aktif dan tidak dikirim dari form
+                    if (is_string($rule)) {
+                        $rules[$fieldKey] = str_replace('required', 'nullable', $rule);
+                    } elseif (is_array($rule)) {
+                        $rules[$fieldKey] = array_map(fn($r) => $r === 'required' ? 'nullable' : $r, $rule);
                     }
                 }
             }
@@ -883,6 +934,30 @@ class RegistrationController extends Controller
                     }
                 }
 
+                // Simpan field sistem tahun 2026 yang tidak memiliki kolom khusus di tabel internship_registrations ke custom_answers
+                if ($intern && Schema::hasTable('registration_custom_answers')) {
+                    $extraSystemKeys = [
+                        'division_second_choice',
+                        'reason_second_choice',
+                        'willing_other_division',
+                        'family_status',
+                        'parent_wa_contact',
+                        'smoking_status',
+                    ];
+                    foreach ($extraSystemKeys as $esKey) {
+                        if ($request->has($esKey)) {
+                            $esVal = $request->input($esKey);
+                            if (is_array($esVal)) {
+                                $esVal = implode(', ', array_filter($esVal));
+                            }
+                            \App\Models\RegistrationCustomAnswer::updateOrCreate(
+                                ['registration_id' => $intern->id, 'field_key' => $esKey],
+                                ['answer_value' => $esVal !== null ? (string) $esVal : null]
+                            );
+                        }
+                    }
+                }
+
                 if ($intern) {
                     $yearFolder = $targetYear ?? date('Y');
                     $baseDir = "private/registrations/{$yearFolder}/{$intern->id}";
@@ -905,22 +980,20 @@ class RegistrationController extends Controller
                         }
                     }
 
-                    // 2. KTM / KTP (Identity)
-                    if ($request->hasFile('identity')) {
-                        $file = $request->file('identity');
-                        if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'identity',
-                                'category'          => 'identity',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
-                        }
+                    // 2. KTM / KTP (Identity / ktm_ktp)
+                    $identityFile = $request->file('identity') ?: $request->file('ktm_ktp');
+                    if ($identityFile && $identityFile->isValid()) {
+                        $path = $this->storePrivateFile($identityFile, $baseDir);
+                        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                        $createdAttachments[] = $this->createAttachmentSafely($intern, [
+                            'attachment_type'   => 'identity',
+                            'category'          => 'identity',
+                            'file_path'         => $path,
+                            'original_name'     => $identityFile->getClientOriginalName(),
+                            'file_size'         => $identityFile->getSize(),
+                            'mime_type'         => $identityFile->getMimeType() ?: 'application/pdf',
+                            'drive_sync_status' => 'pending',
+                        ]);
                     }
 
                     // 3. Portofolio (Bisa multi-file)
@@ -943,45 +1016,26 @@ class RegistrationController extends Controller
                         }
                     }
 
-                    // 4. Surat Pengantar
-                    if ($request->hasFile('cover_letter')) {
-                        $file = $request->file('cover_letter');
-                        if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'cover_letter',
-                                'category'          => 'cover_letter',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
-                        }
+                    // 4. Surat Pengantar (cover_letter / internship_letter)
+                    $coverLetterFile = $request->file('cover_letter') ?: $request->file('internship_letter');
+                    if ($coverLetterFile && $coverLetterFile->isValid()) {
+                        $path = $this->storePrivateFile($coverLetterFile, $baseDir);
+                        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+                        $createdAttachments[] = $this->createAttachmentSafely($intern, [
+                            'attachment_type'   => 'cover_letter',
+                            'category'          => 'cover_letter',
+                            'file_path'         => $path,
+                            'original_name'     => $coverLetterFile->getClientOriginalName(),
+                            'file_size'         => $coverLetterFile->getSize(),
+                            'mime_type'         => $coverLetterFile->getMimeType() ?: 'application/pdf',
+                            'drive_sync_status' => 'pending',
+                        ]);
                     }
 
-                    // 5. Proposal
-                    if ($request->hasFile('proposal')) {
-                        $file = $request->file('proposal');
-                        if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'proposal',
-                                'category'          => 'proposal',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
-                        }
-                    }
-
-                    // 6. Dokumen Pendukung Tambahan (Bisa multi-file)
-                    if ($request->hasFile('supporting_document')) {
-                        $files = is_array($request->file('supporting_document')) ? $request->file('supporting_document') : [$request->file('supporting_document')];
+                    // 5. Dokumen Pendukung Tambahan (supporting_document / other_Portfolio - Bisa multi-file)
+                    $supportingRaw = $request->file('supporting_document') ?: $request->file('other_Portfolio');
+                    if ($supportingRaw) {
+                        $files = is_array($supportingRaw) ? $supportingRaw : [$supportingRaw];
                         foreach ($files as $file) {
                             if ($file && $file->isValid()) {
                                 $path = $this->storePrivateFile($file, $baseDir);
@@ -996,26 +1050,6 @@ class RegistrationController extends Controller
                                     'drive_sync_status' => 'pending',
                                 ]);
                             }
-                        }
-                    }
-
-                    // 7. Foto Profil
-                    if ($request->hasFile('profile_photo')) {
-                        $file = $request->file('profile_photo');
-                        if ($file->isValid()) {
-                            $path = $this->storeFile($file, 'uploads');
-                            $storedRegistrationFiles[] = ['disk' => 'public', 'path' => $path];
-                            $intern->profile_photo = $path;
-                            $intern->save();
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'profile_photo',
-                                'category'          => 'profile_photo',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'image/jpeg',
-                                'drive_sync_status' => 'pending',
-                            ]);
                         }
                     }
 
@@ -1107,17 +1141,27 @@ class RegistrationController extends Controller
         }
 
         // Sinkronisasi berkas pendaftaran ke Google Drive (CloudSyncManager)
-        if (!empty($createdAttachments)) {
+        $attachmentsToSync = collect($createdAttachments)->filter();
+        if ($intern) {
+            $pendingAtts = $intern->attachments()
+                ->where('drive_sync_status', 'pending')
+                ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
+                ->where('attachment_type', '!=', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                ->get();
+            $attachmentsToSync = $attachmentsToSync->merge($pendingAtts)->unique('id');
+        }
+
+        if ($attachmentsToSync->isNotEmpty()) {
             $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
-            foreach ($createdAttachments as $createdAtt) {
-                if (!$createdAtt) {
+            foreach ($attachmentsToSync as $attToSync) {
+                if (!$attToSync) {
                     continue;
                 }
                 try {
-                    $syncManager->syncRegistrationAttachment($createdAtt, $user);
+                    $syncManager->syncRegistrationAttachment($attToSync, $user);
                 } catch (\Throwable $driveEx) {
-                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$createdAtt->id}: " . $driveEx->getMessage());
-                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($createdAtt->id);
+                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$attToSync->id}: " . $driveEx->getMessage());
+                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($attToSync->id);
                 }
             }
         }
@@ -1181,10 +1225,8 @@ class RegistrationController extends Controller
             'portfolio'                => 'nullable|array',
             'portfolio.*'              => 'nullable|file|mimes:pdf,zip,rar,mp4,doc,docx,png,jpg,jpeg|max:10240',
             'cover_letter'             => 'nullable|file|mimes:pdf,doc,docx|max:10240',
-            'proposal'                 => 'nullable|file|mimes:pdf,doc,docx|max:10240',
             'supporting_document'      => 'nullable|array',
             'supporting_document.*'    => 'nullable|file|mimes:pdf,doc,docx,zip,rar,png,jpg,jpeg|max:10240',
-            'profile_photo'            => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'cv_ktp_portofolio_pdf'    => 'nullable|file|mimes:pdf|max:10240',
             'portofolio_visual'        => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
             'design_software'          => 'nullable|string|max:255',

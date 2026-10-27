@@ -336,6 +336,9 @@ class InternController extends Controller
             try {
                 if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
                     $targetYear = (int) now()->year;
+                    if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
+                        app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                    }
                     $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
                         ?: \App\Models\FormSchema::activePublished()->first()
                         ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
@@ -431,14 +434,42 @@ class InternController extends Controller
     {
         $intern = $id instanceof IR ? $id : IR::findOrFail($id);
 
+        // Normalisasi alias field_key tahun 2026 ke kolom inti sebelum validasi
+        $aliasMerges = [];
+        $fieldAliasMap = [
+            'division_first_choice' => 'internship_interest',
+            'reason_first_choice'   => 'internship_reason',
+            'internship_duration'   => 'planned_duration',
+            'English_book_ability'  => 'english_book_ability',
+            'referral_source'       => 'internship_info_sources',
+        ];
+        foreach ($fieldAliasMap as $aliasKey => $canonicalKey) {
+            if ($request->has($aliasKey) && !$request->filled($canonicalKey)) {
+                $aliasMerges[$canonicalKey] = $request->input($aliasKey);
+            }
+        }
+        // Normalisasi input array (checkbox) untuk kolom teks/relasi agar tidak gagal validasi string
+        foreach ([
+            'owned_tools', 'design_software', 'video_software',
+            'programming_languages', 'digital_marketing_type', 'internship_info_sources',
+        ] as $arrToStrKey) {
+            $rawVal = $aliasMerges[$arrToStrKey] ?? $request->input($arrToStrKey);
+            if (is_array($rawVal)) {
+                $aliasMerges[$arrToStrKey] = implode(', ', array_filter(array_map('trim', $rawVal)));
+            }
+        }
+        if (!empty($aliasMerges)) {
+            $request->merge($aliasMerges);
+        }
+
         // Validasi semua field yang bisa diedit via modal Edit
         $validatedData = $request->validate([
             // Data Pribadi
-            'fullname'               => 'required|string|max:255',
+            'fullname'               => 'sometimes|required|string|max:255',
             'born_date'              => 'nullable|string|max:255',
             'birth_place'            => 'nullable|string|max:100',
             'student_id'             => 'nullable|string|max:50',
-            'email'                  => 'required|email|max:255',
+            'email'                  => 'sometimes|nullable|email|max:255',
             'gender'                 => 'nullable|string|max:50',
             'religion'               => 'nullable|string|max:50',
             'phone_number'           => 'nullable|string|max:50',
@@ -478,11 +509,15 @@ class InternController extends Controller
             // File berkas pendaftaran (opsional saat edit)
             'cv'                     => 'nullable|file|max:10240',
             'identity'               => 'nullable|file|max:10240',
+            'ktm_ktp'                => 'nullable|file|max:10240',
             'portfolio'              => 'nullable|file|max:20480',
             'cover_letter'           => 'nullable|file|max:10240',
+            'internship_letter'      => 'nullable|file|max:10240',
             'proposal'               => 'nullable|file|max:10240',
             'supporting_document'    => 'nullable|file|max:10240',
+            'other_Portfolio'        => 'nullable|file|max:10240',
             'profile_photo'          => 'nullable|file|max:10240',
+            'photo'                  => 'nullable|file|max:10240',
             // Status & Brand (dikelola admin)
             'internship_status'      => 'nullable|in:waiting,active,completed,exited,pending,accepted,rejected',
             'brand'                  => 'nullable|string|max:100',
@@ -492,18 +527,21 @@ class InternController extends Controller
         ]);
 
         // Simpan file berkas baru jika ada yang diunggah via form edit
-        $fileFields = ['cv', 'identity', 'portfolio', 'cover_letter', 'proposal', 'supporting_document', 'profile_photo'];
+        $fileFields = [
+            'cv', 'identity', 'ktm_ktp', 'portfolio', 'cover_letter', 'internship_letter',
+            'proposal', 'supporting_document', 'other_Portfolio', 'profile_photo', 'photo',
+        ];
         foreach ($fileFields as $fKey) {
             if ($request->hasFile($fKey)) {
                 $file = $request->file($fKey);
                 $path = $file->store("attachments/{$intern->id}", 'public');
                 $attType = match($fKey) {
-                    'identity'            => 'ktm_ktp',
-                    'portfolio'           => 'portofolio',
-                    'cover_letter'        => 'surat_pengantar',
-                    'supporting_document' => 'dokumen_pendukung',
-                    'profile_photo'       => 'pasfoto',
-                    default               => $fKey,
+                    'identity', 'ktm_ktp'                 => 'ktm_ktp',
+                    'portfolio'                           => 'portofolio',
+                    'cover_letter', 'internship_letter'   => 'surat_pengantar',
+                    'supporting_document', 'other_Portfolio' => 'dokumen_pendukung',
+                    'profile_photo', 'photo'              => 'pasfoto',
+                    default                               => $fKey,
                 };
                 if (\Illuminate\Support\Facades\Schema::hasTable('registration_attachments')) {
                     $att = \App\Models\RegistrationAttachment::updateOrCreate(
@@ -525,7 +563,7 @@ class InternController extends Controller
                         \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($att->id);
                     }
                 }
-                if ($fKey === 'profile_photo' && \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'profile_photo')) {
+                if (in_array($fKey, ['profile_photo', 'photo'], true) && \Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'profile_photo')) {
                     $intern->profile_photo = $path;
                     $intern->saveQuietly();
                 }
@@ -801,7 +839,7 @@ class InternController extends Controller
             unset($validatedData['email']);
         }
 
-        // Sync Skills
+        // Sync Skills (hanya perbarui kategori yang memang dikirim di request)
         $skillFields = [
             'design_software' => 'design',
             'video_software' => 'video',
@@ -809,10 +847,10 @@ class InternController extends Controller
             'digital_marketing_type' => 'digital_marketing',
         ];
         
-        $intern->skills()->delete();
         foreach ($skillFields as $field => $category) {
             if (array_key_exists($field, $validatedData)) {
-                $val = trim($validatedData[$field]);
+                $intern->skills()->where('skill_category', $category)->delete();
+                $val = trim((string) $validatedData[$field]);
                 if (!empty($val) && strtolower($val) !== 'tidak ada' && strtolower($val) !== '-') {
                     $items = array_filter(array_map('trim', explode(',', $val)));
                     foreach ($items as $item) {
@@ -826,20 +864,20 @@ class InternController extends Controller
             }
         }
 
-        // Sync Tools
-        $intern->tools()->delete();
-        $allTools = [];
+        // Sync Tools (hanya perbarui jika owned_tools dikirim di request)
         if (array_key_exists('owned_tools', $validatedData)) {
-            $val = trim($validatedData['owned_tools']);
+            $intern->tools()->delete();
+            $allTools = [];
+            $val = trim((string) $validatedData['owned_tools']);
             if (!empty($val) && strtolower($val) !== 'tidak ada' && strtolower($val) !== '-') {
                 $allTools = array_merge($allTools, array_filter(array_map('trim', explode(',', $val))));
             }
             unset($validatedData['owned_tools']);
-        }
-        foreach (array_unique($allTools) as $item) {
-            $intern->tools()->create([
-                'tool_name' => $item
-            ]);
+            foreach (array_unique($allTools) as $item) {
+                $intern->tools()->create([
+                    'tool_name' => $item
+                ]);
+            }
         }
 
         // Sync Info Sources
@@ -946,32 +984,48 @@ class InternController extends Controller
             );
         }
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (baik perubahan status maupun atribut)
-        try {
-            app(\App\Services\SpreadsheetSyncEngineService::class)->queueSyncForRegistration($intern);
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet queue sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
-        }
-
         try {
             \App\Services\ContactMatchingService::ensureContactAndFollowUpCycle($intern);
         } catch (\Throwable $contactErr) {
             \Illuminate\Support\Facades\Log::warning("Auto contact/followup sync error on admin intern update #{$intern->id}: " . $contactErr->getMessage());
         }
 
-        // Simpan jawaban kustom (custom fields) jika ada
+        // Simpan jawaban kustom (custom fields & 2026 extra system fields) jika ada
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('registration_custom_answers') && \Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
                 $knownCols = \Illuminate\Support\Facades\Schema::getColumnListing('internship_registrations');
-                $customKeys = \App\Models\FormField::active()
+                $excludedCoreKeys = array_merge($knownCols, [
+                    'current_city', 'institution_name', 'study_program', 'faculty',
+                    'internship_interest', 'division_first_choice', 'reason_first_choice',
+                    'internship_duration', 'English_book_ability', 'referral_source',
+                    'design_software', 'video_software', 'programming_languages',
+                    'digital_marketing_type', 'owned_tools', 'internship_info_sources',
+                    'cv', 'identity', 'ktm_ktp', 'portfolio', 'cover_letter', 'internship_letter',
+                    'proposal', 'supporting_document', 'other_Portfolio', 'profile_photo', 'photo',
+                ]);
+                $customKeys = \App\Models\FormField::where('is_archived', false)
                     ->whereNotNull('field_key')
                     ->pluck('field_key')
-                    ->filter(fn($k) => !in_array($k, $knownCols, true))
+                    ->filter(fn($k) => !in_array($k, $excludedCoreKeys, true))
                     ->unique()
                     ->all();
 
                 foreach ($customKeys as $ck) {
-                    if ($request->has($ck)) {
+                    if ($request->hasFile($ck)) {
+                        $cFile = $request->file($ck);
+                        if ($cFile && $cFile->isValid()) {
+                            $cPath = $cFile->store("attachments/{$intern->id}/custom", 'public');
+                            \App\Models\RegistrationCustomAnswer::updateOrCreate(
+                                ['registration_id' => $intern->id, 'field_key' => $ck],
+                                [
+                                    'answer_value'       => asset('storage/' . $cPath),
+                                    'original_file_name' => $cFile->getClientOriginalName(),
+                                    'mime_type'          => $cFile->getMimeType(),
+                                    'file_size'          => $cFile->getSize(),
+                                ]
+                            );
+                        }
+                    } elseif ($request->has($ck)) {
                         $cVal = $request->input($ck);
                         if (is_array($cVal)) {
                             $cVal = implode(', ', array_filter($cVal));
@@ -985,6 +1039,17 @@ class InternController extends Controller
             }
         } catch (\Throwable $caErr) {
             \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
+        }
+
+        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (secara langsung agar baris dan kolom terhubung real-time)
+        try {
+            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+            $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+            if ($rowSync) {
+                $syncEngine->processSyncRecord($rowSync, force: true, allowPendaftar: true);
+            }
+        } catch (\Throwable $sheetErr) {
+            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
         }
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);

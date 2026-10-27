@@ -287,9 +287,21 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
             }
 
             // Simpan 1 tautan folder penyimpanan terpadu pendaftar jika dikembalikan oleh Apps Script Gateway
-            $folderId = $response?->rawResponse['folder_id'] ?? $response?->rawResponse['data']['folder_id'] ?? null;
-            $folderUrl = $response?->rawResponse['folder_url'] ?? $response?->rawResponse['data']['folder_url'] ?? null;
+            $folderId = $uploadResult['folder_id']
+                ?? $response?->rawResponse['folder_id']
+                ?? $response?->rawResponse['data']['folder_id']
+                ?? null;
+            $folderUrl = $uploadResult['folder_url']
+                ?? $response?->rawResponse['folder_url']
+                ?? $response?->rawResponse['data']['folder_url']
+                ?? (!empty($folderId) ? "https://drive.google.com/drive/folders/{$folderId}" : null);
+
             if (!app()->runningUnitTests() && !empty($folderId) && !empty($folderUrl) && $attachment->internship_registration_id) {
+                $expectedRootMarker = 'drive_root:' . ($connection->drive_folder_id ?: ($effectiveRoot ?? 'default'));
+                $applicantSlug = $attachment->registration
+                    ? $attachment->registration->getDriveApplicantFolderName()
+                    : ('REG_' . $attachment->internship_registration_id);
+
                 RegistrationAttachment::updateOrCreate(
                     [
                         'internship_registration_id' => $attachment->internship_registration_id,
@@ -297,14 +309,15 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
                     ],
                     [
                         'category'            => RegistrationAttachment::TYPE_LEGACY_BUNDLE,
-                        'file_path'           => dirname((string) $attachment->file_path),
-                        'original_name'       => 'Folder_Berkas_REG_' . $attachment->internship_registration_id,
+                        'file_path'           => $expectedRootMarker,
+                        'original_name'       => 'Folder_' . $applicantSlug,
                         'file_size'           => 0,
                         'mime_type'           => 'application/vnd.google-apps.folder',
                         'drive_file_id'       => $folderId,
                         'drive_web_view_link' => $folderUrl,
                         'drive_sync_status'   => RegistrationAttachment::STATUS_SYNCED,
                         'drive_synced_at'     => now(),
+                        'drive_error_message' => null,
                     ]
                 );
             }

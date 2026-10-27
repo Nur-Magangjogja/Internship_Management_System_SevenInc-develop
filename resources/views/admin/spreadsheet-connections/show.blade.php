@@ -63,7 +63,18 @@
                 </div>
             </div>
             <div class="{{ $connection->connection_key === 'registration' ? '' : 'md:col-span-2' }}">
-                <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Target Google Spreadsheet</span>
+                <div class="flex items-center justify-between">
+                    <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Target Google Spreadsheet</span>
+                    @if ($connection->isSpreadsheetConnected())
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span class="h-1 w-1 rounded-full bg-emerald-500"></span> Terhubung
+                        </span>
+                    @else
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                            <span class="h-1 w-1 rounded-full bg-rose-500"></span> Belum Terhubung
+                        </span>
+                    @endif
+                </div>
                 @if ($connection->spreadsheet_url)
                     <a href="{{ $connection->spreadsheet_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-mono truncate block mt-1">
                         {{ $connection->spreadsheet_url }}
@@ -74,7 +85,18 @@
             </div>
             @if ($connection->connection_key === 'registration')
                 <div>
-                    <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Folder Google Drive (Berkas Pemagang)</span>
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-slate-500 block uppercase tracking-wider text-[10px]">Folder Google Drive (Berkas Pemagang)</span>
+                        @if ($connection->isDriveConnected())
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span class="h-1 w-1 rounded-full bg-emerald-500"></span> Terhubung
+                            </span>
+                        @else
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                <span class="h-1 w-1 rounded-full bg-rose-500"></span> Belum Terhubung
+                            </span>
+                        @endif
+                    </div>
                     @if ($connection->drive_folder_url)
                         <a href="{{ $connection->drive_folder_url }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-mono truncate block mt-1">
                             {{ $connection->drive_folder_url }}
@@ -88,6 +110,18 @@
                 </div>
             @endif
         </div>
+
+        @if ($connection->hasUnconnectedLinks())
+            <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3 text-xs text-amber-900 bg-amber-50/80 -mx-6 -mb-6 p-4 rounded-b-xl border border-amber-200">
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                    <span><strong>Tanda Peringatan:</strong> Link penghubung Google Drive atau Google Spreadsheet belum terhubung penuh ke database SertIF.</span>
+                </div>
+                <a href="{{ route('admin.spreadsheet-connections.edit', $connection) }}" class="font-bold text-amber-800 hover:text-amber-950 underline shrink-0">
+                    Edit Konfigurasi &rarr;
+                </a>
+            </div>
+        @endif
     </div>
 
     <!-- Read-Only Universal Spreadsheet Scanner Card (Fase 1) -->
