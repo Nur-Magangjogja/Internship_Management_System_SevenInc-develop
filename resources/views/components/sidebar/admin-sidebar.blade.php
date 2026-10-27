@@ -38,6 +38,7 @@
                 ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
                 ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
                 ['label' => 'Monitoring Sinkronisasi', 'route' => 'admin.sync-monitoring.index', 'icon' => 'activity'],
+                ['label' => 'Impor Data Historis',    'route' => 'admin.legacy-import.index',           'icon' => 'upload'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
                 ['label' => 'Manajemen Divisi',   'route' => 'admin.form-settings.divisions',  'icon' => 'settings'],
                 ['label' => 'Pengaturan Form',     'route' => 'admin.form-settings.fields',     'icon' => 'settings'],
