@@ -238,6 +238,43 @@
                               divisi="Divisi Magang" />
             </div>
         </div>
+
+        {{-- 5. DIVISI TERDAFTAR UNTUK BRAND INI --}}
+        <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-[#DCE7E1]">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-[#2D8659] border border-emerald-100 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-[#1B3A34]">5. Divisi Magang yang Dibuka untuk Brand Ini</h2>
+                        <p class="text-xs text-[#4B5F5A]">Daftar divisi spesifik yang dapat dipilih oleh pemagang saat mendaftar melalui domain {{ $brand->registration_host }}.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-bold text-[#2D8659] bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                    {{ $brand->divisions->count() }} Divisi Aktif
+                </span>
+            </div>
+
+            @if($brand->divisions->isNotEmpty())
+                <div class="flex flex-wrap gap-2">
+                    @foreach($brand->divisions as $div)
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#F4F8F6] text-[#1B3A34] border border-[#DCE7E1]">
+                            <span>{{ $div->name }}</span>
+                            @if($div->code)
+                                <span class="text-[10px] font-mono text-[#2D8659] bg-white px-1.5 py-0.5 rounded border border-[#DCE7E1]">
+                                    {{ $div->code }}
+                                </span>
+                            @endif
+                        </span>
+                    @endforeach
+                </div>
+            @else
+                <p class="text-xs text-[#4B5F5A] italic">Belum ada divisi khusus yang dihubungkan ke brand ini (akan menggunakan semua divisi umum).</p>
+            @endif
+        </div>
     </div>
 </div>
 @endsection

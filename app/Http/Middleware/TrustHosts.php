@@ -15,6 +15,20 @@ class TrustHosts extends Middleware
     {
         return [
             $this->allSubdomainsOfApplicationUrl(),
+            'localhost',
+            '127.0.0.1',
+            'daftar.republikweb.net',
+            'daftar.adakamar.id',
+            'daftar.magangjogja.com',
+            'daftar.magangku.com',
+            'daftar.tuantanah.com',
+            'daftar.makeover.id',
+            'daftar.bimbelcerdas.com',
+            'daftar.areakerja.com',
+            'daftar.tukanglas.org',
+            'daftar.titipsini.com',
+            'daftar.seveninc.web.id',
+            'seveninc.web.id',
         ];
     }
 }

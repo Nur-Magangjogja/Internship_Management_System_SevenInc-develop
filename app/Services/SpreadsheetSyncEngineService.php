@@ -47,6 +47,36 @@ class SpreadsheetSyncEngineService
     }
 
     /**
+     * Resolusi koneksi spreadsheet registrasi berbasis brand dengan fallback default brand.
+     */
+    public function getRegistrationConnection(?int $brandId = null): ?SpreadsheetConnection
+    {
+        if ($brandId) {
+            $brandConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $brandId)
+                ->first();
+
+            if ($brandConnection) {
+                return $brandConnection;
+            }
+        }
+
+        // Fallback ke koneksi milik Brand Default
+        $defaultBrand = \App\Models\Brand::getDefaultBrand();
+        if ($defaultBrand) {
+            $defaultConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $defaultBrand->id)
+                ->first();
+
+            if ($defaultConnection) {
+                return $defaultConnection;
+            }
+        }
+
+        return SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+    }
+
+    /**
      * Generate permanent, immutable canonical sync ID for a domain model.
      */
     public function generateExternalSyncId(InternshipRegistration|FollowUpCycle $entity): string
@@ -75,7 +105,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = $this->getRegistrationConnection($registration->brand_id);
         if (!$connection) {
             return null;
         }
@@ -1026,7 +1056,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = $this->getRegistrationConnection($registration->brand_id);
         if (!$connection) {
             return null;
         }
@@ -1989,8 +2019,12 @@ class SpreadsheetSyncEngineService
             return ['schema_synced' => false, 'rows_synced' => 0];
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
-        if (!$connection || !$connection->is_enabled || empty($connection->spreadsheet_id)) {
+        $connections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->where('is_enabled', true)
+            ->whereNotNull('spreadsheet_id')
+            ->get();
+
+        if ($connections->isEmpty()) {
             return ['schema_synced' => false, 'rows_synced' => 0];
         }
 
@@ -2001,11 +2035,15 @@ class SpreadsheetSyncEngineService
 
         $schemaSynced = false;
         if (method_exists($this->transport, 'syncSheetSchema') && !empty($headers)) {
-            try {
-                $resp = $this->transport->syncSheetSchema($connection, (string) $year, $headers);
-                $schemaSynced = $resp->success;
-            } catch (Throwable) {
-                $schemaSynced = false;
+            foreach ($connections as $connection) {
+                try {
+                    $resp = $this->transport->syncSheetSchema($connection, (string) $year, $headers);
+                    if ($resp->success) {
+                        $schemaSynced = true;
+                    }
+                } catch (Throwable) {
+                    // Abaikan kegagalan individual connection, lanjutkan koneksi brand lain
+                }
             }
         }
 

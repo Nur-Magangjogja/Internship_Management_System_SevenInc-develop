@@ -11,13 +11,14 @@ class BrandController extends Controller
 {
     public function index()
     {
-        $brands = Brand::all();
+        $brands = Brand::with('divisions')->orderBy('name')->get();
         return view('admin.brands.index', compact('brands'));
     }
 
     public function create()
     {
-        return view('admin.brands.create');
+        $divisions = \App\Models\Division::active()->get();
+        return view('admin.brands.create', compact('divisions'));
     }
 
     public function store(Request $request)
@@ -43,6 +44,8 @@ class BrandController extends Controller
         $request->validate([
             'code' => 'required|string|max:50|unique:brands,code',
             'name' => 'required|string|max:255',
+            'division_ids' => 'nullable|array',
+            'division_ids.*' => 'exists:divisions,id',
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
@@ -52,7 +55,7 @@ class BrandController extends Controller
         ], $messages);
 
         $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature', 'stamp'];
-        $data = $request->except($fileFields);
+        $data = $request->except(array_merge($fileFields, ['division_ids']));
 
         foreach ($fileFields as $fileField) {
             if ($request->hasFile($fileField)) {
@@ -62,6 +65,8 @@ class BrandController extends Controller
         }
 
         $brand = Brand::create($data);
+
+        $brand->divisions()->sync($request->input('division_ids', []));
 
         try {
             app(\App\Services\SystemAssetService::class)->syncBrandAssets($brand, \Illuminate\Support\Facades\Auth::user());
@@ -74,12 +79,15 @@ class BrandController extends Controller
 
     public function show(Brand $brand)
     {
+        $brand->load('divisions');
         return view('admin.brands.show', compact('brand'));
     }
 
     public function edit(Brand $brand)
     {
-        return view('admin.brands.edit', compact('brand'));
+        $brand->load('divisions');
+        $divisions = \App\Models\Division::active()->get();
+        return view('admin.brands.edit', compact('brand', 'divisions'));
     }
 
     public function update(Request $request, Brand $brand)
@@ -105,6 +113,8 @@ class BrandController extends Controller
         $request->validate([
             'code' => 'required|string|max:50|unique:brands,code,' . $brand->id,
             'name' => 'required|string|max:255',
+            'division_ids' => 'nullable|array',
+            'division_ids.*' => 'exists:divisions,id',
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'internship_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'webinar_certificate_bg' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
@@ -115,7 +125,7 @@ class BrandController extends Controller
 
         $fileFields = ['logo', 'internship_certificate_bg', 'webinar_certificate_bg', 'membercard_bg', 'signature', 'stamp'];
         $removeFields = array_map(fn($f) => 'remove_' . $f, $fileFields);
-        $data = $request->except(array_merge($fileFields, $removeFields));
+        $data = $request->except(array_merge($fileFields, $removeFields, ['division_ids']));
 
         foreach ($fileFields as $fileField) {
             if ($request->hasFile($fileField)) {
@@ -129,6 +139,8 @@ class BrandController extends Controller
 
         $brand->update($data);
 
+        $brand->divisions()->sync($request->input('division_ids', []));
+
         try {
             app(\App\Services\SystemAssetService::class)->syncBrandAssets($brand, \Illuminate\Support\Facades\Auth::user());
         } catch (\Throwable $e) {
@@ -136,6 +148,13 @@ class BrandController extends Controller
         }
 
         return redirect()->route('admin.brands.index')->with('success', 'Brand berhasil diperbarui.');
+    }
+
+    public function setDefault(Brand $brand)
+    {
+        $brand->makeDefault();
+
+        return back()->with('success', "Brand \"{$brand->name}\" berhasil ditetapkan sebagai Brand Default sistem.");
     }
 
     public function destroy(Brand $brand)

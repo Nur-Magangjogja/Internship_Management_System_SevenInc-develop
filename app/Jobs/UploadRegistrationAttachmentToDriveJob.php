@@ -125,7 +125,7 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
 
         $attachment->refresh();
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection($attachment->registration?->brand_id);
         if (!$connection || !$connection->is_enabled) {
             $this->releaseLeaseAndFail(
                 $attachment,

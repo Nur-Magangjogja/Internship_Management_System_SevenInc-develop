@@ -14,6 +14,9 @@ class Brand extends Model
     protected $fillable = [
         'code',
         'name',
+        'registration_host',
+        'primary_domain',
+        'is_default',
         'company_address',
         'logo',
         'internship_certificate_bg',
@@ -25,6 +28,56 @@ class Brand extends Model
         'signature',
         'stamp',
     ];
+
+    protected $casts = [
+        'is_default' => 'boolean',
+    ];
+
+    /**
+     * Dapatkan brand default sistem (fallback ke SEVEN INC jika belum diset).
+     */
+    public static function getDefaultBrand(): ?self
+    {
+        return static::where('is_default', true)->first()
+            ?: static::where('code', 'SI')->first()
+            ?: static::first();
+    }
+
+    /**
+     * Tetapkan brand ini sebagai Brand Default sistem.
+     */
+    public function makeDefault(): void
+    {
+        static::where('is_default', true)->where('id', '!=', $this->id)->update(['is_default' => false]);
+        $this->update(['is_default' => true]);
+    }
+
+    public function spreadsheetConnections()
+    {
+        return $this->hasMany(\App\Models\SpreadsheetConnection::class, 'brand_id');
+    }
+
+    public function divisions()
+    {
+        return $this->belongsToMany(\App\Models\Division::class, 'brand_divisions', 'brand_id', 'division_id')
+            ->withTimestamps();
+    }
+
+    public function internshipRegistrations()
+    {
+        return $this->hasMany(\App\Models\InternshipRegistration::class, 'brand_id');
+    }
+
+    public function users()
+    {
+        return $this->hasMany(\App\Models\User::class, 'brand_id');
+    }
+
+    public function registrationSpreadsheetConnection()
+    {
+        return $this->hasOne(\App\Models\SpreadsheetConnection::class, 'brand_id')
+            ->where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION);
+    }
 
     public function getStampUrlAttribute(): ?string
     {
@@ -178,7 +231,7 @@ class Brand extends Model
             ];
         }
 
-        if (str_contains($key, 'titip') || str_contains($key, 'sini')) {
+        if (str_contains($key, 'titip') || str_contains($key, 'sini') || str_contains($key, 'ts')) {
             return [
                 'gradient'      => 'linear-gradient(135deg, #2a1608 0%, #46250e 50%, #170b04 100%)',
                 'accent'        => '#FBBF24',
@@ -188,6 +241,84 @@ class Brand extends Model
                 'pill_border'   => 'rgba(251, 191, 36, 0.3)',
                 'chip'          => 'gold',
                 'badge_text'    => 'TITIPSINI ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'republik') || str_contains($key, 'rw')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #091e3a 0%, #173865 50%, #061325 100%)',
+                'accent'        => '#38BDF8',
+                'accent_light'  => '#E0F2FE',
+                'accent_border' => 'rgba(56, 189, 248, 0.35)',
+                'pill_bg'       => 'rgba(56, 189, 248, 0.12)',
+                'pill_border'   => 'rgba(56, 189, 248, 0.3)',
+                'chip'          => 'silver',
+                'badge_text'    => 'REPUBLIK WEB ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'kamar') || str_contains($key, 'akm')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #2b112c 0%, #4a154b 50%, #19081a 100%)',
+                'accent'        => '#E879F9',
+                'accent_light'  => '#FDF4FF',
+                'accent_border' => 'rgba(232, 121, 249, 0.35)',
+                'pill_bg'       => 'rgba(232, 121, 249, 0.12)',
+                'pill_border'   => 'rgba(232, 121, 249, 0.3)',
+                'chip'          => 'silver',
+                'badge_text'    => 'ADA KAMAR ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'tanah') || str_contains($key, 'tt')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #271c0c 0%, #443015 50%, #150f06 100%)',
+                'accent'        => '#D97706',
+                'accent_light'  => '#FEF3C7',
+                'accent_border' => 'rgba(217, 119, 6, 0.35)',
+                'pill_bg'       => 'rgba(217, 119, 6, 0.12)',
+                'pill_border'   => 'rgba(217, 119, 6, 0.3)',
+                'chip'          => 'gold',
+                'badge_text'    => 'TUAN TANAH ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'makeover') || str_contains($key, 'mo')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #2d0a1e 0%, #4c1133 50%, #1a0511 100%)',
+                'accent'        => '#FB7185',
+                'accent_light'  => '#FFE4E6',
+                'accent_border' => 'rgba(251, 113, 133, 0.35)',
+                'pill_bg'       => 'rgba(251, 113, 133, 0.12)',
+                'pill_border'   => 'rgba(251, 113, 133, 0.3)',
+                'chip'          => 'silver',
+                'badge_text'    => 'MAKEOVER ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'bimbel') || str_contains($key, 'bc')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
+                'accent'        => '#2DD4BF',
+                'accent_light'  => '#CCFBF1',
+                'accent_border' => 'rgba(45, 212, 191, 0.35)',
+                'pill_bg'       => 'rgba(45, 212, 191, 0.12)',
+                'pill_border'   => 'rgba(45, 212, 191, 0.3)',
+                'chip'          => 'gold',
+                'badge_text'    => 'BIMBEL CERDAS ALUMNI',
+            ];
+        }
+
+        if (str_contains($key, 'las') || str_contains($key, 'tl')) {
+            return [
+                'gradient'      => 'linear-gradient(135deg, #26150b 0%, #452410 50%, #190c05 100%)',
+                'accent'        => '#F97316',
+                'accent_light'  => '#FFEDD5',
+                'accent_border' => 'rgba(249, 115, 22, 0.35)',
+                'pill_bg'       => 'rgba(249, 115, 22, 0.12)',
+                'pill_border'   => 'rgba(249, 115, 22, 0.3)',
+                'chip'          => 'gold',
+                'badge_text'    => 'TUKANG LAS ALUMNI',
             ];
         }
 

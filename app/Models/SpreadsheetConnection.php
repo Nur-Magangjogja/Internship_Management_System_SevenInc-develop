@@ -30,6 +30,7 @@ class SpreadsheetConnection extends Model
     protected $fillable = [
         'public_uuid',
         'connection_key',
+        'brand_id',
         'display_name',
         'spreadsheet_url',
         'spreadsheet_id',
@@ -47,6 +48,11 @@ class SpreadsheetConnection extends Model
         'created_by',
         'updated_by',
     ];
+
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
+    }
 
     protected $casts = [
         'is_enabled' => 'boolean',

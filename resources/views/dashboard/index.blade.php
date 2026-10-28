@@ -4,38 +4,38 @@
     $statusMeta = [
         'waiting' => [
             'label' => 'Menunggu Review',
-            'badge' => 'bg-amber-50 text-amber-700',
-            'bar' => 'bg-amber-400',
+            'badge' => 'bg-teal-50 text-teal-700',
+            'bar'   => 'bg-teal-500',
         ],
         'pending' => [
             'label' => 'Pending',
             'badge' => 'bg-amber-50 text-amber-700',
-            'bar' => 'bg-amber-400',
+            'bar'   => 'bg-amber-400',
         ],
         'accepted' => [
             'label' => 'Diterima',
             'badge' => 'bg-emerald-50 text-emerald-700',
-            'bar' => 'bg-emerald-500',
+            'bar'   => 'bg-emerald-500',
         ],
         'active' => [
             'label' => 'Aktif',
             'badge' => 'bg-blue-50 text-blue-700',
-            'bar' => 'bg-blue-500',
+            'bar'   => 'bg-blue-500',
         ],
         'completed' => [
             'label' => 'Selesai',
-            'badge' => 'bg-slate-100 text-slate-700',
-            'bar' => 'bg-slate-500',
+            'badge' => 'bg-indigo-50 text-indigo-700',
+            'bar'   => 'bg-indigo-500',
         ],
         'rejected' => [
             'label' => 'Ditolak',
-            'badge' => 'bg-red-50 text-red-700',
-            'bar' => 'bg-red-500',
+            'badge' => 'bg-rose-50 text-rose-700',
+            'bar'   => 'bg-rose-500',
         ],
         'exited' => [
             'label' => 'Keluar',
-            'badge' => 'bg-red-50 text-red-700',
-            'bar' => 'bg-red-500',
+            'badge' => 'bg-slate-100 text-slate-700',
+            'bar'   => 'bg-slate-500',
         ],
     ];
 
@@ -148,7 +148,7 @@
             </div>
 
             <div class="space-y-4">
-                @foreach (['waiting', 'accepted', 'active', 'completed', 'rejected', 'exited'] as $status)
+                @foreach (['waiting', 'pending', 'accepted', 'active', 'completed', 'rejected', 'exited'] as $status)
                     @php
                         $value = (int) ($counts[$status] ?? 0);
                         $percent = round(($value / $totalInterns) * 100);
@@ -168,6 +168,83 @@
             </div>
         </section>
     </div>
+
+    {{-- ==========================================
+         DISTRIBUSI PEMAGANG PER BRAND (Multi-Brand)
+         ========================================== --}}
+    <section class="mb-6 rounded-xl border border-admin-border bg-white p-5 shadow-sm sm:p-6" id="section-brand-distribution">
+        <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-2.5 w-2.5 rounded-full bg-admin-primary"></span>
+                    <h2 class="text-base font-bold text-admin-text-dark">Distribusi Pemagang per Brand</h2>
+                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Multi-Brand</span>
+                </div>
+                <p class="mt-1 text-sm text-admin-text-mid">
+                    Sebaran pemagang dan pendaftar berdasarkan 11 Brand Resmi yang terdaftar dalam sistem.
+                </p>
+            </div>
+            <a href="{{ route('admin.brands.index') }}" class="inline-flex items-center gap-1 text-xs font-semibold text-admin-primary hover:text-admin-primary-dark transition">
+                <span>Kelola Brand</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
+            {{-- Kolom Donut Chart (5 Kolom) --}}
+            <div class="flex flex-col items-center justify-center lg:col-span-5 lg:border-r lg:border-admin-border lg:pr-6">
+                <div class="relative h-60 w-60 sm:h-64 sm:w-64">
+                    <canvas id="admin-brand-distribution-chart"></canvas>
+                    <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span class="text-xs font-medium text-admin-text-mid">Total Terdaftar</span>
+                        <span class="text-2xl font-extrabold text-admin-text-dark">{{ $counts['total'] ?? 0 }}</span>
+                        <span class="text-[11px] text-admin-text-mid">Pemagang</span>
+                    </div>
+                </div>
+                <p class="mt-3 text-center text-xs text-admin-text-mid">
+                    Proporsi pendaftaran dari 11 domain brand resmi
+                </p>
+            </div>
+
+            {{-- Kolom Rincian Brand (7 Kolom) --}}
+            <div class="lg:col-span-7">
+                <div class="grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2">
+                    @forelse ($brandDistribution ?? [] as $b)
+                        @php
+                            $bCount = (int) ($b->internship_registrations_count ?? 0);
+                            $bPercent = ($counts['total'] ?? 0) > 0 ? round(($bCount / $counts['total']) * 100, 1) : 0;
+                            $bColor = $brandColors[$b->code] ?? '#64748B';
+                        @endphp
+                        <div class="rounded-lg border border-slate-100 bg-[#FBFDFB] p-2.5 transition hover:border-admin-border hover:bg-white">
+                            <div class="mb-1 flex items-center justify-between text-xs">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: {{ $bColor }};"></span>
+                                    <span class="truncate font-semibold text-admin-text-dark" title="{{ $b->name }}">
+                                        {{ $b->name }}
+                                    </span>
+                                    @if ($b->is_default)
+                                        <span class="shrink-0 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold text-amber-700">
+                                            Default
+                                        </span>
+                                    @endif
+                                </div>
+                                <span class="shrink-0 font-medium text-admin-text-mid ml-2">
+                                    <strong class="text-admin-text-dark">{{ $bCount }}</strong> ({{ $bPercent }}%)
+                                </span>
+                            </div>
+                            <div class="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full transition-all duration-500" style="width: {{ $bPercent }}%; background-color: {{ $bColor }};"></div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="col-span-2 py-6 text-center text-xs text-admin-text-mid">
+                            Belum ada data brand tersedia.
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </section>
 
     {{-- ==========================================
          GRAFIK KEDUA: STATISTIK PEMAGANG DITERIMA
@@ -382,6 +459,22 @@
                                     <div>
                                         <p class="font-semibold text-admin-text-dark">{{ $intern->fullname }}</p>
                                         <p class="mt-0.5 text-xs text-admin-text-mid">{{ $intern->email }}</p>
+                                        @php
+                                            $bName = $intern->brandRel?->name ?? $intern->brand;
+                                            $isDef = $intern->brandRel?->is_default;
+                                        @endphp
+                                        @if($bName)
+                                            <div class="mt-1 flex items-center gap-1">
+                                                <span class="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                                    <i class="fa-solid fa-tag mr-1 text-[8px]"></i>{{ $bName }}
+                                                </span>
+                                                @if($isDef)
+                                                    <span class="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold text-amber-700" title="Brand Default Sistem">
+                                                        Default
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
                                 </div>
                             </td>
@@ -675,6 +768,58 @@
                     },
                     grid: {
                         color: 'rgba(75, 95, 90, 0.12)',
+                    }
+                }
+            }
+        }
+    });
+})();
+
+// ==========================================
+// GRAFIK DISTRIBUSI PEMAGANG PER BRAND
+// (Chart.js Doughnut Chart)
+// ==========================================
+(() => {
+    const canvas = document.getElementById('admin-brand-distribution-chart');
+    if (!canvas || typeof Chart === 'undefined') {
+        return;
+    }
+
+    const brandData = @json($brandChart ?? []);
+    if (!brandData.labels || brandData.labels.length === 0) {
+        return;
+    }
+
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: brandData.labels,
+            datasets: [{
+                data: brandData.totals,
+                backgroundColor: brandData.colors,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+                hoverOffset: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                tooltip: {
+                    backgroundColor: '#1B3A34',
+                    padding: 10,
+                    callbacks: {
+                        label: function(context) {
+                            const val = Number(context.raw) || 0;
+                            const total = context.dataset.data.reduce((a, b) => Number(a) + Number(b), 0);
+                            const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                            return ` ${context.label}: ${val} pemagang (${pct}%)`;
+                        }
                     }
                 }
             }

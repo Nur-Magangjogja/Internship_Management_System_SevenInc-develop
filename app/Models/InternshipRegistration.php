@@ -54,7 +54,7 @@ class InternshipRegistration extends Model
         'internship_reason', 'internship_type', 'internship_arrangement',
         'current_status', 'english_book_ability',
         'wfo_readiness', 'schedule_shift_readiness', 'has_laptop',
-        'division_id', 'brand_id',
+        'division_id', 'brand_id', 'registration_host',
         'start_date', 'planned_duration', 'end_date',
         'internship_status',
         'followup_status',
@@ -251,12 +251,12 @@ class InternshipRegistration extends Model
     {
         return [
             self::STATUS_WAITING    => 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
-            self::STATUS_ACTIVE     => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
-            self::STATUS_COMPLETED  => 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200',
-            self::STATUS_EXITED     => 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
             self::STATUS_PENDING    => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
             self::STATUS_ACCEPTED   => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
-            self::STATUS_REJECTED   => 'bg-gray-200 text-gray-700 dark:bg-gray-800/60 dark:text-gray-200',
+            self::STATUS_ACTIVE     => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+            self::STATUS_COMPLETED  => 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200',
+            self::STATUS_REJECTED   => 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
+            self::STATUS_EXITED     => 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
         ][$this->internship_status] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
     }
 
@@ -267,17 +267,33 @@ class InternshipRegistration extends Model
             : null;
     }
 
+    public const FOLLOWUP_STATUS_STYLES = [
+        self::FOLLOWUP_NOT_FOLLOWED_UP       => 'background-color: #FFFFFF; color: #1F2937; border-color: #CBD5E1;',
+        self::FOLLOWUP_AWAITING_AGREEMENT    => 'background-color: #4F95A3; color: #FFFFFF; border-color: #3D7884;',
+        self::FOLLOWUP_MOVED_TO_PARTICIPANTS => 'background-color: #FFF200; color: #5A4500; border-color: #E0D500;',
+        self::FOLLOWUP_INTERNSHIP_STARTED    => 'background-color: #00FF00; color: #064E3B; border-color: #00D600;',
+        self::FOLLOWUP_INTERNSHIP_CANCELLED  => 'background-color: #FF0000; color: #FFFFFF; border-color: #D60000;',
+        self::FOLLOWUP_NOT_YET_ACC           => 'background-color: #FF00FF; color: #FFFFFF; border-color: #CC00CC;',
+        self::FOLLOWUP_INTERNSHIP_COMPLETED  => 'background-color: #FF9900; color: #FFFFFF; border-color: #D97706;',
+        self::FOLLOWUP_AWAITING_DATES        => 'background-color: #00E5EE; color: #083344; border-color: #00BAC2;',
+    ];
+
+    public function getFollowupStatusStyleAttribute(): string
+    {
+        return self::FOLLOWUP_STATUS_STYLES[$this->followup_status] ?? 'background-color: #F1F5F9; color: #334155; border-color: #CBD5E1;';
+    }
+
     public function getFollowupStatusBadgeClassAttribute(): string
     {
         return match ($this->followup_status) {
-            self::FOLLOWUP_NOT_FOLLOWED_UP       => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-            self::FOLLOWUP_AWAITING_AGREEMENT    => 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
-            self::FOLLOWUP_MOVED_TO_PARTICIPANTS => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
-            self::FOLLOWUP_INTERNSHIP_STARTED    => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
-            self::FOLLOWUP_INTERNSHIP_CANCELLED  => 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
-            self::FOLLOWUP_NOT_YET_ACC           => 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200',
-            self::FOLLOWUP_INTERNSHIP_COMPLETED  => 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200',
-            self::FOLLOWUP_AWAITING_DATES        => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
+            self::FOLLOWUP_NOT_FOLLOWED_UP       => 'bg-white text-gray-800 border border-gray-300',
+            self::FOLLOWUP_AWAITING_AGREEMENT    => 'bg-[#4F95A3] text-white border border-[#3D7884]',
+            self::FOLLOWUP_MOVED_TO_PARTICIPANTS => 'bg-[#FFF200] text-[#5A4500] border border-[#E0D500]',
+            self::FOLLOWUP_INTERNSHIP_STARTED    => 'bg-[#00FF00] text-[#064E3B] border border-[#00D600]',
+            self::FOLLOWUP_INTERNSHIP_CANCELLED  => 'bg-[#FF0000] text-white border border-[#D60000]',
+            self::FOLLOWUP_NOT_YET_ACC           => 'bg-[#FF00FF] text-white border border-[#CC00CC]',
+            self::FOLLOWUP_INTERNSHIP_COMPLETED  => 'bg-[#FF9900] text-white border border-[#D97706]',
+            self::FOLLOWUP_AWAITING_DATES        => 'bg-[#00E5EE] text-[#083344] border border-[#00BAC2]',
             default                              => 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
         };
     }
@@ -638,13 +654,15 @@ class InternshipRegistration extends Model
     }
 
     /**
-     * Bangun jalur folder Google Drive kanonikal untuk pendaftar ini: REGISTRASI/{TAHUN}/{NAMA_PEMAGANG}
+     * Bangun jalur folder Google Drive kanonikal untuk pendaftar ini: REGISTRASI/{TAHUN}/{BRAND}/{NAMA_PEMAGANG}
      */
     public function getDriveApplicantFolderPath(): string
     {
         $year = $this->created_at ? $this->created_at->format('Y') : date('Y');
+        $brandName = $this->brandRel?->name ?: ($this->brand ?: 'SEVEN INC');
+        $cleanBrand = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($brandName)) ?: 'SEVEN INC';
 
-        return "REGISTRASI/{$year}/" . $this->getDriveApplicantFolderName();
+        return "REGISTRASI/{$year}/{$cleanBrand}/" . $this->getDriveApplicantFolderName();
     }
 
     /**

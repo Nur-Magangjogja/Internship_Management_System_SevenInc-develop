@@ -54,6 +54,31 @@
                         <p class="mt-1 text-[11.5px] text-[#D32F2F]">{{ $message }}</p>
                         @enderror
                     </div>
+
+                    {{-- Tautkan ke Brand --}}
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-[12.5px] font-semibold text-[#1B3A34]">
+                                Tautkan ke Brand
+                            </label>
+                            <div class="flex gap-1.5 text-[10.5px]">
+                                <button type="button" onclick="toggleAllCreateBrands(true)" class="text-[#2D8659] hover:underline font-semibold">Pilih Semua</button>
+                                <span class="text-slate-300">•</span>
+                                <button type="button" onclick="toggleAllCreateBrands(false)" class="text-slate-500 hover:underline">Hapus Semua</button>
+                            </div>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto rounded-[8px] border border-[#DCE7E1] bg-[#F8FAF9] p-2.5 space-y-1.5">
+                            @foreach($brands as $b)
+                                <label class="flex items-center gap-2 p-1.5 rounded hover:bg-white text-[12px] text-[#1B3A34] cursor-pointer">
+                                    <input type="checkbox" name="brand_ids[]" value="{{ $b->id }}" class="create-brand-cb rounded border-[#DCE7E1] text-[#2D8659] focus:ring-[#2D8659] h-3.5 w-3.5" checked>
+                                    <span class="font-bold text-[#2D8659] font-mono text-[11px] w-9">[{{ $b->code }}]</span>
+                                    <span class="truncate">{{ $b->name }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="mt-1 text-[11px] text-[#4B5F5A]">Centang brand mana saja yang membuka pendaftaran divisi ini.</p>
+                    </div>
+
                     <button type="submit"
                         class="flex w-full items-center justify-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1F5F3F]">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -111,27 +136,54 @@
                                         class="font-semibold {{ $division->is_active ? 'text-[#1B3A34]' : 'text-[#4B5F5A] line-through' }}">
                                         {{ $division->name }}
                                     </span>
+                                    <div id="brand-badges-{{ $division->id }}" class="flex flex-wrap gap-1 mt-1">
+                                        @forelse($division->brands as $b)
+                                            <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-[#2D8659] border border-emerald-200" title="{{ $b->name }}">
+                                                {{ $b->code }}
+                                            </span>
+                                        @empty
+                                            <span class="inline-block text-[10.5px] italic text-slate-400">Tidak ada brand terhubung</span>
+                                        @endforelse
+                                    </div>
+
                                     {{-- Inline edit form --}}
                                     <form id="edit-form-{{ $division->id }}" method="POST"
                                         action="{{ route('admin.form-settings.divisions.update', $division) }}"
-                                        class="hidden mt-1">
+                                        class="hidden mt-2 space-y-2">
                                         @csrf @method('PUT')
-                                        <div class="flex flex-col gap-2">
-                                            <div class="flex gap-2">
-                                                <input type="text" name="name" value="{{ $division->name }}" placeholder="Nama Divisi"
-                                                    class="flex-1 rounded-[7px] border border-[#2D8659] bg-white px-2.5 py-1.5 text-[13px] text-[#1B3A34] outline-none">
-                                                <button type="submit"
-                                                    class="rounded-[7px] bg-[#2D8659] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1F5F3F]">
-                                                    Simpan
-                                                </button>
-                                                <button type="button" onclick="cancelEdit({{ $division->id }})"
-                                                    class="rounded-[7px] border border-[#DCE7E1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5F5A] hover:bg-[#F4F8F6]">
-                                                    Batal
-                                                </button>
+                                        <div class="flex gap-2">
+                                            <input type="text" name="name" value="{{ $division->name }}" placeholder="Nama Divisi"
+                                                class="flex-1 rounded-[7px] border border-[#2D8659] bg-white px-2.5 py-1.5 text-[13px] text-[#1B3A34] outline-none">
+                                            <input type="text" name="code" value="{{ $division->code }}" placeholder="Kode"
+                                                class="w-24 rounded-[7px] border border-[#2D8659] bg-white px-2.5 py-1.5 text-[13px] text-[#1B3A34] outline-none font-mono">
+                                            <button type="submit"
+                                                class="rounded-[7px] bg-[#2D8659] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1F5F3F]">
+                                                Simpan
+                                            </button>
+                                            <button type="button" onclick="cancelEdit({{ $division->id }})"
+                                                class="rounded-[7px] border border-[#DCE7E1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5F5A] hover:bg-[#F4F8F6]">
+                                                Batal
+                                            </button>
+                                        </div>
+
+                                        {{-- Brand Selector --}}
+                                        <div class="p-2.5 rounded-lg border border-[#DCE7E1] bg-[#F8FAF9]">
+                                            <div class="flex items-center justify-between mb-1.5">
+                                                <span class="text-[11px] font-bold text-[#1B3A34]">Tautkan ke Brand:</span>
+                                                <div class="flex gap-1.5 text-[10.5px]">
+                                                    <button type="button" onclick="toggleAllEditBrands({{ $division->id }}, true)" class="text-[#2D8659] hover:underline font-semibold">Pilih Semua</button>
+                                                    <span class="text-slate-300">•</span>
+                                                    <button type="button" onclick="toggleAllEditBrands({{ $division->id }}, false)" class="text-slate-500 hover:underline">Hapus Semua</button>
+                                                </div>
                                             </div>
-                                            <div class="flex gap-2">
-                                                <input type="text" name="code" value="{{ $division->code }}" placeholder="Kode"
-                                                    class="w-32 rounded-[7px] border border-[#2D8659] bg-white px-2.5 py-1.5 text-[13px] text-[#1B3A34] outline-none font-mono">
+                                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                                                @foreach($brands as $b)
+                                                    <label class="flex items-center gap-1.5 p-1 rounded border border-[#DCE7E1] bg-white text-[11px] hover:border-[#2D8659] cursor-pointer">
+                                                        <input type="checkbox" name="brand_ids[]" value="{{ $b->id }}" class="edit-brand-cb-{{ $division->id }} rounded border-slate-300 text-[#2D8659] focus:ring-[#2D8659] h-3 w-3" {{ $division->brands->contains('id', $b->id) ? 'checked' : '' }}>
+                                                        <span class="font-bold text-[#2D8659] font-mono text-[10px]">[{{ $b->code }}]</span>
+                                                        <span class="text-slate-700 text-[10.5px] truncate" title="{{ $b->name }}">{{ $b->name }}</span>
+                                                    </label>
+                                                @endforeach
                                             </div>
                                         </div>
                                     </form>
@@ -202,7 +254,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="4" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
+                                <td colspan="5" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
                                     Belum ada divisi. Tambahkan divisi pertama di form sebelah kiri.
                                 </td>
                             </tr>
@@ -225,6 +277,8 @@
 function startEdit(id) {
     document.getElementById('name-' + id).classList.add('hidden');
     document.getElementById('code-' + id).classList.add('hidden');
+    var badges = document.getElementById('brand-badges-' + id);
+    if (badges) badges.classList.add('hidden');
     document.getElementById('edit-form-' + id).classList.remove('hidden');
     document.querySelector('#edit-form-' + id + ' input[name="name"]').focus();
 }
@@ -232,7 +286,21 @@ function startEdit(id) {
 function cancelEdit(id) {
     document.getElementById('name-' + id).classList.remove('hidden');
     document.getElementById('code-' + id).classList.remove('hidden');
+    var badges = document.getElementById('brand-badges-' + id);
+    if (badges) badges.classList.remove('hidden');
     document.getElementById('edit-form-' + id).classList.add('hidden');
+}
+
+function toggleAllCreateBrands(check) {
+    document.querySelectorAll('.create-brand-cb').forEach(function(cb) {
+        cb.checked = check;
+    });
+}
+
+function toggleAllEditBrands(divId, check) {
+    document.querySelectorAll('.edit-brand-cb-' + divId).forEach(function(cb) {
+        cb.checked = check;
+    });
 }
 </script>
 @endsection

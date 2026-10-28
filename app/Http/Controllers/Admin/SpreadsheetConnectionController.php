@@ -33,6 +33,34 @@ class SpreadsheetConnectionController extends Controller
     }
 
     /**
+     * Buat atau daftarkan koneksi registrasi spreadsheet baru khusus untuk brand tertentu.
+     */
+    public function createBrandConnection(Request $request)
+    {
+        $validated = $request->validate([
+            'brand_id' => 'required|exists:brands,id',
+        ]);
+
+        $brand = \App\Models\Brand::findOrFail($validated['brand_id']);
+
+        $connection = SpreadsheetConnection::firstOrCreate(
+            [
+                'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                'brand_id'       => $brand->id,
+            ],
+            [
+                'display_name'      => "Spreadsheet Pendaftaran ({$brand->name})",
+                'is_enabled'        => false,
+                'connection_status' => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+            ]
+        );
+
+        return redirect()
+            ->route('admin.spreadsheet-connections.edit', $connection)
+            ->with('success', "Koneksi spreadsheet untuk brand '{$brand->name}' berhasil disiapkan. Silakan atur URL Spreadsheet dan Google Drive Folder.");
+    }
+
+    /**
      * Tampilkan detail konfigurasi, riwayat versi schema, pemetaan kolom, dan status sync baris (Read-Only).
      */
     public function show(Request $request, SpreadsheetConnection $spreadsheetConnection)
@@ -153,6 +181,7 @@ class SpreadsheetConnectionController extends Controller
             'spreadsheet_url'          => 'nullable|string|max:500',
             'apps_script_endpoint_url' => 'nullable|url|max:500',
             'drive_folder_url'         => 'nullable|string|max:500',
+            'brand_id'                 => 'nullable|exists:brands,id',
         ]);
 
         try {

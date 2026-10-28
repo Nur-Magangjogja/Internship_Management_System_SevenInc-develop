@@ -152,7 +152,7 @@ class RegistrationSpreadsheetMappingService
 
         $year = (int) $createdAt->format('Y');
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection($registration->brand_id);
         if (!$connection) {
             return null;
         }

@@ -12,24 +12,29 @@ class DivisionController extends Controller
     /** GET /admin/form-settings/divisions */
     public function index()
     {
-        $divisions = Division::orderBy('name')->get();
-        return view('admin.form_settings.divisions', compact('divisions'));
+        $divisions = Division::with('brands')->orderBy('name')->get();
+        $brands = \App\Models\Brand::orderBy('name')->get();
+        return view('admin.form_settings.divisions', compact('divisions', 'brands'));
     }
 
     /** POST /admin/form-settings/divisions */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:100|unique:divisions,name',
-            'code' => 'nullable|string|max:10|unique:divisions,code',
+            'name'        => 'required|string|max:100|unique:divisions,name',
+            'code'        => 'nullable|string|max:10|unique:divisions,code',
+            'brand_ids'   => 'nullable|array',
+            'brand_ids.*' => 'exists:brands,id',
         ]);
 
-        Division::create([
+        $division = Division::create([
             'name'       => trim($validated['name']),
             'slug'       => Str::slug(trim($validated['name']), '_'),
             'code'       => isset($validated['code']) ? strtoupper(trim($validated['code'])) : null,
             'is_active'  => true,
         ]);
+
+        $division->brands()->sync($request->input('brand_ids', []));
 
         return redirect()->route('admin.form-settings.divisions')
             ->with('success', "Divisi \"{$validated['name']}\" berhasil ditambahkan.");
@@ -39,8 +44,10 @@ class DivisionController extends Controller
     public function update(Request $request, Division $division)
     {
         $validated = $request->validate([
-            'name' => "required|string|max:100|unique:divisions,name,{$division->id}",
-            'code' => "nullable|string|max:10|unique:divisions,code,{$division->id}",
+            'name'        => "required|string|max:100|unique:divisions,name,{$division->id}",
+            'code'        => "nullable|string|max:10|unique:divisions,code,{$division->id}",
+            'brand_ids'   => 'nullable|array',
+            'brand_ids.*' => 'exists:brands,id',
         ]);
 
         $division->update([
@@ -48,6 +55,8 @@ class DivisionController extends Controller
             'slug' => Str::slug(trim($validated['name']), '_'),
             'code' => isset($validated['code']) ? strtoupper(trim($validated['code'])) : null,
         ]);
+
+        $division->brands()->sync($request->input('brand_ids', []));
 
         return redirect()->route('admin.form-settings.divisions')
             ->with('success', "Divisi berhasil diperbarui.");

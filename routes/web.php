@@ -334,6 +334,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::get('/', fn () => redirect()->route('admin.dashboard.index'))->name('home');
 
     // Manajemen Brand
+    Route::post('brands/{brand}/set-default', [\App\Http\Controllers\Admin\BrandController::class, 'setDefault'])->name('brands.set-default');
     Route::resource('brands', \App\Http\Controllers\Admin\BrandController::class);
 
     // Pengaturan Form — Divisi & Field Builder
@@ -433,6 +434,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
         Route::get('/global-sync-tick', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'globalSyncTick'])->name('global-sync-tick');
         Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
+        Route::post('/create-brand', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'createBrandConnection'])->name('create-brand');
         Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
         Route::get('/{spreadsheetConnection}/schema-history', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'schemaHistory'])->name('schema-history');
         Route::get('/{spreadsheetConnection}/edit', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'edit'])->name('edit');

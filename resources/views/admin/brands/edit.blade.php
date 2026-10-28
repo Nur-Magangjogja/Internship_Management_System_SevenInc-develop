@@ -223,6 +223,50 @@
                 </div>
             </div>
 
+            {{-- 4. PILIHAN DIVISI KHUSUS BRAND --}}
+            <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
+                <div class="flex items-center gap-3 pb-4 mb-5 border-b border-[#DCE7E1]">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-[#2D8659] border border-emerald-100 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-[#1B3A34]">4. Pilihan Divisi Khusus Brand Ini</h2>
+                        <p class="text-xs text-[#4B5F5A]">Centang divisi yang dibuka untuk pendaftaran pemagang pada brand ini.</p>
+                    </div>
+                </div>
+
+                @php
+                    $selectedDivisionIds = old('division_ids', $brand->divisions->pluck('id')->all());
+                @endphp
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    @foreach($divisions as $div)
+                        <label class="flex items-center gap-3 p-3 rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] hover:bg-emerald-50/50 hover:border-[#2D8659] transition cursor-pointer">
+                            <input
+                                type="checkbox"
+                                name="division_ids[]"
+                                value="{{ $div->id }}"
+                                {{ in_array($div->id, $selectedDivisionIds) ? 'checked' : '' }}
+                                class="rounded border-[#DCE7E1] text-[#2D8659] focus:ring-[#2D8659] h-4 w-4"
+                            />
+                            <div class="min-w-0 flex-1">
+                                <p class="text-xs font-semibold text-[#1B3A34] truncate">{{ $div->name }}</p>
+                                @if($div->code)
+                                    <span class="text-[10px] font-mono text-[#4B5F5A] bg-white px-1.5 py-0.5 rounded border border-[#DCE7E1]">
+                                        {{ $div->code }}
+                                    </span>
+                                @endif
+                            </div>
+                        </label>
+                    @endforeach
+                </div>
+                <p class="mt-3 text-[11px] text-[#4B5F5A]">
+                    Calon pemagang yang mendaftar melalui domain pendaftaran brand ini hanya akan dapat memilih dari divisi yang dicentang di atas.
+                </p>
+            </div>
+
             {{-- Tombol Submit --}}
             <div class="flex items-center justify-end gap-3 pt-4">
                 <a href="{{ route('admin.brands.index') }}" class="rounded-xl border border-[#DCE7E1] bg-white px-5 py-2.5 text-sm font-semibold text-[#4B5F5A] hover:bg-[#F4F8F6] transition">Batal</a>

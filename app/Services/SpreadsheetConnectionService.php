@@ -16,32 +16,129 @@ use InvalidArgumentException;
 class SpreadsheetConnectionService
 {
     /**
+     * Pastikan seluruh koneksi spreadsheet per-brand dan follow-up telah terbuat di database.
+     */
+    public function ensureBrandConnectionsExist(): void
+    {
+        // 1. Follow-up CRM (Global)
+        SpreadsheetConnection::firstOrCreate(
+            [
+                'connection_key' => SpreadsheetConnection::KEY_FOLLOWUP,
+                'brand_id'       => null,
+            ],
+            [
+                'display_name'      => 'Spreadsheet Follow-Up Guru/Dosen',
+                'is_enabled'        => false,
+                'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
+            ]
+        );
+
+        // Migrasi relik koneksi registrasi null brand_id ke default brand
+        $defaultBrand = \App\Models\Brand::getDefaultBrand();
+        if ($defaultBrand) {
+            $legacyGlobal = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->whereNull('brand_id')
+                ->first();
+
+            if ($legacyGlobal) {
+                // Hapus duplikat placeholder default brand yang belum dikonfigurasi
+                SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                    ->where('brand_id', $defaultBrand->id)
+                    ->where('id', '!=', $legacyGlobal->id)
+                    ->delete();
+
+                $legacyGlobal->update([
+                    'brand_id'     => $defaultBrand->id,
+                    'display_name' => "Spreadsheet Pendaftaran ({$defaultBrand->name})",
+                ]);
+            }
+        }
+
+        // 2. Brand-specific Registration Connections (11 Brands)
+        $defaultEndpoint = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->whereNotNull('apps_script_endpoint_url')
+            ->value('apps_script_endpoint_url')
+            ?: 'https://script.google.com/macros/s/AKfycbzY7ApK_y_kLy6ImJtnVFcynUUr1ilWIkQEsalkBsXqGMG_4QD4W8_47yHns-sJs-_MsA/exec';
+
+        $brands = \App\Models\Brand::whereNotNull('registration_host')
+            ->where('code', '!=', 'SVII')
+            ->orderBy('name')
+            ->get();
+
+        foreach ($brands as $brand) {
+            SpreadsheetConnection::firstOrCreate(
+                [
+                    'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                    'brand_id'       => $brand->id,
+                ],
+                [
+                    'display_name'             => "Spreadsheet Pendaftaran ({$brand->name})",
+                    'apps_script_endpoint_url' => $defaultEndpoint,
+                    'is_enabled'               => false,
+                    'connection_status'        => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+                ]
+            );
+        }
+    }
+
+    /**
      * Ambil semua koneksi spreadsheet terdaftar.
      */
     public function getAllConnections(): Collection
     {
-        return SpreadsheetConnection::orderBy('id', 'asc')->get();
+        $this->ensureBrandConnectionsExist();
+
+        return SpreadsheetConnection::with('brand')
+            ->orderByRaw("
+                CASE 
+                    WHEN connection_key = 'followup' THEN 1
+                    WHEN EXISTS (SELECT 1 FROM brands b WHERE b.id = spreadsheet_connections.brand_id AND b.is_default = 1) THEN 2
+                    ELSE 3
+                END ASC
+            ")
+            ->orderBy('id', 'asc')
+            ->get();
     }
 
     /**
-     * Ambil koneksi berdasarkan connection_key ('registration' | 'followup').
+     * Ambil koneksi berdasarkan connection_key ('registration' | 'followup') dan opsional brandId.
      */
-    public function getConnectionByKey(string $key): SpreadsheetConnection
+    public function getConnectionByKey(string $key, ?int $brandId = null): SpreadsheetConnection
     {
         if (!in_array($key, SpreadsheetConnection::VALID_KEYS, true)) {
             throw new InvalidArgumentException("Tipe koneksi '{$key}' tidak valid.");
         }
 
-        return SpreadsheetConnection::firstOrCreate(
-            ['connection_key' => $key],
-            [
-                'display_name' => $key === SpreadsheetConnection::KEY_REGISTRATION
-                    ? 'Spreadsheet Pendaftaran Magang'
-                    : 'Spreadsheet Follow-Up Guru/Dosen',
-                'is_enabled' => false,
-                'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
-            ]
-        );
+        if ($key === SpreadsheetConnection::KEY_FOLLOWUP) {
+            return SpreadsheetConnection::firstOrCreate(
+                ['connection_key' => $key, 'brand_id' => null],
+                [
+                    'display_name'      => 'Spreadsheet Follow-Up Guru/Dosen',
+                    'is_enabled'        => false,
+                    'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
+                ]
+            );
+        }
+
+        // Untuk registration: ambil brand spesifik atau fallback ke default brand
+        $targetBrand = $brandId ? \App\Models\Brand::find($brandId) : \App\Models\Brand::getDefaultBrand();
+        $targetBrandId = $targetBrand?->id;
+
+        $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->where('brand_id', $targetBrandId)
+            ->first();
+
+        if ($conn) {
+            return $conn;
+        }
+
+        return SpreadsheetConnection::create([
+            'connection_key'    => SpreadsheetConnection::KEY_REGISTRATION,
+            'brand_id'          => $targetBrandId,
+            'display_name'      => "Spreadsheet Pendaftaran (" . ($targetBrand?->name ?? 'Default') . ")",
+            'is_enabled'        => false,
+            'connection_status' => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+        ]);
     }
 
     /**
@@ -154,6 +251,10 @@ class SpreadsheetConnectionService
                 if ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION && array_key_exists('drive_folder_url', $data)) {
                     $connection->drive_folder_url = $driveFolderUrl;
                     $connection->drive_folder_id = $driveFolderId;
+                }
+
+                if (array_key_exists('brand_id', $data)) {
+                    $connection->brand_id = !empty($data['brand_id']) ? (int) $data['brand_id'] : null;
                 }
 
                 $connection->display_name = $data['display_name'] ?? $connection->display_name;

@@ -967,6 +967,11 @@ class InternController extends Controller
             unset($validatedData['internship_status']);
             $intern->fill($validatedData)->save();
 
+            // Sinkronisasi brand_id ke akun user jika diubah oleh admin / HR staff
+            if (array_key_exists('brand_id', $validatedData) && $intern->user) {
+                $intern->user->update(['brand_id' => $validatedData['brand_id']]);
+            }
+
             // Jika status tidak berubah tapi pemagang sudah accepted / active, kirim pembaruan data (tanggal/divisi/brand) ke Absen Djuragan
             if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
                 \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
@@ -1298,13 +1303,30 @@ class InternController extends Controller
 
     private function companyCode(string $companyName): string
     {
-        $map = [
-            'seven inc' => 'SI',
-            'pt. seven inc' => 'SI',
-            'magang jogja' => 'MJ',
-            'magangjogja' => 'MJ',
-        ];
         $k = strtolower(trim($companyName));
+        $dbBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [$k])
+            ->orWhereRaw('LOWER(code) = ?', [$k])
+            ->first();
+
+        if ($dbBrand && $dbBrand->code) {
+            return strtoupper(trim($dbBrand->code));
+        }
+
+        $map = [
+            'seven inc'     => 'SI',
+            'pt. seven inc' => 'SI',
+            'magang jogja'  => 'MJ',
+            'magangjogja'   => 'MJ',
+            'republik web'  => 'RW',
+            'ada kamar'     => 'AKM',
+            'magangku'      => 'MK',
+            'tuan tanah'    => 'TT',
+            'makeover'      => 'MO',
+            'bimbel cerdas' => 'BC',
+            'area kerja'    => 'AK',
+            'tukang las'    => 'TL',
+            'titip sini'    => 'TS',
+        ];
         if (isset($map[$k])) return $map[$k];
 
         $words = explode(' ', strtoupper($k));

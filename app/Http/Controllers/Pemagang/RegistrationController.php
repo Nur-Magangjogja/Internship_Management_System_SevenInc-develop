@@ -32,8 +32,44 @@ class RegistrationController extends Controller
             ?? \App\Models\InternshipRegistration::where('user_id', $user->id)->latest('id')->first();
         $registration?->loadMissing(['institution', 'city', 'facultyRel', 'studyProgramRel', 'division', 'brandRel', 'attachments']);
 
-        // Ambil divisi aktif dari DB; fallback ke list hardcode jika DB kosong
-        $divisions = \App\Models\Division::active()->pluck('name');
+        // Resolusi Brand Terkunci Calon Pemagang (Prioritaskan brand akun/registrasi di atas host domain):
+        $lockedBrand = $registration?->brandRel ?? $user?->brandRel;
+
+        $detectedBrand = $lockedBrand
+            ?? request()->attributes->get('current_brand')
+            ?? (request()->hasSession() && request()->session()->has('registration_brand_id')
+                ? \App\Models\Brand::find(request()->session()->get('registration_brand_id'))
+                : null)
+            ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest(request())
+            ?? \App\Models\Brand::getDefaultBrand();
+
+        // Proteksi Maintenance: Cek apakah koneksi spreadsheet brand terkait sudah terhubung & aktif
+        if (!$registration || $registration->is_draft) {
+            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+            $connection = $syncEngine->getRegistrationConnection($detectedBrand?->id);
+
+            $isConnectionReady = $connection
+                && !empty($connection->spreadsheet_url)
+                && !empty($connection->spreadsheet_id)
+                && $connection->connection_status !== \App\Models\SpreadsheetConnection::STATUS_NOT_CONFIGURED
+                && (bool) $connection->is_enabled;
+
+            if (!$isConnectionReady) {
+                $brandName = $detectedBrand?->name ?? 'Brand Pendaftaran';
+                $lockedBrandNotice = ($lockedBrand && $detectedBrand && $lockedBrand->id !== $detectedBrand->id)
+                    ? $lockedBrand->name
+                    : null;
+
+                return view('pemagang.registration.maintenance', compact('detectedBrand', 'brandName', 'lockedBrandNotice'));
+            }
+        }
+
+        // Ambil divisi aktif khusus brand jika ada; fallback ke list umum jika brand belum dikonfigurasi
+        if ($detectedBrand && $detectedBrand->divisions()->where('is_active', true)->exists()) {
+            $divisions = $detectedBrand->divisions()->where('is_active', true)->orderBy('name')->pluck('name');
+        } else {
+            $divisions = \App\Models\Division::active()->pluck('name');
+        }
 
         if ($divisions->isEmpty()) {
             $divisions = collect([
@@ -872,6 +908,59 @@ class RegistrationController extends Controller
                 }
                 if (!Schema::hasColumn('internship_registrations', 'religion')) {
                     unset($validated['religion']);
+                }
+
+                // Resolusi Brand Terkunci Calon Pemagang (Prioritaskan brand akun/registrasi di atas host domain)
+                $lockedBrand = $existing?->brandRel ?? $user?->brandRel;
+
+                $detectedBrand = $lockedBrand
+                    ?? $request->attributes->get('current_brand')
+                    ?? ($request->hasSession() && $request->session()->has('registration_brand_id')
+                        ? \App\Models\Brand::find($request->session()->get('registration_brand_id'))
+                        : null)
+                    ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request)
+                    ?? \App\Models\Brand::getDefaultBrand();
+
+                // Proteksi Maintenance saat draft / submit: Cek kesiapan koneksi spreadsheet brand
+                if (!$existing || $existing->is_draft) {
+                    $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                    $connection = $syncEngine->getRegistrationConnection($detectedBrand?->id);
+
+                    $isConnectionReady = $connection
+                        && !empty($connection->spreadsheet_url)
+                        && !empty($connection->spreadsheet_id)
+                        && $connection->connection_status !== \App\Models\SpreadsheetConnection::STATUS_NOT_CONFIGURED
+                        && (bool) $connection->is_enabled;
+
+                    if (!$isConnectionReady) {
+                        $brandName = $detectedBrand?->name ?? 'brand ini';
+                        $msg = "Sistem pendaftaran untuk {$brandName} sedang dalam tahap pemeliharaan sistem dan akan aktif bila sudah terhubung.";
+                        return $request->expectsJson() || $request->ajax()
+                            ? response()->json(['message' => $msg], 422)
+                            : back()->withInput()->with('error', $msg);
+                    }
+                }
+
+                $currentHost = $lockedBrand?->registration_host
+                    ?? $request->attributes->get('registration_host')
+                    ?? ($request->hasSession() ? $request->session()->get('registration_host') : null)
+                    ?? $request->getHost();
+
+                // Kunci brand_id & registration_host
+                if (!isset($validated['brand_id'])) {
+                    $validated['brand_id'] = $lockedBrand?->id ?? $detectedBrand?->id;
+                }
+
+                if (!empty($currentHost) && !isset($validated['registration_host'])) {
+                    $validated['registration_host'] = $currentHost;
+                }
+
+                // Sinkronisasi brand_id ke tabel users jika sebelumnya belum terisi
+                if ($user && empty($user->brand_id) && !empty($validated['brand_id'])) {
+                    $user->update([
+                        'brand_id'          => $validated['brand_id'],
+                        'registration_host' => $validated['registration_host'] ?? $currentHost,
+                    ]);
                 }
 
                 if ($existing) {

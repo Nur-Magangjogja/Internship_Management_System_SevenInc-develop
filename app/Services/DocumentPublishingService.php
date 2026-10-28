@@ -297,8 +297,8 @@ class DocumentPublishingService
                     if (method_exists($this->cloudDriver, 'setRootFolderId')) {
                         try {
                             SpreadsheetConnection::ensureDriveFolderColumns();
-                            $regFolderId = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
-                                ->value('drive_folder_id');
+                            $regConn = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection($intern->brand_id);
+                            $regFolderId = $regConn?->drive_folder_id;
                             if (!empty($regFolderId)) {
                                 $this->cloudDriver->setRootFolderId((string) $regFolderId);
                             }

@@ -33,6 +33,25 @@
             <p class="text-sm text-slate-500 mt-1">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
         </div>
         <div class="flex items-center gap-3">
+            @php
+                $unassignedBrands = \App\Models\Brand::whereDoesntHave('spreadsheetConnections', function($q) {
+                    $q->where('connection_key', 'registration');
+                })->orderBy('name')->get();
+            @endphp
+            @if ($unassignedBrands->isNotEmpty())
+                <form action="{{ route('admin.spreadsheet-connections.create-brand') }}" method="POST" class="inline-flex items-center gap-1.5">
+                    @csrf
+                    <select name="brand_id" required class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none">
+                        <option value="">+ Tambah Spreadsheet Brand...</option>
+                        @foreach($unassignedBrands as $ub)
+                            <option value="{{ $ub->id }}">{{ $ub->name }} ({{ $ub->code }})</option>
+                        @endforeach
+                    </select>
+                    <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                        Hubungkan
+                    </button>
+                </form>
+            @endif
             <a
                 href="{{ route('admin.legacy-import.index') }}"
                 class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -135,7 +154,37 @@
                             <span class="inline-block px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider rounded-md {{ $conn->connection_key === 'registration' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-purple-50 text-purple-700 border border-purple-200' }}">
                                 {{ $conn->connection_key }}
                             </span>
-                            <h2 class="mt-2 text-lg font-bold text-slate-800">{{ $conn->display_name }}</h2>
+                            @if ($conn->brand)
+                                <span class="inline-block ml-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                                    Brand: {{ $conn->brand->name }} ({{ $conn->brand->code }})
+                                </span>
+                                @if ($conn->brand->is_default)
+                                    <span class="inline-block ml-1 px-2.5 py-0.5 text-xs font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        <i class="fa-solid fa-star text-amber-500 mr-1"></i> Default
+                                    </span>
+                                @endif
+                                @if ($conn->brand->registration_host)
+                                    <span class="inline-block ml-1 px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                        {{ $conn->brand->registration_host }}
+                                    </span>
+                                @endif
+                            @endif
+                            <div class="mt-2 flex items-center gap-2">
+                                <h2 class="text-lg font-bold text-slate-800">{{ $conn->display_name }}</h2>
+                                @if ($conn->brand?->is_default)
+                                    <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                                        <i class="fa-solid fa-star text-amber-500 text-[10px]"></i> Default
+                                    </span>
+                                @endif
+                            </div>
+                            @if ($conn->brand && !$conn->brand->is_default)
+                                <form action="{{ route('admin.brands.set-default', $conn->brand->id) }}" method="POST" class="inline" onsubmit="return confirm('Jadikan brand {{ addslashes($conn->brand->name) }} sebagai Brand Default sistem SertIF?');">
+                                    @csrf
+                                    <button type="submit" class="text-[11px] font-semibold text-[#2D8659] hover:underline inline-flex items-center gap-1 mt-1">
+                                        <i class="fa-regular fa-star text-amber-500"></i> Jadikan Brand Default
+                                    </button>
+                                </form>
+                            @endif
                         </div>
                         <div class="flex items-center gap-2">
                             <!-- Status Active Badge -->

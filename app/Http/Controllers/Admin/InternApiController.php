@@ -15,13 +15,13 @@ class InternApiController extends Controller
      * ======================= */
 
     private array $statusBadge = [
-        'waiting'   => ['Menunggu', 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'],
-        'active'    => ['Aktif',    'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'],
-        'completed' => ['Selesai',  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200'],
-        'exited'    => ['Keluar',   'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'],
-        'pending'   => ['Pending',  'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'],
-        'accepted'  => ['Diterima', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'],
-        'rejected'  => ['Ditolak',  'bg-gray-200 text-gray-700 dark:bg-gray-800/60 dark:text-gray-200'],
+        'waiting'   => ['Menunggu Review', 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'],
+        'pending'   => ['Pending',         'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'],
+        'accepted'  => ['Diterima',        'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'],
+        'active'    => ['Aktif',           'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'],
+        'completed' => ['Selesai',         'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200'],
+        'rejected'  => ['Ditolak',         'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'],
+        'exited'    => ['Keluar',          'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'],
     ];
 
 
@@ -434,6 +434,7 @@ class InternApiController extends Controller
                 'brand_id'      => $r->brand_id,
                 'brand_name'    => $r->brandRel?->name,
                 'brand'         => $r->brand,
+                'registration_host' => $r->registration_host,
                 'planned_duration' => $r->planned_duration,
                 'internship_duration' => $r->planned_duration,
                 'wfo_readiness' => $r->wfo_readiness,
@@ -471,6 +472,7 @@ class InternApiController extends Controller
                 'followup_status'          => $r->followup_status,
                 'followup_status_label'    => $r->followup_status_label,
                 'followup_status_class'    => $r->followup_status_badge_class,
+                'followup_status_style'    => $r->followup_status_style,
                 'followup_update_url'      => route('admin.interns.followup.update', $r),
                 'current_condition_label'  => $condition['condition_label'],
                 'current_condition_case'   => $condition['case'],
