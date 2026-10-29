@@ -400,6 +400,9 @@ class Spreadsheet2026SchemaSeeder extends Seeder
      */
     public function run(): void
     {
+        // Pastikan seluruh koneksi brand telah terdaftar sebelum inisialisasi skema
+        app(\App\Services\SpreadsheetConnectionService::class)->ensureBrandConnectionsExist();
+
         // 1. Dapatkan seluruh koneksi registration yang ada, atau buat baru jika belum ada
         $connections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->get();
         if ($connections->isEmpty()) {

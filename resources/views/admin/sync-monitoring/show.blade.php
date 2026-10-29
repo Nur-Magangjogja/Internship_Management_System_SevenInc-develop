@@ -178,8 +178,11 @@
 
                     <div>
                         <span class="text-slate-500 font-medium block">Status Penerimaan (Acceptance Gate):</span>
-                        <span class="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-semibold rounded {{ $registration->status === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700' }}">
-                            {{ strtoupper($registration->status) }}
+                        @php
+                            $effectiveStatus = $registration->internship_status ?? $registration->status;
+                        @endphp
+                        <span class="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-semibold rounded {{ $effectiveStatus === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700' }}">
+                            {{ strtoupper($effectiveStatus ?? '-') }}
                         </span>
                     </div>
 

@@ -41,6 +41,51 @@ class FollowUpSpreadsheetMappingService
             })
             ->exists();
     }
+
+    /**
+     * Memverifikasi apakah siklus follow-up memiliki dependensi pendaftaran yang masih FAILED.
+     * Jika pendaftaran pemagang terkait mengalami kegagalan (failed) pada sinkronisasi spreadsheet pendaftaran,
+     * eksekusi follow-up ditunda/di-retry agar baris pendaftar disinkronkan terlebih dahulu.
+     */
+    public function hasVerifiedLinkedRegistrationSync(FollowUpCycle $cycle): bool
+    {
+        $acceptedStatuses = [
+            InternshipRegistration::STATUS_ACCEPTED,
+            InternshipRegistration::STATUS_ACTIVE,
+            InternshipRegistration::STATUS_COMPLETED,
+        ];
+
+        $linkedRegIds = RegistrationContactLink::where('institution_contact_id', $cycle->institution_contact_id)
+            ->pluck('internship_registration_id');
+
+        if ($linkedRegIds->isEmpty()) {
+            return true;
+        }
+
+        $acceptedRegs = InternshipRegistration::whereIn('id', $linkedRegIds)
+            ->whereIn('internship_status', $acceptedStatuses)
+            ->pluck('id');
+
+        if ($acceptedRegs->isEmpty()) {
+            return true;
+        }
+
+        $failedSyncExists = \App\Models\SpreadsheetRowSync::whereIn('syncable_id', $acceptedRegs)
+            ->where('syncable_type', InternshipRegistration::class)
+            ->where('sync_status', \App\Models\SpreadsheetRowSync::STATUS_FAILED)
+            ->exists();
+
+        if ($failedSyncExists) {
+            $hasSyncedSibling = \App\Models\SpreadsheetRowSync::whereIn('syncable_id', $acceptedRegs)
+                ->where('syncable_type', InternshipRegistration::class)
+                ->where('sync_status', \App\Models\SpreadsheetRowSync::STATUS_SYNCED)
+                ->exists();
+
+            return $hasSyncedSibling;
+        }
+
+        return true;
+    }
     /**
      * Resolve the active schema version for the Follow-up spreadsheet.
      * Uses the single operational tab schema version (sentinel year = 0).

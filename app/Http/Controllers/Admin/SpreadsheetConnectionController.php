@@ -56,6 +56,9 @@ class SpreadsheetConnectionController extends Controller
             ]
         );
 
+        // Pastikan skema kanonikal 2026 langsung tersedia untuk brand baru
+        app(\App\Services\SpreadsheetConnectionService::class)->ensureCanonicalSchemaForConnection($connection);
+
         return redirect()
             ->route('admin.spreadsheet-connections.edit', $connection)
             ->with('success', "Koneksi spreadsheet untuk brand '{$brand->name}' berhasil disiapkan. Silakan atur URL Spreadsheet dan Google Drive Folder.");

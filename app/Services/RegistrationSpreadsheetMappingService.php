@@ -173,6 +173,19 @@ class RegistrationSpreadsheetMappingService
                 ->first();
         }
 
+        // Fallback Universal: Jika koneksi brand ini belum memiliki skema spesifik untuk tahun tersebut,
+        // gunakan skema aktif milik brand default sistem (SEVEN INC) agar kontrak kolom tetap seragam
+        if (!$schemaVersion) {
+            $defaultConn = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection(null);
+            if ($defaultConn && $defaultConn->id !== $connection->id) {
+                $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $defaultConn->id)
+                    ->where('year', $year)
+                    ->where('is_active', true)
+                    ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
+                    ->first();
+            }
+        }
+
         return $schemaVersion;
     }
 

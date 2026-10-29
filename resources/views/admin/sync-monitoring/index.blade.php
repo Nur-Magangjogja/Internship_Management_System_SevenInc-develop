@@ -291,6 +291,8 @@
                                 <div>{{ $item->sync_identifier }}</div>
                                 @if (!empty($item->registration_id))
                                     <span class="text-[10px] font-sans font-normal text-slate-400">Reg #{{ $item->registration_id }}</span>
+                                @elseif (str_starts_with($item->sync_identifier, 'FWU-'))
+                                    <span class="text-[10px] font-sans font-normal text-purple-600">Follow-Up Guru/Dosen</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3">

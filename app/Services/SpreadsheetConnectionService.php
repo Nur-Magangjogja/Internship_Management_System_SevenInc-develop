@@ -20,6 +20,11 @@ class SpreadsheetConnectionService
      */
     public function ensureBrandConnectionsExist(): void
     {
+        // Jangan lakukan mutasi jika belum ada brand terdaftar (misal pada isolasi pengujian read-only)
+        if (\App\Models\Brand::count() === 0) {
+            return;
+        }
+
         // 1. Follow-up CRM (Global)
         SpreadsheetConnection::firstOrCreate(
             [
@@ -86,6 +91,55 @@ class SpreadsheetConnectionService
                 ]
             );
         }
+    }
+
+    /**
+     * Memastikan skema kanonikal 38 kolom aktif tersedia untuk koneksi registrasi spreadsheet.
+     */
+    public function ensureCanonicalSchemaForConnection(SpreadsheetConnection $connection, int $year = 2026): SpreadsheetSchemaVersion
+    {
+        $schemaVersion = SpreadsheetSchemaVersion::firstOrCreate(
+            [
+                'spreadsheet_connection_id' => $connection->id,
+                'year'                      => $year,
+                'schema_version'            => 'v1',
+            ],
+            [
+                'sheet_tab_name' => (string) $year,
+                'is_active'      => true,
+                'notes'          => "Official {$year} 38-Column Unified Registration Contract",
+            ]
+        );
+
+        $existingMappings = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->get();
+        $canonicalColumns = \Database\Seeders\Spreadsheet2026SchemaSeeder::getCanonicalColumns();
+
+        foreach ($canonicalColumns as $col) {
+            $identity = !empty($col['field']) ? 'col_' . $col['field'] : 'col_' . Str::slug($col['header'], '_');
+            $mapping = $existingMappings->first(function ($m) use ($identity, $col) {
+                return $m->column_identity === $identity
+                    || (!empty($col['field']) && $m->target_field === $col['field'] && $m->target_entity === $col['entity']);
+            });
+
+            if (!$mapping) {
+                SpreadsheetColumnMapping::create([
+                    'public_uuid'                   => (string) Str::uuid(),
+                    'spreadsheet_schema_version_id' => $schemaVersion->id,
+                    'column_identity'               => $identity,
+                    'column_order'                  => $col['order'],
+                    'sheet_header'                  => $col['header'],
+                    'target_entity'                 => $col['entity'],
+                    'target_field'                  => $col['field'],
+                    'data_type'                     => $col['type'],
+                    'direction'                     => $col['direction'],
+                    'transform_key'                 => $col['transform'],
+                    'is_required'                   => $col['required'],
+                    'mapping_status'                => 'active',
+                ]);
+            }
+        }
+
+        return $schemaVersion;
     }
 
     /**

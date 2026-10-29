@@ -316,7 +316,7 @@ class SyncMonitoringQueryService
                 'error_message',
                 'locked_at',
                 'locked_by',
-                'syncable_id as registration_id',
+                DB::raw("CASE WHEN syncable_type = 'App\\\\Models\\\\InternshipRegistration' THEN syncable_id ELSE NULL END as registration_id"),
                 'created_at',
             ]);
 
@@ -607,7 +607,7 @@ class SyncMonitoringQueryService
             'error_message'        => $sanitizedError,
             'is_locked'            => $isLocked && !$isLeaseExpired,
             'is_eligible_for_retry'=> $canRetry,
-            'registration_id'      => $row->syncable_id,
+            'registration_id'      => $row->syncable_type === \App\Models\InternshipRegistration::class ? $row->syncable_id : null,
             'created_at'           => $row->created_at,
             'year'                 => $row->created_at ? (int) $row->created_at->format('Y') : null,
             'model'                => $row,

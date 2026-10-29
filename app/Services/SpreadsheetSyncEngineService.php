@@ -543,6 +543,19 @@ class SpreadsheetSyncEngineService
                 $this->logTerminalSyncFailure($rowSync, $errMsg);
                 return false;
             }
+
+            if (!$this->followUpMappingService->hasVerifiedLinkedRegistrationSync($entity)) {
+                $errMsg = 'NOT_ELIGIBLE_PENDING_REGISTRATION_SYNC: Sinkronisasi spreadsheet follow-up ditunda karena baris pendaftar pemagang terkait masih gagal disinkronkan ke Spreadsheet Pendaftaran.';
+                $this->updateGuardedByFence($rowSync, $fenceToken, [
+                    'sync_status'     => SpreadsheetRowSync::STATUS_RETRYING,
+                    'last_attempt_at' => now(),
+                    'error_message'   => $errMsg,
+                    'locked_at'       => null,
+                    'locked_by'       => null,
+                    'next_retry_at'   => now()->addMinutes(2),
+                ]);
+                return false;
+            }
         }
 
         // 3. Build fresh outbound payload dynamically from current domain state
@@ -656,6 +669,9 @@ class SpreadsheetSyncEngineService
                     && $this->registrationMappingService->requiresSidecarSync($entity)) {
                     $this->queueSidecarSyncForRegistration($entity);
                 }
+
+                // Jadwalkan ulang siklus follow-up terkait yang sebelumnya tertahan karena pendaftar belum sukses
+                $this->unblockLinkedFollowUpCycles($entity);
             }
 
             return $updated;
@@ -1191,6 +1207,31 @@ class SpreadsheetSyncEngineService
         }
 
         return $sidecarSync->fresh() ?? $sidecarSync;
+    }
+
+    /**
+     * Membuka blokir/menjadwalkan ulang sinkronisasi FollowUpCycle yang sebelumnya tertahan karena pendaftar belum sukses sinkron.
+     */
+    protected function unblockLinkedFollowUpCycles(InternshipRegistration $registration): void
+    {
+        $contactIds = \App\Models\RegistrationContactLink::where('internship_registration_id', $registration->id)
+            ->pluck('institution_contact_id');
+
+        if ($contactIds->isEmpty()) {
+            return;
+        }
+
+        $cycles = \App\Models\FollowUpCycle::whereIn('institution_contact_id', $contactIds)->get();
+        foreach ($cycles as $cycle) {
+            SpreadsheetRowSync::where('syncable_type', \App\Models\FollowUpCycle::class)
+                ->where('syncable_id', $cycle->id)
+                ->where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)
+                ->where('error_message', 'like', '%NOT_ELIGIBLE_PENDING_REGISTRATION_SYNC%')
+                ->update([
+                    'next_retry_at' => now(),
+                    'error_message' => null,
+                ]);
+        }
     }
 
     /**

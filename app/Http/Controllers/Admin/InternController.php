@@ -1143,15 +1143,23 @@ class InternController extends Controller
             \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
         }
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (secara langsung agar baris dan kolom terhubung real-time)
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true, allowPendaftar: true);
+        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (hanya jika status sudah diterima / pemagang aktif / selesai)
+        // Calon pemagang (waiting, pending, new) strictly tidak dihubungkan ke spreadsheet (hanya disimpan di database)
+        $eligibleSpreadsheetStatuses = [
+            IR::STATUS_ACCEPTED,
+            IR::STATUS_ACTIVE,
+            IR::STATUS_COMPLETED,
+        ];
+        if (in_array($intern->internship_status, $eligibleSpreadsheetStatuses, true)) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $rowSync = $syncEngine->queueSyncForRegistration($intern);
+                if ($rowSync) {
+                    $syncEngine->processSyncRecord($rowSync, force: true);
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
         }
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);
@@ -1986,12 +1994,19 @@ class InternController extends Controller
 
         $formBuilderService->saveCustomAnswers($intern, $validation['cleaned'], $schema, auth()->user());
 
-        // P2.1: Enqueue sync baris ke Google Spreadsheet secara asinkron pasca-commit
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $syncEngine->queueSyncForRegistration($intern);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Gagal enqueue sync spreadsheet setelah update custom answers untuk registrasi ID {$intern->id}: " . $e->getMessage());
+        // P2.1: Enqueue sync baris ke Google Spreadsheet secara asinkron pasca-commit (hanya jika sudah berstatus diterima/aktif/selesai)
+        $eligibleSpreadsheetStatuses = [
+            IR::STATUS_ACCEPTED,
+            IR::STATUS_ACTIVE,
+            IR::STATUS_COMPLETED,
+        ];
+        if (in_array($intern->internship_status, $eligibleSpreadsheetStatuses, true)) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $syncEngine->queueSyncForRegistration($intern);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal enqueue sync spreadsheet setelah update custom answers untuk registrasi ID {$intern->id}: " . $e->getMessage());
+            }
         }
 
         return response()->json([
