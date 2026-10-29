@@ -108,6 +108,137 @@ class Brand extends Model
     }
 
     /**
+     * Periksa apakah profil operasional brand sudah cukup lengkap untuk menerbitkan dokumen resmi.
+     */
+    public function isProfileCompleteForDocuments(): bool
+    {
+        return !empty(trim((string) $this->signatory_name))
+            && !empty(trim((string) $this->signatory_position))
+            && !empty(trim((string) $this->company_address));
+    }
+
+    /**
+     * Dapatkan daftar bidang penandatangan & operasional dokumen yang masih kosong.
+     *
+     * @return array<string, string>
+     */
+    public function getMissingDocumentFields(): array
+    {
+        $missing = [];
+        if (empty(trim((string) $this->signatory_name))) {
+            $missing['signatory_name'] = 'Nama Penandatangan Pimpinan';
+        }
+        if (empty(trim((string) $this->signatory_position))) {
+            $missing['signatory_position'] = 'Jabatan Penandatangan';
+        }
+        if (empty(trim((string) $this->company_address))) {
+            $missing['company_address'] = 'Alamat Resmi Kantor';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Dapatkan daftar bidang operasional penting yang masih kosong.
+     *
+     * @return array<string, string>
+     */
+    public function getMissingOperationalFields(): array
+    {
+        $missing = [];
+        if (empty(trim((string) $this->signatory_name))) {
+            $missing['signatory_name'] = 'Nama Penandatangan Pimpinan';
+        }
+        if (empty(trim((string) $this->signatory_position))) {
+            $missing['signatory_position'] = 'Jabatan Penandatangan';
+        }
+        if (empty(trim((string) $this->company_address))) {
+            $missing['company_address'] = 'Alamat Resmi Kantor';
+        }
+        if (empty(trim((string) $this->registration_host))) {
+            $missing['registration_host'] = 'Host Pendaftaran';
+        }
+        if (empty(trim((string) $this->primary_domain))) {
+            $missing['primary_domain'] = 'Domain Utama';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Dapatkan label dan kelas badge dinamis status kelengkapan operasional brand.
+     *
+     * @return array{code: string, label: string, class: string}
+     */
+    public function getOperationalStatusBadgeAttribute(): array
+    {
+        if ($this->lifecycle_status === self::STATUS_SUSPENDED) {
+            return [
+                'code'  => 'suspended',
+                'label' => 'Ditangguhkan',
+                'class' => 'border-rose-200 bg-rose-50 text-rose-800',
+            ];
+        }
+
+        if ($this->lifecycle_status === self::STATUS_ARCHIVED) {
+            return [
+                'code'  => 'archived',
+                'label' => 'Diarsipkan',
+                'class' => 'border-slate-200 bg-slate-100 text-slate-700',
+            ];
+        }
+
+        if ($this->lifecycle_status === self::STATUS_ACTIVE && $this->domain_verified_at !== null) {
+            return [
+                'code'  => 'active',
+                'label' => 'Aktif & Terverifikasi',
+                'class' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+            ];
+        }
+
+        if ($this->lifecycle_status === self::STATUS_READY) {
+            return [
+                'code'  => 'ready',
+                'label' => 'Siap Diaktifkan',
+                'class' => 'border-purple-200 bg-purple-50 text-purple-800',
+            ];
+        }
+
+        if (!empty($this->registration_host) && $this->domain_verified_at === null) {
+            return [
+                'code'  => 'dns_pending',
+                'label' => 'Menunggu Verifikasi DNS',
+                'class' => 'border-sky-200 bg-sky-50 text-sky-800',
+            ];
+        }
+
+        $allEmpty = empty(trim((string) $this->signatory_name))
+            && empty(trim((string) $this->company_address))
+            && empty(trim((string) $this->registration_host));
+
+        if ($allEmpty) {
+            return [
+                'code'  => 'empty',
+                'label' => 'Profil Belum Diisi',
+                'class' => 'border-slate-200 bg-slate-100 text-slate-600',
+            ];
+        }
+
+        $filledCount = 0;
+        foreach (['signatory_name', 'signatory_position', 'company_address', 'registration_host', 'primary_domain'] as $f) {
+            if (!empty(trim((string) $this->{$f}))) {
+                $filledCount++;
+            }
+        }
+
+        return [
+            'code'  => 'incomplete',
+            'label' => "Profil Belum Lengkap ({$filledCount}/5)",
+            'class' => 'border-amber-200 bg-amber-50 text-amber-800',
+        ];
+    }
+
+    /**
      * Dapatkan brand default sistem (fallback ke SEVEN INC jika belum diset).
      */
     public static function getDefaultBrand(): ?self

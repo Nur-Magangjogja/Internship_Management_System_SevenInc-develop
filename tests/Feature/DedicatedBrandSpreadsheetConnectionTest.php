@@ -20,7 +20,7 @@ class DedicatedBrandSpreadsheetConnectionTest extends TestCase
         parent::setUp();
         $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         $this->seed(\Database\Seeders\DivisionSeeder::class);
-        $this->seed(\Database\Seeders\BrandSeeder::class);
+        $this->seed(\Database\Seeders\OfficialBrandsDatasetSeeder::class);
     }
 
     protected function createAdmin(): User

@@ -73,13 +73,15 @@ class InternDocumentIssuanceTest extends TestCase
             'role'     => 'pemagang',
         ]);
 
-        $this->brand = Brand::create([
+        $this->brand = Brand::where('code', 'SI')->first() ?? new Brand();
+        $this->brand->fill([
             'name'               => 'Seven Inc ' . substr($this->unique, 0, 6),
             'code'               => 'SI',
             'company_address'    => 'Jl. Raya Janti No. 59, Yogyakarta',
             'signatory_name'     => 'Rekario Danny Sanjaya, S.Kom.',
             'signatory_position' => 'Pimpinan',
         ]);
+        $this->brand->save();
 
         $this->division = Division::firstOrCreate(
             ['code' => 'DEV'],

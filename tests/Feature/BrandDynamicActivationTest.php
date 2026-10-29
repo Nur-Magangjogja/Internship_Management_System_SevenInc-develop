@@ -373,4 +373,47 @@ class BrandDynamicActivationTest extends TestCase
         app(BrandHostRegistryService::class)->forgetCache();
         $this->assertSame($brand->id, app(BrandHostRegistryService::class)->brandIdForHost($brand->registration_host));
     }
+
+    public function test_brand_operational_status_badge_and_missing_fields_reflection(): void
+    {
+        // 1. Profil Kosong
+        $brand = Brand::create([
+            'code' => 'BADGE' . strtoupper(substr(uniqid(), -4)),
+            'name' => 'Badge Evaluation Brand',
+            'lifecycle_status' => Brand::STATUS_DRAFT,
+        ]);
+
+        $badge = $brand->operational_status_badge;
+        $this->assertSame('empty', $badge['code']);
+        $this->assertSame('Profil Belum Diisi', $badge['label']);
+        $this->assertFalse($brand->isProfileCompleteForDocuments());
+        $this->assertArrayHasKey('signatory_name', $brand->getMissingOperationalFields());
+
+        // 2. Profil Belum Lengkap (Diisi sebagian)
+        $brand->update([
+            'company_address' => 'Jl. Uji Coba No. 12',
+            'signatory_name' => 'Direktur Uji Coba',
+        ]);
+        $badgePartial = $brand->fresh()->operational_status_badge;
+        $this->assertSame('incomplete', $badgePartial['code']);
+        $this->assertStringContainsString('Profil Belum Lengkap (2/5)', $badgePartial['label']);
+
+        // 3. Menunggu Verifikasi DNS
+        $brand->update([
+            'registration_host' => 'daftar.badgeuji.example',
+            'primary_domain' => 'badgeuji.example',
+        ]);
+        $badgeDns = $brand->fresh()->operational_status_badge;
+        $this->assertSame('dns_pending', $badgeDns['code']);
+        $this->assertSame('Menunggu Verifikasi DNS', $badgeDns['label']);
+
+        // 4. Aktif & Terverifikasi
+        $brand->update([
+            'domain_verified_at' => now(),
+            'lifecycle_status' => Brand::STATUS_ACTIVE,
+        ]);
+        $badgeActive = $brand->fresh()->operational_status_badge;
+        $this->assertSame('active', $badgeActive['code']);
+        $this->assertSame('Aktif & Terverifikasi', $badgeActive['label']);
+    }
 }

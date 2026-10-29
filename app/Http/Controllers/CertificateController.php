@@ -89,6 +89,19 @@ class CertificateController extends Controller
             ])->withInput();
         }
 
+        // Validasi kelengkapan profil operasional brand penandatangan
+        $incompleteBrandIntern = $interns->first(function (IR $intern) {
+            $b = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
+            return $b && !$b->isProfileCompleteForDocuments();
+        });
+        if ($incompleteBrandIntern) {
+            $b = $incompleteBrandIntern->brandRel ?? ($incompleteBrandIntern->brand_id ? Brand::find($incompleteBrandIntern->brand_id) : null) ?? Brand::getDefaultBrand();
+            $missing = implode(', ', $b->getMissingDocumentFields());
+            return back()->withErrors([
+                'intern_ids' => "Sertifikat tidak dapat diterbitkan: Data profil brand '{$b->name}' belum lengkap ({$missing} masih kosong). Lengkapi data brand terlebih dahulu.",
+            ])->withInput();
+        }
+
         $seqCache = [];
         $roman = [1=>'I',2=>'II',3=>'III',4=>'IV',5=>'V',6=>'VI',7=>'VII',8=>'VIII',9=>'IX',10=>'X',11=>'XI',12=>'XII'];
 

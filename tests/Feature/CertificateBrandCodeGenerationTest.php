@@ -21,7 +21,7 @@ class CertificateBrandCodeGenerationTest extends TestCase
         parent::setUp();
         $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         $this->seed(\Database\Seeders\DivisionSeeder::class);
-        $this->seed(\Database\Seeders\BrandSeeder::class);
+        $this->seed(\Database\Seeders\OfficialBrandsDatasetSeeder::class);
     }
 
     public function test_bulk_certificate_form_lists_completed_interns(): void
@@ -87,5 +87,48 @@ class CertificateBrandCodeGenerationTest extends TestCase
         $response->assertRedirect(route('admin.certificate.index'));
         $this->assertNotNull($capturedSerial);
         $this->assertStringContainsString('/MJ.MJ/', $capturedSerial);
+    }
+
+    public function test_certificate_issuance_is_blocked_when_brand_operational_profile_is_incomplete(): void
+    {
+        $admin = User::create([
+            'name' => 'Incomplete Guard Admin',
+            'email' => 'incomplete_guard_admin_' . uniqid() . '@example.com',
+            'password' => bcrypt('secret'),
+            'role' => 'admin',
+        ]);
+        $pemagang = User::create([
+            'name' => 'Incomplete Intern',
+            'email' => 'incomplete_intern_' . uniqid() . '@example.com',
+            'password' => bcrypt('secret'),
+            'role' => 'pemagang',
+        ]);
+
+        // Brand dengan nama dan kode saja, tanpa data penandatangan
+        $incompleteBrand = Brand::create([
+            'code' => 'INC' . strtoupper(substr(uniqid(), -4)),
+            'name' => 'Incomplete Brand Company',
+            'signatory_name' => null,
+            'signatory_position' => null,
+            'company_address' => null,
+        ]);
+        $division = Division::where('name', 'Administrasi')->firstOrFail();
+
+        $intern = InternshipRegistration::create([
+            'user_id' => $pemagang->id,
+            'fullname' => $pemagang->name,
+            'email' => $pemagang->email,
+            'brand_id' => $incompleteBrand->id,
+            'division_id' => $division->id,
+            'end_date' => '2026-05-31',
+            'internship_status' => InternshipRegistration::STATUS_COMPLETED,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.certificate.bulk.interns.store'), [
+            'intern_ids' => [$intern->id],
+        ]);
+
+        $response->assertSessionHasErrors(['intern_ids']);
+        $this->assertStringContainsString('Data profil brand', session('errors')->first('intern_ids'));
     }
 }

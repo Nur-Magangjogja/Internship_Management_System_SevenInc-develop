@@ -166,7 +166,7 @@ class InternDocumentIssuanceService
         $canonical = self::normalizeType($documentType);
         $intern->load(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
 
-        $brandModel = $intern->brandRel;
+        $brandModel = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
         $instModel  = $intern->institution;
 
         // 1. Ekstraksi nomor dokumen: utamakan nomor custom dari options, nomor historis existing, baru generate nomor baru
@@ -486,6 +486,16 @@ class InternDocumentIssuanceService
         if (!$this->canIssue($intern, $canonical)) {
             throw new InvalidArgumentException(
                 "Status pemagang '{$intern->internship_status}' belum memenuhi syarat untuk penerbitan dokumen {$canonical}."
+            );
+        }
+
+        // 1b. Perlindungan kelengkapan profil operasional brand
+        $intern->loadMissing('brandRel');
+        $brandModel = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
+        if ($brandModel && !$brandModel->isProfileCompleteForDocuments()) {
+            $missing = implode(', ', $brandModel->getMissingDocumentFields());
+            throw new \DomainException(
+                "Penerbitan dokumen ditolak: Profil operasional brand '{$brandModel->name}' belum lengkap ({$missing} masih kosong). Silakan lengkapi data brand terlebih dahulu."
             );
         }
 

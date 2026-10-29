@@ -49,10 +49,30 @@
                     <h2 class="text-base font-bold text-[#1B3A34]">Domain & Siklus Hidup Brand</h2>
                     <p class="mt-1 text-xs text-[#4B5F5A]">Hanya hostname yang terverifikasi dan berstatus Active yang masuk ke registry TrustHosts.</p>
                 </div>
-                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-bold {{ $lifecycleColors[$brand->lifecycle_status] ?? 'bg-slate-50 text-slate-700 border-slate-200' }}">
-                    {{ $lifecycleLabels[$brand->lifecycle_status] ?? 'Status Tidak Dikenal' }}
-                </span>
+                <div class="flex flex-wrap items-center gap-2">
+                    @php($opBadge = $brand->operational_status_badge)
+                    <span class="inline-flex rounded-full border px-3 py-1 text-xs font-bold {{ $opBadge['class'] }}">
+                        {{ $opBadge['label'] }}
+                    </span>
+                    <span class="inline-flex rounded-full border px-3 py-1 text-xs font-bold {{ $lifecycleColors[$brand->lifecycle_status] ?? 'bg-slate-50 text-slate-700 border-slate-200' }}">
+                        {{ $lifecycleLabels[$brand->lifecycle_status] ?? 'Status Tidak Dikenal' }}
+                    </span>
+                </div>
             </div>
+
+            @if(!$brand->isProfileCompleteForDocuments())
+                <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900">
+                    <p class="font-bold flex items-center gap-1.5 text-amber-800">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> Profil Operasional Belum Lengkap
+                    </p>
+                    <p class="mt-1 text-slate-600">Lengkapi data operasional berikut melalui <strong>Edit Brand</strong> sebelum menerbitkan dokumen resmi atau mengaktifkan pendaftaran:</p>
+                    <ul class="mt-1.5 list-disc list-inside space-y-0.5 text-amber-800 font-medium">
+                        @foreach($brand->getMissingOperationalFields() as $fieldKey => $fieldName)
+                            <li>{{ $fieldName }} masih kosong</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>

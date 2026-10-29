@@ -49,7 +49,19 @@
                                     <input class="intern-checkbox rounded border-[#DCE7E1] text-[#2D8659] focus:ring-[#2D8659]" type="checkbox" name="intern_ids[]" value="{{ $intern->id }}" @checked(in_array($intern->id, old('intern_ids', [])))>
                                 </td>
                                 <td class="px-4 py-3 font-medium text-[#1B3A34]">{{ $intern->fullname ?? $intern->user?->name ?? '-' }}</td>
-                                <td class="px-4 py-3 text-[#4B5F5A]">{{ $intern->brandRel?->name ?? $intern->brand ?? 'Belum ditentukan' }}</td>
+                                <td class="px-4 py-3 text-[#4B5F5A]">
+                                    @php
+                                        $internBrand = $intern->brandRel ?? ($intern->brand_id ? \App\Models\Brand::find($intern->brand_id) : null) ?? \App\Models\Brand::getDefaultBrand();
+                                    @endphp
+                                    <div class="flex items-center gap-2">
+                                        <span>{{ $internBrand?->name ?? $intern->brand ?? 'Belum ditentukan' }}</span>
+                                        @if($internBrand && !$internBrand->isProfileCompleteForDocuments())
+                                            <span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800" title="Data penandatangan brand belum lengkap">
+                                                <i class="fa-solid fa-triangle-exclamation text-amber-600 text-[9px]"></i> Profil Belum Lengkap
+                                            </span>
+                                        @endif
+                                    </div>
+                                </td>
                                 <td class="px-4 py-3 text-[#4B5F5A]">{{ $intern->division?->name ?? $intern->internship_interest ?? '-' }}</td>
                                 <td class="px-4 py-3 text-[#4B5F5A]">
                                     {{ $intern->end_date ? \Illuminate\Support\Carbon::parse($intern->end_date)->format('d M Y') : '-' }}

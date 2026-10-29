@@ -56,10 +56,12 @@
                                 <span class="text-slate-300">•</span>
                                 <span class="text-[#2D8659] font-sans font-semibold">{{ $brand->divisions->count() }} Divisi</span>
                             </div>
-                            @php($statusLabels = ['draft' => 'Draft', 'configuration_pending' => 'Configuration Pending', 'ready' => 'Ready', 'active' => 'Active', 'suspended' => 'Suspended', 'archived' => 'Archived'])
+                            @php($opBadge = $brand->operational_status_badge)
                             <div class="mt-1 flex flex-wrap items-center gap-1.5">
-                                <span class="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $brand->lifecycle_status === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800' }}">{{ $statusLabels[$brand->lifecycle_status] ?? 'Unknown' }}</span>
-                                <span class="text-[10px] {{ $brand->domain_verified_at ? 'text-emerald-700' : 'text-amber-700' }}">{{ $brand->domain_verified_at ? 'Domain verified' : 'Domain belum verified' }}</span>
+                                <span class="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $opBadge['class'] }}">{{ $opBadge['label'] }}</span>
+                                @if($brand->registration_host)
+                                    <span class="text-[10px] {{ $brand->domain_verified_at ? 'text-emerald-700' : 'text-amber-700' }}">{{ $brand->domain_verified_at ? 'Domain verified' : 'Domain belum verified' }}</span>
+                                @endif
                             </div>
                         </td>
                         <td class="px-5 py-4 text-[13px] text-[#4B5F5A]">

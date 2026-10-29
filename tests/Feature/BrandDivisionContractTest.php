@@ -19,7 +19,7 @@ class BrandDivisionContractTest extends TestCase
         parent::setUp();
         $this->withoutMiddleware(\App\Http\Middleware\VerifyCsrfToken::class);
         $this->seed(\Database\Seeders\DivisionSeeder::class);
-        $this->seed(\Database\Seeders\BrandSeeder::class);
+        $this->seed(\Database\Seeders\OfficialBrandsDatasetSeeder::class);
         app(\App\Services\SpreadsheetConnectionService::class)->ensureBrandConnectionsExist();
 
         SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
