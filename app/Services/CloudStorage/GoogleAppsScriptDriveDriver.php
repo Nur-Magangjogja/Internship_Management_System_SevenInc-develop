@@ -56,9 +56,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
 
     public function setRootFolderId(?string $folderId): self
     {
-        if (!empty($folderId)) {
-            $this->rootFolderId = trim($folderId);
-        }
+        $this->rootFolderId = !empty($folderId) ? trim($folderId) : null;
 
         return $this;
     }

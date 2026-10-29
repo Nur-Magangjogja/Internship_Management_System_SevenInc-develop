@@ -167,7 +167,7 @@ class RekomendasiController extends Controller
                 $divisionFullName = $dbDivision?->name ?? $intern->internship_interest ?? '-';
 
                 $running      = str_pad((string) $intern->id, 3, '0', STR_PAD_LEFT);
-                $brandCodeStr = strtoupper($brand->code ?? 'SVII');
+                $brandCodeStr = strtoupper($brand->code ?? 'SI');
                 $letterNumber = "{$running}/SR/{$divisionCode}/SEVEN.{$brandCodeStr}/{$romanMonth}/{$year}";
                 
                 $letterDateStr = now()->isoFormat('D MMMM Y');
@@ -321,7 +321,7 @@ class RekomendasiController extends Controller
             }
 
             $running      = str_pad((string) $intern->id, 3, '0', STR_PAD_LEFT);
-            $brandCodeStr = strtoupper($brand ? $brand->code : 'SVII');
+            $brandCodeStr = strtoupper($brand ? $brand->code : 'SI');
             $letterNumber = "{$running}/SR/{$divisionCode}/SEVEN.{$brandCodeStr}/{$romanMonth}/{$year}";
         } else {
             // Dummy data jika belum ada pemagang dipilih
@@ -424,7 +424,7 @@ class RekomendasiController extends Controller
             $divisionFullName = $dbDivision?->name ?? $intern->internship_interest ?? '-';
 
             $running      = str_pad((string) $intern->id, 3, '0', STR_PAD_LEFT);
-            $brandCodeStr = strtoupper($brand->code ?? 'SVII');
+            $brandCodeStr = strtoupper($brand->code ?? 'SI');
             $letterNumber = "{$running}/SR/{$divisionCode}/SEVEN.{$brandCodeStr}/{$romanMonth}/{$year}";
             
             $letterDateStr = now()->isoFormat('D MMMM Y');

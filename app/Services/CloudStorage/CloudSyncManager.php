@@ -205,17 +205,41 @@ class CloudSyncManager
         $baseFileName = $attachment->original_name ?: basename($attachment->file_path);
         $customFileName = "ATT-{$regId}-{$attachment->id}-v{$contentVersion}_{$baseFileName}";
 
-        if (method_exists($this->driver, 'setRootFolderId')) {
-            try {
-                \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
-                $configuredFolderId = \App\Models\SpreadsheetConnection::where('connection_key', \App\Models\SpreadsheetConnection::KEY_REGISTRATION)
-                    ->value('drive_folder_id');
-                if (!empty($configuredFolderId)) {
-                    $this->driver->setRootFolderId((string) $configuredFolderId);
-                }
-            } catch (\Throwable) {
-                // Abaikan jika tabel belum tersedia di unit test ringan
+        \App\Models\SpreadsheetConnection::ensureDriveFolderColumns();
+
+        // Resolusi brand pendaftar secara ketat untuk isolasi tenant
+        $brandId = $attachment->registration?->brand_id
+            ?? $attachment->registration?->user?->brand_id;
+
+        // Fallback default HANYA jika alur pendaftaran secara eksplisit belum memiliki brand
+        if (!$brandId && empty($attachment->registration?->brand_id)) {
+            $defaultBrand = \App\Models\Brand::getDefaultBrand();
+            $brandId = $defaultBrand?->id;
+        }
+
+        if (!$brandId) {
+            if (method_exists($this->driver, 'setRootFolderId')) {
+                $this->driver->setRootFolderId(null);
             }
+            throw new \RuntimeException("Isolasi Tenant: Lampiran #{$attachment->id} (Pendaftaran #{$attachment->internship_registration_id}) tidak memiliki asosiasi brand yang valid. Upload Google Drive dihentikan.");
+        }
+
+        $brandConn = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection($brandId);
+        $configuredFolderId = $brandConn?->drive_folder_id;
+
+        if (empty($configuredFolderId) || !$brandConn || !$brandConn->is_enabled) {
+            // Reset root folder untuk memastikan worker tidak membawa state folder brand sebelumnya
+            if (method_exists($this->driver, 'setRootFolderId')) {
+                $this->driver->setRootFolderId(null);
+            }
+            $brandName = $attachment->registration?->brandRel?->name 
+                ?? \App\Models\Brand::find($brandId)?->name 
+                ?? "Brand #{$brandId}";
+            throw new \RuntimeException("Isolasi Tenant: Folder Google Drive untuk brand '{$brandName}' belum dikonfigurasi atau koneksi dinonaktifkan. Upload Google Drive dihentikan.");
+        }
+
+        if (method_exists($this->driver, 'setRootFolderId')) {
+            $this->driver->setRootFolderId((string) $configuredFolderId);
         }
 
         $uploadResult = $this->driver->uploadFile($fullPath, $remoteFolder, $customFileName);
@@ -231,7 +255,15 @@ class CloudSyncManager
      */
     public function syncRegistrationAttachment(\App\Models\RegistrationAttachment $attachment, ?User $actor = null): array
     {
-        $uploadResult = $this->uploadRegistrationAttachment($attachment);
+        try {
+            $uploadResult = $this->uploadRegistrationAttachment($attachment);
+        } catch (\Throwable $e) {
+            $attachment->update([
+                'drive_sync_status'   => \App\Models\RegistrationAttachment::STATUS_FAILED,
+                'drive_error_message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
 
         $isRealDrive = in_array($this->driver->getDriverName(), ['google_drive', 'google_apps_script_drive'], true)
             && !str_starts_with($uploadResult['file_id'], 'local_sim_')

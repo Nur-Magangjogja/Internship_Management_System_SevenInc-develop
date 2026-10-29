@@ -94,7 +94,7 @@ class LocalDemoDatasetSeeder extends Seeder
         );
 
         $brand = Brand::firstOrCreate(
-            ['code' => 'SVII'],
+            ['code' => 'SI'],
             ['name' => 'Seven Inc', 'company_address' => 'Jl. Janti Gg. Arjuna No.59, Bantul', 'signatory_name' => 'Direktur Utama', 'signatory_position' => 'Direktur']
         );
 

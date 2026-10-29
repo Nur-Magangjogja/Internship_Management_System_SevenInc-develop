@@ -4,18 +4,45 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class Brand extends Model
 {
     use HasFactory;
+
+    public const DIVISION_MODE_GLOBAL = 'global';
+    public const DIVISION_MODE_BRAND_SPECIFIC = 'brand_specific';
+
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_CONFIGURATION_PENDING = 'configuration_pending';
+    public const STATUS_READY = 'ready';
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_SUSPENDED = 'suspended';
+    public const STATUS_ARCHIVED = 'archived';
+
+    public const LIFECYCLE_STATUSES = [
+        self::STATUS_DRAFT,
+        self::STATUS_CONFIGURATION_PENDING,
+        self::STATUS_READY,
+        self::STATUS_ACTIVE,
+        self::STATUS_SUSPENDED,
+        self::STATUS_ARCHIVED,
+    ];
 
     public $timestamps = false;
 
     protected $fillable = [
         'code',
         'name',
+        'division_mode',
+        'lifecycle_status',
         'registration_host',
         'primary_domain',
+        'domain_verification_token',
+        'domain_verified_at',
+        'domain_verification_method',
         'is_default',
         'company_address',
         'logo',
@@ -31,7 +58,54 @@ class Brand extends Model
 
     protected $casts = [
         'is_default' => 'boolean',
+        'domain_verified_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        $invalidateHostRegistry = static function (Brand $brand): void {
+            if (!$brand->wasRecentlyCreated && !$brand->wasChanged([
+                'registration_host',
+                'primary_domain',
+                'lifecycle_status',
+                'domain_verified_at',
+            ])) {
+                return;
+            }
+
+            try {
+                \Illuminate\Support\Facades\DB::afterCommit(static function (): void {
+                    Cache::forget(\App\Services\BrandHostRegistryService::CACHE_KEY);
+                });
+            } catch (Throwable $exception) {
+                // The database write must not be reported as failed after it committed
+                // only because cache invalidation infrastructure is temporarily unavailable.
+                Log::warning('Gagal menghapus cache host brand setelah perubahan data.', [
+                    'brand_id' => $brand->getKey(),
+                    'exception' => get_class($exception),
+                ]);
+            }
+        };
+
+        static::saved($invalidateHostRegistry);
+        static::deleted(static function (Brand $brand): void {
+            try {
+                \Illuminate\Support\Facades\DB::afterCommit(static function (): void {
+                    Cache::forget(\App\Services\BrandHostRegistryService::CACHE_KEY);
+                });
+            } catch (Throwable $exception) {
+                Log::warning('Gagal menghapus cache host brand setelah brand dihapus.', [
+                    'brand_id' => $brand->getKey(),
+                    'exception' => get_class($exception),
+                ]);
+            }
+        });
+    }
+
+    public function isRegistrationHostActive(): bool
+    {
+        return $this->lifecycle_status === self::STATUS_ACTIVE && $this->domain_verified_at !== null;
+    }
 
     /**
      * Dapatkan brand default sistem (fallback ke SEVEN INC jika belum diset).

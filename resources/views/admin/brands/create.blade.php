@@ -67,6 +67,35 @@
                 </div>
             </div>
 
+            {{-- Konfigurasi domain dan aktivasi brand dinamis --}}
+            <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs space-y-5">
+                <div class="pb-4 border-b border-[#DCE7E1]">
+                    <h2 class="text-base font-bold text-[#1B3A34]">Konfigurasi Domain & Aktivasi</h2>
+                    <p class="mt-1 text-xs text-[#4B5F5A]">Brand baru tidak langsung aktif. Domain harus diverifikasi, koneksi spreadsheet/Drive disiapkan, dan Readiness Gate harus lulus sebelum aktivasi.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label for="registration_host" class="block mb-1.5 text-xs font-bold uppercase tracking-wider text-[#1B3A34]">Host Pendaftaran</label>
+                        <input id="registration_host" name="registration_host" type="text" value="{{ old('registration_host') }}" placeholder="daftar.brandbaru.id"
+                            autocomplete="off" spellcheck="false"
+                            class="w-full rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] px-4 py-2.5 text-sm text-[#1B3A34] outline-none focus:border-[#2D8659] focus:bg-white focus:ring-1 focus:ring-[#2D8659] transition">
+                        <p class="mt-1 text-[11px] text-[#4B5F5A]">Masukkan hostname tanpa path; URL origin seperti https://daftar.brandbaru.id juga dinormalisasi.</p>
+                        @error('registration_host') <p class="mt-1 text-xs text-red-500 font-medium">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="primary_domain" class="block mb-1.5 text-xs font-bold uppercase tracking-wider text-[#1B3A34]">Domain Utama</label>
+                        <input id="primary_domain" name="primary_domain" type="text" value="{{ old('primary_domain') }}" placeholder="brandbaru.id"
+                            autocomplete="off" spellcheck="false"
+                            class="w-full rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] px-4 py-2.5 text-sm text-[#1B3A34] outline-none focus:border-[#2D8659] focus:bg-white focus:ring-1 focus:ring-[#2D8659] transition">
+                        <p class="mt-1 text-[11px] text-[#4B5F5A]">Host pendaftaran harus sama dengan domain utama atau berupa subdomainnya. Domain tidak boleh dipakai brand lain.</p>
+                        @error('primary_domain') <p class="mt-1 text-xs text-red-500 font-medium">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                    Setelah disimpan, buka detail brand untuk melihat instruksi TXT DNS. Domain baru tidak akan masuk ke daftar host tepercaya sebelum diverifikasi dan brand diaktifkan secara eksplisit.
+                </div>
+            </div>
+
             {{-- 2. PENANDATANGAN DOKUMEN --}}
             <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
                 <div class="flex items-center gap-3 pb-4 mb-5 border-b border-[#DCE7E1]">
@@ -213,6 +242,19 @@
                 </div>
             </div>
 
+            {{-- Mode kontrak divisi untuk membedakan global fallback dari penutupan divisi brand. --}}
+            <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs mb-5">
+                <label for="division_mode" class="block mb-2 text-xs font-bold uppercase tracking-wider text-[#1B3A34]">Mode Pilihan Divisi</label>
+                <select id="division_mode" name="division_mode" required class="w-full rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] px-4 py-2.5 text-sm text-[#1B3A34] outline-none focus:border-[#2D8659] focus:bg-white focus:ring-1 focus:ring-[#2D8659] transition">
+                    <option value="brand_specific" @selected(old('division_mode', 'brand_specific') === 'brand_specific')>Khusus Brand (hanya divisi yang dicentang)</option>
+                    <option value="global" @selected(old('division_mode', 'brand_specific') === 'global')>Global (semua divisi aktif umum)</option>
+                </select>
+                <p class="mt-2 text-[11px] text-[#4B5F5A]">
+                    Mode Khusus Brand dengan semua divisi tidak dicentang akan menutup pilihan divisi untuk brand ini. Mode Global menggunakan seluruh divisi aktif umum.
+                </p>
+                @error('division_mode') <p class="mt-1 text-xs text-red-500 font-medium">{{ $message }}</p> @enderror
+            </div>
+
             {{-- 4. PILIHAN DIVISI KHUSUS BRAND --}}
             <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
                 <div class="flex items-center gap-3 pb-4 mb-5 border-b border-[#DCE7E1]">
@@ -231,6 +273,7 @@
                     $selectedDivisionIds = old('division_ids', []);
                 @endphp
 
+                <input type="hidden" name="division_ids_present" value="1">
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     @foreach($divisions as $div)
                         <label class="flex items-center gap-3 p-3 rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] hover:bg-emerald-50/50 hover:border-[#2D8659] transition cursor-pointer">

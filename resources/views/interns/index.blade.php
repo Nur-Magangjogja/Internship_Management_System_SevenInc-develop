@@ -415,13 +415,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <svg class="h-4 w-4 shrink-0 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        <input id="intern-search" type="search" placeholder="Cari nama / universitas..."
+                        <input id="intern-search" type="search" placeholder="Cari nama / universitas / brand..."
                             class="w-full border-0 bg-transparent text-[13px] text-[#1B3A34] outline-none placeholder:text-[#4B5F5A]" />
                     </label>
                 </div>
             </div>
 
-            {{-- Baris 2: Filter Tambahan (Basis Tahun, Tahun & Follow-Up) --}}
+            {{-- Baris 2: Filter Tambahan (Basis Tahun, Tahun, Brand & Follow-Up) --}}
             @php
                 $activeYearBasis = $yearBasis ?? request('year_basis', 'created_at');
                 if (!in_array($activeYearBasis, ['created_at', 'start_date'], true)) {
@@ -429,9 +429,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 $yearLabelPrefix = $activeYearBasis === 'start_date' ? 'Tahun Mulai' : 'Tahun Daftar';
             @endphp
-            <div class="flex flex-col sm:flex-row items-center gap-3 w-full">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
                 {{-- Filter Basis Tahun (Definisi Eksplisit) --}}
-                <div class="relative w-full sm:w-52 lg:w-56 shrink-0" x-data="{ showBasisTip: false }">
+                <div class="relative w-full" x-data="{ showBasisTip: false }">
                     <div class="relative flex items-center">
                         <select id="year-basis-filter" aria-label="Basis Filter Tahun" title="Pilih acuan filter tahun: Tanggal Pendaftaran Akun (created_at) atau Tanggal Mulai Magang (start_date)" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-3.5 pr-14 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
                             <option value="created_at" title="Memfilter berdasarkan tanggal siswa mengisi formulir pendaftaran (created_at)" {{ $activeYearBasis === 'created_at' ? 'selected' : '' }}>Basis: Tahun Pendaftaran</option>
@@ -471,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 {{-- Filter Tahun --}}
-                <div class="relative w-full sm:w-48 lg:w-52 shrink-0">
+                <div class="relative w-full">
                     <div class="relative flex items-center">
                         <select id="year-filter" aria-label="Filter Tahun" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
                             <option value="">Semua {{ $yearLabelPrefix }}</option>
@@ -495,8 +495,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
+                {{-- Filter Brand --}}
+                <div class="relative w-full">
+                    <div class="relative flex items-center">
+                        <select id="brand-filter" aria-label="Filter Brand" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="">Semua Brand</option>
+                            @foreach($brands ?? [] as $b)
+                                <option value="{{ $b->id }}" {{ (string)request('brand_id', request('brand', '')) === (string)$b->id ? 'selected' : '' }}>{{ $b->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="pointer-events-none absolute left-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                <polyline points="9 22 9 12 15 12 15 22"/>
+                            </svg>
+                        </div>
+                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- Filter Follow-Up --}}
-                <div class="relative w-full flex-1">
+                <div class="relative w-full">
                     <div class="relative flex items-center">
                         <select id="followup-filter" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
                             <option value="">Semua Status Follow-Up</option>
@@ -888,7 +911,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const institution  = fmtStr(it.institution_name || '-');
             const division     = fmtStr(it.internship_interest || '-');
             const createdAt    = fmtDate(it.created_at);
-            const searchText   = `${it.fullname || ''} ${it.email || ''} ${institution} ${division}`.toLowerCase();
+            const brand        = fmtStr(it.brand_name || it.brand || '');
+            const searchText   = `${it.fullname || ''} ${it.email || ''} ${institution} ${division} ${brand}`.toLowerCase();
 
             return `
             <tr data-row-id="${it.id}" data-status="${status}"
@@ -2796,6 +2820,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const followupVal  = (document.getElementById('followup-filter')?.value || '').trim();
         const yearVal      = (document.getElementById('year-filter')?.value || '').trim();
         const yearBasisVal = (document.getElementById('year-basis-filter')?.value || 'created_at').trim();
+        const brandVal     = (document.getElementById('brand-filter')?.value || '').trim();
         const params = new URLSearchParams({
             scope:      activeFilter,
             mode:       MODE,
@@ -2812,6 +2837,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Filter status follow-up
         if (followupVal) {
             params.set('followup_status', followupVal);
+        }
+
+        // Filter brand
+        if (brandVal) {
+            params.set('brand_id', brandVal);
         }
 
         // Hanya tambah q jika ada isi
@@ -2894,6 +2924,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const followupFilterEl = document.getElementById('followup-filter');
     if (followupFilterEl) {
         followupFilterEl.addEventListener('change', () => loadPage(1));
+    }
+
+    const brandFilterEl = document.getElementById('brand-filter');
+    if (brandFilterEl) {
+        const initialBrand = new URLSearchParams(location.search).get('brand_id') || new URLSearchParams(location.search).get('brand');
+        if (initialBrand) brandFilterEl.value = initialBrand;
+        brandFilterEl.addEventListener('change', () => loadPage(1));
     }
 
     loadPage(Number(new URLSearchParams(location.search).get('page') || 1));

@@ -126,10 +126,10 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
         $attachment->refresh();
 
         $connection = app(\App\Services\SpreadsheetSyncEngineService::class)->getRegistrationConnection($attachment->registration?->brand_id);
-        if (!$connection || !$connection->is_enabled) {
+        if (!$connection || !$connection->is_enabled || empty($connection->drive_folder_id)) {
             $this->releaseLeaseAndFail(
                 $attachment,
-                'Koneksi pendaftaran dinonaktifkan atau belum dikonfigurasi.',
+                'Koneksi pendaftaran dinonaktifkan atau folder Google Drive belum dikonfigurasi untuk brand ini.',
                 isRetryable: false
             );
             return;
@@ -209,7 +209,7 @@ class UploadRegistrationAttachmentToDriveJob implements ShouldQueue
             $isAnonymousMock = (new \ReflectionClass($transport))->isAnonymous();
 
             if (!$isAnonymousMock && $hasDirectDriveDriver) {
-                $effectiveRoot = $this->snapshotRootFolderId;
+                $effectiveRoot = $this->snapshotRootFolderId ?: $connection->drive_folder_id;
                 if (empty($effectiveRoot)) {
                     try {
                         $storageSetting = \App\Models\CloudStorageSetting::getEffectiveSettings();

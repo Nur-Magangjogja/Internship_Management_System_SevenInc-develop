@@ -724,8 +724,8 @@ class InternDocumentIssuanceService
         $romanMonth = $roman[$month];
         $year = date('Y');
 
-        $brandModel = $intern->brandRel;
-        $brandStr = strtoupper($brandModel?->code ?? ($intern->brand ? strtoupper($intern->brand) : 'SI'));
+        $brandModel = $intern->brandRel ?? ($intern->brand_id ? \App\Models\Brand::find($intern->brand_id) : null);
+        $brandStr = strtoupper($brandModel?->code ?? 'SI');
         $divisionCode = $intern->division?->code ?? 'ADM';
 
         $last = InternCertificate::where('certificate_number', 'LIKE', "%/SERT/%/{$romanMonth}/{$year}")
@@ -751,8 +751,8 @@ class InternDocumentIssuanceService
         $romanMonth = $roman[$month];
         $year = date('Y');
 
-        $brandModel = $intern->brandRel;
-        $brandStr = strtoupper($brandModel?->code ?? ($intern->brand ? strtoupper($intern->brand) : 'SI'));
+        $brandModel = $intern->brandRel ?? ($intern->brand_id ? \App\Models\Brand::find($intern->brand_id) : null);
+        $brandStr = strtoupper($brandModel?->code ?? 'SI');
         $divisionCode = $intern->division?->code ?? 'UMUM';
 
         $last = InternAssessment::where('assessment_number', 'LIKE', "%/PEN/%/{$romanMonth}/{$year}")
@@ -778,8 +778,8 @@ class InternDocumentIssuanceService
         $romanMonth = $roman[$month];
         $year = date('Y');
 
-        $brandModel = $intern->brandRel;
-        $brandStr = strtoupper($brandModel?->code ?? ($intern->brand ? strtoupper($intern->brand) : 'SVII'));
+        $brandModel = $intern->brandRel ?? ($intern->brand_id ? \App\Models\Brand::find($intern->brand_id) : null);
+        $brandStr = strtoupper($brandModel?->code ?? 'SI');
         $divisionCode = $intern->division?->code ?? 'UMUM';
 
         $running = str_pad((string) $intern->id, 3, '0', STR_PAD_LEFT);

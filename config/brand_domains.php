@@ -6,8 +6,9 @@ return [
     | Multi-Brand Domain and Host Registry
     |--------------------------------------------------------------------------
     |
-    | Konfigurasi domain dan host pendaftaran untuk masing-masing brand Seven Inc.
-    | Digunakan oleh Middleware TrustHosts dan Middleware DetectBrandFromHost.
+    | Metadata seed/kompatibilitas untuk 11 brand resmi historis.
+    | Runtime host resolution dan TrustHosts menggunakan BrandHostRegistryService
+    | berbasis database/cache; daftar di sini bukan sumber otoritatif host aktif.
     |
     */
 

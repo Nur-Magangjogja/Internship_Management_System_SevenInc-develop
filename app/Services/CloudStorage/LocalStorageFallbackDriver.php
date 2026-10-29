@@ -37,7 +37,7 @@ class LocalStorageFallbackDriver implements CloudStorageProviderInterface
 
     public function getRootFolderId(): ?string
     {
-        return $this->rootFolderId ?? 'sim_root';
+        return $this->rootFolderId;
     }
 
     public function getOrCreateFolderPath(string $folderPath): ?string

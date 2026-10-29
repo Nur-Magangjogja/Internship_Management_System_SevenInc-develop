@@ -333,8 +333,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::get('/dashboard/accepted-interns-chart', [DashboardController::class, 'acceptedInternsChart'])->name('dashboard.accepted-interns-chart');
     Route::get('/', fn () => redirect()->route('admin.dashboard.index'))->name('home');
 
-    // Manajemen Brand
+    // Manajemen Brand — action khusus didefinisikan sebelum resource route.
     Route::post('brands/{brand}/set-default', [\App\Http\Controllers\Admin\BrandController::class, 'setDefault'])->name('brands.set-default');
+    Route::post('brands/{brand}/verify-domain', [\App\Http\Controllers\Admin\BrandController::class, 'verifyDomain'])->name('brands.verify-domain');
+    Route::post('brands/{brand}/check-readiness', [\App\Http\Controllers\Admin\BrandController::class, 'checkReadiness'])->name('brands.check-readiness');
+    Route::post('brands/{brand}/activate', [\App\Http\Controllers\Admin\BrandController::class, 'activate'])->name('brands.activate');
+    Route::post('brands/{brand}/suspend', [\App\Http\Controllers\Admin\BrandController::class, 'suspend'])->name('brands.suspend');
+    Route::post('brands/{brand}/unsuspend', [\App\Http\Controllers\Admin\BrandController::class, 'unsuspend'])->name('brands.unsuspend');
+    Route::post('brands/{brand}/archive', [\App\Http\Controllers\Admin\BrandController::class, 'archive'])->name('brands.archive');
     Route::resource('brands', \App\Http\Controllers\Admin\BrandController::class);
 
     // Pengaturan Form — Divisi & Field Builder

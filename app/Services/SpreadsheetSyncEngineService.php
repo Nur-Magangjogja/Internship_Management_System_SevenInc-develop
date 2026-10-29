@@ -47,21 +47,24 @@ class SpreadsheetSyncEngineService
     }
 
     /**
-     * Resolusi koneksi spreadsheet registrasi berbasis brand dengan fallback default brand.
+     * Resolusi koneksi spreadsheet registrasi berbasis brand dengan isolasi tenant ketat.
      */
-    public function getRegistrationConnection(?int $brandId = null): ?SpreadsheetConnection
+    public function getRegistrationConnection(?int $brandId = null, bool $requireReady = false): ?SpreadsheetConnection
     {
         if ($brandId) {
-            $brandConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            // Isolasi Tenant: Kembalikan HANYA koneksi milik brand pendaftar terkait (tanpa silent fallback ke brand lain)
+            $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
                 ->where('brand_id', $brandId)
                 ->first();
 
-            if ($brandConnection) {
-                return $brandConnection;
+            if ($conn && $requireReady && !$conn->isRegistrationReady()) {
+                return null;
             }
+
+            return $conn;
         }
 
-        // Fallback ke koneksi milik Brand Default
+        // Fallback ke koneksi milik Brand Default HANYA jika brandId tidak ditentukan (null)
         $defaultBrand = \App\Models\Brand::getDefaultBrand();
         if ($defaultBrand) {
             $defaultConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
@@ -69,11 +72,19 @@ class SpreadsheetSyncEngineService
                 ->first();
 
             if ($defaultConnection) {
+                if ($requireReady && !$defaultConnection->isRegistrationReady()) {
+                    return null;
+                }
                 return $defaultConnection;
             }
         }
 
-        return SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $legacyConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        if ($legacyConnection && $requireReady && !$legacyConnection->isRegistrationReady()) {
+            return null;
+        }
+
+        return $legacyConnection;
     }
 
     /**
@@ -105,7 +116,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = $this->getRegistrationConnection($registration->brand_id);
+        $connection = $this->getRegistrationConnection($registration->brand_id, requireReady: true);
         if (!$connection) {
             return null;
         }
@@ -1056,7 +1067,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = $this->getRegistrationConnection($registration->brand_id);
+        $connection = $this->getRegistrationConnection($registration->brand_id, requireReady: true);
         if (!$connection) {
             return null;
         }

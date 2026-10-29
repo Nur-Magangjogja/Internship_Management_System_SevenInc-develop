@@ -184,6 +184,7 @@ class InternApiController extends Controller
             'start_date','end_date',
             'current_activities','boarding_info',
             'social_media_instagram',
+            'registration_host',
             'created_at',
         ];
 
@@ -246,6 +247,33 @@ class InternApiController extends Controller
             }
         }
 
+        // Filter brand (mendukung brand_id numerik maupun nama/kode brand)
+        if ($req->filled('brand_id') || $req->filled('brand')) {
+            $brandInput = $req->filled('brand_id') ? $req->get('brand_id') : $req->get('brand');
+            $targetBrand = null;
+            if (is_numeric($brandInput)) {
+                $targetBrand = \App\Models\Brand::find($brandInput);
+            } else {
+                $targetBrand = \App\Models\Brand::where('code', $brandInput)
+                    ->orWhere('name', $brandInput)
+                    ->first();
+            }
+
+            if ($targetBrand) {
+                $hosts = array_filter([$targetBrand->registration_host, $targetBrand->primary_domain]);
+                $q->where(function ($bq) use ($targetBrand, $hosts) {
+                    $bq->where('brand_id', $targetBrand->id);
+                    if (!empty($hosts)) {
+                        foreach ($hosts as $host) {
+                            $bq->orWhere('registration_host', 'like', "%{$host}%");
+                        }
+                    }
+                });
+            } elseif (is_numeric($brandInput)) {
+                $q->where('brand_id', (int) $brandInput);
+            }
+        }
+
         // ========== GLOBAL SEARCH (semua kolom) ==========
         if ($req->filled('q')) {
             $raw    = trim($req->get('q'));
@@ -278,6 +306,10 @@ class InternApiController extends Controller
                         // Search in relations
                         $inner->orWhereHas('user', function ($uq) use ($token) {
                             $uq->where('email', 'like', "%{$token}%");
+                        });
+                        $inner->orWhereHas('brandRel', function ($bq) use ($token) {
+                            $bq->where('name', 'like', "%{$token}%")
+                               ->orWhere('code', 'like', "%{$token}%");
                         });
                         $inner->orWhereHas('institution', function ($iq) use ($token) {
                             $iq->where('name', 'like', "%{$token}%");

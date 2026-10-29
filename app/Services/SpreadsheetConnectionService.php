@@ -41,11 +41,19 @@ class SpreadsheetConnectionService
                 ->first();
 
             if ($legacyGlobal) {
-                // Hapus duplikat placeholder default brand yang belum dikonfigurasi
-                SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                // Rebind atau hapus duplikat placeholder default brand yang belum dikonfigurasi
+                $duplicates = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
                     ->where('brand_id', $defaultBrand->id)
                     ->where('id', '!=', $legacyGlobal->id)
-                    ->delete();
+                    ->get();
+
+                foreach ($duplicates as $dup) {
+                    \App\Models\SpreadsheetRowSync::where('spreadsheet_connection_id', $dup->id)
+                        ->update(['spreadsheet_connection_id' => $legacyGlobal->id]);
+                    \App\Models\SpreadsheetSidecarSync::where('spreadsheet_connection_id', $dup->id)
+                        ->update(['spreadsheet_connection_id' => $legacyGlobal->id]);
+                    $dup->delete();
+                }
 
                 $legacyGlobal->update([
                     'brand_id'     => $defaultBrand->id,
@@ -61,7 +69,6 @@ class SpreadsheetConnectionService
             ?: 'https://script.google.com/macros/s/AKfycbzY7ApK_y_kLy6ImJtnVFcynUUr1ilWIkQEsalkBsXqGMG_4QD4W8_47yHns-sJs-_MsA/exec';
 
         $brands = \App\Models\Brand::whereNotNull('registration_host')
-            ->where('code', '!=', 'SVII')
             ->orderBy('name')
             ->get();
 
@@ -230,6 +237,34 @@ class SpreadsheetConnectionService
                         ->where('id', $connection->id)
                         ->lockForUpdate()
                         ->first();
+                }
+
+                // Serialisasi perubahan scope untuk connection_key yang sama, termasuk scope global NULL.
+                // Ini melengkapi Rule::unique pada controller dan melindungi pemanggilan service langsung.
+                DB::table('spreadsheet_connections')
+                    ->where('connection_key', $connection->connection_key)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get(['id', 'brand_id']);
+
+                $targetBrandId = array_key_exists('brand_id', $data)
+                    ? (($data['brand_id'] === null || $data['brand_id'] === '') ? null : (int) $data['brand_id'])
+                    : ($connection->brand_id === null ? null : (int) $connection->brand_id);
+
+                $scopeConflictQuery = SpreadsheetConnection::query()
+                    ->where('connection_key', $connection->connection_key)
+                    ->where('id', '!=', $connection->id);
+
+                if ($targetBrandId === null) {
+                    $scopeConflictQuery->whereNull('brand_id');
+                } else {
+                    $scopeConflictQuery->where('brand_id', $targetBrandId);
+                }
+
+                if ($scopeConflictQuery->exists()) {
+                    throw new DomainException(
+                        'Brand tujuan sudah memiliki koneksi spreadsheet dengan jenis yang sama. Pilih brand lain atau gunakan koneksi yang sudah tersedia.'
+                    );
                 }
 
                 $oldSpreadsheetId = $connection->getOriginal('spreadsheet_id') ?? $connection->spreadsheet_id;

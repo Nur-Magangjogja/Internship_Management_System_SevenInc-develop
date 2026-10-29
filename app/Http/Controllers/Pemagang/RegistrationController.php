@@ -43,6 +43,17 @@ class RegistrationController extends Controller
             ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest(request())
             ?? \App\Models\Brand::getDefaultBrand();
 
+        // Kontrak divisi diproses sebelum kesiapan integrasi agar brand yang sengaja menutup
+        // pendaftaran selalu mendapat notifikasi penutupan yang tepat.
+        if (!$detectedBrand) {
+            return view('pemagang.registration.divisions-closed', ['detectedBrand' => null]);
+        }
+        $brandDivisionService = app(\App\Services\BrandDivisionService::class);
+        $divisions = $brandDivisionService->registrationDivisionNames($detectedBrand);
+        if ($divisions->isEmpty()) {
+            return view('pemagang.registration.divisions-closed', compact('detectedBrand'));
+        }
+
         // Proteksi Maintenance: Cek apakah koneksi spreadsheet brand terkait sudah terhubung & aktif
         if (!$registration || $registration->is_draft) {
             $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
@@ -62,25 +73,6 @@ class RegistrationController extends Controller
 
                 return view('pemagang.registration.maintenance', compact('detectedBrand', 'brandName', 'lockedBrandNotice'));
             }
-        }
-
-        // Ambil divisi aktif khusus brand jika ada; fallback ke list umum jika brand belum dikonfigurasi
-        if ($detectedBrand && $detectedBrand->divisions()->where('is_active', true)->exists()) {
-            $divisions = $detectedBrand->divisions()->where('is_active', true)->orderBy('name')->pluck('name');
-        } else {
-            $divisions = \App\Models\Division::active()->pluck('name');
-        }
-
-        if ($divisions->isEmpty()) {
-            $divisions = collect([
-                'UI/UX Designer', 'Marketing / Sales', 'Social Media Specialist',
-                'Programmer', 'Marcom/Public Relation', 'Tiktok Creator',
-                'Desain Grafis', 'Content Writer', 'Host/Presenter',
-                'Fotografer', 'Content Planner', 'Voice Over Talent',
-                'Videografer', 'Administrasi', 'Las', 'Digital Marketing',
-                'Project Manager', 'Human Resource', 'Research & Development',
-                'Animasi', 'Customer Service',
-            ]);
         }
 
         // Ambil konfigurasi field dari DB (jika tabel sudah ada)
@@ -773,23 +765,20 @@ class RegistrationController extends Controller
         }
         unset($validated['is_draft'], $validated['draft_saved_at']);
 
-        // Pra-validasi Divisi & Status Institusi sebelum transaksi
+        // Pra-resolusi divisi sebelum transaksi. Kepemilikan divisi akan diverifikasi ulang
+        // terhadap brand aktual di dalam transaksi, agar request yang dimanipulasi tetap ditolak.
         $divisionInput = $request->input('division_id') ?? $request->input('internship_interest') ?? ($validated['internship_interest'] ?? null);
         if (!empty($divisionInput) && $divisionInput !== '-') {
             $divisionId = self::resolveDivisionId($divisionInput);
-            if ($divisionId) {
-                $validated['division_id'] = $divisionId;
-            } else {
-                if ($isDraft) {
-                    $validated['division_id'] = null;
-                } else {
-                    return back()->withInput()->withErrors([
-                        'internship_interest' => 'Divisi yang dipilih tidak valid atau tidak tersedia.'
-                    ]);
-                }
+            if (!$divisionId) {
+                return back()->withInput()->withErrors([
+                    'internship_interest' => 'Divisi yang dipilih tidak valid atau tidak aktif.'
+                ]);
             }
-        } elseif (!$isDraft && empty($validated['division_id'])) {
-            $validated['division_id'] = \App\Models\Division::where('is_active', true)->first()?->id ?? 1;
+            $validated['division_id'] = $divisionId;
+        } elseif (!$isDraft) {
+            // Submit resmi akan menolak divisi kosong setelah konteks brand diverifikasi.
+            $validated['division_id'] = null;
         }
         unset($validated['internship_interest']);
 
@@ -817,7 +806,7 @@ class RegistrationController extends Controller
 
         try {
             \Illuminate\Support\Facades\DB::transaction(function () use (
-                $user, $isDraft, $validated, $existing, $infoSourcesArr,
+                $user, $isDraft, $validated, $existing, $infoSourcesArr, $divisionInput,
                 $request, $boundSchema, $cleanedCustomAnswers, $formBuilder,
                 $isDraftYearChanged, $targetYear,
                 &$intern, &$storedRegistrationFiles, &$createdAttachments, &$schemaAdjustedNotice
@@ -920,6 +909,33 @@ class RegistrationController extends Controller
                         : null)
                     ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request)
                     ?? \App\Models\Brand::getDefaultBrand();
+
+                // Penegakan kontrak divisi pada backend untuk submit maupun draft.
+                $divisionContract = app(\App\Services\BrandDivisionService::class);
+                if (!$detectedBrand) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'internship_interest' => 'Brand pendaftaran belum dapat ditentukan. Silakan hubungi Admin.'
+                    ]);
+                }
+
+                if ($divisionContract->isRegistrationClosed($detectedBrand)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'internship_interest' => 'Pendaftaran divisi untuk brand ini sedang ditutup karena belum ada divisi aktif yang dibuka.'
+                    ]);
+                }
+
+                if (!empty($divisionInput) && $divisionInput !== '-') {
+                    $resolvedDivisionId = $validated['division_id'] ?? null;
+                    if (!$resolvedDivisionId || !$divisionContract->isDivisionAllowed($detectedBrand, (int) $resolvedDivisionId)) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'internship_interest' => 'Divisi yang dipilih tidak dibuka untuk brand ini.'
+                        ]);
+                    }
+                } elseif (!$isDraft) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'internship_interest' => 'Divisi wajib dipilih sebelum pendaftaran dikirim.'
+                    ]);
+                }
 
                 // Proteksi Maintenance saat draft / submit: Cek kesiapan koneksi spreadsheet brand
                 if (!$existing || $existing->is_draft) {

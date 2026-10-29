@@ -86,7 +86,7 @@ class MultiBrandHostRegistrationTest extends TestCase
     public function test_intern_registration_from_host_assigns_brand_and_host(): void
     {
         $user = $this->createUser(['role' => 'pemagang']);
-        $division = Division::firstOrCreate(['name' => 'Web Developer'], ['slug' => 'web-developer', 'code' => 'WEB']);
+        $division = Division::where('name', 'Administrasi')->firstOrFail(); // divisi yang memang dibuka untuk brand MJ
         $institution = Institution::firstOrCreate(['name' => 'Universitas Gadjah Mada'], ['is_active' => true]);
         $city = City::firstOrCreate(['name' => 'Sleman']);
 
@@ -216,10 +216,9 @@ class MultiBrandHostRegistrationTest extends TestCase
         $this->assertNotNull($resolvedConnMJ);
         $this->assertEquals($connMJ->id, $resolvedConnMJ->id);
 
-        // Resolusi pendaftar dengan brand yang belum punya koneksi khusus -> harus fallback ke connDefault
+        // Resolusi pendaftar dengan brand yang belum punya koneksi khusus -> TIDAK BOLEH fallback ke connDefault (Isolasi Tenant Ketat)
         $resolvedConnFallback = $engine->getRegistrationConnection(999999);
-        $this->assertNotNull($resolvedConnFallback);
-        $this->assertEquals($connDefault->id, $resolvedConnFallback->id);
+        $this->assertNull($resolvedConnFallback, 'Isolasi Tenant: Brand yang belum memiliki koneksi tidak boleh mencampur data ke brand default.');
 
         // Resolusi tanpa brandId -> harus fallback ke connDefault
         $resolvedConnNull = $engine->getRegistrationConnection(null);

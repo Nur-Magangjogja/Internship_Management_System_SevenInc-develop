@@ -4,62 +4,53 @@ namespace App\Services;
 
 use App\Models\Brand;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class BrandDomainResolverService
 {
-    /**
-     * Resolusi Brand berdasarkan Host request saat ini.
-     */
     public function resolveFromRequest(Request $request): ?Brand
     {
-        $host = strtolower(trim($request->getHost()));
-        return $this->resolveFromHost($host);
+        return $this->resolveFromHost($request->getHost());
     }
 
-    /**
-     * Resolusi Brand berdasarkan nama Host string.
-     */
     public function resolveFromHost(string $host): ?Brand
     {
-        $host = strtolower(trim($host));
-        $brandConfig = config("brand_domains.hosts.{$host}");
+        $host = strtolower(rtrim(trim($host), '.'));
+        $registry = app(BrandHostRegistryService::class);
+        $brandId = $registry->brandIdForHost($host);
 
-        if ($brandConfig && !empty($brandConfig['code'])) {
-            return $this->getBrandByCode($brandConfig['code']);
+        if ($brandId !== null) {
+            return Brand::query()
+                ->whereKey($brandId)
+                ->where('lifecycle_status', Brand::STATUS_ACTIVE)
+                ->whereNotNull('domain_verified_at')
+                ->first();
         }
 
-        // Cek apakah host berformat subdomain dari primary_domain
-        $allConfig = config('brand_domains.hosts', []);
-        foreach ($allConfig as $cfgHost => $meta) {
-            if (!empty($meta['primary_domain']) && (str_ends_with($host, '.' . $meta['primary_domain']) || $host === $meta['primary_domain'])) {
-                return $this->getBrandByCode($meta['code']);
+        // The main application origin and local development hosts are not tenant aliases.
+        // Retain the legacy default-brand context only for these explicitly known origins.
+        $appHost = strtolower(rtrim((string) parse_url((string) config('app.url'), PHP_URL_HOST), '.'));
+        $isLocalHost = app()->environment('local', 'testing')
+            && in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+
+        if (($appHost !== '' && $host === $appHost) || $isLocalHost) {
+            $default = Brand::getDefaultBrand();
+            if ($default && $default->isRegistrationHostActive()) {
+                return $default;
             }
+
+            // The main application origin strictly belongs to the default corporate tenant.
+            // Never silently fall back to an arbitrary active tenant brand. Retain the default
+            // brand context if present, or null if no default brand exists.
+            return $default;
         }
 
-        // Cek langsung dari database jika ada pendaftaran host baru via admin
-        $dbBrand = Brand::whereRaw('LOWER(registration_host) = ?', [$host])
-            ->orWhereRaw('LOWER(primary_domain) = ?', [$host])
-            ->first();
-
-        if ($dbBrand) {
-            return $dbBrand;
-        }
-
-        // Fallback ke default brand sistem (SEVEN INC atau brand yang ditandai is_default = true)
-        return Brand::getDefaultBrand()
-            ?: ($this->getBrandByCode(config('brand_domains.default_brand_code', 'SI')) ?: $this->getBrandByCode('SVII'));
+        // Unknown hosts must not be silently assigned to the default tenant.
+        return null;
     }
 
-    /**
-     * Ambil Brand dari cache / DB berdasarkan kode.
-     */
     public function getBrandByCode(string $code): ?Brand
     {
         $code = strtoupper(trim($code));
-
-        return Brand::where('code', $code)
-            ->orWhereRaw('UPPER(code) = ?', [$code])
-            ->first();
+        return Brand::whereRaw('UPPER(code) = ?', [$code])->first();
     }
 }

@@ -140,38 +140,64 @@ class BrandSeeder extends Seeder
             ],
         ];
 
-        // 1. Bersihkan referensi data lama yang masih menggunakan SVII atau ALB
-        $sevenInc = Brand::where('code', 'SI')->first()
-            ?: Brand::where('code', 'SVII')->first();
+        // Seeder reguler hanya mengelola data master 11 brand bawaan.
+        // Domain adalah konfigurasi operasional yang dikelola Admin; jangan menimpanya
+        // ketika seeder dijalankan ulang pada brand yang sudah ada.
+        foreach ($brands as $brandData) {
+            $code = $brandData['code'];
+            $existing = DB::table('brands')->where('code', $code)->first();
 
-        if ($sevenInc) {
-            $siId = $sevenInc->id;
-            // Migrasikan relasi jika ada data tertaut ke SVII atau ALB
-            $oldBrandIds = Brand::whereIn('code', ['SVII', 'ALB'])->pluck('id')->all();
-            if (!empty($oldBrandIds)) {
-                DB::table('internship_registrations')->whereIn('brand_id', $oldBrandIds)->update(['brand_id' => $siId]);
-                DB::table('spreadsheet_connections')->whereIn('brand_id', $oldBrandIds)->delete();
-                if (DB::getSchemaBuilder()->hasTable('webinars')) {
-                    DB::table('webinars')->whereIn('brand_id', $oldBrandIds)->update(['brand_id' => $siId]);
-                }
-                Brand::whereIn('code', ['SVII', 'ALB'])->delete();
+            if ($existing) {
+                // Domain, status lifecycle, dan brand default adalah konfigurasi operasional.
+                // Seeder reguler tidak boleh menimpa keputusan Admin pada data yang sudah ada.
+                unset($brandData['registration_host'], $brandData['primary_domain'], $brandData['is_default']);
+                DB::table('brands')->where('id', $existing->id)->update($brandData);
+            } else {
+                DB::table('brands')->insert($brandData);
             }
         }
 
-        // 2. Insert or update 11 Brand Resmi
-        $allowedCodes = [];
-        foreach ($brands as $brandData) {
-            $allowedCodes[] = $brandData['code'];
-            DB::table('brands')->updateOrInsert(
-                ['code' => $brandData['code']],
-                $brandData
-            );
+        // Tetapkan SI sebagai default awal hanya jika belum ada default, dan jangan
+        // mengganti default yang telah dipilih Admin pada eksekusi seeder berikutnya.
+        if (!DB::table('brands')->where('is_default', true)->exists()) {
+            DB::table('brands')->where('code', 'SI')->update(['is_default' => true]);
         }
 
-        // 3. Pastikan tidak ada brand liar di luar 11 brand resmi
-        Brand::whereNotIn('code', $allowedCodes)->delete();
+        // Setelah instalasi baru, tandai hanya pasangan host/domain dari allowlist resmi
+        // lama sebagai migrated legacy trust. Host kustom yang dibuat Admin tidak pernah
+        // otomatis diverifikasi oleh seeder.
+        $legacyDomainMap = [];
+        foreach (config('brand_domains.hosts', []) as $host => $meta) {
+            if (!empty($meta['code']) && !empty($meta['primary_domain'])) {
+                $legacyDomainMap[strtolower($host)] = [
+                    'code' => strtoupper($meta['code']),
+                    'primary_domain' => strtolower($meta['primary_domain']),
+                ];
+            }
+        }
 
-        // 4. Seeding Mapping Divisi Khusus per Brand
+        foreach ($legacyDomainMap as $host => $meta) {
+            $official = DB::table('brands')
+                ->where('code', $meta['code'])
+                ->where('registration_host', $host)
+                ->where('primary_domain', $meta['primary_domain'])
+                ->whereNull('domain_verified_at')
+                ->whereNull('domain_verification_token')
+                ->whereIn('lifecycle_status', ['configuration_pending', 'draft'])
+                ->first();
+
+            if ($official) {
+                DB::table('brands')->where('id', $official->id)->update([
+                    'lifecycle_status' => 'active',
+                    'domain_verified_at' => now(),
+                    'domain_verification_method' => 'legacy_static_allowlist',
+                ]);
+            }
+        }
+
+        \Illuminate\Support\Facades\Cache::forget(\App\Services\BrandHostRegistryService::CACHE_KEY);
+
+        // Seeding mapping divisi khusus untuk brand bawaan; tidak menghapus brand lain.
         $divisionMap = [
             'SI'  => ['Administrasi', 'Human Resource', 'UI/UX Designer', 'Programmer', 'Desain Grafis', 'Social Media Specialist', 'Content Writer', 'Content Planner', 'Marketing / Sales', 'Marcom/Public Relation', 'Digital Marketing', 'Project Manager', 'Customer Service', 'Research & Development'],
             'RW'  => ['Programmer', 'UI/UX Designer', 'Project Manager', 'Digital Marketing', 'Desain Grafis', 'Administrasi', 'Customer Service'],
@@ -201,6 +227,9 @@ class BrandSeeder extends Seeder
 
             if (!empty($divisionIds)) {
                 $brand->divisions()->sync($divisionIds);
+                if ($brand->division_mode === null) {
+                    $brand->update(['division_mode' => Brand::DIVISION_MODE_BRAND_SPECIFIC]);
+                }
             }
         }
     }

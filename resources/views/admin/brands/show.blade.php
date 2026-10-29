@@ -18,6 +18,112 @@
     </div>
 
     <div class="max-w-5xl mx-auto space-y-6">
+        @if(session('success'))
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{{ session('success') }}</div>
+        @endif
+        @if(session('error'))
+            <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{{ session('error') }}</div>
+        @endif
+
+        @php
+            $lifecycleLabels = [
+                'draft' => 'Draft',
+                'configuration_pending' => 'Configuration Pending',
+                'ready' => 'Ready for Activation',
+                'active' => 'Active',
+                'suspended' => 'Suspended',
+                'archived' => 'Archived',
+            ];
+            $lifecycleColors = [
+                'active' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                'ready' => 'bg-blue-100 text-blue-800 border-blue-200',
+                'suspended' => 'bg-amber-100 text-amber-800 border-amber-200',
+                'archived' => 'bg-slate-100 text-slate-700 border-slate-200',
+            ];
+        @endphp
+
+        {{-- Domain registry dan Readiness Gate --}}
+        <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs space-y-5">
+            <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-[#DCE7E1]">
+                <div>
+                    <h2 class="text-base font-bold text-[#1B3A34]">Domain & Siklus Hidup Brand</h2>
+                    <p class="mt-1 text-xs text-[#4B5F5A]">Hanya hostname yang terverifikasi dan berstatus Active yang masuk ke registry TrustHosts.</p>
+                </div>
+                <span class="inline-flex rounded-full border px-3 py-1 text-xs font-bold {{ $lifecycleColors[$brand->lifecycle_status] ?? 'bg-slate-50 text-slate-700 border-slate-200' }}">
+                    {{ $lifecycleLabels[$brand->lifecycle_status] ?? 'Status Tidak Dikenal' }}
+                </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-[#4B5F5A]">Host Pendaftaran</p>
+                    <p class="font-mono text-[#1B3A34] break-all">{{ $brand->registration_host ?: '-' }}</p>
+                </div>
+                <div>
+                    <p class="mb-1 text-[11px] font-bold uppercase tracking-wider text-[#4B5F5A]">Domain Utama</p>
+                    <p class="font-mono text-[#1B3A34] break-all">{{ $brand->primary_domain ?: '-' }}</p>
+                </div>
+                <div class="md:col-span-2 rounded-xl border px-4 py-3 {{ $brand->domain_verified_at ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' }}">
+                    @if($brand->domain_verified_at)
+                        <p class="text-sm font-bold text-emerald-800">Domain terverifikasi</p>
+                        <p class="mt-1 text-xs text-emerald-800">{{ $brand->domain_verified_at->format('d M Y H:i') }} · Metode: {{ $brand->domain_verification_method ?: 'tidak tercatat' }}</p>
+                    @else
+                        <p class="text-sm font-bold text-amber-900">Domain belum terverifikasi</p>
+                        <p class="mt-1 text-xs text-amber-900">Tambahkan TXT record berikut ke DNS domain utama, tunggu propagasi, kemudian klik Verifikasi Domain.</p>
+                        @if($brand->primary_domain && $brand->domain_verification_token)
+                            <div class="mt-3 space-y-2 text-xs text-amber-950">
+                                <p><span class="font-semibold">Jenis:</span> TXT</p>
+                                <p><span class="font-semibold">Nama/Host:</span> <code class="break-all">_seveninc-verification.{{ $brand->primary_domain }}</code></p>
+                                <p><span class="font-semibold">Nilai:</span> <code class="break-all">seveninc-domain-verification={{ $brand->domain_verification_token }}</code></p>
+                            </div>
+                            <form action="{{ route('admin.brands.verify-domain', $brand) }}" method="POST" class="mt-3">
+                                @csrf
+                                <button type="submit" class="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800">Verifikasi Domain via DNS</button>
+                            </form>
+                        @else
+                            <p class="mt-2 text-xs text-amber-900">Isi host pendaftaran dan domain utama melalui Edit Brand untuk membuat token verifikasi.</p>
+                        @endif
+                    @endif
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 border-t border-[#DCE7E1] pt-4">
+                <a href="{{ route('admin.spreadsheet-connections.index') }}" class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100">
+                    Kelola Koneksi Spreadsheet
+                </a>
+                @if($brand->lifecycle_status !== 'archived')
+                    <form action="{{ route('admin.brands.check-readiness', $brand) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="rounded-lg border border-[#2D8659] bg-white px-3 py-2 text-xs font-bold text-[#2D8659] hover:bg-emerald-50">Periksa Readiness Gate</button>
+                    </form>
+                @endif
+                @if($brand->lifecycle_status === 'ready')
+                    <form action="{{ route('admin.brands.activate', $brand) }}" method="POST" onsubmit="return confirm('Aktifkan brand ini setelah seluruh konfigurasi dinyatakan siap?')">
+                        @csrf
+                        <button type="submit" class="rounded-lg bg-[#2D8659] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F5F3F]">Aktifkan Brand</button>
+                    </form>
+                @endif
+                @if($brand->lifecycle_status === 'active' && !$brand->is_default)
+                    <form action="{{ route('admin.brands.suspend', $brand) }}" method="POST" onsubmit="return confirm('Suspend brand ini? Host akan dikeluarkan dari registry tepercaya.')">
+                        @csrf
+                        <button type="submit" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Suspend</button>
+                    </form>
+                @endif
+                @if($brand->lifecycle_status === 'suspended')
+                    <form action="{{ route('admin.brands.unsuspend', $brand) }}" method="POST" onsubmit="return confirm('Cabut suspend dan aktifkan kembali brand ini?')">
+                        @csrf
+                        <button type="submit" class="rounded-lg bg-[#2D8659] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F5F3F]">Cabut Suspend (Reaktivasi)</button>
+                    </form>
+                @endif
+                @if(!$brand->is_default && $brand->lifecycle_status !== 'archived')
+                    <form action="{{ route('admin.brands.archive', $brand) }}" method="POST" onsubmit="return confirm('Arsipkan brand ini tanpa menghapus riwayat data?')">
+                        @csrf
+                        <button type="submit" class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">Arsipkan</button>
+                    </form>
+                @endif
+            </div>
+        </div>
+
         {{-- 1. INFORMASI UTAMA BRAND --}}
         <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
             <div class="flex items-center gap-3 pb-4 mb-5 border-b border-[#DCE7E1]">
@@ -239,7 +345,7 @@
             </div>
         </div>
 
-        {{-- 5. DIVISI TERDAFTAR UNTUK BRAND INI --}}
+        {{-- 5. MODE DAN DIVISI PENDAFTARAN BRAND --}}
         <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs">
             <div class="flex items-center justify-between pb-4 mb-4 border-b border-[#DCE7E1]">
                 <div class="flex items-center gap-3">
@@ -249,30 +355,37 @@
                         </svg>
                     </div>
                     <div>
-                        <h2 class="text-base font-bold text-[#1B3A34]">5. Divisi Magang yang Dibuka untuk Brand Ini</h2>
-                        <p class="text-xs text-[#4B5F5A]">Daftar divisi spesifik yang dapat dipilih oleh pemagang saat mendaftar melalui domain {{ $brand->registration_host }}.</p>
+                        <h2 class="text-base font-bold text-[#1B3A34]">5. Konfigurasi Divisi Pendaftaran</h2>
+                        @if(($brand->division_mode ?? 'global') === 'global')
+                            <p class="text-xs text-[#4B5F5A]">Mode Global: formulir menggunakan seluruh divisi umum yang aktif.</p>
+                        @else
+                            <p class="text-xs text-[#4B5F5A]">Mode Khusus Brand: hanya divisi aktif yang ditautkan ke brand ini yang tersedia.</p>
+                        @endif
                     </div>
                 </div>
                 <span class="text-xs font-bold text-[#2D8659] bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                    {{ $brand->divisions->count() }} Divisi Aktif
+                    {{ ($brand->division_mode ?? 'global') === 'global' ? 'GLOBAL' : $brand->divisions->where('is_active', true)->count() . ' DIVISI AKTIF' }}
                 </span>
             </div>
 
-            @if($brand->divisions->isNotEmpty())
-                <div class="flex flex-wrap gap-2">
-                    @foreach($brand->divisions as $div)
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#F4F8F6] text-[#1B3A34] border border-[#DCE7E1]">
-                            <span>{{ $div->name }}</span>
-                            @if($div->code)
-                                <span class="text-[10px] font-mono text-[#2D8659] bg-white px-1.5 py-0.5 rounded border border-[#DCE7E1]">
-                                    {{ $div->code }}
-                                </span>
-                            @endif
-                        </span>
-                    @endforeach
-                </div>
+            @if(($brand->division_mode ?? 'global') === 'global')
+                <p class="text-xs text-[#4B5F5A]">Brand ini tidak dibatasi oleh mapping khusus. Hanya divisi umum yang masih aktif yang ditampilkan pada formulir.</p>
             @else
-                <p class="text-xs text-[#4B5F5A] italic">Belum ada divisi khusus yang dihubungkan ke brand ini (akan menggunakan semua divisi umum).</p>
+                @php($activeBrandDivisions = $brand->divisions->where('is_active', true))
+                @if($activeBrandDivisions->isNotEmpty())
+                    <div class="flex flex-wrap gap-2">
+                        @foreach($activeBrandDivisions as $div)
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#F4F8F6] text-[#1B3A34] border border-[#DCE7E1]">
+                                <span>{{ $div->name }}</span>
+                                @if($div->code)
+                                    <span class="text-[10px] font-mono text-[#2D8659] bg-white px-1.5 py-0.5 rounded border border-[#DCE7E1]">{{ $div->code }}</span>
+                                @endif
+                            </span>
+                        @endforeach
+                    </div>
+                @else
+                    <p class="text-xs text-amber-700 italic">Tidak ada divisi aktif yang dibuka. Pendaftaran untuk brand ini ditutup sampai Admin mengaktifkan mapping divisi.</p>
+                @endif
             @endif
         </div>
     </div>

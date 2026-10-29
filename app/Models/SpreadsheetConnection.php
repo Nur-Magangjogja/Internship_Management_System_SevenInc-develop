@@ -98,6 +98,16 @@ class SpreadsheetConnection extends Model
     }
 
     /**
+     * Memeriksa apakah koneksi registrasi siap digunakan untuk operasi sinkronisasi data.
+     */
+    public function isRegistrationReady(): bool
+    {
+        return (bool) $this->is_enabled
+            && $this->isSpreadsheetConnected()
+            && $this->connection_status !== self::STATUS_NOT_CONFIGURED;
+    }
+
+    /**
      * Memeriksa apakah link penghubung (Spreadsheet atau Drive) belum terhubung ke database SertIF.
      */
     public function hasUnconnectedLinks(): bool

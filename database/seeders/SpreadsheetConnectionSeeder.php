@@ -26,9 +26,8 @@ class SpreadsheetConnectionSeeder extends Seeder
             ]
         );
 
-        // 2. Dedicated Registration for all 11 brands (termasuk SEVEN INC sebagai default)
+        // 2. Dedicated registration connection for every configured brand.
         $brands = Brand::whereNotNull('registration_host')
-            ->where('code', '!=', 'SVII')
             ->orderBy('name')
             ->get();
 
