@@ -80,6 +80,11 @@ class SpreadsheetRowSync extends Model
         return $this->belongsTo(SpreadsheetConnection::class, 'spreadsheet_connection_id');
     }
 
+    public function connection(): BelongsTo
+    {
+        return $this->spreadsheetConnection();
+    }
+
     public function syncable(): MorphTo
     {
         return $this->morphTo();

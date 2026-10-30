@@ -14,6 +14,9 @@ class InternshipRegistration extends Model
 
     protected $table = 'internship_registrations';
 
+    /** Transient property untuk kebutuhan penyusunan kolom KET perpindahan spreadsheet (bukan kolom database). */
+    public ?string $transferred_from_brand_name = null;
+
     // ===== Workflow status (dipakai filter/menu) =====
     public const STATUS_NEW         = 'new';
     public const STATUS_WAITING     = 'waiting';

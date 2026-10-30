@@ -253,11 +253,15 @@
             </div>
 
             {{-- Mode kontrak divisi untuk membedakan global fallback dari penutupan divisi brand. --}}
+            @php
+                $inferredDivisionMode = $brand->division_mode ?? ($brand->divisions->isNotEmpty() ? 'brand_specific' : ($brand->is_default ? 'global' : 'brand_specific'));
+                $selectedDivisionMode = old('division_mode', $inferredDivisionMode);
+            @endphp
             <div class="rounded-2xl border border-[#DCE7E1] bg-white p-6 shadow-xs mb-5">
                 <label for="division_mode" class="block mb-2 text-xs font-bold uppercase tracking-wider text-[#1B3A34]">Mode Pilihan Divisi</label>
                 <select id="division_mode" name="division_mode" required class="w-full rounded-xl border border-[#DCE7E1] bg-[#F8FAF9] px-4 py-2.5 text-sm text-[#1B3A34] outline-none focus:border-[#2D8659] focus:bg-white focus:ring-1 focus:ring-[#2D8659] transition">
-                    <option value="brand_specific" @selected(old('division_mode', $brand->division_mode ?? 'global') === 'brand_specific')>Khusus Brand (hanya divisi yang dicentang)</option>
-                    <option value="global" @selected(old('division_mode', $brand->division_mode ?? 'global') === 'global')>Global (semua divisi aktif umum)</option>
+                    <option value="brand_specific" @selected($selectedDivisionMode === 'brand_specific')>Khusus Brand (hanya divisi yang dicentang)</option>
+                    <option value="global" @selected($selectedDivisionMode === 'global')>Global (semua divisi aktif umum)</option>
                 </select>
                 <p class="mt-2 text-[11px] text-[#4B5F5A]">
                     Mode Khusus Brand dengan semua divisi tidak dicentang akan menutup pilihan divisi untuk brand ini. Mode Global menggunakan seluruh divisi aktif umum.

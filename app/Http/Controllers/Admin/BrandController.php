@@ -164,8 +164,18 @@ class BrandController extends Controller
         $requestedDivisionIds = $divisionIdsSubmitted
             ? collect($request->input('division_ids', []))->map(fn ($id) => (int) $id)->sort()->values()->all()
             : $currentDivisionIds;
+
+        // Rekonsiliasi division_mode: jika mode tidak dikirim eksplisit tetapi ada divisi khusus yang dipilih,
+        // atau jika mode di database masih null, set sebagai brand_specific agar relasi pivot terikat resmi.
+        if (!$request->filled('division_mode')) {
+            if ($divisionIdsSubmitted && !empty($requestedDivisionIds)) {
+                $data['division_mode'] = Brand::DIVISION_MODE_BRAND_SPECIFIC;
+            }
+        }
+
+        $effectiveDivisionMode = $data['division_mode'] ?? $brand->division_mode;
         $readinessConfigurationChanged = $domainChanged
-            || ($request->exists('division_mode') && $brand->division_mode !== $request->input('division_mode'))
+            || ($effectiveDivisionMode !== $brand->division_mode)
             || ($divisionIdsSubmitted && $currentDivisionIds !== $requestedDivisionIds);
 
         if ($domainInputsSubmitted) {

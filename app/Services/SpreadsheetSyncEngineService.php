@@ -25,6 +25,9 @@ class SpreadsheetSyncEngineService
     protected RegistrationSpreadsheetMappingService $registrationMappingService;
     protected FollowUpSpreadsheetMappingService $followUpMappingService;
 
+    /** @var array<int, string> Cache in-memory nama brand asal saat mutasi antar-brand. */
+    private static array $transferredBrandNames = [];
+
     public function __construct(
         ?SpreadsheetTransportInterface $transport = null,
         ?RegistrationSpreadsheetMappingService $registrationMappingService = null,
@@ -106,6 +109,154 @@ class SpreadsheetSyncEngineService
     }
 
     /**
+     * Dapatkan nama brand asal jika pemagang merupakan hasil mutasi/pindahan antar-brand.
+     */
+    public function getPriorTransferredBrandName(InternshipRegistration $registration): ?string
+    {
+        if (!empty(self::$transferredBrandNames[$registration->id])) {
+            return self::$transferredBrandNames[$registration->id];
+        }
+
+        if (!empty($registration->transferred_from_brand_name)) {
+            return $registration->transferred_from_brand_name;
+        }
+
+        if (empty($registration->brand_id)) {
+            return null;
+        }
+
+        $priorSync = SpreadsheetRowSync::where('syncable_type', InternshipRegistration::class)
+            ->where('syncable_id', $registration->id)
+            ->whereNotNull('last_synced_at')
+            ->whereHas('connection', function ($q) use ($registration) {
+                $q->whereNotNull('brand_id')
+                  ->where('brand_id', '!=', $registration->brand_id);
+            })
+            ->with('connection.brand')
+            ->latest('last_synced_at')
+            ->first();
+
+        return $priorSync?->connection?->brand?->name;
+    }
+
+    /**
+     * Menangani sinkronisasi spreadsheet dua arah saat terjadi pemindahan brand pemagang.
+     * 1. Pada spreadsheet brand lama: tandai kolom KET menjadi "Dipindahkan ke Brand [Nama Brand Baru]".
+     * 2. Pada spreadsheet brand baru: tandai kolom KET menjadi "[Status] (Pindahan dari [Nama Brand Lama])".
+     */
+    public function handleBrandTransfer(InternshipRegistration $registration, int $oldBrandId, int $newBrandId): void
+    {
+        if ($oldBrandId === $newBrandId) {
+            return;
+        }
+
+        $oldBrand = \App\Models\Brand::find($oldBrandId);
+        $newBrand = \App\Models\Brand::find($newBrandId);
+
+        // 1. Update baris pada Spreadsheet Brand Lama jika sebelumnya pernah tersinkron
+        try {
+            $oldConnection = $this->getRegistrationConnection($oldBrandId);
+            if ($oldConnection) {
+                $oldRowSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $oldConnection->id)
+                    ->where('syncable_type', InternshipRegistration::class)
+                    ->where('syncable_id', $registration->id)
+                    ->first();
+
+                if ($oldRowSync && (!empty($oldRowSync->last_synced_at) || !empty($oldRowSync->row_index))) {
+                    $newBrandName = $newBrand?->name ?? 'Lain';
+                    $payload = $this->buildPayloadForRecord($oldRowSync, allowPendaftar: true);
+
+                    // Cari header kolom KET pada schema spreadsheet brand lama
+                    $schema = $this->registrationMappingService->getSchemaForRegistration($registration);
+                    $ketHeader = 'KET';
+                    if ($schema) {
+                        $ketMapping = $schema->columnMappings()
+                            ->where('mapping_status', 'active')
+                            ->whereIn('transform_key', ['ket', 'status_label'])
+                            ->first();
+                        if ($ketMapping && !empty($ketMapping->sheet_header)) {
+                            $ketHeader = $ketMapping->sheet_header;
+                        }
+                    }
+
+                    $payload[$ketHeader] = "Dipindahkan ke Brand {$newBrandName}";
+                    $payload['SERTIF_LAST_SYNC_AT'] = now()->toIso8601String();
+
+                    $this->transport->sendRowUpdateOnly(
+                        connection: $oldConnection,
+                        tabName: $oldRowSync->target_sheet_tab,
+                        syncId: $oldRowSync->external_sync_id,
+                        payload: $payload
+                    );
+
+                    $oldRowSync->update([
+                        'payload_checksum' => $this->calculatePayloadChecksum($oldConnection, $oldRowSync->target_sheet_tab, $payload),
+                        'last_synced_at'   => now(),
+                        'updated_at'       => now(),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal memperbarui KET pemindahan pada spreadsheet brand lama #{$oldBrandId}: " . $e->getMessage());
+        }
+
+        // 2. Set informasi asal brand pada model registrasi agar terbaca saat membangun baris brand baru
+        if ($oldBrand) {
+            self::$transferredBrandNames[$registration->id] = $oldBrand->name;
+            $registration->transferred_from_brand_name = $oldBrand->name;
+            if (isset($registration->attributes['transferred_from_brand_name'])) {
+                unset($registration->attributes['transferred_from_brand_name']);
+            }
+        }
+
+        // 3. Update jalur direktori Google Drive pada CloudFolderRegistry agar sinkron dengan brand baru
+        try {
+            $year = $registration->created_at ? $registration->created_at->format('Y') : date('Y');
+            $oldBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($oldBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
+            $newBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($newBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
+
+            $oldBasePath = "REGISTRASI/{$year}/{$oldBrandNameClean}/" . $registration->getDriveApplicantFolderName();
+            $newBasePath = "REGISTRASI/{$year}/{$newBrandNameClean}/" . $registration->getDriveApplicantFolderName();
+
+            if ($oldBasePath !== $newBasePath && \Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
+                \App\Models\CloudFolderRegistry::where(function ($q) use ($registration, $oldBasePath) {
+                    $q->where(function ($sub) use ($registration) {
+                        $sub->where('owner_type', 'registration')
+                            ->where('owner_id', $registration->id);
+                    })->orWhere('folder_path', 'LIKE', "{$oldBasePath}%");
+                })->get()->each(function ($folderReg) use ($oldBasePath, $newBasePath) {
+                    if (str_starts_with($folderReg->folder_path, $oldBasePath)) {
+                        $subPath = substr($folderReg->folder_path, strlen($oldBasePath));
+                        $folderReg->update([
+                            'folder_path' => $newBasePath . $subPath,
+                        ]);
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal memperbarui path folder Drive pemindahan: " . $e->getMessage());
+        }
+
+        // 4. Masukkan dan proses baris baru pada Spreadsheet Brand Baru
+        try {
+            $newConnection = $this->getRegistrationConnection($newBrandId, requireReady: true);
+            if ($newConnection) {
+                $savedBrandId = $registration->brand_id;
+                $registration->brand_id = $newBrandId;
+
+                $newRowSync = $this->queueSyncForRegistration($registration, allowPendaftar: true);
+                if ($newRowSync) {
+                    $this->processSyncRecord($newRowSync, allowPendaftar: true);
+                }
+
+                $registration->brand_id = $savedBrandId;
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal menjadwalkan baris baru pada spreadsheet brand baru #{$newBrandId}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Enqueue outbound sync record for an InternshipRegistration.
      * Nonblocking and strictly transactional.
      */
@@ -134,7 +285,19 @@ class SpreadsheetSyncEngineService
         }
 
         $targetTab = (string) $year;
-        $externalSyncId = $this->generateExternalSyncId($registration);
+        $baseSyncId = $this->generateExternalSyncId($registration);
+        $externalSyncId = $baseSyncId;
+
+        // Jika external_sync_id sudah pernah digunakan oleh koneksi brand lain (misal pemagang pindah brand),
+        // gunakan suffix id brand/koneksi agar tetap unik secara global di database dan di spreadsheet brand baru.
+        $existsOnOtherConnection = SpreadsheetRowSync::where('external_sync_id', $externalSyncId)
+            ->where('spreadsheet_connection_id', '!=', $connection->id)
+            ->exists();
+
+        if ($existsOnOtherConnection) {
+            $brandSuffix = $connection->brand_id ? "B{$connection->brand_id}" : "C{$connection->id}";
+            $externalSyncId = "{$baseSyncId}-{$brandSuffix}";
+        }
 
         $rowSync = SpreadsheetRowSync::firstOrCreate(
             [
@@ -342,11 +505,22 @@ class SpreadsheetSyncEngineService
      */
     public function requiresUpdateOnly(SpreadsheetRowSync $rowSync): bool
     {
-        $entity = $rowSync->syncable()->first();
+        // Jika rowSync ini belum pernah memiliki row_index atau last_synced_at pada spreadsheet target ini
+        // (misal baris baru hasil perpindahan ke brand spreadsheet lain), maka harus disisipkan via sendRowUpsert.
+        if (empty($rowSync->row_index) && empty($rowSync->last_synced_at)) {
+            return false;
+        }
+
+        $entity = $rowSync->syncable()->withTrashed()->first();
         if ($entity instanceof InternshipRegistration) {
+            if ($entity->trashed()) {
+                return true;
+            }
             return in_array($entity->internship_status, [
                 InternshipRegistration::STATUS_EXITED,
                 InternshipRegistration::STATUS_REJECTED,
+                InternshipRegistration::STATUS_WAITING,
+                InternshipRegistration::STATUS_PENDING,
             ], true);
         }
 
@@ -498,7 +672,7 @@ class SpreadsheetSyncEngineService
         }
 
         // 2.5 Acceptance Gate: Pre-flight eligibility verification for InternshipRegistration (S17.17 / S17.18B)
-        $entity = $rowSync->syncable()->first();
+        $entity = $rowSync->syncable()->withTrashed()->first();
         if ($entity instanceof InternshipRegistration) {
             if (!$this->registrationMappingService->isEligibleForSync($entity, $rowSync, $allowPendaftar)) {
                 $status = $entity->internship_status;
@@ -767,7 +941,7 @@ class SpreadsheetSyncEngineService
      */
     protected function buildPayloadForRecord(SpreadsheetRowSync $rowSync, bool $allowPendaftar = false): array
     {
-        $entity = $rowSync->syncable()->first();
+        $entity = $rowSync->syncable()->withTrashed()->first();
 
         if (!$entity) {
             throw new DomainException('Entitas sumber data tidak ditemukan.');
@@ -1102,7 +1276,18 @@ class SpreadsheetSyncEngineService
 
         $mainTab = (string) $year;
         $extensionTab = "{$mainTab}_Custom_Fields";
-        $externalSyncId = $this->generateExternalSyncId($registration);
+        $baseSyncId = $this->generateExternalSyncId($registration);
+        $externalSyncId = $baseSyncId;
+
+        $existsOnOtherSidecar = SpreadsheetSidecarSync::where('external_sync_id', $externalSyncId)
+            ->where('spreadsheet_connection_id', '!=', $connection->id)
+            ->exists();
+
+        if ($existsOnOtherSidecar) {
+            $brandSuffix = $connection->brand_id ? "B{$connection->brand_id}" : "C{$connection->id}";
+            $externalSyncId = "{$baseSyncId}-{$brandSuffix}";
+        }
+
         $snapshot = $registration->formSnapshot;
         $version = $snapshot ? (string) $snapshot->form_schema_version : null;
 

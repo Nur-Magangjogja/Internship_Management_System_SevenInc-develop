@@ -37,7 +37,7 @@ class BrandReadinessService
 
         if (!in_array($brand->division_mode, [null, Brand::DIVISION_MODE_GLOBAL, Brand::DIVISION_MODE_BRAND_SPECIFIC], true)) {
             $blockers[] = 'Mode divisi tidak valid.';
-        } elseif ($brand->division_mode === Brand::DIVISION_MODE_BRAND_SPECIFIC) {
+        } elseif ($brand->division_mode === Brand::DIVISION_MODE_BRAND_SPECIFIC || ($brand->division_mode === null && $brand->divisions()->exists())) {
             $hasActiveDivision = $brand->divisions()
                 ->where('divisions.is_active', true)
                 ->exists();

@@ -272,6 +272,12 @@ class SpreadsheetInboundSyncService
                     continue;
                 }
 
+                // C.1 Guard: Jangan proses inbound sync jika baris ini berasal dari spreadsheet brand lama
+                // yang pemagangannya sudah dipindahkan ke brand lain.
+                if (!empty($connection->brand_id) && !empty($registration->brand_id) && (int) $connection->brand_id !== (int) $registration->brand_id) {
+                    continue;
+                }
+
                 // D. Pencegahan Echo Loop: Cek apakah baris ini identik dengan Outbound Payload terakhir
                 $rowChecksum = $this->computeRowChecksum($row, $columnMap);
                 $priorRowSync = SpreadsheetRowSync::where('external_sync_id', $effectiveSyncId)
@@ -497,6 +503,22 @@ class SpreadsheetInboundSyncService
                     'success'    => false,
                     'error_code' => 'REGISTRATION_NOT_FOUND',
                     'message'    => "Data pendaftaran magang ID '{$lockedStaging->registration_id}' tidak ditemukan.",
+                ];
+            }
+
+            // Guard Anti-Pollution Brand Transfer: Tolak penerapan jika pemagang sudah berpindah brand
+            if (!empty($lockedStaging->spreadsheetConnection?->brand_id) && !empty($registration->brand_id) && (int) $lockedStaging->spreadsheetConnection->brand_id !== (int) $registration->brand_id) {
+                $lockedStaging->update([
+                    'staging_status'    => SheetInboundChangeStaging::STATUS_REJECTED,
+                    'conflict_status'   => SheetInboundChangeStaging::CONFLICT_REJECTED_PROTECTED,
+                    'conflict_reason'   => 'Pendaftar telah dipindahkan ke brand lain. Perubahan dari spreadsheet brand asal ditolak.',
+                    'resolution_policy' => SheetInboundChangeStaging::POLICY_KEEP_LOCAL,
+                ]);
+
+                return [
+                    'success'    => false,
+                    'error_code' => 'TRANSFERRED_BRAND_MISMATCH',
+                    'message'    => 'Pendaftar telah dipindahkan ke brand lain. Perubahan dari spreadsheet brand asal tidak dapat diterapkan.',
                 ];
             }
 

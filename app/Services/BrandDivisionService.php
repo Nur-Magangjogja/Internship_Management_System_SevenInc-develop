@@ -25,10 +25,22 @@ class BrandDivisionService
                 ->pluck('divisions.name');
         }
 
-        // Kompatibilitas legacy: Hanya brand default (induk) dengan mode null yang mewarisi divisi global.
-        // Brand non-default yang belum terkonfigurasi wajib fail-closed (menutup registrasi).
-        if ($brand->division_mode === null && $brand->is_default) {
-            return Division::active()->pluck('name');
+        // Self-healing / Kompatibilitas: Jika mode belum diset eksplisit (null) tetapi brand memiliki divisi di tabel pivot.
+        if ($brand->division_mode === null) {
+            $mapped = $brand->divisions()
+                ->where('divisions.is_active', true)
+                ->orderBy('divisions.name')
+                ->pluck('divisions.name');
+
+            if ($mapped->isNotEmpty()) {
+                return $mapped;
+            }
+
+            // Kompatibilitas legacy: Hanya brand default (induk) dengan mode null tanpa mapping khusus yang mewarisi divisi global.
+            // Brand non-default yang belum terkonfigurasi wajib fail-closed (menutup registrasi).
+            if ($brand->is_default) {
+                return Division::active()->pluck('name');
+            }
         }
 
         return collect();
@@ -65,9 +77,23 @@ class BrandDivisionService
                 ->exists();
         }
 
-        // Kompatibilitas legacy: Brand default dengan mode null mengizinkan seluruh divisi aktif.
-        if ($brand->division_mode === null && $brand->is_default) {
-            return true;
+        // Self-healing / Kompatibilitas: Jika mode belum diset eksplisit (null) tetapi brand memiliki divisi di tabel pivot.
+        if ($brand->division_mode === null) {
+            $hasMappings = DB::table('brand_divisions')
+                ->where('brand_id', $brand->id)
+                ->exists();
+
+            if ($hasMappings) {
+                return DB::table('brand_divisions')
+                    ->where('brand_id', $brand->id)
+                    ->where('division_id', $divisionId)
+                    ->exists();
+            }
+
+            // Kompatibilitas legacy: Brand default dengan mode null mengizinkan seluruh divisi aktif.
+            if ($brand->is_default) {
+                return true;
+            }
         }
 
         return false;

@@ -91,7 +91,7 @@ class RegistrationLifecycleService
             }
 
             if (empty(trim((string) $reason))) {
-                throw new InvalidArgumentException("Koreksi status administratif untuk transisi tidak standar atau periode tertutup memerlukan alasan eksplisit.");
+                $reason = 'Koreksi status oleh Administrator.';
             }
         }
 
@@ -112,25 +112,19 @@ class RegistrationLifecycleService
                 if ($oldStatus === IR::STATUS_COMPLETED || $this->hasVerifiedCompletionHistory($registration)) {
                     // Prioritas 1: Pernah menyelesaikan magang: pertahankan fakta status #7
                     $registration->followup_status = $registration->followup_status ?? IR::FOLLOWUP_INTERNSHIP_COMPLETED;
-                } elseif ($oldStatus === IR::STATUS_ACTIVE || $this->hasVerifiedActiveHistory($registration)) {
-                    // Prioritas 2: Pernah mulai magang: pertahankan fakta historis status #4
-                    $registration->followup_status = $registration->followup_status ?? IR::FOLLOWUP_INTERNSHIP_STARTED;
-                } elseif ($oldStatus === IR::STATUS_ACCEPTED) {
-                    // Prioritas 3: Diterima lalu batal sebelum mulai: sesuaikan followup_status menjadi #5
+                } else {
+                    // Prioritas 2: Keluar (baik setelah mulai maupun sebelum mulai): sesuaikan followup_status menjadi #5 (Tidak jadi magang)
                     $registration->followup_status = IR::FOLLOWUP_INTERNSHIP_CANCELLED;
                 }
             } elseif ($newStatus === IR::STATUS_REJECTED) {
                 if ($oldStatus === IR::STATUS_COMPLETED || $this->hasVerifiedCompletionHistory($registration)) {
                     // Prioritas 1: Pernah selesai: pertahankan fakta #7
                     $registration->followup_status = $registration->followup_status ?? IR::FOLLOWUP_INTERNSHIP_COMPLETED;
-                } elseif ($oldStatus === IR::STATUS_ACTIVE || $this->hasVerifiedActiveHistory($registration)) {
-                    // Prioritas 2: Pernah aktif: pertahankan fakta #4, jangan beri label tidak jadi magang
-                    $registration->followup_status = $registration->followup_status ?? IR::FOLLOWUP_INTERNSHIP_STARTED;
-                } elseif ($oldStatus === IR::STATUS_ACCEPTED) {
-                    // Prioritas 3: Diterima lalu ditolak/batal sebelum mulai: #5
+                } elseif ($this->hasVerifiedAdminAcceptance($registration)) {
+                    // Prioritas 2: Diterima lalu ditolak/batal sebelum mulai atau setelahnya: #5
                     $registration->followup_status = IR::FOLLOWUP_INTERNSHIP_CANCELLED;
                 } else {
-                    // Prioritas 4: Penolakan sebelum penerimaan tetap memiliki followup_status = NULL
+                    // Prioritas 3: Penolakan murni sebelum penerimaan tetap memiliki followup_status = NULL
                     $registration->followup_status = null;
                 }
             } elseif (in_array($newStatus, [IR::STATUS_WAITING, IR::STATUS_PENDING, IR::STATUS_NEW], true)) {
@@ -377,6 +371,18 @@ class RegistrationLifecycleService
         $followup = $registration->followup_status;
         $logs = $this->getLogsForRegistration($registration, $preloadedLogs);
 
+        // 0. Status pendaftaran diarsipkan / soft-deleted
+        if ($registration->trashed()) {
+            return [
+                'case'                        => 'TRASHED',
+                'condition_label'             => 'Dihapus ke Arsip',
+                'execution_condition_ui'      => 'Dihapus ke Arsip',
+                'spreadsheet_column_y_label'  => 'Dihapus ke Arsip',
+                'followup_status'             => null,
+                'is_verified'                 => true,
+            ];
+        }
+
         // 1. Status saat ini Active
         if ($status === IR::STATUS_ACTIVE) {
             return [
@@ -409,7 +415,7 @@ class RegistrationLifecycleService
                 'case'                        => 'PRE_ACCEPTANCE',
                 'condition_label'             => $label,
                 'execution_condition_ui'      => $label,
-                'spreadsheet_column_y_label'  => 'Menunggu',
+                'spreadsheet_column_y_label'  => ($status === IR::STATUS_PENDING) ? 'Pending' : 'Menunggu',
                 'followup_status'             => null,
                 'is_verified'                 => false,
             ];
@@ -438,7 +444,7 @@ class RegistrationLifecycleService
                 'condition_label'             => 'Keluar setelah mulai magang (belum selesai)',
                 'execution_condition_ui'      => 'Keluar setelah mulai magang (belum selesai)',
                 'spreadsheet_column_y_label'  => 'Keluar setelah mulai magang (belum selesai)',
-                'followup_status'             => $followup ?? IR::FOLLOWUP_INTERNSHIP_STARTED,
+                'followup_status'             => $followup ?? IR::FOLLOWUP_INTERNSHIP_CANCELLED,
                 'is_verified'                 => true,
             ];
         }
@@ -522,9 +528,9 @@ class RegistrationLifecycleService
                     "Status follow-up 'Tidak jadi magang' hanya berlaku untuk pendaftaran yang dibatalkan / keluar. Silakan lakukan proses pembatalan resmi melalui transisi status 'Keluar'/'Ditolak'."
                 );
             }
-            if ($this->hasVerifiedActiveHistory($registration) || $this->hasVerifiedCompletionHistory($registration)) {
+            if ($this->hasVerifiedCompletionHistory($registration)) {
                 throw new InvalidArgumentException(
-                    "Status follow-up 'Tidak jadi magang' tidak dapat diberikan kepada peserta yang memiliki riwayat pernah aktif atau selesai magang."
+                    "Status follow-up 'Tidak jadi magang' tidak dapat diberikan kepada peserta yang memiliki riwayat telah selesai magang."
                 );
             }
             return;

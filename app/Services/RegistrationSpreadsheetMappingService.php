@@ -87,6 +87,11 @@ class RegistrationSpreadsheetMappingService
             return false;
         }
 
+        // Pendaftaran yang diarsipkan / soft-deleted eligible HANYA jika sudah pernah disinkronkan sebelumnya (update-only KET)
+        if ($registration->trashed()) {
+            return $this->hasVerifiedPriorSync($registration, $rowSync);
+        }
+
         // Jika pendaftar diizinkan secara eksplisit (misal admin mengedit data di /admin/interns/pendaftar)
         if ($allowPendaftar) {
             return true;
@@ -514,7 +519,7 @@ class RegistrationSpreadsheetMappingService
             'supervisor_name' => $registration->supervisor_name ?? '-',
             'supervisor_contact' => $registration->supervisor_contact ?? '-',
             'current_activities' => $registration->current_activities ?? '-',
-            'status_label', 'ket' => app(\App\Services\RegistrationLifecycleService::class)->resolveCurrentCondition($registration)['spreadsheet_column_y_label'],
+            'status_label', 'ket' => $this->resolveKetValue($registration),
             // Guardrail 2: S9B tidak menciptakan stable sync ID atau mengklaim status synced
             'sertif_sync_id' => null,
             'sertif_registration_id' => (string) $registration->id,
@@ -523,6 +528,25 @@ class RegistrationSpreadsheetMappingService
             'custom_field' => $this->resolveCustomFieldAnswer($registration, $mapping->target_field),
             default => $this->fallbackResolve($registration, $mapping->target_field),
         };
+    }
+
+    /**
+     * Resolusi nilai kolom KET untuk Google Spreadsheet, termasuk penanda trashed dan pindahan antar-brand.
+     */
+    protected function resolveKetValue(InternshipRegistration $registration): string
+    {
+        $condition = app(\App\Services\RegistrationLifecycleService::class)->resolveCurrentCondition($registration);
+        $ket = (string) ($condition['spreadsheet_column_y_label'] ?? 'Menunggu');
+
+        // Jika pendaftar dipindahkan dari brand lain, bubuhkan keterangan asal brand (selama bukan trashed)
+        if (($condition['case'] ?? '') !== 'TRASHED') {
+            $priorBrandName = app(\App\Services\SpreadsheetSyncEngineService::class)->getPriorTransferredBrandName($registration);
+            if (!empty($priorBrandName) && !str_contains($ket, 'Pindahan dari') && !str_contains($ket, 'Dipindahkan ke')) {
+                $ket .= " (Pindahan dari {$priorBrandName})";
+            }
+        }
+
+        return $ket;
     }
 
     /**

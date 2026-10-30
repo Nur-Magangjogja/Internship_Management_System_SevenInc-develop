@@ -54,7 +54,11 @@
                             <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] font-mono text-slate-500">
                                 <span>{{ $brand->registration_host ?: 'Host belum diatur' }}</span>
                                 <span class="text-slate-300">•</span>
-                                <span class="text-[#2D8659] font-sans font-semibold">{{ $brand->divisions->count() }} Divisi</span>
+                                @if($brand->division_mode === \App\Models\Brand::DIVISION_MODE_GLOBAL || ($brand->division_mode === null && $brand->is_default))
+                                    <span class="text-[#2D8659] font-sans font-semibold">Global</span>
+                                @else
+                                    <span class="text-[#2D8659] font-sans font-semibold">{{ $brand->divisions->count() }} Divisi</span>
+                                @endif
                             </div>
                             @php($opBadge = $brand->operational_status_badge)
                             <div class="mt-1 flex flex-wrap items-center gap-1.5">

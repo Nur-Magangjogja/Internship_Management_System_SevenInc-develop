@@ -285,7 +285,15 @@ class BrandDynamicActivationTest extends TestCase
 
     public function test_resolver_on_app_url_never_falls_back_to_another_active_tenant_when_default_inactive(): void
     {
-        $defaultBrand = Brand::getDefaultBrand();
+        $defaultBrand = Brand::getDefaultBrand() ?? Brand::create([
+            'code' => 'SI',
+            'name' => 'SEVEN INC',
+            'is_default' => true,
+            'lifecycle_status' => Brand::STATUS_ACTIVE,
+            'domain_verified_at' => now(),
+            'registration_host' => 'daftar.seveninc.test',
+            'primary_domain' => 'seveninc.test',
+        ]);
         $this->assertNotNull($defaultBrand);
 
         // Temporarily put default brand in configuration_pending
@@ -341,6 +349,12 @@ class BrandDynamicActivationTest extends TestCase
     public function test_suspended_brand_can_be_reactivated_via_unsuspend_when_ready(): void
     {
         $suffix = strtolower(substr(md5(uniqid('', true)), 0, 6));
+
+        Division::create([
+            'name' => 'Active Global Division ' . $suffix,
+            'is_active' => true,
+        ]);
+
         $brand = Brand::create([
             'code' => 'F4UN' . strtoupper($suffix),
             'name' => 'Suspended Reactivation Brand ' . $suffix,
