@@ -186,7 +186,7 @@ class SyncMonitoringQueryService
             return new ConcretePaginator([], 0, $perPage);
         }
 
-        $query = SpreadsheetRowSync::with(['spreadsheetConnection', 'syncable'])->latest('id');
+        $query = SpreadsheetRowSync::with(['spreadsheetConnection.brand', 'syncable'])->latest('id');
 
         if ($status !== 'all') {
             $query->where('sync_status', $status);
@@ -222,7 +222,7 @@ class SyncMonitoringQueryService
             return new ConcretePaginator([], 0, $perPage);
         }
 
-        $query = SpreadsheetSidecarSync::with(['spreadsheetConnection', 'registration'])->latest('id');
+        $query = SpreadsheetSidecarSync::with(['spreadsheetConnection.brand', 'registration.brandRel'])->latest('id');
 
         if ($status !== 'all') {
             $query->where('sync_status', $status);
@@ -269,7 +269,7 @@ class SyncMonitoringQueryService
             return new ConcretePaginator([], 0, $perPage);
         }
 
-        $query = RegistrationAttachment::with('registration')->latest('id');
+        $query = RegistrationAttachment::with('registration.brandRel')->latest('id');
 
         if ($status !== 'all') {
             $query->where('drive_sync_status', $status);
@@ -449,9 +449,36 @@ class SyncMonitoringQueryService
 
         // Eager load connections in memory for performance
         $connectionMap = SpreadsheetConnection::pluck('display_name', 'id')->all();
+        $connectionBrandMap = SpreadsheetConnection::with('brand')->get()->mapWithKeys(fn($c) => [$c->id => $c->brand?->name])->all();
 
-        $paginator->getCollection()->transform(function ($raw) use ($connectionMap) {
-            return $this->transformRawItem($raw, $connectionMap);
+        $regIds = $paginator->getCollection()
+            ->pluck('registration_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $registrationBrandMap = !empty($regIds)
+            ? DB::table('internship_registrations')
+                ->leftJoin('brands', 'brands.id', '=', 'internship_registrations.brand_id')
+                ->whereIn('internship_registrations.id', $regIds)
+                ->pluck('brands.name', 'internship_registrations.id')
+                ->all()
+            : [];
+
+        $defaultBrandName = \App\Models\Brand::getDefaultBrand()?->name ?? 'SEVEN INC';
+
+        $paginator->getCollection()->transform(function ($raw) use ($connectionMap, $connectionBrandMap, $registrationBrandMap, $defaultBrandName) {
+            $brandName = null;
+            if (!empty($raw->spreadsheet_connection_id) && !empty($connectionBrandMap[$raw->spreadsheet_connection_id])) {
+                $brandName = $connectionBrandMap[$raw->spreadsheet_connection_id];
+            } elseif (!empty($raw->registration_id) && !empty($registrationBrandMap[$raw->registration_id])) {
+                $brandName = $registrationBrandMap[$raw->registration_id];
+            } elseif (!empty($raw->registration_id)) {
+                $brandName = $defaultBrandName;
+            }
+
+            return $this->transformRawItem($raw, $connectionMap, $brandName);
         });
 
         return $paginator;
@@ -589,6 +616,11 @@ class SyncMonitoringQueryService
 
         $sanitizedError = $row->error_message ? $this->sanitizeErrorMessage($row->error_message) : null;
 
+        $brandName = $row->spreadsheetConnection?->brand?->name
+            ?? ($row->syncable instanceof \App\Models\InternshipRegistration ? $row->syncable->brand : null)
+            ?? \App\Models\Brand::getDefaultBrand()?->name
+            ?? 'SEVEN INC';
+
         return (object) [
             'id'                   => $row->id,
             'uuid'                 => $row->public_uuid,
@@ -597,6 +629,7 @@ class SyncMonitoringQueryService
             'sync_identifier'      => $row->external_sync_id,
             'connection_id'        => $row->spreadsheet_connection_id,
             'connection_name'      => $row->spreadsheetConnection?->display_name ?? 'Registration Sheet',
+            'brand_name'           => $brandName,
             'target_tab'           => $row->target_sheet_tab,
             'status'               => $row->sync_status,
             'attempt_count'        => $row->attempt_count,
@@ -628,6 +661,11 @@ class SyncMonitoringQueryService
 
         $sanitizedError = $row->error_message ? $this->sanitizeErrorMessage($row->error_message) : null;
 
+        $brandName = $row->spreadsheetConnection?->brand?->name
+            ?? $row->registration?->brand
+            ?? \App\Models\Brand::getDefaultBrand()?->name
+            ?? 'SEVEN INC';
+
         return (object) [
             'id'                   => $row->id,
             'uuid'                 => $row->public_uuid,
@@ -636,6 +674,7 @@ class SyncMonitoringQueryService
             'sync_identifier'      => $row->external_sync_id,
             'connection_id'        => $row->spreadsheet_connection_id,
             'connection_name'      => $row->spreadsheetConnection?->display_name ?? 'Registration Sidecar',
+            'brand_name'           => $brandName,
             'target_tab'           => $row->extension_sheet_tab,
             'status'               => $row->sync_status,
             'attempt_count'        => $row->attempt_count,
@@ -667,6 +706,10 @@ class SyncMonitoringQueryService
 
         $sanitizedError = $row->drive_error_message ? $this->sanitizeErrorMessage($row->drive_error_message) : null;
 
+        $brandName = $row->registration?->brand
+            ?? \App\Models\Brand::getDefaultBrand()?->name
+            ?? 'SEVEN INC';
+
         return (object) [
             'id'                   => $row->id,
             'uuid'                 => (string) $row->id,
@@ -675,6 +718,7 @@ class SyncMonitoringQueryService
             'sync_identifier'      => "ATT-{$row->internship_registration_id}-{$row->id}",
             'connection_id'        => null,
             'connection_name'      => 'Google Drive Storage',
+            'brand_name'           => $brandName,
             'target_tab'           => $row->original_name,
             'status'               => $row->drive_sync_status,
             'attempt_count'        => $row->drive_attempt_count,
@@ -695,7 +739,7 @@ class SyncMonitoringQueryService
     /**
      * Transformasi raw record dari UNION ALL query menjadi format seragam.
      */
-    protected function transformRawItem(object $raw, array $connectionMap): object
+    protected function transformRawItem(object $raw, array $connectionMap, ?string $brandName = null): object
     {
         $isProcessing   = $raw->sync_status === 'processing';
         $isLocked       = !empty($raw->locked_at);
@@ -726,6 +770,7 @@ class SyncMonitoringQueryService
             'sync_identifier'      => $raw->sync_identifier,
             'connection_id'        => $raw->spreadsheet_connection_id,
             'connection_name'      => $connectionName,
+            'brand_name'           => $brandName,
             'target_tab'           => $raw->target_tab,
             'status'               => $raw->sync_status,
             'attempt_count'        => (int) $raw->attempt_count,

@@ -1056,7 +1056,13 @@ class InternController extends Controller
 
             // Sinkronkan data ke Absen Djuragan saat status magang diperbarui
             if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
-                \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                dispatch(function () use ($intern, $rawBrand) {
+                    try {
+                        \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on intern update #{$intern->id}: " . $e->getMessage());
+                    }
+                })->afterResponse();
             }
         } else {
             \Illuminate\Support\Facades\DB::transaction(function () use ($intern, &$validatedData) {
@@ -1071,7 +1077,13 @@ class InternController extends Controller
 
             // Jika status tidak berubah tapi pemagang sudah accepted / active, kirim pembaruan data (tanggal/divisi/brand) ke Absen Djuragan
             if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
-                \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                dispatch(function () use ($intern, $rawBrand) {
+                    try {
+                        \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on intern update #{$intern->id}: " . $e->getMessage());
+                    }
+                })->afterResponse();
             }
         }
 
@@ -1348,11 +1360,13 @@ class InternController extends Controller
     {
         $eligibleStatuses = [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE];
         if (!in_array($oldStatus, $eligibleStatuses, true) && in_array($intern->internship_status, $eligibleStatuses, true)) {
-            try {
-                app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($intern);
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal generate LOA pemagang #{$intern->id}: " . $e->getMessage());
-            }
+            dispatch(function () use ($intern) {
+                try {
+                    app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($intern);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal generate LOA pemagang #{$intern->id}: " . $e->getMessage());
+                }
+            })->afterResponse();
         }
     }
 
@@ -1558,7 +1572,13 @@ class InternController extends Controller
         // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active) atau status non-aktif (exited / completed / rejected)
         if (in_array($newStatus, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
             $brandParam = $targetBrand?->name ?? $validated['brand'] ?? null;
-            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $brandParam, $newStatus);
+            dispatch(function () use ($intern, $brandParam, $newStatus) {
+                try {
+                    \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $brandParam, $newStatus);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on status update #{$intern->id}: " . $e->getMessage());
+                }
+            })->afterResponse();
         }
 
         // Jika berubah menjadi selesai, generate SKL via Background Job
@@ -1671,7 +1691,14 @@ class InternController extends Controller
 
                 // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active) atau status non-aktif
                 if (in_array($validated['internship_status'], [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
-                    \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $validated['internship_status']);
+                    $statusToSync = $validated['internship_status'];
+                    dispatch(function () use ($intern, $statusToSync) {
+                        try {
+                            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $statusToSync);
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning("Absen Djuragan bulk sync error on intern #{$intern->id}: " . $e->getMessage());
+                        }
+                    })->afterResponse();
                 }
 
                 $affected++;

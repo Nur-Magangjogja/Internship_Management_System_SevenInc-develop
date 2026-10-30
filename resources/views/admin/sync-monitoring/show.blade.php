@@ -176,6 +176,13 @@
                         <span class="text-slate-700">{{ $registration->institution?->name ?? '-' }}</span>
                     </div>
 
+                    @if ($registration->brand)
+                    <div>
+                        <span class="text-slate-500 font-medium block">Brand Penempatan:</span>
+                        <span class="font-semibold text-slate-800">{{ $registration->brand }}</span>
+                    </div>
+                    @endif
+
                     <div>
                         <span class="text-slate-500 font-medium block">Status Penerimaan (Acceptance Gate):</span>
                         @php

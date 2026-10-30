@@ -12,20 +12,26 @@ class BrandDivisionService
     /** Return the active division names available to a brand's registration form. */
     public function registrationDivisionNames(Brand $brand): Collection
     {
-        // NULL is a legacy contract and preserves the historical global behavior.
-        if (in_array($brand->division_mode, [null, Brand::DIVISION_MODE_GLOBAL], true)) {
+        // Mode global eksplisit menggunakan seluruh divisi aktif global.
+        if ($brand->division_mode === Brand::DIVISION_MODE_GLOBAL) {
             return Division::active()->pluck('name');
         }
 
-        // Invalid persisted mode must fail closed instead of exposing all global divisions.
-        if ($brand->division_mode !== Brand::DIVISION_MODE_BRAND_SPECIFIC) {
-            return collect();
+        // Mode brand-specific hanya mengambil divisi aktif yang dipetakan ke brand terkait.
+        if ($brand->division_mode === Brand::DIVISION_MODE_BRAND_SPECIFIC) {
+            return $brand->divisions()
+                ->where('divisions.is_active', true)
+                ->orderBy('divisions.name')
+                ->pluck('divisions.name');
         }
 
-        return $brand->divisions()
-            ->where('divisions.is_active', true)
-            ->orderBy('divisions.name')
-            ->pluck('divisions.name');
+        // Kompatibilitas legacy: Hanya brand default (induk) dengan mode null yang mewarisi divisi global.
+        // Brand non-default yang belum terkonfigurasi wajib fail-closed (menutup registrasi).
+        if ($brand->division_mode === null && $brand->is_default) {
+            return Division::active()->pluck('name');
+        }
+
+        return collect();
     }
 
     /** A brand with no available divisions must not silently fall back to another list. */
@@ -46,17 +52,24 @@ class BrandDivisionService
             return false;
         }
 
-        // NULL is legacy global behavior. Unknown explicit values fail closed.
-        if (in_array($brand->division_mode, [null, Brand::DIVISION_MODE_GLOBAL], true)) {
+        // Mode global eksplisit mengizinkan seluruh divisi aktif.
+        if ($brand->division_mode === Brand::DIVISION_MODE_GLOBAL) {
             return true;
         }
-        if ($brand->division_mode !== Brand::DIVISION_MODE_BRAND_SPECIFIC) {
-            return false;
+
+        // Mode brand-specific memverifikasi keberadaan divisi di tabel pivot brand_divisions.
+        if ($brand->division_mode === Brand::DIVISION_MODE_BRAND_SPECIFIC) {
+            return DB::table('brand_divisions')
+                ->where('brand_id', $brand->id)
+                ->where('division_id', $divisionId)
+                ->exists();
         }
 
-        return DB::table('brand_divisions')
-            ->where('brand_id', $brand->id)
-            ->where('division_id', $divisionId)
-            ->exists();
+        // Kompatibilitas legacy: Brand default dengan mode null mengizinkan seluruh divisi aktif.
+        if ($brand->division_mode === null && $brand->is_default) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -1017,17 +1017,12 @@
         {{-- Tombol --}}
         <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-4 border-t border-gray-100">
           @if(!$registration || $registration->is_draft)
-            {{-- Belum submit → tombol kirim + server draft + local draft --}}
+            {{-- Belum submit → tombol kirim + local draft --}}
             <button type="submit"
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition cursor-pointer"
               style="background-color:#1a5c38;">
               <i class="fas fa-paper-plane text-xs"></i>
               Kirim Pendaftaran
-            </button>
-            <button type="submit" formaction="{{ route('pemagang.registration.draft') }}" formnovalidate
-              class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition cursor-pointer">
-              <i class="fas fa-cloud-arrow-up text-xs"></i>
-              Simpan Draft ke Server
             </button>
             <button type="button" id="btn-save-local"
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition cursor-pointer"

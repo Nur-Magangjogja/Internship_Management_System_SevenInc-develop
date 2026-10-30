@@ -850,6 +850,7 @@ Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pem
     // Form Pendaftaran
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
+    Route::get('/daftar/draft', fn() => redirect()->route('pemagang.registration.form'));
     Route::post('/daftar/draft', [PemagangRegistration::class, 'saveDraft'])->name('registration.draft');
     Route::delete('/daftar/attachments/{attachment}', [PemagangRegistration::class, 'deleteAttachment'])->name('registration.attachment.delete');
 

@@ -23,6 +23,8 @@ class BrandDivisionRelationshipTest extends TestCase
             ->update([
                 'spreadsheet_url'   => 'https://docs.google.com/spreadsheets/d/1DummyTestSpreadsheetId/edit',
                 'spreadsheet_id'    => '1DummyTestSpreadsheetId',
+                'drive_folder_url'  => 'https://drive.google.com/drive/folders/1DummyDriveFolderId',
+                'drive_folder_id'   => '1DummyDriveFolderId',
                 'is_enabled'        => true,
                 'connection_status' => \App\Models\SpreadsheetConnection::STATUS_CONNECTED,
             ]);

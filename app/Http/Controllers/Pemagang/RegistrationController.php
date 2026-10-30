@@ -40,8 +40,7 @@ class RegistrationController extends Controller
             ?? (request()->hasSession() && request()->session()->has('registration_brand_id')
                 ? \App\Models\Brand::find(request()->session()->get('registration_brand_id'))
                 : null)
-            ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest(request())
-            ?? \App\Models\Brand::getDefaultBrand();
+            ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest(request());
 
         // Kontrak divisi diproses sebelum kesiapan integrasi agar brand yang sengaja menutup
         // pendaftaran selalu mendapat notifikasi penutupan yang tepat.
@@ -59,11 +58,7 @@ class RegistrationController extends Controller
             $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
             $connection = $syncEngine->getRegistrationConnection($detectedBrand?->id);
 
-            $isConnectionReady = $connection
-                && !empty($connection->spreadsheet_url)
-                && !empty($connection->spreadsheet_id)
-                && $connection->connection_status !== \App\Models\SpreadsheetConnection::STATUS_NOT_CONFIGURED
-                && (bool) $connection->is_enabled;
+            $isConnectionReady = $connection && $connection->isFullRegistrationReady();
 
             if (!$isConnectionReady) {
                 $brandName = $detectedBrand?->name ?? 'Brand Pendaftaran';
@@ -907,8 +902,7 @@ class RegistrationController extends Controller
                     ?? ($request->hasSession() && $request->session()->has('registration_brand_id')
                         ? \App\Models\Brand::find($request->session()->get('registration_brand_id'))
                         : null)
-                    ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request)
-                    ?? \App\Models\Brand::getDefaultBrand();
+                    ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request);
 
                 // Penegakan kontrak divisi pada backend untuk submit maupun draft.
                 $divisionContract = app(\App\Services\BrandDivisionService::class);
@@ -942,18 +936,14 @@ class RegistrationController extends Controller
                     $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
                     $connection = $syncEngine->getRegistrationConnection($detectedBrand?->id);
 
-                    $isConnectionReady = $connection
-                        && !empty($connection->spreadsheet_url)
-                        && !empty($connection->spreadsheet_id)
-                        && $connection->connection_status !== \App\Models\SpreadsheetConnection::STATUS_NOT_CONFIGURED
-                        && (bool) $connection->is_enabled;
+                    $isConnectionReady = $connection && $connection->isFullRegistrationReady();
 
                     if (!$isConnectionReady) {
                         $brandName = $detectedBrand?->name ?? 'brand ini';
                         $msg = "Sistem pendaftaran untuk {$brandName} sedang dalam tahap pemeliharaan sistem dan akan aktif bila sudah terhubung.";
-                        return $request->expectsJson() || $request->ajax()
-                            ? response()->json(['message' => $msg], 422)
-                            : back()->withInput()->with('error', $msg);
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'maintenance' => $msg,
+                        ]);
                     }
                 }
 

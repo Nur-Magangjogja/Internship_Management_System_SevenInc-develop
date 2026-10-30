@@ -568,7 +568,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tbody id="rows" class="divide-y divide-[#DCE7E1] bg-white">
                     <tr>
                         <td colspan="6" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
-                            Memuat data pemagang...
+                            <i class="fas fa-circle-notch fa-spin mr-2 text-[#2D8659]"></i> Memuat data pemagang...
                         </td>
                     </tr>
                 </tbody>
@@ -883,9 +883,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Apply badge setelah update ───────────────────────────────────────────────
     function applyBadge(badgeEl, newVal) {
+        if (!badgeEl) return;
         const m = STATUS_META[newVal] || { label: newVal, cls: 'bg-gray-100 text-gray-700 border border-gray-300' };
         badgeEl.className = `inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${m.cls}`;
         badgeEl.textContent = m.label;
+    }
+
+    // ── Status loading visual per baris pemagang ─────────────────────────────────
+    function setRowStatusLoading(id, isLoading) {
+        const badge  = document.getElementById(`badge-${id}`);
+        const select = document.querySelector(`.js-status-select[data-id="${id}"]`);
+        const row    = document.querySelector(`tr[data-row-id="${id}"]`);
+
+        if (isLoading) {
+            if (badge) {
+                badge.className = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs';
+                badge.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px] text-amber-600"></i> Memperbarui...';
+            }
+            if (select) {
+                select.disabled = true;
+                select.classList.add('opacity-60', 'cursor-wait');
+            }
+            if (row) {
+                row.classList.add('bg-amber-50/20');
+            }
+        } else {
+            if (select) {
+                select.disabled = false;
+                select.classList.remove('opacity-60', 'cursor-wait');
+            }
+            if (row) {
+                row.classList.remove('bg-amber-50/20');
+            }
+        }
     }
 
     // ── Render rows ──────────────────────────────────────────────────────────────
@@ -980,6 +1010,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeBrandModal(revertSelect = false) {
         brandModal.classList.add('hidden');
+        if (brandModalConfirm) {
+            brandModalConfirm.disabled = false;
+            brandModalConfirm.innerHTML = 'Konfirmasi & Simpan';
+        }
         if (revertSelect && _brandPendingId !== null) {
             // Kembalikan select ke nilai lama
             const item = pending.get(_brandPendingId);
@@ -1013,17 +1047,32 @@ document.addEventListener('DOMContentLoaded', () => {
             pending.get(itemId).brand = brand;
         }
 
+        const origConfirmHtml = brandModalConfirm.innerHTML;
+        brandModalConfirm.disabled = true;
+        brandModalConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
+
         closeBrandModal(false);
 
         // Ambil item dan simpan langsung
         const savedItem = pending.get(itemId);
         if (savedItem) {
-            saveOneItem(savedItem);
+            saveOneItem(savedItem).finally(() => {
+                if (brandModalConfirm) {
+                    brandModalConfirm.disabled = false;
+                    brandModalConfirm.innerHTML = origConfirmHtml;
+                }
+            });
+        } else {
+            if (brandModalConfirm) {
+                brandModalConfirm.disabled = false;
+                brandModalConfirm.innerHTML = origConfirmHtml;
+            }
         }
     });
 
-    // Simpan satu item pending (accept + brand)
+    // Simpan satu item pending (accept + brand atau update status langsung)
     async function saveOneItem(item) {
+        setRowStatusLoading(item.id, true);
         try {
             const fd = new FormData();
             fd.append('_method', 'PATCH');
@@ -1054,14 +1103,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = item.select.closest('tr[data-row-id]');
             if (row) refreshGenerateButtons(row, item.id, item.to);
 
-            pushToast(`${item.name} diterima${item.brand ? ` untuk brand ${item.brand}` : ''}.`, 'success');
+            // Jika status baru tidak ada di scope mode ini → hilangkan baris dengan transisi
+            const allowedInCurrentMode = allowedStatuses();
+            if (!allowedInCurrentMode.includes(item.to) && row) {
+                row.style.transition = 'opacity 0.5s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 500);
+            }
+
+            const statusLabel = STATUS_META[item.to]?.label || item.to;
+            pushToast(`Status ${item.name} berhasil diperbarui ke "${statusLabel}"${item.brand ? ` (Brand: ${item.brand})` : ''}.`, 'success');
         } catch(e) {
             pushToast(`Gagal menyimpan: ${e.message}`, 'error');
-            // Kembalikan select ke nilai lama
+            // Kembalikan select dan badge ke nilai lama
             item.select.value = item.from;
             markSelect(item.select, false);
+            applyBadge(item.badge, item.from);
             pending.delete(item.id);
             updatePendingBar();
+        } finally {
+            setRowStatusLoading(item.id, false);
         }
     }
 
@@ -1257,7 +1318,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!confirm(`Aktifkan "${name}" sebagai pemagang aktif?\nStatus akan berubah dari Diterima → Aktif dan data akan pindah ke halaman Data Pemagang.`)) return;
 
                 btn.disabled = true;
-                btn.textContent = 'Memproses...';
+                const origBtnHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Memproses...';
+                setRowStatusLoading(id, true);
+                const badge = document.getElementById(`badge-${id}`);
+                if (badge) {
+                    badge.className = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs';
+                    badge.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px] text-emerald-600"></i> Mengaktifkan...';
+                }
 
                 try {
                     const res = await fetch(url, {
@@ -1284,7 +1352,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     pushToast(`Gagal mengaktifkan: ${err.message}`, 'error');
                     btn.disabled = false;
-                    btn.textContent = 'Aktifkan';
+                    btn.innerHTML = origBtnHtml || 'Aktifkan';
+                    setRowStatusLoading(id, false);
+                    if (badge && data) applyBadge(badge, data.internship_status || 'accepted');
                 }
             });
         });
@@ -1386,6 +1456,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             followupModalConfirm.disabled = true;
+            const origFollowupHtml = followupModalConfirm.innerHTML;
+            followupModalConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
             if (followupModalAlert) followupModalAlert.classList.add('hidden');
 
             try {
@@ -1419,6 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } finally {
                 followupModalConfirm.disabled = false;
+                followupModalConfirm.innerHTML = origFollowupHtml;
             }
         });
     }
@@ -2528,6 +2601,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('editForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const origSubmitHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan Perubahan...';
+            }
             const fd  = new FormData(e.target);
             const url = `${ADMIN_INTERNS_BASE}/${it.id}`;
             fd.append('_method', 'PATCH');
@@ -2553,6 +2632,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadPage(window.__CURRENT_PAGE || 1);
             } catch (err) {
                 pushToast(err.message, 'error');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = origSubmitHtml;
+                }
             }
         });
 
@@ -2750,8 +2834,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const items = Array.from(pending.values());
+        const origSaveBtnHtml = saveAllBtn.innerHTML;
         saveAllBtn.disabled = true;
         discardBtn.disabled = true;
+        saveAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
+
+        // Tampilkan visual loading pada setiap baris yang sedang disimpan
+        items.forEach(item => {
+            setRowStatusLoading(item.id, true);
+        });
 
         const tasks = items.map(item => async () => {
             const fd = new FormData();
@@ -2774,12 +2865,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Tentukan status yang boleh tampil di mode ini
             const allowedInCurrentMode = allowedStatuses();
 
-            results.forEach((res) => {
-                if (res instanceof Error) { fail++; return; }
+            results.forEach((res, index) => {
+                const currentItem = items[index];
+                if (res instanceof Error) {
+                    fail++;
+                    if (currentItem) {
+                        setRowStatusLoading(currentItem.id, false);
+                        applyBadge(currentItem.badge, currentItem.from);
+                    }
+                    return;
+                }
                 ok++;
                 res.select.dataset.current = res.to;
                 markSelect(res.select, false);
                 applyBadge(res.badge, res.to);
+                setRowStatusLoading(res.id, false);
                 pending.delete(res.id);
 
                 const rowObj = window.rowData.get(res.id);
@@ -2802,11 +2902,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             updatePendingBar();
-            if (ok)   pushToast(`${ok} perubahan berhasil disimpan.`);
-            if (fail) pushToast(`${fail} perubahan gagal disimpan. Coba lagi.`, 'error');
+            if (ok)   pushToast(`${ok} perubahan status berhasil disimpan.`);
+            if (fail) pushToast(`${fail} perubahan status gagal disimpan. Coba lagi.`, 'error');
         } catch (e) {
             pushToast('Gagal menyimpan perubahan.', 'error');
         } finally {
+            items.forEach(item => {
+                setRowStatusLoading(item.id, false);
+            });
+            saveAllBtn.innerHTML = origSaveBtnHtml;
             saveAllBtn.disabled = pending.size === 0;
             discardBtn.disabled = false;
         }
@@ -2852,7 +2956,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         rowsEl.innerHTML = `
             <tr><td colspan="6" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
-                Memuat data pemagang...
+                <i class="fas fa-circle-notch fa-spin mr-2 text-[#2D8659]"></i> Memuat data pemagang...
             </td></tr>`;
 
         try {

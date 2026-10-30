@@ -108,6 +108,16 @@ class SpreadsheetConnection extends Model
     }
 
     /**
+     * Memeriksa apakah seluruh integrasi pendaftaran (baik Spreadsheet maupun Google Drive)
+     * sudah terhubung penuh dan siap dibuka untuk calon pemagang.
+     */
+    public function isFullRegistrationReady(): bool
+    {
+        return (bool) $this->is_enabled
+            && !$this->hasUnconnectedLinks();
+    }
+
+    /**
      * Memeriksa apakah link penghubung (Spreadsheet atau Drive) belum terhubung ke database SertIF.
      */
     public function hasUnconnectedLinks(): bool
