@@ -1004,9 +1004,7 @@ class InternController extends Controller
         // Deteksi pemindahan brand untuk sinkronisasi dua arah spreadsheet
         $oldBrandId = $intern->brand_id;
         $targetBrandId = array_key_exists('brand_id', $validatedData) ? $validatedData['brand_id'] : $intern->brand_id;
-        if ($oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId) {
-            app(\App\Services\SpreadsheetSyncEngineService::class)->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
-        }
+        $isBrandTransferred = $oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId;
 
         // Jangan timpa internship_status lewat update biasa jika tidak dikirim
         if (isset($validatedData['internship_status']) && $validatedData['internship_status'] !== $intern->internship_status) {
@@ -1162,16 +1160,22 @@ class InternController extends Controller
             \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
         }
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet secara instan jika memenuhi syarat
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true);
+        // Sinkronkan pembaruan data pemagang dan mutasi brand ke Google Spreadsheet di latar belakang (afterResponse)
+        dispatch(function () use ($intern, $oldBrandId, $targetBrandId, $isBrandTransferred) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                if ($isBrandTransferred) {
+                    $syncEngine->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
+                } else {
+                    $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                    if ($rowSync) {
+                        $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                    }
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
-        }
+        })->afterResponse();
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);
     }
@@ -1205,16 +1209,18 @@ class InternController extends Controller
         // Soft delete pendaftaran (history-safe, tidak memicu MySQL cascade)
         $intern->delete();
 
-        // Sinkronkan pembaruan kolom KET ("Dihapus ke Arsip") ke Google Spreadsheet jika sebelumnya pernah tersinkron
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true);
+        // Sinkronkan pembaruan kolom KET ("Dihapus ke Arsip") ke Google Spreadsheet jika sebelumnya pernah tersinkron (afterResponse)
+        dispatch(function () use ($intern, $internId) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                if ($rowSync) {
+                    $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on delete #{$internId}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on delete #{$internId}: " . $sheetErr->getMessage());
-        }
+        })->afterResponse();
 
         \App\Services\ActivityLogger::log(
             action: 'intern_registration_deleted',
@@ -1260,16 +1266,18 @@ class InternController extends Controller
         $internName = $intern->fullname;
         $intern->restore();
 
-        // Sinkronkan pemulihan status ke Google Spreadsheet jika sebelumnya pernah tersinkron
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true);
+        // Sinkronkan pemulihan status ke Google Spreadsheet jika sebelumnya pernah tersinkron (afterResponse)
+        dispatch(function () use ($intern) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                if ($rowSync) {
+                    $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on restore #{$intern->id}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on restore #{$intern->id}: " . $sheetErr->getMessage());
-        }
+        })->afterResponse();
 
         // PENTING: Restore registration tidak memulihkan User atau mengubah role/status akun.
         // Account state dan registration lifecycle tetap terpisah.
@@ -1551,9 +1559,7 @@ class InternController extends Controller
         // Deteksi pemindahan brand untuk sinkronisasi dua arah spreadsheet
         $oldBrandId = $intern->brand_id;
         $targetBrandId = $targetBrand?->id;
-        if ($oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId) {
-            app(\App\Services\SpreadsheetSyncEngineService::class)->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
-        }
+        $isBrandTransferred = $oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId;
 
         // Persyaratan brand saat status diterima (accepted)
         $effectiveBrandId = $targetBrand?->id ?? $intern->brand_id;
@@ -1626,16 +1632,22 @@ class InternController extends Controller
         $this->checkAndGenerateSkl($intern, $oldStatus);
         $this->checkAndGenerateCertificate($intern, $oldStatus);
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet secara instan jika memenuhi syarat
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true);
+        // Sinkronkan pembaruan data pemagang dan mutasi brand ke Google Spreadsheet di latar belakang (afterResponse)
+        dispatch(function () use ($intern, $oldBrandId, $targetBrandId, $isBrandTransferred) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                if ($isBrandTransferred) {
+                    $syncEngine->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
+                } else {
+                    $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                    if ($rowSync) {
+                        $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                    }
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on status update #{$intern->id}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on status update #{$intern->id}: " . $sheetErr->getMessage());
-        }
+        })->afterResponse();
 
         // Return JSON untuk AJAX (fetch), redirect untuk request biasa
         if ($request->wantsJson() || $request->ajax()) {
@@ -1708,11 +1720,12 @@ class InternController extends Controller
         $affected = 0;
         $mailCount = 0;
         $mailList  = [];
+        $internsToSync = [];
 
         $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
         $reason    = $request->input('reason') ?? $request->input('correction_reason');
 
-        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList, $lifecycle, $reason) {
+        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList, &$internsToSync, $lifecycle, $reason) {
             $interns = IR::whereIn('id', $validated['ids'])->lockForUpdate()->get();
 
             foreach ($interns as $intern) {
@@ -1753,20 +1766,27 @@ class InternController extends Controller
                     })->afterResponse();
                 }
 
-                // Sinkronkan pembaruan data pemagang ke Google Spreadsheet secara instan jika memenuhi syarat
-                try {
-                    $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-                    $rowSync = $syncEngine->queueSyncForRegistration($intern);
-                    if ($rowSync) {
-                        $syncEngine->processSyncRecord($rowSync, force: true);
-                    }
-                } catch (\Throwable $sheetErr) {
-                    \Illuminate\Support\Facades\Log::warning("Spreadsheet bulk sync error on intern #{$intern->id}: " . $sheetErr->getMessage());
-                }
-
+                $internsToSync[] = $intern;
                 $affected++;
             }
         });
+
+        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet di latar belakang (afterResponse) di luar transaksi database
+        if (!empty($internsToSync)) {
+            dispatch(function () use ($internsToSync) {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                foreach ($internsToSync as $internToSync) {
+                    try {
+                        $rowSync = $syncEngine->queueSyncForRegistration($internToSync, allowPendaftar: true);
+                        if ($rowSync) {
+                            $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                        }
+                    } catch (\Throwable $sheetErr) {
+                        \Illuminate\Support\Facades\Log::warning("Spreadsheet bulk sync error on intern #{$internToSync->id}: " . $sheetErr->getMessage());
+                    }
+                }
+            })->afterResponse();
+        }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json([

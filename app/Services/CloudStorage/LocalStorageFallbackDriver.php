@@ -49,6 +49,11 @@ class LocalStorageFallbackDriver implements CloudStorageProviderInterface
         return 'sim_folder_' . md5($cleanFolder);
     }
 
+    public function moveFolder(string $folderId, ?string $targetParentFolderId = null, ?string $targetFolderPath = null): bool
+    {
+        return true;
+    }
+
     public function uploadFile(string $localFullPath, string $remoteFolderPath, ?string $customFileName = null): array
     {
         if (!file_exists($localFullPath)) {

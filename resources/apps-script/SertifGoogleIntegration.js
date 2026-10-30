@@ -499,6 +499,9 @@ function doPost(e) {
       case "drive_resolve_folder":
         return handleDriveResolveFolderAction(payload);
 
+      case "drive_move_folder":
+        return handleDriveMoveFolderAction(payload);
+
       case "drive_upload":
         return handleDriveUploadAction(payload);
 
@@ -1807,6 +1810,116 @@ function handleDriveResolveFolderAction(payload) {
       error_code: "FOLDER_RESOLUTION_FAILED",
       is_retryable: false,
       message: err.toString()
+    }, 400);
+  }
+}
+
+/**
+ * Aksi: drive_move_folder
+ * Memindahkan folder (misal: folder pendaftar) ke folder induk tujuan secara aman di bawah root kanonikal.
+ */
+function handleDriveMoveFolderAction(payload) {
+  var rootRes = getAndVerifyCanonicalRoot(payload);
+  if (!rootRes.valid) {
+    return createJsonResponse({
+      success: false,
+      error_code: rootRes.error,
+      is_retryable: false,
+      message: rootRes.message
+    }, 400);
+  }
+
+  var folderId = (payload.folder_id || payload.source_folder_id || "").toString().trim();
+  if (!folderId) {
+    return createJsonResponse({
+      success: false,
+      error_code: "MISSING_FOLDER_ID",
+      is_retryable: false,
+      message: "ID folder sumber (folder_id) tidak disertakan."
+    }, 400);
+  }
+
+  try {
+    var sourceFolder = DriveApp.getFolderById(folderId);
+
+    // Proteksi batas subtree: pastikan folder berada di dalam root kanonikal
+    if (!isWithinRootHierarchy(sourceFolder, rootRes.rootFolderId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+        is_retryable: false,
+        message: "Akses ditolak: Folder sumber berada di luar folder induk kanonikal."
+      }, 403);
+    }
+
+    // Resolusi target parent folder
+    var targetFolder = null;
+    var targetParentId = (payload.target_parent_folder_id || payload.target_folder_id || "").toString().trim();
+    if (targetParentId) {
+      targetFolder = DriveApp.getFolderById(targetParentId);
+      if (!isWithinRootHierarchy(targetFolder, rootRes.rootFolderId)) {
+        return createJsonResponse({
+          success: false,
+          error_code: "ACCESS_DENIED_OUTSIDE_ROOT",
+          is_retryable: false,
+          message: "Akses ditolak: Folder tujuan berada di luar folder induk kanonikal."
+        }, 403);
+      }
+    } else if (payload.target_folder_path) {
+      var resolved = resolveFolderPathUnderRoot(rootRes.rootFolder, payload.target_folder_path);
+      targetFolder = resolved.folder;
+    } else {
+      return createJsonResponse({
+        success: false,
+        error_code: "MISSING_TARGET_FOLDER",
+        is_retryable: false,
+        message: "Target parent folder (target_parent_folder_id atau target_folder_path) tidak disertakan."
+      }, 400);
+    }
+
+    // Verifikasi apakah source folder sudah berada di targetFolder (idempotent)
+    var parents = sourceFolder.getParents();
+    var alreadyInTarget = false;
+    while (parents && parents.hasNext()) {
+      var p = parents.next();
+      if (p.getId() === targetFolder.getId()) {
+        alreadyInTarget = true;
+        break;
+      }
+    }
+
+    if (!alreadyInTarget) {
+      if (typeof sourceFolder.moveTo === "function") {
+        sourceFolder.moveTo(targetFolder);
+      } else {
+        targetFolder.addFolder(sourceFolder);
+        var pList = sourceFolder.getParents();
+        while (pList && pList.hasNext()) {
+          var pCur = pList.next();
+          if (pCur.getId() !== targetFolder.getId()) {
+            pCur.removeFolder(sourceFolder);
+          }
+        }
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      action: "drive_move_folder",
+      folder_id: sourceFolder.getId(),
+      folder_name: sourceFolder.getName(),
+      target_parent_id: targetFolder.getId(),
+      target_parent_name: targetFolder.getName(),
+      already_in_target: alreadyInTarget,
+      timestamp: new Date().toISOString()
+    }, 200);
+
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "FOLDER_MOVE_FAILED",
+      is_retryable: false,
+      message: "Gagal memindahkan folder di Google Drive: " + err.toString()
     }, 400);
   }
 }

@@ -164,6 +164,18 @@ class SpreadsheetSyncEngineService
 
                 if ($oldRowSync && (!empty($oldRowSync->last_synced_at) || !empty($oldRowSync->row_index))) {
                     $newBrandName = $newBrand?->name ?? 'Lain';
+
+                    // Pastikan model membaca brand_id lama sementara saat membangun payload baris brand lama
+                    $savedCurrentBrandId = $registration->brand_id;
+                    $savedCurrentBrand = $registration->brand;
+                    $savedCurrentBrandRel = $registration->relationLoaded('brandRel') ? $registration->brandRel : null;
+
+                    $registration->brand_id = $oldBrandId;
+                    if ($oldBrand) {
+                        $registration->brand = $oldBrand->name;
+                        $registration->setRelation('brandRel', $oldBrand);
+                    }
+
                     $payload = $this->buildPayloadForRecord($oldRowSync, allowPendaftar: true);
 
                     // Cari header kolom KET pada schema spreadsheet brand lama
@@ -194,6 +206,14 @@ class SpreadsheetSyncEngineService
                         'last_synced_at'   => now(),
                         'updated_at'       => now(),
                     ]);
+
+                    $registration->brand_id = $savedCurrentBrandId;
+                    $registration->brand = $savedCurrentBrand;
+                    if ($savedCurrentBrandRel !== null) {
+                        $registration->setRelation('brandRel', $savedCurrentBrandRel);
+                    } else {
+                        $registration->unsetRelation('brandRel');
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -209,32 +229,29 @@ class SpreadsheetSyncEngineService
             }
         }
 
-        // 3. Update jalur direktori Google Drive pada CloudFolderRegistry agar sinkron dengan brand baru
+        // 3. Relokasi direktori Google Drive pada CloudFolderRegistry dan fisik Google Drive
         try {
             $year = $registration->created_at ? $registration->created_at->format('Y') : date('Y');
             $oldBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($oldBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
             $newBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($newBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
 
-            $oldBasePath = "REGISTRASI/{$year}/{$oldBrandNameClean}/" . $registration->getDriveApplicantFolderName();
-            $newBasePath = "REGISTRASI/{$year}/{$newBrandNameClean}/" . $registration->getDriveApplicantFolderName();
+            $applicantFolderName = $registration->getDriveApplicantFolderName();
+            $oldBasePath = "REGISTRASI/{$year}/{$oldBrandNameClean}/{$applicantFolderName}";
+            $newBasePath = "REGISTRASI/{$year}/{$newBrandNameClean}/{$applicantFolderName}";
+            $targetParentPath = "REGISTRASI/{$year}/{$newBrandNameClean}";
 
-            if ($oldBasePath !== $newBasePath && \Illuminate\Support\Facades\Schema::hasTable('cloud_folder_registry')) {
-                \App\Models\CloudFolderRegistry::where(function ($q) use ($registration, $oldBasePath) {
-                    $q->where(function ($sub) use ($registration) {
-                        $sub->where('owner_type', 'registration')
-                            ->where('owner_id', $registration->id);
-                    })->orWhere('folder_path', 'LIKE', "{$oldBasePath}%");
-                })->get()->each(function ($folderReg) use ($oldBasePath, $newBasePath) {
-                    if (str_starts_with($folderReg->folder_path, $oldBasePath)) {
-                        $subPath = substr($folderReg->folder_path, strlen($oldBasePath));
-                        $folderReg->update([
-                            'folder_path' => $newBasePath . $subPath,
-                        ]);
-                    }
-                });
+            if ($oldBasePath !== $newBasePath) {
+                $universalService = app(\App\Services\UniversalFileService::class);
+                $universalService->relocateFolder(
+                    oldFolderPath: $oldBasePath,
+                    newFolderPath: $newBasePath,
+                    ownerType: 'registration',
+                    ownerId: $registration->id,
+                    targetParentPath: $targetParentPath
+                );
             }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Gagal memperbarui path folder Drive pemindahan: " . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning("Gagal merelokasi folder Google Drive pemindahan registrasi #{$registration->id}: " . $e->getMessage());
         }
 
         // 4. Masukkan dan proses baris baru pada Spreadsheet Brand Baru
@@ -242,7 +259,14 @@ class SpreadsheetSyncEngineService
             $newConnection = $this->getRegistrationConnection($newBrandId, requireReady: true);
             if ($newConnection) {
                 $savedBrandId = $registration->brand_id;
+                $savedBrand = $registration->brand;
+                $savedBrandRel = $registration->relationLoaded('brandRel') ? $registration->brandRel : null;
+
                 $registration->brand_id = $newBrandId;
+                if ($newBrand) {
+                    $registration->brand = $newBrand->name;
+                    $registration->setRelation('brandRel', $newBrand);
+                }
 
                 $newRowSync = $this->queueSyncForRegistration($registration, allowPendaftar: true);
                 if ($newRowSync) {
@@ -250,6 +274,12 @@ class SpreadsheetSyncEngineService
                 }
 
                 $registration->brand_id = $savedBrandId;
+                $registration->brand = $savedBrand;
+                if ($savedBrandRel !== null) {
+                    $registration->setRelation('brandRel', $savedBrandRel);
+                } else {
+                    $registration->unsetRelation('brandRel');
+                }
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning("Gagal menjadwalkan baris baru pada spreadsheet brand baru #{$newBrandId}: " . $e->getMessage());
