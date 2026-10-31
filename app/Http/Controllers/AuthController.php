@@ -57,17 +57,33 @@ class AuthController extends Controller
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
         ]);
 
+        // Deteksi brand pendaftaran berdasarkan domain host
+        $detectedBrand = $request->attributes->get('current_brand')
+            ?: app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request);
+
         // Proteksi eskalasi privilege: selalu paksa role = 'user' (calon pemagang)
+        // Kunci brand dan host pada akun calon pemagang secara permanen sejak registrasi akun
         $user = User::create([
-            'name'     => $request->username,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-            'role'     => 'user',
+            'name'              => $request->username,
+            'email'             => $request->email,
+            'password'          => Hash::make($request->password),
+            'role'              => 'user',
+            'brand_id'          => $detectedBrand?->id,
+            'registration_host' => $request->getHost(),
         ]);
 
         // Auto-login setelah register
         Auth::login($user);
         $request->session()->regenerate();
+
+        // Ikat brand pendaftaran pada session
+        if ($detectedBrand) {
+            session([
+                'registration_brand_id'   => $detectedBrand->id,
+                'registration_brand_code' => $detectedBrand->code,
+                'registration_host'       => $request->getHost(),
+            ]);
+        }
 
         // Langsung ke form pendaftaran magang
         return redirect()->route('pemagang.registration.form')

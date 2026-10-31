@@ -157,6 +157,8 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'brand_id',
+        'registration_host',
         'is_online',
         'is_banned',
         'banned_at',
@@ -166,6 +168,16 @@ class User extends Authenticatable
         'is_gps_activate',
         'documents_viewed_at',
     ];
+
+    public function brandRel()
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    public function brand()
+    {
+        return $this->brandRel();
+    }
 
     /**
      * The attributes that should be hidden for serialization.
@@ -337,24 +349,26 @@ class User extends Authenticatable
             return strtoupper(trim($dbBrand->code));
         }
 
-        return match (strtolower($brand)) {
-            'magangjogja.com' => 'MJ',
-            'areakerja.com'   => 'AK',
-            'republikweb.net'   => 'RW',
-            'titipsini.com'   => 'TS',
+        return match (strtolower(trim($brand))) {
+            'magangjogja.com', 'magang jogja', 'mj' => 'MJ',
+            'areakerja.com', 'area kerja', 'ak'     => 'AK',
+            'republikweb.net', 'republik web', 'rw' => 'RW',
+            'titipsini.com', 'titip sini', 'ts'     => 'TS',
+            'tuantanah.com', 'tuan tanah', 'tt', 'tn' => 'TT',
+            'tukanglas.org', 'tukang las', 'tl'     => 'TL',
+            'adakamar.id', 'adakamarid', 'ada kamar', 'akm', 'aki' => 'AKM',
+            'magangku.com', 'magangku', 'mk'        => 'MK',
+            'makeover.id', 'makeover', 'mo'         => 'MO',
+            'bimbelcerdas.com', 'bimbel cerdas', 'bc' => 'BC',
+            'seven inc', 'seveninc.web.id', 'si', 'svii' => 'SI',
             'ambilpaket.com'   => 'AP',
-            'bikinkepo.com'   => 'BK',
-            'bimbelcerdas.com'   => 'BC',
-            'latihankerja.com'   => 'LK',
-            'lowkerjateng.com'   => 'LJT',
-            'lowkerjogja.com'   => 'LJG',
+            'bikinkepo.com'    => 'BK',
+            'latihankerja.com' => 'LK',
+            'lowkerjateng.com' => 'LJT',
+            'lowkerjogja.com'  => 'LJG',
             'pijatjogja.com'   => 'PJ',
-            'sayabantu.com'   => 'SB',
-            'titikvisual.com'   => 'TV',
-            'tuantanah.com'   => 'TN',
-            'tukanglas.org'   => 'TL',
-            'adakamarid'   => 'AKI',
-            'seven inc'   => 'SI',
+            'sayabantu.com'    => 'SB',
+            'titikvisual.com'  => 'TV',
             default           => 'XX', // fallback default
         };
     }

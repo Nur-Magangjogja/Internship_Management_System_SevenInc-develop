@@ -16,6 +16,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -149,6 +150,132 @@ class UniversalFileService
         } finally {
             optional($lock)->release();
         }
+    }
+
+    /**
+     * Memindahkan direktori kanonikal (misal: pemindahan brand pemagang)
+     * baik pada database registry lokal maupun secara fisik di cloud storage remote.
+     */
+    public function relocateFolder(
+        string $oldFolderPath,
+        string $newFolderPath,
+        string $ownerType,
+        int|string $ownerId,
+        ?string $targetParentPath = null
+    ): bool {
+        $cleanOldPath = trim(str_replace('\\', '/', $oldFolderPath), '/');
+        $cleanNewPath = trim(str_replace('\\', '/', $newFolderPath), '/');
+
+        if ($cleanOldPath === $cleanNewPath) {
+            return true;
+        }
+
+        $setting = CloudStorageSetting::getEffectiveSettings();
+        $canonicalRootId = $setting->getEffectiveParentFolderId();
+
+        // 1. Cari record folder utama yang terdaftar untuk owner ini
+        $primaryFolderReg = null;
+        if (Schema::hasTable('cloud_folder_registry')) {
+            $primaryFolderReg = CloudFolderRegistry::where('owner_type', $ownerType)
+                ->where('owner_id', $ownerId)
+                ->where(function ($q) use ($cleanOldPath, $cleanNewPath) {
+                    $q->where('folder_path', $cleanOldPath)
+                      ->orWhere('folder_path', $cleanNewPath)
+                      ->orWhere('category', 'registration_folder');
+                })
+                ->whereNotNull('drive_folder_id')
+                ->latest('id')
+                ->first();
+        }
+
+        $driveFolderId = $primaryFolderReg?->drive_folder_id;
+
+        // Fallback cek RegistrationAttachment jika owner adalah registration
+        if (empty($driveFolderId) && $ownerType === 'registration') {
+            $folderAtt = \App\Models\RegistrationAttachment::where('internship_registration_id', $ownerId)
+                ->where(function ($q) {
+                    $q->where('mime_type', 'application/vnd.google-apps.folder')
+                      ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                      ->orWhere('attachment_type', 'folder');
+                })
+                ->whereNotNull('drive_file_id')
+                ->first();
+            $driveFolderId = $folderAtt?->drive_file_id;
+        }
+
+        $isRealFolder = !empty($driveFolderId)
+            && !str_starts_with((string) $driveFolderId, '1folder_reg_')
+            && !str_starts_with((string) $driveFolderId, '1demo_')
+            && !str_starts_with((string) $driveFolderId, 'local_sim_')
+            && !str_starts_with((string) $driveFolderId, 'drive_root:');
+
+        // 2. Jika ada folder fisik di remote storage (Google Drive), lakukan pemindahan fisik
+        if ($isRealFolder && method_exists($this->driver, 'moveFolder')) {
+            try {
+                $targetParentFolderId = null;
+                if (!empty($targetParentPath)) {
+                    $cleanParentPath = trim(str_replace('\\', '/', $targetParentPath), '/');
+                    if (!empty($cleanParentPath)) {
+                        $parentFolderReg = $this->getOrCreateFolder(
+                            folderPath: $cleanParentPath,
+                            ownerType: 'system',
+                            ownerId: null,
+                            category: 'brand_root'
+                        );
+                        $targetParentFolderId = $parentFolderReg->drive_folder_id;
+                    }
+                }
+
+                $this->driver->moveFolder(
+                    folderId: $driveFolderId,
+                    targetParentFolderId: $targetParentFolderId,
+                    targetFolderPath: $targetParentPath
+                );
+            } catch (\Throwable $e) {
+                Log::warning("Gagal memindahkan folder cloud fisik untuk {$cleanOldPath} -> {$cleanNewPath}: " . $e->getMessage());
+            }
+        }
+
+        // 3. Update database registry (CloudFolderRegistry) untuk semua path subfolder yang bersangkutan
+        if (Schema::hasTable('cloud_folder_registry')) {
+            CloudFolderRegistry::where(function ($q) use ($ownerType, $ownerId, $cleanOldPath) {
+                $q->where(function ($sub) use ($ownerType, $ownerId) {
+                    $sub->where('owner_type', $ownerType)
+                        ->where('owner_id', $ownerId);
+                })->orWhere('folder_path', 'LIKE', "{$cleanOldPath}%");
+            })->get()->each(function ($folderReg) use ($cleanOldPath, $cleanNewPath, $canonicalRootId) {
+                $updates = [];
+                if (str_starts_with($folderReg->folder_path, $cleanOldPath)) {
+                    $subPath = substr($folderReg->folder_path, strlen($cleanOldPath));
+                    $updates['folder_path'] = $cleanNewPath . $subPath;
+                }
+                if ($canonicalRootId && empty($folderReg->canonical_root_id)) {
+                    $updates['canonical_root_id'] = $canonicalRootId;
+                }
+                if (!empty($updates)) {
+                    $folderReg->update($updates);
+                }
+            });
+        }
+
+        // 4. Update relasi pada RegistrationAttachment jika owner adalah registration
+        if ($ownerType === 'registration') {
+            $expectedRootMarker = 'drive_root:' . ($canonicalRootId ?? 'default');
+            \App\Models\RegistrationAttachment::where('internship_registration_id', $ownerId)
+                ->where(function ($q) {
+                    $q->where('mime_type', 'application/vnd.google-apps.folder')
+                      ->orWhere('attachment_type', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                      ->orWhere('category', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE);
+                })
+                ->get()
+                ->each(function ($att) use ($expectedRootMarker) {
+                    $att->update([
+                        'file_path' => $expectedRootMarker,
+                    ]);
+                });
+        }
+
+        return true;
     }
 
     /**

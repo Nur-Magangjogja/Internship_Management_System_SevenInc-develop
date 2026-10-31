@@ -333,7 +333,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::get('/dashboard/accepted-interns-chart', [DashboardController::class, 'acceptedInternsChart'])->name('dashboard.accepted-interns-chart');
     Route::get('/', fn () => redirect()->route('admin.dashboard.index'))->name('home');
 
-    // Manajemen Brand
+    // Manajemen Brand — action khusus didefinisikan sebelum resource route.
+    Route::post('brands/{brand}/set-default', [\App\Http\Controllers\Admin\BrandController::class, 'setDefault'])->name('brands.set-default');
+    Route::post('brands/{brand}/verify-domain', [\App\Http\Controllers\Admin\BrandController::class, 'verifyDomain'])->name('brands.verify-domain');
+    Route::post('brands/{brand}/check-readiness', [\App\Http\Controllers\Admin\BrandController::class, 'checkReadiness'])->name('brands.check-readiness');
+    Route::post('brands/{brand}/activate', [\App\Http\Controllers\Admin\BrandController::class, 'activate'])->name('brands.activate');
+    Route::post('brands/{brand}/suspend', [\App\Http\Controllers\Admin\BrandController::class, 'suspend'])->name('brands.suspend');
+    Route::post('brands/{brand}/unsuspend', [\App\Http\Controllers\Admin\BrandController::class, 'unsuspend'])->name('brands.unsuspend');
+    Route::post('brands/{brand}/archive', [\App\Http\Controllers\Admin\BrandController::class, 'archive'])->name('brands.archive');
     Route::resource('brands', \App\Http\Controllers\Admin\BrandController::class);
 
     // Pengaturan Form — Divisi & Field Builder
@@ -433,6 +440,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::prefix('spreadsheet-connections')->name('spreadsheet-connections.')->group(function () {
         Route::get('/global-sync-tick', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'globalSyncTick'])->name('global-sync-tick');
         Route::get('/', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'index'])->name('index');
+        Route::post('/create-brand', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'createBrandConnection'])->name('create-brand');
         Route::get('/{spreadsheetConnection}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'show'])->name('show');
         Route::get('/{spreadsheetConnection}/schema-history', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'schemaHistory'])->name('schema-history');
         Route::get('/{spreadsheetConnection}/edit', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'edit'])->name('edit');
@@ -683,6 +691,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
     // Review & Raw Preview SKL
     Route::get('/skl/generate/{intern}', [SKLController::class, 'review'])->name('skl.review');
     Route::get('/skl/raw/{intern}', [SKLController::class, 'rawPreview'])->name('skl.raw');
+    Route::post('/skl/regenerate/{intern}', [SKLController::class, 'regenerate'])->name('skl.regenerate');
 
     // Preview untuk panel editor (dipanggil dari iframe)
     Route::get('/skl/preview', [SKLController::class, 'preview'])->name('skl.preview');
@@ -842,6 +851,7 @@ Route::middleware(['auth', 'role:pemagang,user'])->prefix('pemagang')->name('pem
     // Form Pendaftaran
     Route::get('/daftar', [PemagangRegistration::class, 'showForm'])->name('registration.form');
     Route::post('/daftar', [PemagangRegistration::class, 'store'])->name('registration.store');
+    Route::get('/daftar/draft', fn() => redirect()->route('pemagang.registration.form'));
     Route::post('/daftar/draft', [PemagangRegistration::class, 'saveDraft'])->name('registration.draft');
     Route::delete('/daftar/attachments/{attachment}', [PemagangRegistration::class, 'deleteAttachment'])->name('registration.attachment.delete');
 

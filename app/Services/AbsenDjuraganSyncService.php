@@ -116,7 +116,7 @@ class AbsenDjuraganSyncService
 
             foreach ($candidateUrls as $url) {
                 try {
-                    $response = Http::timeout(6)->withoutVerifying()->withHeaders([
+                    $response = Http::timeout(3)->withoutVerifying()->withHeaders([
                         'X-API-KEY' => $apiKey,
                         'Accept'    => 'application/json',
                     ])->post($url, $payload);
@@ -147,6 +147,10 @@ class AbsenDjuraganSyncService
                         return true;
                     } else {
                         Log::warning("Sinkronisasi ACC/Update pemagang {$user->email} ke {$url} gagal (HTTP {$response->status()}): " . $response->body());
+                        // Jika server menolak kunci API (HTTP 401), jangan coba kandidat URL lain dengan kunci yang sama
+                        if ($response->status() === 401) {
+                            break;
+                        }
                     }
                 } catch (\Throwable $err) {
                     Log::warning("Koneksi sinkronisasi ke {$url} gagal: " . $err->getMessage());

@@ -234,8 +234,8 @@ class DashboardController extends Controller
             'rejected'  => (int) ($irCounts->rejected ?? 0),
         ];
 
-        // 2. 5 Pendaftaran terbaru
-        $recentInterns = IR::latest('created_at')->limit(5)->get();
+        // 2. 5 Pendaftaran terbaru (dengan relasi brandRel)
+        $recentInterns = IR::with('brandRel')->latest('created_at')->limit(5)->get();
 
         // 3. Line chart: total pendaftar per bulan (6 bulan terakhir)
         $end   = Carbon::now()->endOfMonth();
@@ -333,6 +333,33 @@ class DashboardController extends Controller
             ];
         }
 
+        // 7. Distribusi Pemagang per Brand (11 Brand Resmi)
+        $brandDistribution = \App\Models\Brand::select('id', 'name', 'code', 'is_default')
+            ->withCount('internshipRegistrations')
+            ->orderByDesc('internship_registrations_count')
+            ->get();
+
+        $brandColors = [
+            'SI'  => '#2D8659',
+            'RW'  => '#38BDF8',
+            'AKM' => '#818CF8',
+            'MJ'  => '#10B981',
+            'MK'  => '#A855F7',
+            'TT'  => '#78716C',
+            'MO'  => '#EC4899',
+            'BC'  => '#06B6D4',
+            'AK'  => '#3B82F6',
+            'TL'  => '#F97316',
+            'TS'  => '#EAB308',
+        ];
+
+        $brandChart = [
+            'labels' => $brandDistribution->pluck('name')->all(),
+            'codes'  => $brandDistribution->pluck('code')->all(),
+            'totals' => $brandDistribution->pluck('internship_registrations_count')->all(),
+            'colors' => $brandDistribution->map(fn($b) => $brandColors[$b->code] ?? '#64748B')->all(),
+        ];
+
         return view('dashboard.index', compact(
             'counts',
             'chart',
@@ -344,7 +371,10 @@ class DashboardController extends Controller
             'recentInterns',
             'partnershipMetrics',
             'recentPartnershipLogs',
-            'expiringMous'
+            'expiringMous',
+            'brandDistribution',
+            'brandChart',
+            'brandColors'
         ));
     }
 

@@ -45,6 +45,11 @@ class SpreadsheetSchemaVersion extends Model
         return $this->belongsTo(SpreadsheetConnection::class, 'spreadsheet_connection_id');
     }
 
+    public function spreadsheetConnection(): BelongsTo
+    {
+        return $this->connection();
+    }
+
     public function columnMappings(): HasMany
     {
         return $this->hasMany(SpreadsheetColumnMapping::class, 'spreadsheet_schema_version_id')->orderBy('column_order', 'asc');

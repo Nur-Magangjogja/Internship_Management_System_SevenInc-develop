@@ -30,6 +30,12 @@ class Division extends Model
         return $query->where('is_active', true)->orderBy('name');
     }
 
+    public function brands()
+    {
+        return $this->belongsToMany(\App\Models\Brand::class, 'brand_divisions', 'division_id', 'brand_id')
+            ->withTimestamps();
+    }
+
     /** Auto-generate slug dari name jika belum ada */
     protected static function booted(): void
     {

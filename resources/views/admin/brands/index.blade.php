@@ -23,6 +23,9 @@
         <button onclick="document.getElementById('alert-success').remove()" class="ml-auto text-[#2D8659] hover:opacity-70">✕</button>
     </div>
     @endif
+    @if(session('error'))
+    <div class="mb-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{{ session('error') }}</div>
+    @endif
     
     <div class="rounded-[12px] border border-[#DCE7E1] bg-white shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
@@ -39,7 +42,32 @@
                     @forelse($brands as $brand)
                     <tr class="transition hover:bg-[#F4F8F6]">
                         <td class="px-5 py-4 text-[13px] font-semibold text-[#1B3A34]">{{ $brand->code }}</td>
-                        <td class="px-5 py-4 text-[13px] text-[#4B5F5A]">{{ $brand->name }}</td>
+                        <td class="px-5 py-4 text-[13px] text-[#4B5F5A]">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-[#1B3A34]">{{ $brand->name }}</span>
+                                @if($brand->is_default)
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-[#1F5F3F] border border-emerald-300 text-[10px] font-bold px-2 py-0.5">
+                                        <i class="fa-solid fa-star text-amber-500 text-[9px]"></i> Default
+                                    </span>
+                                @endif
+                            </div>
+                            <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] font-mono text-slate-500">
+                                <span>{{ $brand->registration_host ?: 'Host belum diatur' }}</span>
+                                <span class="text-slate-300">•</span>
+                                @if($brand->division_mode === \App\Models\Brand::DIVISION_MODE_GLOBAL || ($brand->division_mode === null && $brand->is_default))
+                                    <span class="text-[#2D8659] font-sans font-semibold">Global</span>
+                                @else
+                                    <span class="text-[#2D8659] font-sans font-semibold">{{ $brand->divisions->count() }} Divisi</span>
+                                @endif
+                            </div>
+                            @php($opBadge = $brand->operational_status_badge)
+                            <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span class="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $opBadge['class'] }}">{{ $opBadge['label'] }}</span>
+                                @if($brand->registration_host)
+                                    <span class="text-[10px] {{ $brand->domain_verified_at ? 'text-emerald-700' : 'text-amber-700' }}">{{ $brand->domain_verified_at ? 'Domain verified' : 'Domain belum verified' }}</span>
+                                @endif
+                            </div>
+                        </td>
                         <td class="px-5 py-4 text-[13px] text-[#4B5F5A]">
                             @if($brand->logo)
                                 <img src="{{ Storage::url($brand->logo) }}" alt="Logo {{ $brand->name }}" class="h-10 object-contain">
@@ -49,6 +77,14 @@
                         </td>
                         <td class="px-5 py-4 text-[13px] text-center">
                             <div class="flex items-center justify-center gap-2">
+                                @if(!$brand->is_default)
+                                    <form action="{{ route('admin.brands.set-default', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Jadikan brand {{ addslashes($brand->name) }} sebagai Brand Default sistem SertIF?');">
+                                        @csrf
+                                        <button type="submit" class="flex h-8 items-center gap-1.5 px-2.5 rounded-[8px] border border-[#DCE7E1] bg-white text-[#2D8659] text-[11px] font-semibold hover:border-[#2D8659] hover:bg-[#F4F8F6] transition shadow-2xs" title="Jadikan Brand Default">
+                                            <i class="fa-regular fa-star text-amber-500 text-xs"></i> Set Default
+                                        </button>
+                                    </form>
+                                @endif
                                 <a href="{{ route('admin.brands.show', $brand->id) }}" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] text-[#1B3A34] hover:border-[#1B3A34] hover:bg-[#F4F8F6] transition" title="Lihat">
                                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </a>

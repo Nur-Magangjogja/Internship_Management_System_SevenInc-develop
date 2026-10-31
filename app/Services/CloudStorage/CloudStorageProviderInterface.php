@@ -35,4 +35,14 @@ interface CloudStorageProviderInterface extends CloudStorageInterface, CloudFile
      * @return string|null
      */
     public function getRootFolderId(): ?string;
+
+    /**
+     * Memindahkan folder remote ke target parent folder baru.
+     *
+     * @param string $folderId ID folder remote yang akan dipindahkan
+     * @param string|null $targetParentFolderId ID folder parent tujuan
+     * @param string|null $targetFolderPath Path folder parent tujuan relatif terhadap root
+     * @return bool
+     */
+    public function moveFolder(string $folderId, ?string $targetParentFolderId = null, ?string $targetFolderPath = null): bool;
 }

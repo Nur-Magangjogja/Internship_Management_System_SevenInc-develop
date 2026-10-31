@@ -377,4 +377,102 @@ class Gas03DriveGatewayTest extends TestCase
         $search = $driver->searchWithinCanonicalRoot($this->canonicalRootId, 'name contains "matched"');
         $this->assertCount(1, $search['files']);
     }
+
+    /**
+     * Test 12: moveFolder meneruskan action drive_move_folder dan parameter yang tepat ke Apps Script.
+     */
+    public function test_move_folder_dispatches_drive_move_folder(): void
+    {
+        Http::fake([
+            $this->endpointUrl . '*' => Http::response([
+                'success'          => true,
+                'action'           => 'drive_move_folder',
+                'folder_id'        => 'APPLICANT_FOLDER_123',
+                'target_parent_id' => 'TARGET_BRAND_FOLDER_456',
+            ], 200),
+        ]);
+
+        $driver = new GoogleAppsScriptDriveDriver();
+        $result = $driver->moveFolder(
+            folderId: 'APPLICANT_FOLDER_123',
+            targetParentFolderId: 'TARGET_BRAND_FOLDER_456',
+            targetFolderPath: 'REGISTRASI/2026/Ada Kamar'
+        );
+
+        $this->assertTrue($result);
+
+        Http::assertSent(function ($request) {
+            $body = json_decode($request->body(), true);
+            return ($body['payload']['action'] ?? '') === 'drive_move_folder'
+                && ($body['payload']['drive_folder_id'] ?? '') === $this->canonicalRootId
+                && ($body['payload']['folder_id'] ?? '') === 'APPLICANT_FOLDER_123'
+                && ($body['payload']['target_parent_folder_id'] ?? '') === 'TARGET_BRAND_FOLDER_456'
+                && ($body['payload']['target_folder_path'] ?? '') === 'REGISTRASI/2026/Ada Kamar';
+        });
+    }
+
+    /**
+     * Test 13: UniversalFileService relocateFolder merelokasi record database dan memanggil moveFolder.
+     */
+    public function test_universal_file_service_relocate_folder(): void
+    {
+        Http::fake([
+            $this->endpointUrl . '*' => Http::sequence()
+                ->push([
+                    'success'   => true,
+                    'action'    => 'drive_resolve_folder',
+                    'folder_id' => 'TARGET_BRAND_FOLDER_456',
+                    'folder_path' => 'REGISTRASI/2026/Ada Kamar',
+                ], 200)
+                ->push([
+                    'success'          => true,
+                    'action'           => 'drive_move_folder',
+                    'folder_id'        => 'FOLDER_DRIVE_REAL_ID',
+                    'target_parent_id' => 'TARGET_BRAND_FOLDER_456',
+                ], 200),
+        ]);
+
+        \App\Models\CloudFolderRegistry::create([
+            'canonical_root_id' => $this->canonicalRootId,
+            'owner_type'        => 'registration',
+            'owner_id'          => 9999,
+            'category'          => 'registration_folder',
+            'folder_path'       => 'REGISTRASI/2026/SEVEN INC/budi_REG9999',
+            'drive_folder_id'   => 'FOLDER_DRIVE_REAL_ID',
+            'is_verified'       => true,
+        ]);
+
+        \App\Models\CloudFolderRegistry::create([
+            'canonical_root_id' => $this->canonicalRootId,
+            'owner_type'        => 'registration',
+            'owner_id'          => 9999,
+            'category'          => 'cv',
+            'folder_path'       => 'REGISTRASI/2026/SEVEN INC/budi_REG9999/Curriculum Vitae (CV)',
+            'drive_folder_id'   => 'SUBFOLDER_CV_ID',
+            'is_verified'       => true,
+        ]);
+
+        $service = app(\App\Services\UniversalFileService::class);
+        $result = $service->relocateFolder(
+            oldFolderPath: 'REGISTRASI/2026/SEVEN INC/budi_REG9999',
+            newFolderPath: 'REGISTRASI/2026/Ada Kamar/budi_REG9999',
+            ownerType: 'registration',
+            ownerId: 9999,
+            targetParentPath: 'REGISTRASI/2026/Ada Kamar'
+        );
+
+        $this->assertTrue($result);
+
+        // Verifikasi database cloud_folder_registry ter-update ke path brand baru
+        $this->assertDatabaseHas('cloud_folder_registry', [
+            'owner_id'    => 9999,
+            'category'    => 'registration_folder',
+            'folder_path' => 'REGISTRASI/2026/Ada Kamar/budi_REG9999',
+        ]);
+        $this->assertDatabaseHas('cloud_folder_registry', [
+            'owner_id'    => 9999,
+            'category'    => 'cv',
+            'folder_path' => 'REGISTRASI/2026/Ada Kamar/budi_REG9999/Curriculum Vitae (CV)',
+        ]);
+    }
 }

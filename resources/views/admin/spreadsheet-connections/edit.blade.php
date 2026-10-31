@@ -96,6 +96,46 @@
                     />
                 </div>
 
+                @if ($connection->connection_key === 'registration')
+                    <!-- Brand Attachment (Multi-Brand Registration) - Dedicated per Brand -->
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">
+                            Brand Terkait (Multi-Brand Registration)
+                        </label>
+                        @if ($connection->brand)
+                            <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-xs">
+                                    {{ $connection->brand->name }} ({{ $connection->brand->code }})
+                                </span>
+                                @if ($connection->brand->registration_host)
+                                    <span class="inline-flex items-center gap-1.5 text-xs text-slate-600 font-mono">
+                                        <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"/>
+                                            <line x1="2" y1="12" x2="22" y2="12"/>
+                                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                        </svg>
+                                        {{ $connection->brand->registration_host }}
+                                    </span>
+                                @endif
+                            </div>
+                            <input type="hidden" name="brand_id" value="{{ $connection->brand_id }}">
+                            <p class="mt-1 text-xs text-slate-500">
+                                Koneksi ini terikat khusus untuk calon pemagang yang mendaftar melalui brand <strong>{{ $connection->brand->name }}</strong> ({{ $connection->brand->registration_host }}).
+                            </p>
+                        @else
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    Default / Fallback Global (Semua Brand)
+                                </span>
+                            </div>
+                            <input type="hidden" name="brand_id" value="">
+                            <p class="mt-1 text-xs text-slate-500">
+                                Koneksi cadangan global jika pendaftar belum memiliki spreadsheet khusus brand tersendiri.
+                            </p>
+                        @endif
+                    </div>
+                @endif
+
                 <!-- Spreadsheet URL -->
                 <div>
                     <div class="flex items-center justify-between mb-1">

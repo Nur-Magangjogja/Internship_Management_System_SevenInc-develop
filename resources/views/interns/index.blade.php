@@ -13,6 +13,7 @@
         'pendaftar' => [
             'all'      => 'Semua',
             'waiting'  => 'Menunggu Review',
+            'pending'  => 'Pending',
             'accepted' => 'Diterima',
             'rejected' => 'Ditolak',
             'trashed'  => 'Arsip Terhapus',
@@ -154,6 +155,12 @@
                             <option value="{{ $fKey }}">{{ $fLabel }}</option>
                         @endforeach
                     </select>
+
+                    {{-- Dynamic Follow-Up Color Preview --}}
+                    <div id="followupPreviewBox" class="hidden mt-2 p-2.5 rounded-[9px] bg-[#F4F8F6] border border-[#DCE7E1] items-center gap-2">
+                        <span class="text-[11px] text-[#4B5F5A] font-medium shrink-0">Warna Badge:</span>
+                        <span id="followupPreviewBadge" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold border"></span>
+                    </div>
                 </div>
 
                 <div>
@@ -373,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </h1>
         <p class="mt-1 text-sm text-[#4B5F5A]">
             @if($mode === 'pendaftar')
-                Kelola status pendaftar magang — Menunggu Review, Diterima, atau Ditolak.
+                Kelola status pendaftar magang — Menunggu Review, Pending, Diterima, atau Ditolak.
             @elseif($mode === 'pemagang')
                 Pantau pemagang aktif, yang sudah selesai, dan yang keluar.
             @else
@@ -408,13 +415,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <svg class="h-4 w-4 shrink-0 text-[#4B5F5A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        <input id="intern-search" type="search" placeholder="Cari nama / universitas..."
+                        <input id="intern-search" type="search" placeholder="Cari nama / universitas / brand..."
                             class="w-full border-0 bg-transparent text-[13px] text-[#1B3A34] outline-none placeholder:text-[#4B5F5A]" />
                     </label>
                 </div>
             </div>
 
-            {{-- Baris 2: Filter Tambahan (Basis Tahun, Tahun & Follow-Up) --}}
+            {{-- Baris 2: Filter Tambahan (Basis Tahun, Tahun, Brand & Follow-Up) --}}
             @php
                 $activeYearBasis = $yearBasis ?? request('year_basis', 'created_at');
                 if (!in_array($activeYearBasis, ['created_at', 'start_date'], true)) {
@@ -422,24 +429,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 $yearLabelPrefix = $activeYearBasis === 'start_date' ? 'Tahun Mulai' : 'Tahun Daftar';
             @endphp
-            <div class="flex flex-col sm:flex-row items-center gap-3 w-full">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
                 {{-- Filter Basis Tahun (Definisi Eksplisit) --}}
-                <div class="relative w-full sm:w-52 lg:w-56 shrink-0">
+                <div class="relative w-full" x-data="{ showBasisTip: false }">
                     <div class="relative flex items-center">
-                        <select id="year-basis-filter" aria-label="Basis Filter Tahun" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-3.5 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
-                            <option value="created_at" {{ $activeYearBasis === 'created_at' ? 'selected' : '' }}>Basis: Tahun Pendaftaran</option>
-                            <option value="start_date" {{ $activeYearBasis === 'start_date' ? 'selected' : '' }}>Basis: Tahun Mulai Magang</option>
+                        <select id="year-basis-filter" aria-label="Basis Filter Tahun" title="Pilih acuan filter tahun: Tanggal Pendaftaran Akun (created_at) atau Tanggal Mulai Magang (start_date)" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-3.5 pr-14 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="created_at" title="Memfilter berdasarkan tanggal siswa mengisi formulir pendaftaran (created_at)" {{ $activeYearBasis === 'created_at' ? 'selected' : '' }}>Basis: Tahun Pendaftaran</option>
+                            <option value="start_date" title="Memfilter berdasarkan tanggal siswa mulai aktif magang (start_date)" {{ $activeYearBasis === 'start_date' ? 'selected' : '' }}>Basis: Tahun Mulai Magang</option>
                         </select>
-                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
-                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="6 9 12 15 18 9"/>
-                            </svg>
+                        <div class="absolute right-2.5 flex items-center gap-1.5">
+                            <button type="button" @mouseenter="showBasisTip = true" @mouseleave="showBasisTip = false" @click="showBasisTip = !showBasisTip" class="text-[#4B5F5A] hover:text-[#2D8659] focus:outline-none transition p-0.5" title="Penjelasan fungsi filter basis tahun">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                </svg>
+                            </button>
+                            <div class="pointer-events-none text-[#4B5F5A]">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="6 9 12 15 18 9"/>
+                                </svg>
+                            </div>
                         </div>
+                    </div>
+
+                    {{-- Tooltip Popover Penjelasan Basis --}}
+                    <div x-show="showBasisTip" x-cloak @click.away="showBasisTip = false" class="absolute z-30 left-0 top-full mt-1.5 w-72 rounded-[9px] border border-[#DCE7E1] bg-[#1B3A34] text-white p-3 text-[11px] leading-relaxed shadow-lg">
+                        <p class="font-bold text-[#E5F5EC] mb-1 flex items-center gap-1">
+                            <svg class="h-3.5 w-3.5 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                            </svg>
+                            Panduan Basis Filter Tahun:
+                        </p>
+                        <p class="mb-1.5 text-gray-200">Menentukan acuan tanggal yang dipakai saat Anda memilih filter tahun di sebelahnya:</p>
+                        <ul class="space-y-1 text-gray-300">
+                            <li>• <strong class="text-white">Tahun Pendaftaran:</strong> Mengacu pada tanggal akun/berkas didaftarkan (<code class="text-[10px] text-emerald-300">created_at</code>).</li>
+                            <li>• <strong class="text-white">Tahun Mulai Magang:</strong> Mengacu pada tanggal mulai bertugas (<code class="text-[10px] text-emerald-300">start_date</code>).</li>
+                        </ul>
+                        <p class="mt-2 text-[10.5px] text-[#A5D6A7] border-t border-white/10 pt-1.5">
+                            * Efektif saat Anda memilih angka tahun tertentu (bukan "Semua Tahun").
+                        </p>
                     </div>
                 </div>
 
                 {{-- Filter Tahun --}}
-                <div class="relative w-full sm:w-48 lg:w-52 shrink-0">
+                <div class="relative w-full">
                     <div class="relative flex items-center">
                         <select id="year-filter" aria-label="Filter Tahun" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
                             <option value="">Semua {{ $yearLabelPrefix }}</option>
@@ -463,8 +495,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
 
+                {{-- Filter Brand --}}
+                <div class="relative w-full">
+                    <div class="relative flex items-center">
+                        <select id="brand-filter" aria-label="Filter Brand" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
+                            <option value="">Semua Brand</option>
+                            @foreach($brands ?? [] as $b)
+                                <option value="{{ $b->id }}" {{ (string)request('brand_id', request('brand', '')) === (string)$b->id ? 'selected' : '' }}>{{ $b->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="pointer-events-none absolute left-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                <polyline points="9 22 9 12 15 12 15 22"/>
+                            </svg>
+                        </div>
+                        <div class="pointer-events-none absolute right-3 flex items-center text-[#4B5F5A]">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- Filter Follow-Up --}}
-                <div class="relative w-full flex-1">
+                <div class="relative w-full">
                     <div class="relative flex items-center">
                         <select id="followup-filter" class="w-full appearance-none rounded-[9px] border border-[#DCE7E1] bg-white pl-9 pr-8 py-2.5 text-[12.5px] font-semibold text-[#1B3A34] shadow-2xs outline-none transition focus:border-[#2D8659] focus:ring-1 focus:ring-[#2D8659]">
                             <option value="">Semua Status Follow-Up</option>
@@ -485,6 +540,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             </div>
+
+            {{-- Helper note informasi filter tahun --}}
+            <div class="flex items-center gap-1.5 text-[11.5px] text-[#4B5F5A] px-0.5">
+                <svg class="h-3.5 w-3.5 shrink-0 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>
+                    <strong>Petunjuk:</strong> Filter <em>Basis</em> menentukan acuan tanggal (waktu submit pendaftaran vs. waktu mulai aktif magang) saat Anda memilih angka tahun di sebelahnya.
+                </span>
+            </div>
         </div>
 
         {{-- Tabel --}}
@@ -503,7 +568,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tbody id="rows" class="divide-y divide-[#DCE7E1] bg-white">
                     <tr>
                         <td colspan="6" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
-                            Memuat data pemagang...
+                            <i class="fas fa-circle-notch fa-spin mr-2 text-[#2D8659]"></i> Memuat data pemagang...
                         </td>
                     </tr>
                 </tbody>
@@ -561,13 +626,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Status meta ────────────────────────────────────────────────────────────
     const STATUS_META = {
-        waiting:   { label: 'Menunggu Review', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
-        pending:   { label: 'Pending',         cls: 'bg-amber-100 text-amber-800 border border-amber-300' },
+        waiting:   { label: 'Menunggu Review', cls: 'bg-teal-50 text-teal-800 border border-teal-200' },
+        pending:   { label: 'Pending',         cls: 'bg-amber-50 text-amber-800 border border-amber-300' },
         accepted:  { label: 'Diterima',        cls: 'bg-[#E8F5E9] text-[#1F5F3F] border border-[#A5D6A7]' },
         active:    { label: 'Magang Aktif',    cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
-        completed: { label: 'Selesai',         cls: 'bg-slate-100 text-slate-700 border border-slate-300' },
-        rejected:  { label: 'Ditolak',         cls: 'bg-red-50 text-red-700 border border-red-200' },
-        exited:    { label: 'Keluar',          cls: 'bg-red-50 text-red-700 border border-red-200' },
+        completed: { label: 'Selesai',         cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
+        rejected:  { label: 'Ditolak',         cls: 'bg-rose-50 text-rose-700 border border-rose-200' },
+        exited:    { label: 'Keluar',          cls: 'bg-slate-100 text-slate-700 border border-slate-300' },
     };
 
     // ── Toast ──────────────────────────────────────────────────────────────────
@@ -676,6 +741,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pendaftar' && status === 'accepted') {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -692,6 +762,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pemagang' && (status === 'active' || status === 'accepted')) {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -701,6 +776,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pemagang' && status === 'completed') {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -746,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Build status cell (badge + select) ──────────────────────────────────────
     // Filter opsi dropdown sesuai mode
     function allowedStatuses() {
-        if (MODE === 'pendaftar') return ['waiting', 'accepted', 'rejected'];
+        if (MODE === 'pendaftar') return ['waiting', 'pending', 'accepted', 'rejected'];
         if (MODE === 'pemagang')  return ['accepted', 'active', 'completed', 'exited'];
         return Object.keys(STATUS_META);
     }
@@ -761,9 +841,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let followupHtml = '';
         if (it.followup_status_label) {
+            const fuStyle = it.followup_status_style ? `style="${it.followup_status_style}"` : '';
             followupHtml = `
             <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium ${it.followup_status_class || 'bg-slate-100 text-slate-700'}">
+                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold border ${it.followup_status_class || 'bg-slate-100 text-slate-700'}" ${fuStyle}>
                     ${it.followup_status_label}
                 </span>
                 <button type="button" class="js-edit-followup text-[#4B5F5A] hover:text-[#1F5F3F] transition p-0.5 rounded" data-id="${it.id}" title="Ubah status follow-up">
@@ -773,7 +854,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (cur === 'accepted') {
             followupHtml = `
             <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold border" style="background-color: #FFFFFF; color: #1F2937; border-color: #CBD5E1;">
                     Belum di-follow-up
                 </span>
                 <button type="button" class="js-edit-followup text-[#4B5F5A] hover:text-[#1F5F3F] transition p-0.5 rounded" data-id="${it.id}" title="Atur status follow-up">
@@ -817,9 +898,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Apply badge setelah update ───────────────────────────────────────────────
     function applyBadge(badgeEl, newVal) {
+        if (!badgeEl) return;
         const m = STATUS_META[newVal] || { label: newVal, cls: 'bg-gray-100 text-gray-700 border border-gray-300' };
         badgeEl.className = `inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${m.cls}`;
         badgeEl.textContent = m.label;
+    }
+
+    // ── Status loading visual per baris pemagang ─────────────────────────────────
+    function setRowStatusLoading(id, isLoading) {
+        const badge  = document.getElementById(`badge-${id}`);
+        const select = document.querySelector(`.js-status-select[data-id="${id}"]`);
+        const row    = document.querySelector(`tr[data-row-id="${id}"]`);
+
+        if (isLoading) {
+            if (badge) {
+                badge.className = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs';
+                badge.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px] text-amber-600"></i> Memperbarui...';
+            }
+            if (select) {
+                select.disabled = true;
+                select.classList.add('opacity-60', 'cursor-wait');
+            }
+            if (row) {
+                row.classList.add('bg-amber-50/20');
+            }
+        } else {
+            if (select) {
+                select.disabled = false;
+                select.classList.remove('opacity-60', 'cursor-wait');
+            }
+            if (row) {
+                row.classList.remove('bg-amber-50/20');
+            }
+        }
     }
 
     // ── Render rows ──────────────────────────────────────────────────────────────
@@ -845,7 +956,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const institution  = fmtStr(it.institution_name || '-');
             const division     = fmtStr(it.internship_interest || '-');
             const createdAt    = fmtDate(it.created_at);
-            const searchText   = `${it.fullname || ''} ${it.email || ''} ${institution} ${division}`.toLowerCase();
+            const brand        = fmtStr(it.brand_name || it.brand || '');
+            const searchText   = `${it.fullname || ''} ${it.email || ''} ${institution} ${division} ${brand}`.toLowerCase();
 
             return `
             <tr data-row-id="${it.id}" data-status="${status}"
@@ -913,6 +1025,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeBrandModal(revertSelect = false) {
         brandModal.classList.add('hidden');
+        if (brandModalConfirm) {
+            brandModalConfirm.disabled = false;
+            brandModalConfirm.innerHTML = 'Konfirmasi & Simpan';
+        }
         if (revertSelect && _brandPendingId !== null) {
             // Kembalikan select ke nilai lama
             const item = pending.get(_brandPendingId);
@@ -946,17 +1062,32 @@ document.addEventListener('DOMContentLoaded', () => {
             pending.get(itemId).brand = brand;
         }
 
+        const origConfirmHtml = brandModalConfirm.innerHTML;
+        brandModalConfirm.disabled = true;
+        brandModalConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
+
         closeBrandModal(false);
 
         // Ambil item dan simpan langsung
         const savedItem = pending.get(itemId);
         if (savedItem) {
-            saveOneItem(savedItem);
+            saveOneItem(savedItem).finally(() => {
+                if (brandModalConfirm) {
+                    brandModalConfirm.disabled = false;
+                    brandModalConfirm.innerHTML = origConfirmHtml;
+                }
+            });
+        } else {
+            if (brandModalConfirm) {
+                brandModalConfirm.disabled = false;
+                brandModalConfirm.innerHTML = origConfirmHtml;
+            }
         }
     });
 
-    // Simpan satu item pending (accept + brand)
+    // Simpan satu item pending (accept + brand atau update status langsung)
     async function saveOneItem(item) {
+        setRowStatusLoading(item.id, true);
         try {
             const fd = new FormData();
             fd.append('_method', 'PATCH');
@@ -987,14 +1118,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = item.select.closest('tr[data-row-id]');
             if (row) refreshGenerateButtons(row, item.id, item.to);
 
-            pushToast(`${item.name} diterima${item.brand ? ` untuk brand ${item.brand}` : ''}.`, 'success');
+            // Jika status baru tidak ada di scope mode ini → hilangkan baris dengan transisi
+            const allowedInCurrentMode = allowedStatuses();
+            if (!allowedInCurrentMode.includes(item.to) && row) {
+                row.style.transition = 'opacity 0.5s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 500);
+            }
+
+            const statusLabel = STATUS_META[item.to]?.label || item.to;
+            pushToast(`Status ${item.name} berhasil diperbarui ke "${statusLabel}"${item.brand ? ` (Brand: ${item.brand})` : ''}.`, 'success');
         } catch(e) {
             pushToast(`Gagal menyimpan: ${e.message}`, 'error');
-            // Kembalikan select ke nilai lama
+            // Kembalikan select dan badge ke nilai lama
             item.select.value = item.from;
             markSelect(item.select, false);
+            applyBadge(item.badge, item.from);
             pending.delete(item.id);
             updatePendingBar();
+        } finally {
+            setRowStatusLoading(item.id, false);
         }
     }
 
@@ -1190,7 +1333,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!confirm(`Aktifkan "${name}" sebagai pemagang aktif?\nStatus akan berubah dari Diterima → Aktif dan data akan pindah ke halaman Data Pemagang.`)) return;
 
                 btn.disabled = true;
-                btn.textContent = 'Memproses...';
+                const origBtnHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Memproses...';
+                setRowStatusLoading(id, true);
+                const badge = document.getElementById(`badge-${id}`);
+                if (badge) {
+                    badge.className = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs';
+                    badge.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px] text-emerald-600"></i> Mengaktifkan...';
+                }
 
                 try {
                     const res = await fetch(url, {
@@ -1217,7 +1367,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     pushToast(`Gagal mengaktifkan: ${err.message}`, 'error');
                     btn.disabled = false;
-                    btn.textContent = 'Aktifkan';
+                    btn.innerHTML = origBtnHtml || 'Aktifkan';
+                    setRowStatusLoading(id, false);
+                    if (badge && data) applyBadge(badge, data.internship_status || 'accepted');
                 }
             });
         });
@@ -1258,11 +1410,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const followupModalOverlay = document.getElementById('followupModalOverlay');
     let _followupPendingData = null;
 
+    const FOLLOWUP_STYLES = @json(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_STYLES);
+    const FOLLOWUP_LABELS = @json(\App\Models\InternshipRegistration::FOLLOWUP_STATUS_LABELS);
+
+    function updateFollowupPreview() {
+        const v = followupStatusSelect?.value;
+        const previewBox = document.getElementById('followupPreviewBox');
+        const previewBadge = document.getElementById('followupPreviewBadge');
+        if (v && FOLLOWUP_STYLES[v]) {
+            if (previewBadge) {
+                previewBadge.style.cssText = FOLLOWUP_STYLES[v];
+                previewBadge.textContent = FOLLOWUP_LABELS[v] || v;
+            }
+            previewBox?.classList.remove('hidden');
+            previewBox?.classList.add('flex');
+        } else {
+            previewBox?.classList.add('hidden');
+            previewBox?.classList.remove('flex');
+        }
+    }
+
+    if (followupStatusSelect) {
+        followupStatusSelect.addEventListener('change', updateFollowupPreview);
+    }
+
     function openFollowupModal(data) {
         _followupPendingData = data;
         const sub = document.getElementById('followupModalSubtitle');
         if (sub) sub.textContent = `Pendaftar: ${data.fullname || 'Tanpa nama'}`;
         if (followupStatusSelect) followupStatusSelect.value = data.followup_status || '';
+        updateFollowupPreview();
         if (followupReasonInput) followupReasonInput.value = '';
         if (followupModalAlert) {
             followupModalAlert.classList.add('hidden');
@@ -1294,6 +1471,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             followupModalConfirm.disabled = true;
+            const origFollowupHtml = followupModalConfirm.innerHTML;
+            followupModalConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
             if (followupModalAlert) followupModalAlert.classList.add('hidden');
 
             try {
@@ -1327,6 +1506,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } finally {
                 followupModalConfirm.disabled = false;
+                followupModalConfirm.innerHTML = origFollowupHtml;
             }
         });
     }
@@ -2436,6 +2616,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('editForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const origSubmitHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan Perubahan...';
+            }
             const fd  = new FormData(e.target);
             const url = `${ADMIN_INTERNS_BASE}/${it.id}`;
             fd.append('_method', 'PATCH');
@@ -2461,6 +2647,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadPage(window.__CURRENT_PAGE || 1);
             } catch (err) {
                 pushToast(err.message, 'error');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = origSubmitHtml;
+                }
             }
         });
 
@@ -2658,8 +2849,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const items = Array.from(pending.values());
+        const origSaveBtnHtml = saveAllBtn.innerHTML;
         saveAllBtn.disabled = true;
         discardBtn.disabled = true;
+        saveAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Menyimpan...';
+
+        // Tampilkan visual loading pada setiap baris yang sedang disimpan
+        items.forEach(item => {
+            setRowStatusLoading(item.id, true);
+        });
 
         const tasks = items.map(item => async () => {
             const fd = new FormData();
@@ -2682,12 +2880,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Tentukan status yang boleh tampil di mode ini
             const allowedInCurrentMode = allowedStatuses();
 
-            results.forEach((res) => {
-                if (res instanceof Error) { fail++; return; }
+            results.forEach((res, index) => {
+                const currentItem = items[index];
+                if (res instanceof Error) {
+                    fail++;
+                    if (currentItem) {
+                        setRowStatusLoading(currentItem.id, false);
+                        applyBadge(currentItem.badge, currentItem.from);
+                    }
+                    return;
+                }
                 ok++;
                 res.select.dataset.current = res.to;
                 markSelect(res.select, false);
                 applyBadge(res.badge, res.to);
+                setRowStatusLoading(res.id, false);
                 pending.delete(res.id);
 
                 const rowObj = window.rowData.get(res.id);
@@ -2710,11 +2917,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             updatePendingBar();
-            if (ok)   pushToast(`${ok} perubahan berhasil disimpan.`);
-            if (fail) pushToast(`${fail} perubahan gagal disimpan. Coba lagi.`, 'error');
+            if (ok)   pushToast(`${ok} perubahan status berhasil disimpan.`);
+            if (fail) pushToast(`${fail} perubahan status gagal disimpan. Coba lagi.`, 'error');
         } catch (e) {
             pushToast('Gagal menyimpan perubahan.', 'error');
         } finally {
+            items.forEach(item => {
+                setRowStatusLoading(item.id, false);
+            });
+            saveAllBtn.innerHTML = origSaveBtnHtml;
             saveAllBtn.disabled = pending.size === 0;
             discardBtn.disabled = false;
         }
@@ -2728,6 +2939,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const followupVal  = (document.getElementById('followup-filter')?.value || '').trim();
         const yearVal      = (document.getElementById('year-filter')?.value || '').trim();
         const yearBasisVal = (document.getElementById('year-basis-filter')?.value || 'created_at').trim();
+        const brandVal     = (document.getElementById('brand-filter')?.value || '').trim();
         const params = new URLSearchParams({
             scope:      activeFilter,
             mode:       MODE,
@@ -2746,6 +2958,11 @@ document.addEventListener('DOMContentLoaded', () => {
             params.set('followup_status', followupVal);
         }
 
+        // Filter brand
+        if (brandVal) {
+            params.set('brand_id', brandVal);
+        }
+
         // Hanya tambah q jika ada isi
         if (searchQuery) {
             params.set('q', searchQuery);
@@ -2754,7 +2971,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         rowsEl.innerHTML = `
             <tr><td colspan="6" class="px-5 py-10 text-center text-sm text-[#4B5F5A]">
-                Memuat data pemagang...
+                <i class="fas fa-circle-notch fa-spin mr-2 text-[#2D8659]"></i> Memuat data pemagang...
             </td></tr>`;
 
         try {
@@ -2826,6 +3043,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const followupFilterEl = document.getElementById('followup-filter');
     if (followupFilterEl) {
         followupFilterEl.addEventListener('change', () => loadPage(1));
+    }
+
+    const brandFilterEl = document.getElementById('brand-filter');
+    if (brandFilterEl) {
+        const initialBrand = new URLSearchParams(location.search).get('brand_id') || new URLSearchParams(location.search).get('brand');
+        if (initialBrand) brandFilterEl.value = initialBrand;
+        brandFilterEl.addEventListener('change', () => loadPage(1));
     }
 
     loadPage(Number(new URLSearchParams(location.search).get('page') || 1));

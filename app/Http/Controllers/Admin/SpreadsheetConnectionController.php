@@ -15,6 +15,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 
 class SpreadsheetConnectionController extends Controller
 {
@@ -30,6 +31,37 @@ class SpreadsheetConnectionController extends Controller
         $connections = $this->service->getAllConnections();
 
         return view('admin.spreadsheet-connections.index', compact('connections'));
+    }
+
+    /**
+     * Buat atau daftarkan koneksi registrasi spreadsheet baru khusus untuk brand tertentu.
+     */
+    public function createBrandConnection(Request $request)
+    {
+        $validated = $request->validate([
+            'brand_id' => 'required|exists:brands,id',
+        ]);
+
+        $brand = \App\Models\Brand::findOrFail($validated['brand_id']);
+
+        $connection = SpreadsheetConnection::firstOrCreate(
+            [
+                'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                'brand_id'       => $brand->id,
+            ],
+            [
+                'display_name'      => "Spreadsheet Pendaftaran ({$brand->name})",
+                'is_enabled'        => false,
+                'connection_status' => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+            ]
+        );
+
+        // Pastikan skema kanonikal 2026 langsung tersedia untuk brand baru
+        app(\App\Services\SpreadsheetConnectionService::class)->ensureCanonicalSchemaForConnection($connection);
+
+        return redirect()
+            ->route('admin.spreadsheet-connections.edit', $connection)
+            ->with('success', "Koneksi spreadsheet untuk brand '{$brand->name}' berhasil disiapkan. Silakan atur URL Spreadsheet dan Google Drive Folder.");
     }
 
     /**
@@ -148,12 +180,33 @@ class SpreadsheetConnectionController extends Controller
      */
     public function update(Request $request, SpreadsheetConnection $spreadsheetConnection)
     {
+        // connection_key bersifat tetap dari record yang sedang diedit, bukan input bebas pengguna.
+        // Validasi memakai connection_key sebagai kolom unik agar kombinasi brand_id NULL pun diperiksa.
+        $request->merge(['_connection_key_scope' => $spreadsheetConnection->connection_key]);
+        $targetBrandId = array_key_exists('brand_id', $request->all())
+            ? $request->input('brand_id')
+            : $spreadsheetConnection->brand_id;
+        $scopeUniqueRule = Rule::unique('spreadsheet_connections', 'connection_key')
+            ->where(function ($query) use ($targetBrandId) {
+                if ($targetBrandId === null || $targetBrandId === '') {
+                    $query->whereNull('brand_id');
+                } else {
+                    $query->where('brand_id', (int) $targetBrandId);
+                }
+            })
+            ->ignore($spreadsheetConnection->id);
+
         $validated = $request->validate([
+            '_connection_key_scope'     => ['required', 'string', $scopeUniqueRule],
             'display_name'             => 'required|string|max:255',
             'spreadsheet_url'          => 'nullable|string|max:500',
             'apps_script_endpoint_url' => 'nullable|url|max:500',
             'drive_folder_url'         => 'nullable|string|max:500',
+            'brand_id'                 => 'nullable|integer|exists:brands,id',
+        ], [
+            '_connection_key_scope.unique' => 'Brand tujuan sudah memiliki koneksi spreadsheet dengan jenis yang sama.',
         ]);
+        unset($validated['_connection_key_scope']);
 
         try {
             $this->service->updateConnection($spreadsheetConnection, $validated, Auth::user());

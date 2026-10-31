@@ -30,6 +30,7 @@ class SpreadsheetConnection extends Model
     protected $fillable = [
         'public_uuid',
         'connection_key',
+        'brand_id',
         'display_name',
         'spreadsheet_url',
         'spreadsheet_id',
@@ -47,6 +48,11 @@ class SpreadsheetConnection extends Model
         'created_by',
         'updated_by',
     ];
+
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
+    }
 
     protected $casts = [
         'is_enabled' => 'boolean',
@@ -89,6 +95,26 @@ class SpreadsheetConnection extends Model
     public function isSpreadsheetConnected(): bool
     {
         return !empty($this->spreadsheet_url) && !empty($this->spreadsheet_id);
+    }
+
+    /**
+     * Memeriksa apakah koneksi registrasi siap digunakan untuk operasi sinkronisasi data.
+     */
+    public function isRegistrationReady(): bool
+    {
+        return (bool) $this->is_enabled
+            && $this->isSpreadsheetConnected()
+            && $this->connection_status !== self::STATUS_NOT_CONFIGURED;
+    }
+
+    /**
+     * Memeriksa apakah seluruh integrasi pendaftaran (baik Spreadsheet maupun Google Drive)
+     * sudah terhubung penuh dan siap dibuka untuk calon pemagang.
+     */
+    public function isFullRegistrationReady(): bool
+    {
+        return (bool) $this->is_enabled
+            && !$this->hasUnconnectedLinks();
     }
 
     /**

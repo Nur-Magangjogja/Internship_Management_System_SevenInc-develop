@@ -312,6 +312,18 @@ class InternController extends Controller
      */
     private function table(Request $request, $query, string $title, string $scope)
     {
+        // Filter brand jika disediakan
+        if ($request->filled('brand_id') || $request->filled('brand')) {
+            $brandInput = $request->filled('brand_id') ? $request->get('brand_id') : $request->get('brand');
+            if (is_numeric($brandInput)) {
+                $query->where('brand_id', (int) $brandInput);
+            } else {
+                $query->whereHas('brandRel', function ($bq) use ($brandInput) {
+                    $bq->where('name', $brandInput)->orWhere('code', $brandInput);
+                });
+            }
+        }
+
         // Jika ada pencarian, hanya ambil data tanpa pagination
         if ($request->filled('q')) {
             $s = trim($request->get('q'));
@@ -321,6 +333,10 @@ class InternController extends Controller
                 ->orWhere('student_id', 'like', "%{$s}%")
                 ->orWhereHas('institution', function ($q) use ($s) {
                     $q->where('name', 'like', "%{$s}%");
+                })
+                ->orWhereHas('brandRel', function ($bq) use ($s) {
+                    $bq->where('name', 'like', "%{$s}%")
+                       ->orWhere('code', 'like', "%{$s}%");
                 });
             });
 
@@ -521,7 +537,7 @@ class InternController extends Controller
             // Status & Brand (dikelola admin)
             'internship_status'      => 'nullable|in:waiting,active,completed,exited,pending,accepted,rejected',
             'brand'                  => 'nullable|string|max:100',
-            'brand_id'               => 'nullable',
+            'brand_id'               => 'nullable|integer|exists:brands,id',
             'reason'                 => 'nullable|string|max:500',
             'correction_reason'      => 'nullable|string|max:500',
         ]);
@@ -768,9 +784,12 @@ class InternController extends Controller
         if (array_key_exists('internship_interest', $validatedData)) {
             if (!empty($validatedData['internship_interest'])) {
                 $divId = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($validatedData['internship_interest']);
-                if ($divId) {
-                    $validatedData['division_id'] = $divId;
+                if (!$divId) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'internship_interest' => 'Divisi yang dipilih tidak valid atau tidak aktif.'
+                    ]);
                 }
+                $validatedData['division_id'] = $divId;
             } else {
                 $validatedData['division_id'] = null;
             }
@@ -778,12 +797,39 @@ class InternController extends Controller
         }
         if (array_key_exists('division_id', $validatedData)) {
             if (!empty($validatedData['division_id'])) {
-                $divId = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($validatedData['division_id']);
-                if ($divId) {
-                    $validatedData['division_id'] = $divId;
+                if (!is_scalar($validatedData['division_id'])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'division_id' => 'Format divisi yang dikirim tidak valid.'
+                    ]);
                 }
+                $divId = \App\Http\Controllers\Pemagang\RegistrationController::resolveDivisionId($validatedData['division_id']);
+                if (!$divId) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'division_id' => 'Divisi yang dipilih tidak valid atau tidak aktif.'
+                    ]);
+                }
+                $validatedData['division_id'] = $divId;
             } else {
                 $validatedData['division_id'] = null;
+            }
+        }
+
+        // Validasi konsistensi jika brand (string) dan brand_id (integer) keduanya dikirim
+        if ($request->has('brand') && $request->has('brand_id')) {
+            $brandStr = trim((string) $request->input('brand'));
+            $brandIdInput = $request->input('brand_id');
+            if (!empty($brandStr) && !empty($brandIdInput)) {
+                $bById = \App\Models\Brand::find($brandIdInput);
+                $bByName = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandStr)])
+                    ->orWhereRaw('LOWER(code) = ?', [strtolower($brandStr)])
+                    ->first();
+                if ($bById && $bByName && $bById->id !== $bByName->id) {
+                    $errMsg = 'Input brand tidak konsisten: nama brand dan ID brand tidak merujuk ke brand yang sama.';
+                    if ($request->expectsJson() || $request->ajax()) {
+                        return response()->json(['message' => $errMsg], 422);
+                    }
+                    return back()->withInput()->with('error', $errMsg);
+                }
             }
         }
 
@@ -812,6 +858,34 @@ class InternController extends Controller
                 }
             } else {
                 $validatedData['brand_id'] = null;
+            }
+        }
+
+        $divisionWasSubmitted = array_key_exists('division_id', $validatedData);
+        $targetBrandChanged = array_key_exists('brand_id', $validatedData)
+            && (int) ($validatedData['brand_id'] ?? 0) !== (int) ($intern->brand_id ?? 0);
+        if ($divisionWasSubmitted || $targetBrandChanged) {
+            $targetBrandId = array_key_exists('brand_id', $validatedData)
+                ? $validatedData['brand_id']
+                : $intern->brand_id;
+            $targetDivisionId = $divisionWasSubmitted
+                ? $validatedData['division_id']
+                : $intern->division_id;
+
+            if (!empty($targetDivisionId)) {
+                $targetBrand = $targetBrandId ? \App\Models\Brand::find($targetBrandId) : null;
+                if (!$targetBrand) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'brand_id' => 'Tetapkan brand terlebih dahulu sebelum menentukan divisi pemagang.'
+                    ]);
+                }
+
+                $brandDivisionService = app(\App\Services\BrandDivisionService::class);
+                if (!$brandDivisionService->isDivisionAllowed($targetBrand, (int) $targetDivisionId)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'division_id' => 'Divisi yang dipilih tidak dibuka untuk brand ini.'
+                    ]);
+                }
             }
         }
 
@@ -927,6 +1001,11 @@ class InternController extends Controller
             unset($validatedData['religion']);
         }
 
+        // Deteksi pemindahan brand untuk sinkronisasi dua arah spreadsheet
+        $oldBrandId = $intern->brand_id;
+        $targetBrandId = array_key_exists('brand_id', $validatedData) ? $validatedData['brand_id'] : $intern->brand_id;
+        $isBrandTransferred = $oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId;
+
         // Jangan timpa internship_status lewat update biasa jika tidak dikirim
         if (isset($validatedData['internship_status']) && $validatedData['internship_status'] !== $intern->internship_status) {
             $oldStatus = $intern->internship_status;
@@ -934,18 +1013,39 @@ class InternController extends Controller
             $reason    = $request->input('reason') ?: ($request->input('correction_reason') ?: 'Koreksi data pemagang oleh administrator.');
             $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
 
+            $targetBrandId = array_key_exists('brand_id', $validatedData) ? $validatedData['brand_id'] : $intern->brand_id;
+            if ($newStatus === IR::STATUS_ACCEPTED && empty($targetBrandId)) {
+                $errMsg = 'Pemagang tidak dapat diterima tanpa brand yang ditentukan.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['message' => $errMsg], 422);
+                }
+                return back()->withInput()->with('error', $errMsg);
+            }
+
             try {
-                $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+                \Illuminate\Support\Facades\DB::transaction(function () use ($lifecycle, $intern, $newStatus, $reason, &$validatedData) {
+                    $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+
+                    unset($validatedData['internship_status']);
+                    $intern->fill($validatedData)->save();
+                    $this->syncPemagangRole($intern);
+
+                    // Sinkronisasi brand_id ke akun user jika diubah oleh admin / HR staff (konsisten pada alur perubahan status)
+                    if (array_key_exists('brand_id', $validatedData) && $intern->user) {
+                        $intern->user->update(['brand_id' => $validatedData['brand_id']]);
+                    }
+                });
             } catch (\InvalidArgumentException $e) {
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json(['message' => $e->getMessage()], 422);
                 }
                 return back()->withInput()->with('error', $e->getMessage());
+            } catch (\Throwable $e) {
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['message' => 'Gagal memperbarui status dan data pemagang: ' . $e->getMessage()], 500);
+                }
+                return back()->withInput()->with('error', 'Gagal memperbarui status dan data pemagang: ' . $e->getMessage());
             }
-
-            unset($validatedData['internship_status']);
-            $intern->fill($validatedData)->save();
-            $this->syncPemagangRole($intern);
             
             // Buat membercard hanya saat status active atau completed
             if (in_array($intern->internship_status, [IR::STATUS_ACTIVE, IR::STATUS_COMPLETED])) {
@@ -961,15 +1061,34 @@ class InternController extends Controller
 
             // Sinkronkan data ke Absen Djuragan saat status magang diperbarui
             if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
-                \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                dispatch(function () use ($intern, $rawBrand) {
+                    try {
+                        \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on intern update #{$intern->id}: " . $e->getMessage());
+                    }
+                })->afterResponse();
             }
         } else {
-            unset($validatedData['internship_status']);
-            $intern->fill($validatedData)->save();
+            \Illuminate\Support\Facades\DB::transaction(function () use ($intern, &$validatedData) {
+                unset($validatedData['internship_status']);
+                $intern->fill($validatedData)->save();
+
+                // Sinkronisasi brand_id ke akun user jika diubah oleh admin / HR staff
+                if (array_key_exists('brand_id', $validatedData) && $intern->user) {
+                    $intern->user->update(['brand_id' => $validatedData['brand_id']]);
+                }
+            });
 
             // Jika status tidak berubah tapi pemagang sudah accepted / active, kirim pembaruan data (tanggal/divisi/brand) ke Absen Djuragan
             if (in_array($intern->internship_status, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE])) {
-                \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                dispatch(function () use ($intern, $rawBrand) {
+                    try {
+                        \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $rawBrand, $intern->internship_status);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on intern update #{$intern->id}: " . $e->getMessage());
+                    }
+                })->afterResponse();
             }
         }
 
@@ -1041,16 +1160,22 @@ class InternController extends Controller
             \Illuminate\Support\Facades\Log::warning("Custom answers save error on intern #{$intern->id}: " . $caErr->getMessage());
         }
 
-        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet (secara langsung agar baris dan kolom terhubung real-time)
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
-            if ($rowSync) {
-                $syncEngine->processSyncRecord($rowSync, force: true, allowPendaftar: true);
+        // Sinkronkan pembaruan data pemagang dan mutasi brand ke Google Spreadsheet di latar belakang (afterResponse)
+        dispatch(function () use ($intern, $oldBrandId, $targetBrandId, $isBrandTransferred) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                if ($isBrandTransferred) {
+                    $syncEngine->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
+                } else {
+                    $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                    if ($rowSync) {
+                        $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                    }
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
             }
-        } catch (\Throwable $sheetErr) {
-            \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on intern update #{$intern->id}: " . $sheetErr->getMessage());
-        }
+        })->afterResponse();
 
         return response()->json($intern->fresh(['user', 'division', 'institution', 'brandRel', 'city', 'facultyRel', 'studyProgramRel']), 200);
     }
@@ -1083,6 +1208,19 @@ class InternController extends Controller
 
         // Soft delete pendaftaran (history-safe, tidak memicu MySQL cascade)
         $intern->delete();
+
+        // Sinkronkan pembaruan kolom KET ("Dihapus ke Arsip") ke Google Spreadsheet jika sebelumnya pernah tersinkron (afterResponse)
+        dispatch(function () use ($intern, $internId) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                if ($rowSync) {
+                    $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on delete #{$internId}: " . $sheetErr->getMessage());
+            }
+        })->afterResponse();
 
         \App\Services\ActivityLogger::log(
             action: 'intern_registration_deleted',
@@ -1128,6 +1266,19 @@ class InternController extends Controller
         $internName = $intern->fullname;
         $intern->restore();
 
+        // Sinkronkan pemulihan status ke Google Spreadsheet jika sebelumnya pernah tersinkron (afterResponse)
+        dispatch(function () use ($intern) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                if ($rowSync) {
+                    $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on restore #{$intern->id}: " . $sheetErr->getMessage());
+            }
+        })->afterResponse();
+
         // PENTING: Restore registration tidak memulihkan User atau mengubah role/status akun.
         // Account state dan registration lifecycle tetap terpisah.
 
@@ -1168,13 +1319,26 @@ class InternController extends Controller
                 $user->role = 'pemagang';
                 $user->save();
             }
-        } elseif (in_array($intern->internship_status, [IR::STATUS_EXITED, IR::STATUS_REJECTED])) {
-            // Hanya cabut role bila status keluar atau ditolak DAN pengguna tidak memiliki riwayat completed lainnya (bukan alumni)
+        } elseif (in_array($intern->internship_status, [
+            IR::STATUS_EXITED,
+            IR::STATUS_REJECTED,
+            IR::STATUS_WAITING,
+            IR::STATUS_PENDING,
+            IR::STATUS_NEW,
+        ])) {
+            // Cabut role pemagang bila status keluar, ditolak, atau dikembalikan/rollback ke waiting/pending
             $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
             if (!$lifecycle->shouldRetainPemagangRole($user)) {
                 if (mb_strtolower($user->role ?? '') === 'pemagang') {
                     $user->role = 'user';
                     $user->save();
+                }
+            }
+
+            // Jika rollback ke waiting/pending, nonaktifkan/hapus kartu anggota jika ada
+            if (in_array($intern->internship_status, [IR::STATUS_WAITING, IR::STATUS_PENDING, IR::STATUS_NEW])) {
+                if (\Illuminate\Support\Facades\Schema::hasTable('member_cards')) {
+                    \App\Models\MemberCard::where('user_id', $user->id)->delete();
                 }
             }
         }
@@ -1238,11 +1402,13 @@ class InternController extends Controller
     {
         $eligibleStatuses = [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE];
         if (!in_array($oldStatus, $eligibleStatuses, true) && in_array($intern->internship_status, $eligibleStatuses, true)) {
-            try {
-                app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($intern);
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal generate LOA pemagang #{$intern->id}: " . $e->getMessage());
-            }
+            dispatch(function () use ($intern) {
+                try {
+                    app(\App\Services\DocumentGeneratorService::class)->ensureLoaGenerated($intern);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal generate LOA pemagang #{$intern->id}: " . $e->getMessage());
+                }
+            })->afterResponse();
         }
     }
 
@@ -1298,13 +1464,30 @@ class InternController extends Controller
 
     private function companyCode(string $companyName): string
     {
-        $map = [
-            'seven inc' => 'SI',
-            'pt. seven inc' => 'SI',
-            'magang jogja' => 'MJ',
-            'magangjogja' => 'MJ',
-        ];
         $k = strtolower(trim($companyName));
+        $dbBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [$k])
+            ->orWhereRaw('LOWER(code) = ?', [$k])
+            ->first();
+
+        if ($dbBrand && $dbBrand->code) {
+            return strtoupper(trim($dbBrand->code));
+        }
+
+        $map = [
+            'seven inc'     => 'SI',
+            'pt. seven inc' => 'SI',
+            'magang jogja'  => 'MJ',
+            'magangjogja'   => 'MJ',
+            'republik web'  => 'RW',
+            'ada kamar'     => 'AKM',
+            'magangku'      => 'MK',
+            'tuan tanah'    => 'TT',
+            'makeover'      => 'MO',
+            'bimbel cerdas' => 'BC',
+            'area kerja'    => 'AK',
+            'tukang las'    => 'TL',
+            'titip sini'    => 'TS',
+        ];
         if (isset($map[$k])) return $map[$k];
 
         $words = explode(' ', strtoupper($k));
@@ -1328,10 +1511,11 @@ class InternController extends Controller
         // Menemukan data berdasarkan ID yang diberikan
         $intern = IR::findOrFail($id);
 
-        // Validasi status yang diterima
+        // Validasi status yang diterima dan validasi input aksi cepat
         $validated = $request->validate([
             'internship_status' => 'required|in:waiting,active,completed,exited,pending,accepted,rejected',
             'brand'             => 'nullable|string|max:100',
+            'brand_id'          => 'nullable|integer|exists:brands,id',
             'reason'            => 'nullable|string|max:500',
             'correction_reason' => 'nullable|string|max:500',
         ]);
@@ -1340,31 +1524,85 @@ class InternController extends Controller
         $newStatus = $validated['internship_status']; // Status baru yang diterima
         $reason    = $validated['reason'] ?? $validated['correction_reason'] ?? $request->input('reason') ?? $request->input('correction_reason');
 
-        // Gunakan RegistrationLifecycleService untuk validasi & transisi
+        // Resolusi brand dan validasi konsistensi input aksi cepat
+        $targetBrand = null;
+        $brandById = !empty($validated['brand_id']) ? \App\Models\Brand::find($validated['brand_id']) : null;
+        $brandByName = null;
+
+        if (!empty($validated['brand'])) {
+            $brandStr = trim($validated['brand']);
+            $brandByName = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandStr)])
+                ->orWhereRaw('LOWER(code) = ?', [strtolower($brandStr)])
+                ->first();
+
+            // Jika nama brand dikirim tapi tidak ditemukan brand sama sekali di database
+            if (!$brandByName && empty($brandById)) {
+                $errMsg = "Brand '{$brandStr}' tidak ditemukan dalam sistem.";
+                if ($request->wantsJson() || $request->ajax()) {
+                    return response()->json(['message' => $errMsg], 422);
+                }
+                return back()->withInput()->with('error', $errMsg);
+            }
+        }
+
+        // Deteksi ambiguitas / kontradiksi antara brand (string) dan brand_id (integer)
+        if ($brandById && $brandByName && $brandById->id !== $brandByName->id) {
+            $errMsg = 'Input brand tidak konsisten: nama brand dan ID brand tidak merujuk ke brand yang sama.';
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $errMsg], 422);
+            }
+            return back()->withInput()->with('error', $errMsg);
+        }
+
+        $targetBrand = $brandById ?? $brandByName;
+
+        // Deteksi pemindahan brand untuk sinkronisasi dua arah spreadsheet
+        $oldBrandId = $intern->brand_id;
+        $targetBrandId = $targetBrand?->id;
+        $isBrandTransferred = $oldBrandId && $targetBrandId && (int)$oldBrandId !== (int)$targetBrandId;
+
+        // Persyaratan brand saat status diterima (accepted)
+        $effectiveBrandId = $targetBrand?->id ?? $intern->brand_id;
+        if ($newStatus === IR::STATUS_ACCEPTED && empty($effectiveBrandId)) {
+            $errMsg = 'Pemagang tidak dapat diterima tanpa brand yang ditentukan.';
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => $errMsg], 422);
+            }
+            return back()->withInput()->with('error', $errMsg);
+        }
+
+        // Eksekusi atomik transisi status dan sinkronisasi brand dalam database transaction
         $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
         try {
-            $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($lifecycle, $intern, $newStatus, $reason, $targetBrand) {
+                // 1. Eksekusi transisi status melalui RegistrationLifecycleService
+                $lifecycle->transition($intern, $newStatus, isAdmin: true, reason: $reason);
+
+                // 2. Simpan brand jika targetBrand ditentukan
+                if ($targetBrand) {
+                    $intern->brand_id = $targetBrand->id;
+                    $intern->save();
+
+                    // Sinkronisasi brand_id ke akun user pemagang
+                    if ($intern->user) {
+                        $intern->user->update(['brand_id' => $targetBrand->id]);
+                    }
+                }
+
+                // 3. Sinkronkan role user sesuai status baru
+                $this->syncPemagangRole($intern);
+            });
         } catch (\InvalidArgumentException $e) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['message' => $e->getMessage()], 422);
             }
             return back()->withInput()->with('error', $e->getMessage());
-        }
-
-        // Simpan brand jika brand dikirim
-        if (!empty($validated['brand'])) {
-            $brandName = trim($validated['brand']);
-            $existingBrand = \App\Models\Brand::whereRaw('LOWER(name) = ?', [strtolower($brandName)])
-                ->orWhereRaw('LOWER(code) = ?', [strtolower($brandName)])
-                ->first();
-            if ($existingBrand) {
-                $intern->brand_id = $existingBrand->id;
-                $intern->save();
+        } catch (\Throwable $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['message' => 'Gagal memperbarui status pemagang: ' . $e->getMessage()], 500);
             }
+            return back()->withInput()->with('error', 'Gagal memperbarui status pemagang: ' . $e->getMessage());
         }
-
-        // Sinkronkan role user sesuai status baru
-        $this->syncPemagangRole($intern);
 
         // Buat membercard hanya saat status active atau completed
         if (in_array($intern->internship_status, [IR::STATUS_ACTIVE, IR::STATUS_COMPLETED])) {
@@ -1380,12 +1618,36 @@ class InternController extends Controller
 
         // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active) atau status non-aktif (exited / completed / rejected)
         if (in_array($newStatus, [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
-            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $validated['brand'] ?? null, $newStatus);
+            $brandParam = $targetBrand?->name ?? $validated['brand'] ?? null;
+            dispatch(function () use ($intern, $brandParam, $newStatus) {
+                try {
+                    \App\Services\AbsenDjuraganSyncService::syncIntern($intern, $brandParam, $newStatus);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Absen Djuragan sync error on status update #{$intern->id}: " . $e->getMessage());
+                }
+            })->afterResponse();
         }
 
         // Jika berubah menjadi selesai, generate SKL via Background Job
         $this->checkAndGenerateSkl($intern, $oldStatus);
         $this->checkAndGenerateCertificate($intern, $oldStatus);
+
+        // Sinkronkan pembaruan data pemagang dan mutasi brand ke Google Spreadsheet di latar belakang (afterResponse)
+        dispatch(function () use ($intern, $oldBrandId, $targetBrandId, $isBrandTransferred) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                if ($isBrandTransferred) {
+                    $syncEngine->handleBrandTransfer($intern, (int)$oldBrandId, (int)$targetBrandId);
+                } else {
+                    $rowSync = $syncEngine->queueSyncForRegistration($intern, allowPendaftar: true);
+                    if ($rowSync) {
+                        $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                    }
+                }
+            } catch (\Throwable $sheetErr) {
+                \Illuminate\Support\Facades\Log::warning("Spreadsheet sync error on status update #{$intern->id}: " . $sheetErr->getMessage());
+            }
+        })->afterResponse();
 
         // Return JSON untuk AJAX (fetch), redirect untuk request biasa
         if ($request->wantsJson() || $request->ajax()) {
@@ -1458,11 +1720,12 @@ class InternController extends Controller
         $affected = 0;
         $mailCount = 0;
         $mailList  = [];
+        $internsToSync = [];
 
         $lifecycle = app(\App\Services\RegistrationLifecycleService::class);
         $reason    = $request->input('reason') ?? $request->input('correction_reason');
 
-        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList, $lifecycle, $reason) {
+        DB::transaction(function () use ($validated, &$affected, &$mailCount, &$mailList, &$internsToSync, $lifecycle, $reason) {
             $interns = IR::whereIn('id', $validated['ids'])->lockForUpdate()->get();
 
             foreach ($interns as $intern) {
@@ -1493,12 +1756,37 @@ class InternController extends Controller
 
                 // Sinkronkan data ke Absen Djuragan saat pemagang di-ACC (accepted / active) atau status non-aktif
                 if (in_array($validated['internship_status'], [IR::STATUS_ACCEPTED, IR::STATUS_ACTIVE, IR::STATUS_EXITED, IR::STATUS_COMPLETED, IR::STATUS_REJECTED])) {
-                    \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $validated['internship_status']);
+                    $statusToSync = $validated['internship_status'];
+                    dispatch(function () use ($intern, $statusToSync) {
+                        try {
+                            \App\Services\AbsenDjuraganSyncService::syncIntern($intern, null, $statusToSync);
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning("Absen Djuragan bulk sync error on intern #{$intern->id}: " . $e->getMessage());
+                        }
+                    })->afterResponse();
                 }
 
+                $internsToSync[] = $intern;
                 $affected++;
             }
         });
+
+        // Sinkronkan pembaruan data pemagang ke Google Spreadsheet di latar belakang (afterResponse) di luar transaksi database
+        if (!empty($internsToSync)) {
+            dispatch(function () use ($internsToSync) {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                foreach ($internsToSync as $internToSync) {
+                    try {
+                        $rowSync = $syncEngine->queueSyncForRegistration($internToSync, allowPendaftar: true);
+                        if ($rowSync) {
+                            $syncEngine->processSyncRecord($rowSync, allowPendaftar: true);
+                        }
+                    } catch (\Throwable $sheetErr) {
+                        \Illuminate\Support\Facades\Log::warning("Spreadsheet bulk sync error on intern #{$internToSync->id}: " . $sheetErr->getMessage());
+                    }
+                }
+            })->afterResponse();
+        }
 
         if (request()->wantsJson() || request()->ajax()) {
             return response()->json([
@@ -1816,12 +2104,19 @@ class InternController extends Controller
 
         $formBuilderService->saveCustomAnswers($intern, $validation['cleaned'], $schema, auth()->user());
 
-        // P2.1: Enqueue sync baris ke Google Spreadsheet secara asinkron pasca-commit
-        try {
-            $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
-            $syncEngine->queueSyncForRegistration($intern);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Gagal enqueue sync spreadsheet setelah update custom answers untuk registrasi ID {$intern->id}: " . $e->getMessage());
+        // P2.1: Enqueue sync baris ke Google Spreadsheet secara asinkron pasca-commit (hanya jika sudah berstatus diterima/aktif/selesai)
+        $eligibleSpreadsheetStatuses = [
+            IR::STATUS_ACCEPTED,
+            IR::STATUS_ACTIVE,
+            IR::STATUS_COMPLETED,
+        ];
+        if (in_array($intern->internship_status, $eligibleSpreadsheetStatuses, true)) {
+            try {
+                $syncEngine = app(\App\Services\SpreadsheetSyncEngineService::class);
+                $syncEngine->queueSyncForRegistration($intern);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Gagal enqueue sync spreadsheet setelah update custom answers untuk registrasi ID {$intern->id}: " . $e->getMessage());
+            }
         }
 
         return response()->json([

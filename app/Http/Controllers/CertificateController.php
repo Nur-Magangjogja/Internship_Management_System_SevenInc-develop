@@ -45,16 +45,61 @@ class CertificateController extends Controller
         return view('certificates.index', compact('certificates'));
     }
 
+    /** Show completed interns for bulk certificate issuance. */
+    public function bulkCreateInterns()
+    {
+        $interns = IR::with(['brandRel', 'division'])
+            ->where('internship_status', IR::STATUS_COMPLETED)
+            ->whereNotNull('end_date')
+            ->orderByDesc('end_date')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('certificates.bulk-interns', compact('interns'));
+    }
+
+    /**
+     * Backward-compatible endpoint used by the declared admin.certificate.bulk.interns.store route.
+     */
+    public function bulkStoreInterns(Request $request)
+    {
+        return $this->storeFromInterns($request);
+    }
+
     public function storeFromInterns(Request $request)
     {
         $request->validate([
             'intern_ids'   => ['required','array','min:1'],
-            'intern_ids.*' => ['integer','exists:internship_registrations,id'],
+            'intern_ids.*' => ['integer', 'distinct', 'exists:internship_registrations,id'],
         ]);
 
         $interns = IR::whereIn('id', $request->intern_ids)->get();
         if ($interns->isEmpty()) {
-            return back()->withErrors(['intern_ids'=>'Data pemagang tidak ditemukan'])->withInput();
+            return back()->withErrors(['intern_ids' => 'Data pemagang tidak ditemukan'])->withInput();
+        }
+
+        // Validasi seluruh batch sebelum menerbitkan apa pun agar satu pilihan tidak valid
+        // tidak membuat batch terbit sebagian.
+        $ineligibleIntern = $interns->first(fn (IR $intern) =>
+            $intern->internship_status !== IR::STATUS_COMPLETED || empty($intern->end_date)
+        );
+        if ($ineligibleIntern) {
+            return back()->withErrors([
+                'intern_ids' => 'Sertifikat hanya dapat diterbitkan untuk pemagang berstatus selesai dan memiliki tanggal selesai.',
+            ])->withInput();
+        }
+
+        // Validasi kelengkapan profil operasional brand penandatangan
+        $incompleteBrandIntern = $interns->first(function (IR $intern) {
+            $b = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
+            return $b && !$b->isProfileCompleteForDocuments();
+        });
+        if ($incompleteBrandIntern) {
+            $b = $incompleteBrandIntern->brandRel ?? ($incompleteBrandIntern->brand_id ? Brand::find($incompleteBrandIntern->brand_id) : null) ?? Brand::getDefaultBrand();
+            $missing = implode(', ', $b->getMissingDocumentFields());
+            return back()->withErrors([
+                'intern_ids' => "Sertifikat tidak dapat diterbitkan: Data profil brand '{$b->name}' belum lengkap ({$missing} masih kosong). Lengkapi data brand terlebih dahulu.",
+            ])->withInput();
         }
 
         $seqCache = [];
@@ -64,7 +109,9 @@ class CertificateController extends Controller
 
         foreach ($interns as $ir) {
             $end = Carbon::parse($ir->end_date);
-            $brandData = Brand::where('code', $ir->brand)->first();
+            // `brand` is an accessor that returns the display name, not the official brand code.
+            // Resolve the Brand model by relation / foreign key before building a serial number.
+            $brandData = $ir->brandRel ?? ($ir->brand_id ? Brand::find($ir->brand_id) : null);
             $divisionCode = $this->divisionFromInterest((string)$ir->internship_interest) ?? 'ADM';
 
             $ym = $end->format('Y-m');
@@ -82,7 +129,8 @@ class CertificateController extends Controller
             $seqStr = str_pad((string)$seq, 3, '0', STR_PAD_LEFT);
             
             $companyCode = $this->companyCode($brandData?->name ?? 'Seven Inc');
-            $brandCode = strtoupper($ir->brand ?? 'SI');
+            $brandCode = strtoupper(trim((string) ($brandData?->code
+                ?? ($brandData?->name ? $this->companyCode($brandData->name) : 'SI'))));
             $serial = "{$seqStr}/SERT/{$divisionCode}/{$companyCode}.{$brandCode}/".$roman[$end->month]."/".$end->year;
 
             $issuanceService->issueDocument(

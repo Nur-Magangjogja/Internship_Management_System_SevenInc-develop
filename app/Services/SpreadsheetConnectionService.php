@@ -16,32 +16,190 @@ use InvalidArgumentException;
 class SpreadsheetConnectionService
 {
     /**
+     * Pastikan seluruh koneksi spreadsheet per-brand dan follow-up telah terbuat di database.
+     */
+    public function ensureBrandConnectionsExist(): void
+    {
+        // Jangan lakukan mutasi jika belum ada brand terdaftar (misal pada isolasi pengujian read-only)
+        if (\App\Models\Brand::count() === 0) {
+            return;
+        }
+
+        // 1. Follow-up CRM (Global)
+        SpreadsheetConnection::firstOrCreate(
+            [
+                'connection_key' => SpreadsheetConnection::KEY_FOLLOWUP,
+                'brand_id'       => null,
+            ],
+            [
+                'display_name'      => 'Spreadsheet Follow-Up Guru/Dosen',
+                'is_enabled'        => false,
+                'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
+            ]
+        );
+
+        // Migrasi relik koneksi registrasi null brand_id ke default brand
+        $defaultBrand = \App\Models\Brand::getDefaultBrand();
+        if ($defaultBrand) {
+            $legacyGlobal = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->whereNull('brand_id')
+                ->first();
+
+            if ($legacyGlobal) {
+                // Rebind atau hapus duplikat placeholder default brand yang belum dikonfigurasi
+                $duplicates = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                    ->where('brand_id', $defaultBrand->id)
+                    ->where('id', '!=', $legacyGlobal->id)
+                    ->get();
+
+                foreach ($duplicates as $dup) {
+                    \App\Models\SpreadsheetRowSync::where('spreadsheet_connection_id', $dup->id)
+                        ->update(['spreadsheet_connection_id' => $legacyGlobal->id]);
+                    \App\Models\SpreadsheetSidecarSync::where('spreadsheet_connection_id', $dup->id)
+                        ->update(['spreadsheet_connection_id' => $legacyGlobal->id]);
+                    $dup->delete();
+                }
+
+                $legacyGlobal->update([
+                    'brand_id'     => $defaultBrand->id,
+                    'display_name' => "Spreadsheet Pendaftaran ({$defaultBrand->name})",
+                ]);
+            }
+        }
+
+        // 2. Brand-specific Registration Connections (11 Brands)
+        $defaultEndpoint = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->whereNotNull('apps_script_endpoint_url')
+            ->value('apps_script_endpoint_url')
+            ?: 'https://script.google.com/macros/s/AKfycbzY7ApK_y_kLy6ImJtnVFcynUUr1ilWIkQEsalkBsXqGMG_4QD4W8_47yHns-sJs-_MsA/exec';
+
+        $brands = \App\Models\Brand::whereNotNull('registration_host')
+            ->orderBy('name')
+            ->get();
+
+        foreach ($brands as $brand) {
+            SpreadsheetConnection::firstOrCreate(
+                [
+                    'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                    'brand_id'       => $brand->id,
+                ],
+                [
+                    'display_name'             => "Spreadsheet Pendaftaran ({$brand->name})",
+                    'apps_script_endpoint_url' => $defaultEndpoint,
+                    'is_enabled'               => false,
+                    'connection_status'        => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+                ]
+            );
+        }
+    }
+
+    /**
+     * Memastikan skema kanonikal 38 kolom aktif tersedia untuk koneksi registrasi spreadsheet.
+     */
+    public function ensureCanonicalSchemaForConnection(SpreadsheetConnection $connection, int $year = 2026): SpreadsheetSchemaVersion
+    {
+        $schemaVersion = SpreadsheetSchemaVersion::firstOrCreate(
+            [
+                'spreadsheet_connection_id' => $connection->id,
+                'year'                      => $year,
+                'schema_version'            => 'v1',
+            ],
+            [
+                'sheet_tab_name' => (string) $year,
+                'is_active'      => true,
+                'notes'          => "Official {$year} 38-Column Unified Registration Contract",
+            ]
+        );
+
+        $existingMappings = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)->get();
+        $canonicalColumns = \Database\Seeders\Spreadsheet2026SchemaSeeder::getCanonicalColumns();
+
+        foreach ($canonicalColumns as $col) {
+            $identity = !empty($col['field']) ? 'col_' . $col['field'] : 'col_' . Str::slug($col['header'], '_');
+            $mapping = $existingMappings->first(function ($m) use ($identity, $col) {
+                return $m->column_identity === $identity
+                    || (!empty($col['field']) && $m->target_field === $col['field'] && $m->target_entity === $col['entity']);
+            });
+
+            if (!$mapping) {
+                SpreadsheetColumnMapping::create([
+                    'public_uuid'                   => (string) Str::uuid(),
+                    'spreadsheet_schema_version_id' => $schemaVersion->id,
+                    'column_identity'               => $identity,
+                    'column_order'                  => $col['order'],
+                    'sheet_header'                  => $col['header'],
+                    'target_entity'                 => $col['entity'],
+                    'target_field'                  => $col['field'],
+                    'data_type'                     => $col['type'],
+                    'direction'                     => $col['direction'],
+                    'transform_key'                 => $col['transform'],
+                    'is_required'                   => $col['required'],
+                    'mapping_status'                => 'active',
+                ]);
+            }
+        }
+
+        return $schemaVersion;
+    }
+
+    /**
      * Ambil semua koneksi spreadsheet terdaftar.
      */
     public function getAllConnections(): Collection
     {
-        return SpreadsheetConnection::orderBy('id', 'asc')->get();
+        $this->ensureBrandConnectionsExist();
+
+        return SpreadsheetConnection::with('brand')
+            ->orderByRaw("
+                CASE 
+                    WHEN connection_key = 'followup' THEN 1
+                    WHEN EXISTS (SELECT 1 FROM brands b WHERE b.id = spreadsheet_connections.brand_id AND b.is_default = 1) THEN 2
+                    ELSE 3
+                END ASC
+            ")
+            ->orderBy('id', 'asc')
+            ->get();
     }
 
     /**
-     * Ambil koneksi berdasarkan connection_key ('registration' | 'followup').
+     * Ambil koneksi berdasarkan connection_key ('registration' | 'followup') dan opsional brandId.
      */
-    public function getConnectionByKey(string $key): SpreadsheetConnection
+    public function getConnectionByKey(string $key, ?int $brandId = null): SpreadsheetConnection
     {
         if (!in_array($key, SpreadsheetConnection::VALID_KEYS, true)) {
             throw new InvalidArgumentException("Tipe koneksi '{$key}' tidak valid.");
         }
 
-        return SpreadsheetConnection::firstOrCreate(
-            ['connection_key' => $key],
-            [
-                'display_name' => $key === SpreadsheetConnection::KEY_REGISTRATION
-                    ? 'Spreadsheet Pendaftaran Magang'
-                    : 'Spreadsheet Follow-Up Guru/Dosen',
-                'is_enabled' => false,
-                'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
-            ]
-        );
+        if ($key === SpreadsheetConnection::KEY_FOLLOWUP) {
+            return SpreadsheetConnection::firstOrCreate(
+                ['connection_key' => $key, 'brand_id' => null],
+                [
+                    'display_name'      => 'Spreadsheet Follow-Up Guru/Dosen',
+                    'is_enabled'        => false,
+                    'connection_status' => SpreadsheetConnection::STATUS_UNTESTED,
+                ]
+            );
+        }
+
+        // Untuk registration: ambil brand spesifik atau fallback ke default brand
+        $targetBrand = $brandId ? \App\Models\Brand::find($brandId) : \App\Models\Brand::getDefaultBrand();
+        $targetBrandId = $targetBrand?->id;
+
+        $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->where('brand_id', $targetBrandId)
+            ->first();
+
+        if ($conn) {
+            return $conn;
+        }
+
+        return SpreadsheetConnection::create([
+            'connection_key'    => SpreadsheetConnection::KEY_REGISTRATION,
+            'brand_id'          => $targetBrandId,
+            'display_name'      => "Spreadsheet Pendaftaran (" . ($targetBrand?->name ?? 'Default') . ")",
+            'is_enabled'        => false,
+            'connection_status' => SpreadsheetConnection::STATUS_NOT_CONFIGURED,
+        ]);
     }
 
     /**
@@ -135,6 +293,34 @@ class SpreadsheetConnectionService
                         ->first();
                 }
 
+                // Serialisasi perubahan scope untuk connection_key yang sama, termasuk scope global NULL.
+                // Ini melengkapi Rule::unique pada controller dan melindungi pemanggilan service langsung.
+                DB::table('spreadsheet_connections')
+                    ->where('connection_key', $connection->connection_key)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get(['id', 'brand_id']);
+
+                $targetBrandId = array_key_exists('brand_id', $data)
+                    ? (($data['brand_id'] === null || $data['brand_id'] === '') ? null : (int) $data['brand_id'])
+                    : ($connection->brand_id === null ? null : (int) $connection->brand_id);
+
+                $scopeConflictQuery = SpreadsheetConnection::query()
+                    ->where('connection_key', $connection->connection_key)
+                    ->where('id', '!=', $connection->id);
+
+                if ($targetBrandId === null) {
+                    $scopeConflictQuery->whereNull('brand_id');
+                } else {
+                    $scopeConflictQuery->where('brand_id', $targetBrandId);
+                }
+
+                if ($scopeConflictQuery->exists()) {
+                    throw new DomainException(
+                        'Brand tujuan sudah memiliki koneksi spreadsheet dengan jenis yang sama. Pilih brand lain atau gunakan koneksi yang sudah tersedia.'
+                    );
+                }
+
                 $oldSpreadsheetId = $connection->getOriginal('spreadsheet_id') ?? $connection->spreadsheet_id;
                 $targetChanged = !empty($oldSpreadsheetId) && $oldSpreadsheetId !== $spreadsheetId;
 
@@ -154,6 +340,10 @@ class SpreadsheetConnectionService
                 if ($connection->connection_key === SpreadsheetConnection::KEY_REGISTRATION && array_key_exists('drive_folder_url', $data)) {
                     $connection->drive_folder_url = $driveFolderUrl;
                     $connection->drive_folder_id = $driveFolderId;
+                }
+
+                if (array_key_exists('brand_id', $data)) {
+                    $connection->brand_id = !empty($data['brand_id']) ? (int) $data['brand_id'] : null;
                 }
 
                 $connection->display_name = $data['display_name'] ?? $connection->display_name;

@@ -63,11 +63,28 @@ class Webinar extends Model
     public static function brandList(): array
     {
         return [
-            'MJ'=>'Magangjogja','AK'=>'Areakerja','RW'=>'Republikweb','TS'=>'Titipsini',
-            'AP'=>'Ambilpaket','BK'=>'Bikinkepo','BC'=>'Bimbelcerdas.com','LK'=>'Latihankerja.com',
-            'LJT'=>'Lowkerjateng.com','LJG'=>'Lowkerjogja.com','PJ'=>'Pijatjogja.com',
-            'SB'=>'Sayabantu.com','TV'=>'Titikvisual','TN'=>'Tuantanah','TL'=>'Tukanglas.org',
-            'AKI'=>'Adakamar.id','SI'=>'Seven Inc',
+            'SI'  => 'SEVEN INC',
+            'SVII'=> 'SEVEN INC',
+            'RW'  => 'Republik Web',
+            'AKM' => 'Ada Kamar',
+            'AKI' => 'Ada Kamar',
+            'MJ'  => 'Magang Jogja',
+            'MK'  => 'Magangku',
+            'TT'  => 'Tuan Tanah',
+            'TN'  => 'Tuan Tanah',
+            'MO'  => 'Makeover',
+            'BC'  => 'Bimbel Cerdas',
+            'AK'  => 'Area Kerja',
+            'TL'  => 'Tukang Las',
+            'TS'  => 'Titip Sini',
+            'AP'  => 'Ambilpaket',
+            'BK'  => 'Bikinkepo',
+            'LK'  => 'Latihankerja.com',
+            'LJT' => 'Lowkerjateng.com',
+            'LJG' => 'Lowkerjogja.com',
+            'PJ'  => 'Pijatjogja.com',
+            'SB'  => 'Sayabantu.com',
+            'TV'  => 'Titikvisual',
         ];
     }
 

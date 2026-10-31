@@ -85,6 +85,12 @@
                             @endif
                         </td>
                         <td class="px-5 py-4">
+                            <div class="flex items-center gap-2">
+                                <a href="{{ route('admin.loa.review', $loa->intern_id) }}"
+                                   class="inline-flex items-center gap-1.5 rounded-[8px] border border-blue-200 bg-blue-50 px-3 py-1.5 text-[12.5px] font-semibold text-blue-700 transition hover:bg-blue-100">
+                                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                    Review & Perbarui
+                                </a>
                             @if(!empty($loa->file_path))
                                 @if($loa->file_path === 'loa_generated')
                                 <a href="{{ route('admin.loa.download', $loa->intern_id) }}"
@@ -116,6 +122,7 @@
                             @else
                             <span class="text-[12px] text-slate-400 italic">Belum Diterbitkan</span>
                             @endif
+                            </div>
                         </td>
                     </tr>
                     @empty

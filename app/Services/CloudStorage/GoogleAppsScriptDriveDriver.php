@@ -56,9 +56,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
 
     public function setRootFolderId(?string $folderId): self
     {
-        if (!empty($folderId)) {
-            $this->rootFolderId = trim($folderId);
-        }
+        $this->rootFolderId = !empty($folderId) ? trim($folderId) : null;
 
         return $this;
     }
@@ -106,6 +104,46 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
         }
 
         return (string) $resolvedFolderId;
+    }
+
+    public function moveFolder(string $folderId, ?string $targetParentFolderId = null, ?string $targetFolderPath = null): bool
+    {
+        if (empty($folderId) || !$this->isConfigured()) {
+            return false;
+        }
+
+        $payload = [
+            'action'          => 'drive_move_folder',
+            'drive_folder_id' => $this->rootFolderId,
+            'folder_id'       => $folderId,
+        ];
+
+        if (!empty($targetParentFolderId)) {
+            $payload['target_parent_folder_id'] = $targetParentFolderId;
+        }
+        if (!empty($targetFolderPath)) {
+            $payload['target_folder_path'] = trim(str_replace('\\', '/', $targetFolderPath), '/');
+        }
+
+        $transport = app(GoogleAppsScriptTransport::class);
+        $transport->setTimeoutSeconds(120);
+        $response = $transport->dispatchSignedRequest(
+            $this->endpointUrl,
+            $payload,
+            'DRIVE_MOVE_' . substr(md5($folderId . time()), 0, 8)
+        );
+
+        if (!$response->success) {
+            $err = $response->errorMessage ?: 'Gagal memindahkan folder di Apps Script';
+            Log::warning("GoogleAppsScriptDriveDriver moveFolder gagal: {$err}", [
+                'folder_id' => $folderId,
+                'target'    => $targetParentFolderId ?: $targetFolderPath,
+                'context'   => $response->context,
+            ]);
+            return false;
+        }
+
+        return true;
     }
 
     public function uploadFile(string $localFullPath, string $remoteFolderPath, ?string $customFileName = null): array

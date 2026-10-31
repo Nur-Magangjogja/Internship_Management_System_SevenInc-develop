@@ -37,7 +37,7 @@ class LocalStorageFallbackDriver implements CloudStorageProviderInterface
 
     public function getRootFolderId(): ?string
     {
-        return $this->rootFolderId ?? 'sim_root';
+        return $this->rootFolderId;
     }
 
     public function getOrCreateFolderPath(string $folderPath): ?string
@@ -47,6 +47,11 @@ class LocalStorageFallbackDriver implements CloudStorageProviderInterface
         Storage::disk($this->diskName)->makeDirectory($fullSimPath);
 
         return 'sim_folder_' . md5($cleanFolder);
+    }
+
+    public function moveFolder(string $folderId, ?string $targetParentFolderId = null, ?string $targetFolderPath = null): bool
+    {
+        return true;
     }
 
     public function uploadFile(string $localFullPath, string $remoteFolderPath, ?string $customFileName = null): array

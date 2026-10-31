@@ -25,6 +25,9 @@ class SpreadsheetSyncEngineService
     protected RegistrationSpreadsheetMappingService $registrationMappingService;
     protected FollowUpSpreadsheetMappingService $followUpMappingService;
 
+    /** @var array<int, string> Cache in-memory nama brand asal saat mutasi antar-brand. */
+    private static array $transferredBrandNames = [];
+
     public function __construct(
         ?SpreadsheetTransportInterface $transport = null,
         ?RegistrationSpreadsheetMappingService $registrationMappingService = null,
@@ -47,6 +50,47 @@ class SpreadsheetSyncEngineService
     }
 
     /**
+     * Resolusi koneksi spreadsheet registrasi berbasis brand dengan isolasi tenant ketat.
+     */
+    public function getRegistrationConnection(?int $brandId = null, bool $requireReady = false): ?SpreadsheetConnection
+    {
+        if ($brandId) {
+            // Isolasi Tenant: Kembalikan HANYA koneksi milik brand pendaftar terkait (tanpa silent fallback ke brand lain)
+            $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $brandId)
+                ->first();
+
+            if ($conn && $requireReady && !$conn->isRegistrationReady()) {
+                return null;
+            }
+
+            return $conn;
+        }
+
+        // Fallback ke koneksi milik Brand Default HANYA jika brandId tidak ditentukan (null)
+        $defaultBrand = \App\Models\Brand::getDefaultBrand();
+        if ($defaultBrand) {
+            $defaultConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $defaultBrand->id)
+                ->first();
+
+            if ($defaultConnection) {
+                if ($requireReady && !$defaultConnection->isRegistrationReady()) {
+                    return null;
+                }
+                return $defaultConnection;
+            }
+        }
+
+        $legacyConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        if ($legacyConnection && $requireReady && !$legacyConnection->isRegistrationReady()) {
+            return null;
+        }
+
+        return $legacyConnection;
+    }
+
+    /**
      * Generate permanent, immutable canonical sync ID for a domain model.
      */
     public function generateExternalSyncId(InternshipRegistration|FollowUpCycle $entity): string
@@ -65,6 +109,184 @@ class SpreadsheetSyncEngineService
     }
 
     /**
+     * Dapatkan nama brand asal jika pemagang merupakan hasil mutasi/pindahan antar-brand.
+     */
+    public function getPriorTransferredBrandName(InternshipRegistration $registration): ?string
+    {
+        if (!empty(self::$transferredBrandNames[$registration->id])) {
+            return self::$transferredBrandNames[$registration->id];
+        }
+
+        if (!empty($registration->transferred_from_brand_name)) {
+            return $registration->transferred_from_brand_name;
+        }
+
+        if (empty($registration->brand_id)) {
+            return null;
+        }
+
+        $priorSync = SpreadsheetRowSync::where('syncable_type', InternshipRegistration::class)
+            ->where('syncable_id', $registration->id)
+            ->whereNotNull('last_synced_at')
+            ->whereHas('connection', function ($q) use ($registration) {
+                $q->whereNotNull('brand_id')
+                  ->where('brand_id', '!=', $registration->brand_id);
+            })
+            ->with('connection.brand')
+            ->latest('last_synced_at')
+            ->first();
+
+        return $priorSync?->connection?->brand?->name;
+    }
+
+    /**
+     * Menangani sinkronisasi spreadsheet dua arah saat terjadi pemindahan brand pemagang.
+     * 1. Pada spreadsheet brand lama: tandai kolom KET menjadi "Dipindahkan ke Brand [Nama Brand Baru]".
+     * 2. Pada spreadsheet brand baru: tandai kolom KET menjadi "[Status] (Pindahan dari [Nama Brand Lama])".
+     */
+    public function handleBrandTransfer(InternshipRegistration $registration, int $oldBrandId, int $newBrandId): void
+    {
+        if ($oldBrandId === $newBrandId) {
+            return;
+        }
+
+        $oldBrand = \App\Models\Brand::find($oldBrandId);
+        $newBrand = \App\Models\Brand::find($newBrandId);
+
+        // 1. Update baris pada Spreadsheet Brand Lama jika sebelumnya pernah tersinkron
+        try {
+            $oldConnection = $this->getRegistrationConnection($oldBrandId);
+            if ($oldConnection) {
+                $oldRowSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $oldConnection->id)
+                    ->where('syncable_type', InternshipRegistration::class)
+                    ->where('syncable_id', $registration->id)
+                    ->first();
+
+                if ($oldRowSync && (!empty($oldRowSync->last_synced_at) || !empty($oldRowSync->row_index))) {
+                    $newBrandName = $newBrand?->name ?? 'Lain';
+
+                    // Pastikan model membaca brand_id lama sementara saat membangun payload baris brand lama
+                    $savedCurrentBrandId = $registration->brand_id;
+                    $savedCurrentBrand = $registration->brand;
+                    $savedCurrentBrandRel = $registration->relationLoaded('brandRel') ? $registration->brandRel : null;
+
+                    $registration->brand_id = $oldBrandId;
+                    if ($oldBrand) {
+                        $registration->brand = $oldBrand->name;
+                        $registration->setRelation('brandRel', $oldBrand);
+                    }
+
+                    $payload = $this->buildPayloadForRecord($oldRowSync, allowPendaftar: true);
+
+                    // Cari header kolom KET pada schema spreadsheet brand lama
+                    $schema = $this->registrationMappingService->getSchemaForRegistration($registration);
+                    $ketHeader = 'KET';
+                    if ($schema) {
+                        $ketMapping = $schema->columnMappings()
+                            ->where('mapping_status', 'active')
+                            ->whereIn('transform_key', ['ket', 'status_label'])
+                            ->first();
+                        if ($ketMapping && !empty($ketMapping->sheet_header)) {
+                            $ketHeader = $ketMapping->sheet_header;
+                        }
+                    }
+
+                    $payload[$ketHeader] = "Dipindahkan ke Brand {$newBrandName}";
+                    $payload['SERTIF_LAST_SYNC_AT'] = now()->toIso8601String();
+
+                    $this->transport->sendRowUpdateOnly(
+                        connection: $oldConnection,
+                        tabName: $oldRowSync->target_sheet_tab,
+                        syncId: $oldRowSync->external_sync_id,
+                        payload: $payload
+                    );
+
+                    $oldRowSync->update([
+                        'payload_checksum' => $this->calculatePayloadChecksum($oldConnection, $oldRowSync->target_sheet_tab, $payload),
+                        'last_synced_at'   => now(),
+                        'updated_at'       => now(),
+                    ]);
+
+                    $registration->brand_id = $savedCurrentBrandId;
+                    $registration->brand = $savedCurrentBrand;
+                    if ($savedCurrentBrandRel !== null) {
+                        $registration->setRelation('brandRel', $savedCurrentBrandRel);
+                    } else {
+                        $registration->unsetRelation('brandRel');
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal memperbarui KET pemindahan pada spreadsheet brand lama #{$oldBrandId}: " . $e->getMessage());
+        }
+
+        // 2. Set informasi asal brand pada model registrasi agar terbaca saat membangun baris brand baru
+        if ($oldBrand) {
+            self::$transferredBrandNames[$registration->id] = $oldBrand->name;
+            $registration->transferred_from_brand_name = $oldBrand->name;
+            if (isset($registration->attributes['transferred_from_brand_name'])) {
+                unset($registration->attributes['transferred_from_brand_name']);
+            }
+        }
+
+        // 3. Relokasi direktori Google Drive pada CloudFolderRegistry dan fisik Google Drive
+        try {
+            $year = $registration->created_at ? $registration->created_at->format('Y') : date('Y');
+            $oldBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($oldBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
+            $newBrandNameClean = preg_replace('~[\*:"?<>|/\\\\]~', '', trim($newBrand?->name ?: 'SEVEN INC')) ?: 'SEVEN INC';
+
+            $applicantFolderName = $registration->getDriveApplicantFolderName();
+            $oldBasePath = "REGISTRASI/{$year}/{$oldBrandNameClean}/{$applicantFolderName}";
+            $newBasePath = "REGISTRASI/{$year}/{$newBrandNameClean}/{$applicantFolderName}";
+            $targetParentPath = "REGISTRASI/{$year}/{$newBrandNameClean}";
+
+            if ($oldBasePath !== $newBasePath) {
+                $universalService = app(\App\Services\UniversalFileService::class);
+                $universalService->relocateFolder(
+                    oldFolderPath: $oldBasePath,
+                    newFolderPath: $newBasePath,
+                    ownerType: 'registration',
+                    ownerId: $registration->id,
+                    targetParentPath: $targetParentPath
+                );
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal merelokasi folder Google Drive pemindahan registrasi #{$registration->id}: " . $e->getMessage());
+        }
+
+        // 4. Masukkan dan proses baris baru pada Spreadsheet Brand Baru
+        try {
+            $newConnection = $this->getRegistrationConnection($newBrandId, requireReady: true);
+            if ($newConnection) {
+                $savedBrandId = $registration->brand_id;
+                $savedBrand = $registration->brand;
+                $savedBrandRel = $registration->relationLoaded('brandRel') ? $registration->brandRel : null;
+
+                $registration->brand_id = $newBrandId;
+                if ($newBrand) {
+                    $registration->brand = $newBrand->name;
+                    $registration->setRelation('brandRel', $newBrand);
+                }
+
+                $newRowSync = $this->queueSyncForRegistration($registration, allowPendaftar: true);
+                if ($newRowSync) {
+                    $this->processSyncRecord($newRowSync, allowPendaftar: true);
+                }
+
+                $registration->brand_id = $savedBrandId;
+                $registration->brand = $savedBrand;
+                if ($savedBrandRel !== null) {
+                    $registration->setRelation('brandRel', $savedBrandRel);
+                } else {
+                    $registration->unsetRelation('brandRel');
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal menjadwalkan baris baru pada spreadsheet brand baru #{$newBrandId}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Enqueue outbound sync record for an InternshipRegistration.
      * Nonblocking and strictly transactional.
      */
@@ -75,7 +297,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = $this->getRegistrationConnection($registration->brand_id, requireReady: true);
         if (!$connection) {
             return null;
         }
@@ -93,7 +315,19 @@ class SpreadsheetSyncEngineService
         }
 
         $targetTab = (string) $year;
-        $externalSyncId = $this->generateExternalSyncId($registration);
+        $baseSyncId = $this->generateExternalSyncId($registration);
+        $externalSyncId = $baseSyncId;
+
+        // Jika external_sync_id sudah pernah digunakan oleh koneksi brand lain (misal pemagang pindah brand),
+        // gunakan suffix id brand/koneksi agar tetap unik secara global di database dan di spreadsheet brand baru.
+        $existsOnOtherConnection = SpreadsheetRowSync::where('external_sync_id', $externalSyncId)
+            ->where('spreadsheet_connection_id', '!=', $connection->id)
+            ->exists();
+
+        if ($existsOnOtherConnection) {
+            $brandSuffix = $connection->brand_id ? "B{$connection->brand_id}" : "C{$connection->id}";
+            $externalSyncId = "{$baseSyncId}-{$brandSuffix}";
+        }
 
         $rowSync = SpreadsheetRowSync::firstOrCreate(
             [
@@ -301,11 +535,22 @@ class SpreadsheetSyncEngineService
      */
     public function requiresUpdateOnly(SpreadsheetRowSync $rowSync): bool
     {
-        $entity = $rowSync->syncable()->first();
+        // Jika rowSync ini belum pernah memiliki row_index atau last_synced_at pada spreadsheet target ini
+        // (misal baris baru hasil perpindahan ke brand spreadsheet lain), maka harus disisipkan via sendRowUpsert.
+        if (empty($rowSync->row_index) && empty($rowSync->last_synced_at)) {
+            return false;
+        }
+
+        $entity = $rowSync->syncable()->withTrashed()->first();
         if ($entity instanceof InternshipRegistration) {
+            if ($entity->trashed()) {
+                return true;
+            }
             return in_array($entity->internship_status, [
                 InternshipRegistration::STATUS_EXITED,
                 InternshipRegistration::STATUS_REJECTED,
+                InternshipRegistration::STATUS_WAITING,
+                InternshipRegistration::STATUS_PENDING,
             ], true);
         }
 
@@ -457,7 +702,7 @@ class SpreadsheetSyncEngineService
         }
 
         // 2.5 Acceptance Gate: Pre-flight eligibility verification for InternshipRegistration (S17.17 / S17.18B)
-        $entity = $rowSync->syncable()->first();
+        $entity = $rowSync->syncable()->withTrashed()->first();
         if ($entity instanceof InternshipRegistration) {
             if (!$this->registrationMappingService->isEligibleForSync($entity, $rowSync, $allowPendaftar)) {
                 $status = $entity->internship_status;
@@ -500,6 +745,19 @@ class SpreadsheetSyncEngineService
                     'next_retry_at'   => null,
                 ]);
                 $this->logTerminalSyncFailure($rowSync, $errMsg);
+                return false;
+            }
+
+            if (!$this->followUpMappingService->hasVerifiedLinkedRegistrationSync($entity)) {
+                $errMsg = 'NOT_ELIGIBLE_PENDING_REGISTRATION_SYNC: Sinkronisasi spreadsheet follow-up ditunda karena baris pendaftar pemagang terkait masih gagal disinkronkan ke Spreadsheet Pendaftaran.';
+                $this->updateGuardedByFence($rowSync, $fenceToken, [
+                    'sync_status'     => SpreadsheetRowSync::STATUS_RETRYING,
+                    'last_attempt_at' => now(),
+                    'error_message'   => $errMsg,
+                    'locked_at'       => null,
+                    'locked_by'       => null,
+                    'next_retry_at'   => now()->addMinutes(2),
+                ]);
                 return false;
             }
         }
@@ -615,6 +873,9 @@ class SpreadsheetSyncEngineService
                     && $this->registrationMappingService->requiresSidecarSync($entity)) {
                     $this->queueSidecarSyncForRegistration($entity);
                 }
+
+                // Jadwalkan ulang siklus follow-up terkait yang sebelumnya tertahan karena pendaftar belum sukses
+                $this->unblockLinkedFollowUpCycles($entity);
             }
 
             return $updated;
@@ -710,7 +971,7 @@ class SpreadsheetSyncEngineService
      */
     protected function buildPayloadForRecord(SpreadsheetRowSync $rowSync, bool $allowPendaftar = false): array
     {
-        $entity = $rowSync->syncable()->first();
+        $entity = $rowSync->syncable()->withTrashed()->first();
 
         if (!$entity) {
             throw new DomainException('Entitas sumber data tidak ditemukan.');
@@ -1026,7 +1287,7 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $connection = $this->getRegistrationConnection($registration->brand_id, requireReady: true);
         if (!$connection) {
             return null;
         }
@@ -1045,7 +1306,18 @@ class SpreadsheetSyncEngineService
 
         $mainTab = (string) $year;
         $extensionTab = "{$mainTab}_Custom_Fields";
-        $externalSyncId = $this->generateExternalSyncId($registration);
+        $baseSyncId = $this->generateExternalSyncId($registration);
+        $externalSyncId = $baseSyncId;
+
+        $existsOnOtherSidecar = SpreadsheetSidecarSync::where('external_sync_id', $externalSyncId)
+            ->where('spreadsheet_connection_id', '!=', $connection->id)
+            ->exists();
+
+        if ($existsOnOtherSidecar) {
+            $brandSuffix = $connection->brand_id ? "B{$connection->brand_id}" : "C{$connection->id}";
+            $externalSyncId = "{$baseSyncId}-{$brandSuffix}";
+        }
+
         $snapshot = $registration->formSnapshot;
         $version = $snapshot ? (string) $snapshot->form_schema_version : null;
 
@@ -1150,6 +1422,31 @@ class SpreadsheetSyncEngineService
         }
 
         return $sidecarSync->fresh() ?? $sidecarSync;
+    }
+
+    /**
+     * Membuka blokir/menjadwalkan ulang sinkronisasi FollowUpCycle yang sebelumnya tertahan karena pendaftar belum sukses sinkron.
+     */
+    protected function unblockLinkedFollowUpCycles(InternshipRegistration $registration): void
+    {
+        $contactIds = \App\Models\RegistrationContactLink::where('internship_registration_id', $registration->id)
+            ->pluck('institution_contact_id');
+
+        if ($contactIds->isEmpty()) {
+            return;
+        }
+
+        $cycles = \App\Models\FollowUpCycle::whereIn('institution_contact_id', $contactIds)->get();
+        foreach ($cycles as $cycle) {
+            SpreadsheetRowSync::where('syncable_type', \App\Models\FollowUpCycle::class)
+                ->where('syncable_id', $cycle->id)
+                ->where('sync_status', SpreadsheetRowSync::STATUS_RETRYING)
+                ->where('error_message', 'like', '%NOT_ELIGIBLE_PENDING_REGISTRATION_SYNC%')
+                ->update([
+                    'next_retry_at' => now(),
+                    'error_message' => null,
+                ]);
+        }
     }
 
     /**
@@ -1989,8 +2286,12 @@ class SpreadsheetSyncEngineService
             return ['schema_synced' => false, 'rows_synced' => 0];
         }
 
-        $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
-        if (!$connection || !$connection->is_enabled || empty($connection->spreadsheet_id)) {
+        $connections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->where('is_enabled', true)
+            ->whereNotNull('spreadsheet_id')
+            ->get();
+
+        if ($connections->isEmpty()) {
             return ['schema_synced' => false, 'rows_synced' => 0];
         }
 
@@ -2001,11 +2302,15 @@ class SpreadsheetSyncEngineService
 
         $schemaSynced = false;
         if (method_exists($this->transport, 'syncSheetSchema') && !empty($headers)) {
-            try {
-                $resp = $this->transport->syncSheetSchema($connection, (string) $year, $headers);
-                $schemaSynced = $resp->success;
-            } catch (Throwable) {
-                $schemaSynced = false;
+            foreach ($connections as $connection) {
+                try {
+                    $resp = $this->transport->syncSheetSchema($connection, (string) $year, $headers);
+                    if ($resp->success) {
+                        $schemaSynced = true;
+                    }
+                } catch (Throwable) {
+                    // Abaikan kegagalan individual connection, lanjutkan koneksi brand lain
+                }
             }
         }
 
