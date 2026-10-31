@@ -1057,38 +1057,20 @@ class RegistrationController extends Controller
                     $yearFolder = $targetYear ?? date('Y');
                     $baseDir = "private/registrations/{$yearFolder}/{$intern->id}";
 
-                    // 1. CV
+                    // 1. CV (Single file)
                     if ($request->hasFile('cv')) {
                         $file = $request->file('cv');
                         if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'cv',
-                                'category'          => 'cv',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
+                            $att = $this->storeOrReplaceSingleAttachment($intern, 'cv', 'cv', $file, $baseDir, $storedRegistrationFiles);
+                            if ($att) $createdAttachments[] = $att;
                         }
                     }
 
-                    // 2. KTM / KTP (Identity / ktm_ktp)
+                    // 2. KTM / KTP (Identity / ktm_ktp - Single file)
                     $identityFile = $request->file('identity') ?: $request->file('ktm_ktp');
                     if ($identityFile && $identityFile->isValid()) {
-                        $path = $this->storePrivateFile($identityFile, $baseDir);
-                        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                        $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                            'attachment_type'   => 'identity',
-                            'category'          => 'identity',
-                            'file_path'         => $path,
-                            'original_name'     => $identityFile->getClientOriginalName(),
-                            'file_size'         => $identityFile->getSize(),
-                            'mime_type'         => $identityFile->getMimeType() ?: 'application/pdf',
-                            'drive_sync_status' => 'pending',
-                        ]);
+                        $att = $this->storeOrReplaceSingleAttachment($intern, 'identity', 'identity', $identityFile, $baseDir, $storedRegistrationFiles);
+                        if ($att) $createdAttachments[] = $att;
                     }
 
                     // 3. Portofolio (Bisa multi-file)
@@ -1096,73 +1078,37 @@ class RegistrationController extends Controller
                         $files = is_array($request->file('portfolio')) ? $request->file('portfolio') : [$request->file('portfolio')];
                         foreach ($files as $file) {
                             if ($file && $file->isValid()) {
-                                $path = $this->storePrivateFile($file, $baseDir);
-                                $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                                $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                    'attachment_type'   => 'portfolio',
-                                    'category'          => 'portfolio',
-                                    'file_path'         => $path,
-                                    'original_name'     => $file->getClientOriginalName(),
-                                    'file_size'         => $file->getSize(),
-                                    'mime_type'         => $file->getMimeType() ?: 'application/octet-stream',
-                                    'drive_sync_status' => 'pending',
-                                ]);
+                                $att = $this->storeMultiAttachmentSafely($intern, 'portfolio', 'portfolio', $file, $baseDir, $storedRegistrationFiles);
+                                if ($att) $createdAttachments[] = $att;
                             }
                         }
                     }
 
-                    // 4. Surat Pengantar (cover_letter / internship_letter)
+                    // 4. Surat Pengantar (cover_letter / internship_letter - Single file)
                     $coverLetterFile = $request->file('cover_letter') ?: $request->file('internship_letter');
                     if ($coverLetterFile && $coverLetterFile->isValid()) {
-                        $path = $this->storePrivateFile($coverLetterFile, $baseDir);
-                        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                        $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                            'attachment_type'   => 'cover_letter',
-                            'category'          => 'cover_letter',
-                            'file_path'         => $path,
-                            'original_name'     => $coverLetterFile->getClientOriginalName(),
-                            'file_size'         => $coverLetterFile->getSize(),
-                            'mime_type'         => $coverLetterFile->getMimeType() ?: 'application/pdf',
-                            'drive_sync_status' => 'pending',
-                        ]);
+                        $att = $this->storeOrReplaceSingleAttachment($intern, 'cover_letter', 'cover_letter', $coverLetterFile, $baseDir, $storedRegistrationFiles);
+                        if ($att) $createdAttachments[] = $att;
                     }
 
-                    // 5. Dokumen Pendukung Tambahan (supporting_document / other_Portfolio - Bisa multi-file)
+                    // 5. Dokumen Pendukung Tambahan (supporting_document / other_Portfolio - Multi-file)
                     $supportingRaw = $request->file('supporting_document') ?: $request->file('other_Portfolio');
                     if ($supportingRaw) {
                         $files = is_array($supportingRaw) ? $supportingRaw : [$supportingRaw];
                         foreach ($files as $file) {
                             if ($file && $file->isValid()) {
-                                $path = $this->storePrivateFile($file, $baseDir);
-                                $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                                $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                    'attachment_type'   => 'supporting_document',
-                                    'category'          => 'supporting_document',
-                                    'file_path'         => $path,
-                                    'original_name'     => $file->getClientOriginalName(),
-                                    'file_size'         => $file->getSize(),
-                                    'mime_type'         => $file->getMimeType() ?: 'application/octet-stream',
-                                    'drive_sync_status' => 'pending',
-                                ]);
+                                $att = $this->storeMultiAttachmentSafely($intern, 'supporting_document', 'supporting_document', $file, $baseDir, $storedRegistrationFiles);
+                                if ($att) $createdAttachments[] = $att;
                             }
                         }
                     }
 
-                    // 8. Berkas Gabungan Legacy (Kompatibilitas Penuh)
+                    // 8. Berkas Gabungan Legacy (Kompatibilitas Penuh - Single file)
                     if ($request->hasFile('cv_ktp_portofolio_pdf')) {
                         $file = $request->file('cv_ktp_portofolio_pdf');
                         if ($file->isValid()) {
-                            $path = $this->storePrivateFile($file, $baseDir);
-                            $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
-                            $createdAttachments[] = $this->createAttachmentSafely($intern, [
-                                'attachment_type'   => 'cv_ktp_portofolio',
-                                'category'          => 'legacy_bundle',
-                                'file_path'         => $path,
-                                'original_name'     => $file->getClientOriginalName(),
-                                'file_size'         => $file->getSize(),
-                                'mime_type'         => $file->getMimeType() ?: 'application/pdf',
-                                'drive_sync_status' => 'pending',
-                            ]);
+                            $att = $this->storeOrReplaceSingleAttachment($intern, 'cv_ktp_portofolio', 'legacy_bundle', $file, $baseDir, $storedRegistrationFiles);
+                            if ($att) $createdAttachments[] = $att;
                         }
                     }
 
@@ -1235,7 +1181,7 @@ class RegistrationController extends Controller
             session()->flash('schema_adjusted', $schemaAdjustedNotice);
         }
 
-        // Sinkronisasi berkas pendaftaran ke Google Drive (CloudSyncManager)
+        // Sinkronisasi berkas pendaftaran ke Google Drive secara asinkron (Background Queue Job)
         $attachmentsToSync = collect($createdAttachments)->filter();
         if ($intern) {
             $pendingAtts = $intern->attachments()
@@ -1247,17 +1193,11 @@ class RegistrationController extends Controller
         }
 
         if ($attachmentsToSync->isNotEmpty()) {
-            $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
             foreach ($attachmentsToSync as $attToSync) {
-                if (!$attToSync) {
+                if (!$attToSync || $attToSync->drive_sync_status === 'synced') {
                     continue;
                 }
-                try {
-                    $syncManager->syncRegistrationAttachment($attToSync, $user);
-                } catch (\Throwable $driveEx) {
-                    \Illuminate\Support\Facades\Log::warning("Drive sync failed for attachment #{$attToSync->id}: " . $driveEx->getMessage());
-                    \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($attToSync->id);
-                }
+                \App\Jobs\UploadRegistrationAttachmentToDriveJob::dispatch($attToSync->id);
             }
         }
 
@@ -1585,14 +1525,29 @@ class RegistrationController extends Controller
             \Illuminate\Support\Facades\Storage::disk('public')->delete($attachment->file_path);
         }
 
+        $driveFileId = $attachment->drive_file_id;
         $fileName = $attachment->original_name;
         $attachment->delete();
+
+        // Hapus file remote di Google Drive di latar belakang (terminating) agar respon ke browser instan
+        if (!empty($driveFileId)) {
+            app()->terminating(function () use ($driveFileId) {
+                try {
+                    $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
+                    if (method_exists($syncManager->getDriver(), 'deleteFile')) {
+                        $syncManager->getDriver()->deleteFile($driveFileId);
+                    }
+                } catch (\Throwable $driveDeleteEx) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal menghapus berkas Google Drive ID {$driveFileId}: " . $driveDeleteEx->getMessage());
+                }
+            });
+        }
 
         return back()->with('success', "Berkas '{$fileName}' berhasil dihapus.");
     }
 
     /**
-     * Simpan attachment dengan kompatibilitas skema database (cek keberadaan kolom category & document_version).
+     * Simpan attachment dengan kompatibilitas skema database (cek keberadaan kolom category, document_version, drive_file_checksum).
      */
     protected function createAttachmentSafely(IR $intern, array $data): \App\Models\RegistrationAttachment
     {
@@ -1602,7 +1557,153 @@ class RegistrationController extends Controller
         if (!\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'document_version')) {
             unset($data['document_version']);
         }
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('registration_attachments', 'drive_file_checksum')) {
+            unset($data['drive_file_checksum']);
+        }
         return $intern->attachments()->create($data);
+    }
+
+    /**
+     * Simpan atau perbarui attachment berkas tunggal (CV, Identity, Cover Letter) dengan deduplikasi.
+     */
+    protected function storeOrReplaceSingleAttachment(
+        IR $intern,
+        string $type,
+        string $category,
+        \Illuminate\Http\UploadedFile $file,
+        string $baseDir,
+        array &$storedRegistrationFiles
+    ): ?\App\Models\RegistrationAttachment {
+        $path = $this->storePrivateFile($file, $baseDir);
+        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+        $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($path);
+        $checksum = file_exists($fullPath) ? hash_file('sha256', $fullPath) : null;
+
+        $existingAtt = $intern->attachments()
+            ->where(function ($q) use ($type, $category) {
+                $q->where('attachment_type', $type)
+                  ->orWhere('category', $category);
+            })
+            ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
+            ->first();
+
+        if ($existingAtt) {
+            $existingChecksum = $existingAtt->drive_file_checksum;
+            if (empty($existingChecksum) && $existingAtt->file_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($existingAtt->file_path)) {
+                $existingChecksum = hash_file('sha256', \Illuminate\Support\Facades\Storage::disk('local')->path($existingAtt->file_path));
+            }
+
+            // Jika berkas sama persis (checksum identik), hindari duplikasi
+            if ($checksum && $existingChecksum === $checksum) {
+                try {
+                    \Illuminate\Support\Facades\Storage::disk('local')->delete($path);
+                    array_pop($storedRegistrationFiles);
+                } catch (\Throwable) {}
+                return $existingAtt;
+            }
+
+            // Simpan ID file Google Drive lama sebelum di-reset untuk dibersihkan
+            $oldDriveFileId = $existingAtt->drive_file_id;
+
+            // Berkas baru berbeda: bersihkan berkas fisik lama dari disk
+            if ($existingAtt->file_path && $existingAtt->file_path !== $path && \Illuminate\Support\Facades\Storage::disk('local')->exists($existingAtt->file_path)) {
+                try {
+                    \Illuminate\Support\Facades\Storage::disk('local')->delete($existingAtt->file_path);
+                } catch (\Throwable) {}
+            }
+
+            $existingAtt->update([
+                'attachment_type'     => $type,
+                'category'            => $category,
+                'file_path'           => $path,
+                'original_name'       => $file->getClientOriginalName(),
+                'file_size'           => $file->getSize(),
+                'mime_type'           => $file->getMimeType() ?: 'application/pdf',
+                'drive_file_checksum' => $checksum,
+                'drive_sync_status'   => 'pending',
+                'drive_file_id'       => null,
+                'drive_web_view_link' => null,
+                'drive_error_message' => null,
+            ]);
+
+            // Hapus file lama di Google Drive di latar belakang (terminating) agar folder Drive selalu bersih & sinkron
+            if (!empty($oldDriveFileId)) {
+                app()->terminating(function () use ($oldDriveFileId) {
+                    try {
+                        $syncManager = app(\App\Services\CloudStorage\CloudSyncManager::class);
+                        if (method_exists($syncManager->getDriver(), 'deleteFile')) {
+                            $syncManager->getDriver()->deleteFile($oldDriveFileId);
+                        }
+                    } catch (\Throwable $driveDeleteEx) {
+                        \Illuminate\Support\Facades\Log::warning("Gagal membersihkan berkas lama Google Drive ID {$oldDriveFileId}: " . $driveDeleteEx->getMessage());
+                    }
+                });
+            }
+
+            return $existingAtt;
+        }
+
+        return $this->createAttachmentSafely($intern, [
+            'attachment_type'     => $type,
+            'category'            => $category,
+            'file_path'           => $path,
+            'original_name'       => $file->getClientOriginalName(),
+            'file_size'           => $file->getSize(),
+            'mime_type'           => $file->getMimeType() ?: 'application/pdf',
+            'drive_file_checksum' => $checksum,
+            'drive_sync_status'   => 'pending',
+        ]);
+    }
+
+    /**
+     * Simpan berkas multi-file (Portofolio, Dokumen Pendukung) dengan deduplikasi checksum SHA-256.
+     */
+    protected function storeMultiAttachmentSafely(
+        IR $intern,
+        string $type,
+        string $category,
+        \Illuminate\Http\UploadedFile $file,
+        string $baseDir,
+        array &$storedRegistrationFiles
+    ): ?\App\Models\RegistrationAttachment {
+        $path = $this->storePrivateFile($file, $baseDir);
+        $storedRegistrationFiles[] = ['disk' => 'local', 'path' => $path];
+        $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($path);
+        $checksum = file_exists($fullPath) ? hash_file('sha256', $fullPath) : null;
+
+        // Cek apakah berkas dengan checksum yang sama sudah ada untuk kategori ini
+        if ($checksum) {
+            $existing = $intern->attachments()
+                ->where(function ($q) use ($type, $category) {
+                    $q->where('attachment_type', $type)
+                      ->orWhere('category', $category);
+                })
+                ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
+                ->where(function ($q) use ($checksum) {
+                    $q->where('drive_file_checksum', $checksum);
+                })
+                ->first();
+
+            if ($existing) {
+                // Berkas kembar: buang berkas redundan dari disk
+                try {
+                    \Illuminate\Support\Facades\Storage::disk('local')->delete($path);
+                    array_pop($storedRegistrationFiles);
+                } catch (\Throwable) {}
+                return null;
+            }
+        }
+
+        return $this->createAttachmentSafely($intern, [
+            'attachment_type'     => $type,
+            'category'            => $category,
+            'file_path'           => $path,
+            'original_name'       => $file->getClientOriginalName(),
+            'file_size'           => $file->getSize(),
+            'mime_type'           => $file->getMimeType() ?: 'application/octet-stream',
+            'drive_file_checksum' => $checksum,
+            'drive_sync_status'   => 'pending',
+        ]);
     }
 
     /**

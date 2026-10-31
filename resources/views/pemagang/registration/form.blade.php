@@ -661,7 +661,13 @@
 
         {{-- Daftar Berkas yang Telah Tersimpan di Server --}}
         @php
-          $allAttachments = $reg ? $reg->attachments()->latest('id')->get() : collect();
+          $allAttachments = $reg
+            ? $reg->attachments()
+                  ->where('mime_type', '!=', 'application/vnd.google-apps.folder')
+                  ->where('attachment_type', '!=', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+                  ->where('file_path', 'not like', 'drive_root:%')
+                  ->latest('id')->get()
+            : collect();
         @endphp
         @if($allAttachments->isNotEmpty() || $reg?->profile_photo)
           <div class="mb-5 p-3.5 sm:p-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
@@ -688,14 +694,10 @@
                   </div>
 
                   @if(!$reg || $reg->is_draft || in_array($reg->internship_status, ['new', 'waiting']))
-                    <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')" class="shrink-0 self-end sm:self-auto">
-                      @csrf
-                      @method('DELETE')
-                      <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded hover:bg-red-50 transition text-xs">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        Hapus
-                      </button>
-                    </form>
+                    <button type="button" onclick="deleteAttachment('{{ route('pemagang.registration.attachment.delete', $att->id) }}', this)" class="btn-delete-attachment text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded hover:bg-red-50 transition text-xs shrink-0 self-end sm:self-auto cursor-pointer">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      Hapus
+                    </button>
                   @endif
                 </div>
               @endforeach
@@ -1018,7 +1020,7 @@
         <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-4 border-t border-gray-100">
           @if(!$registration || $registration->is_draft)
             {{-- Belum submit → tombol kirim + local draft --}}
-            <button type="submit"
+            <button type="submit" id="btn-submit-registration"
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition cursor-pointer"
               style="background-color:#1a5c38;">
               <i class="fas fa-paper-plane text-xs"></i>
@@ -1041,7 +1043,7 @@
             </p>
           @else
             {{-- Sudah submit → hanya bisa update data --}}
-            <button type="submit"
+            <button type="submit" id="btn-submit-registration"
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition cursor-pointer"
               style="background-color:#1a5c38;">
               <i class="fas fa-save text-xs"></i>
@@ -1056,11 +1058,50 @@
       </div>
 
     </form>
+
+    {{-- Form terpisah untuk menghapus attachment (di luar form-daftar untuk mencegah nested forms) --}}
+    <form id="form-delete-attachment" method="POST" style="display:none;">
+      @csrf
+      @method('DELETE')
+    </form>
   </div>
 </div>
 
 @push('scripts')
 <script>
+  // ===== Hapus Attachment (Bebas dari nested forms & proteksi double-click) =====
+  let isDeletingAttachment = false;
+  function deleteAttachment(url, btn) {
+    if (isDeletingAttachment) {
+      return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin menghapus berkas ini?')) {
+      return;
+    }
+
+    isDeletingAttachment = true;
+
+    if (btn) {
+      btn.dataset.originalContent = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> <span>Menghapus...</span>';
+      btn.disabled = true;
+      btn.classList.add('opacity-75', 'cursor-not-allowed');
+    }
+
+    // Nonaktifkan semua tombol hapus lain di halaman
+    document.querySelectorAll('.btn-delete-attachment').forEach(function(b) {
+      b.disabled = true;
+      b.classList.add('opacity-50', 'pointer-events-none');
+    });
+
+    const deleteForm = document.getElementById('form-delete-attachment');
+    if (deleteForm) {
+      deleteForm.action = url;
+      deleteForm.submit();
+    }
+  }
+
   // ===== Validasi real-time field numerik =====
   function setupNumericValidation(selector, message) {
     document.querySelectorAll(selector).forEach(function(input) {
@@ -1104,6 +1145,12 @@
     form.addEventListener('submit', function(e) {
       // Lewatkan validasi submit jika tombol yang diklik adalah simpan draft ke server
       if (e.submitter && (e.submitter.hasAttribute('formnovalidate') || e.submitter.getAttribute('formaction')?.includes('draft'))) {
+        return;
+      }
+
+      // Cegah submit ganda jika form sedang dikirim
+      if (form.dataset.submitting === 'true') {
+        e.preventDefault();
         return;
       }
 
@@ -1169,7 +1216,41 @@
 
         // Tampilkan toast error di atas
         showFormError('Ada beberapa field yang belum diisi. Silakan periksa kembali.');
+        return;
       }
+
+      // Pasang state loading & cegah multi-klik
+      form.dataset.submitting = 'true';
+      const submitBtn = e.submitter || document.getElementById('btn-submit-registration') || form.querySelector('button[type="submit"]:not([formaction*="draft"])');
+      if (submitBtn) {
+        submitBtn.dataset.originalContent = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> <span>Menyimpan data & berkas...</span>';
+        submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        setTimeout(function() {
+          submitBtn.disabled = true;
+        }, 20);
+      }
+    });
+
+    // Reset tombol jika browser kembali melalui tombol Back (BFCache)
+    window.addEventListener('pageshow', function() {
+      form.dataset.submitting = 'false';
+      isDeletingAttachment = false;
+      const submitBtn = document.getElementById('btn-submit-registration') || form.querySelector('button[type="submit"]:not([formaction*="draft"])');
+      if (submitBtn && submitBtn.dataset.originalContent) {
+        submitBtn.innerHTML = submitBtn.dataset.originalContent;
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+      }
+
+      // Pulihkan tombol hapus attachment
+      document.querySelectorAll('.btn-delete-attachment').forEach(function(b) {
+        if (b.dataset.originalContent) {
+          b.innerHTML = b.dataset.originalContent;
+        }
+        b.disabled = false;
+        b.classList.remove('opacity-75', 'opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+      });
     });
 
     // Clear error saat field diisi

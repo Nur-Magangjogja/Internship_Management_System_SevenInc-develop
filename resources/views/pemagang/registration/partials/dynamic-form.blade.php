@@ -385,7 +385,9 @@
     </div>
 
     @php
-        $attachmentsList = ($reg && $reg->attachments) ? $reg->attachments : collect();
+        $attachmentsList = ($reg && $reg->attachments)
+            ? $reg->attachments->reject(fn($a) => $a->mime_type === 'application/vnd.google-apps.folder' || str_starts_with((string)$a->file_path, 'drive_root:') || $a->attachment_type === \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+            : collect();
     @endphp
     @if($attachmentsList->isNotEmpty() || $reg?->profile_photo)
     <div class="mb-5 p-3.5 sm:p-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
@@ -412,14 +414,10 @@
                 </div>
 
                 @if(!$reg || $reg->is_draft || in_array($reg->internship_status, ['new', 'waiting']))
-                <form action="{{ route('pemagang.registration.attachment.delete', $att->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?')" class="shrink-0 self-end sm:self-auto">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded hover:bg-red-50 transition text-xs">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        Hapus
-                    </button>
-                </form>
+                <button type="button" onclick="deleteAttachment('{{ route('pemagang.registration.attachment.delete', $att->id) }}', this)" class="btn-delete-attachment text-red-500 hover:text-red-700 font-medium flex items-center gap-1 px-2.5 py-1 rounded hover:bg-red-50 transition text-xs shrink-0 self-end sm:self-auto cursor-pointer">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Hapus
+                </button>
                 @endif
             </div>
             @endforeach
