@@ -280,7 +280,7 @@ class RekomendasiController extends Controller
         // Jika ada intern_id di query, load data pemagang asli
         $intern = null;
         if ($request->filled('intern_id')) {
-            $intern = IR::find((int) $request->get('intern_id'));
+            $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->find((int) $request->get('intern_id'));
         }
 
         $bodyTemplate = $request->get('body_template', RekomendasiSetting::defaultBodyTemplate());
@@ -334,7 +334,7 @@ class RekomendasiController extends Controller
             $startStr             = 'Bulan Tahun';
             $endStr               = 'Bulan Tahun';
             $durationStr          = '? bulan';
-            $letterNumber         = '000/SR/UMUM/SEVEN.BRAND/' . $romanMonth . '/' . $year;
+            $letterNumber         = '000/SR/UMUM/SEVEN.' . strtoupper($brand ? $brand->code : 'SI') . '/' . $romanMonth . '/' . $year;
         }
 
         $letterDateStr = Carbon::now()->isoFormat('D MMMM Y');
@@ -347,8 +347,51 @@ class RekomendasiController extends Controller
             'durasi'        => $durationStr,
             'instansi'      => $participantInstitute,
             'nim'           => $participantId,
-            'company_brand' => $brand ? $brand->name : 'Seven Inc',
+            'company_brand' => $brand ? $brand->name : 'SEVEN INC',
         ]);
+
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('recommendation', failClosed: false);
+
+        if ($activeTemplate && $activeTemplate->exists) {
+            if ($intern) {
+                $preview = $issuanceService->previewDocument($intern, 'recommendation', [
+                    'template_id'     => $activeTemplate->id,
+                    'document_number' => $letterNumber,
+                    'brand_id'        => $brand?->id,
+                    'body_text'       => $bodyText,
+                    'variables'       => [
+                        'dokumen.nomor'                 => $letterNumber,
+                        'rekomendasi.isi'               => $bodyText,
+                        'rekomendasi.catatan'           => $bodyText,
+                        'magang.divisi'                 => $divisionFullName,
+                        'pemagang.divisi'               => $divisionFullName,
+                        'perusahaan.nama'               => $brand ? $brand->name : 'SEVEN INC',
+                        'perusahaan.alamat'             => $brand ? $brand->company_address : 'Jl. Raya Janti, Gang Arjuna No. 59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198',
+                        'perusahaan.pimpinan'           => $brand ? $brand->signatory_name : 'Rekario Danny Sanjaya, S.Kom.',
+                        'perusahaan.jabatan'            => $brand ? $brand->signatory_position : 'CEO',
+                        'dokumen.penandatangan_nama'    => $brand ? $brand->signatory_name : 'Rekario Danny Sanjaya, S.Kom.',
+                        'dokumen.penandatangan_jabatan' => $brand ? $brand->signatory_position : 'CEO',
+                    ],
+                ]);
+
+                return response($preview['html'], 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+            }
+
+            // Preview simulasi jika belum ada pemagang yang dipilih
+            $mockData = \App\Models\DocumentTemplate::getMockPlaceholderData('recommendation');
+            $mockData['dokumen']['nomor'] = $letterNumber;
+            if ($brand) {
+                $mockData['perusahaan']['nama'] = $brand->name;
+                $mockData['perusahaan']['alamat'] = $brand->company_address;
+                $mockData['perusahaan']['pimpinan'] = $brand->signatory_name;
+                $mockData['perusahaan']['jabatan'] = $brand->signatory_position;
+            }
+            $mockData['rekomendasi']['isi'] = $bodyText;
+            $mockHtml = \App\Services\DocumentTemplates\DocumentTemplateRenderer::renderLetterHtml($activeTemplate, $mockData);
+            return response($mockHtml, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        }
 
         $logoData  = null;
         if ($brand && $brand->logo && Storage::disk('public')->exists($brand->logo)) {
@@ -371,6 +414,7 @@ class RekomendasiController extends Controller
             'participantId'       => $participantId,
             'participantMajor'    => $participantMajor,
             'participantInstitute'=> $participantInstitute,
+            'divisionFullName'    => $divisionFullName,
             'bodyText'            => $bodyText,
             'logoData'            => $logoData,
             'stampData'           => $stampData,
@@ -542,10 +586,40 @@ class RekomendasiController extends Controller
 
     private function buildBodyText(string $template, array $vars): string
     {
+        $replace = [];
         foreach ($vars as $key => $value) {
-            $template = str_replace('{' . $key . '}', $value, $template);
+            $replace['{' . $key . '}'] = (string) $value;
+            $replace['{{' . $key . '}}'] = (string) $value;
         }
-        return $template;
+
+        // Kompatibilitas variabel mail-merge terpadu DocumentTemplate
+        if (isset($vars['nama'])) {
+            $replace['{{pemagang.nama}}'] = (string) $vars['nama'];
+        }
+        if (isset($vars['divisi'])) {
+            $replace['{{magang.divisi}}'] = (string) $vars['divisi'];
+        }
+        if (isset($vars['company_brand'])) {
+            $replace['{{perusahaan.nama}}'] = (string) $vars['company_brand'];
+            $replace['{{brand.nama}}'] = (string) $vars['company_brand'];
+        }
+        if (isset($vars['mulai'])) {
+            $replace['{{magang.tanggal_mulai}}'] = (string) $vars['mulai'];
+        }
+        if (isset($vars['selesai'])) {
+            $replace['{{magang.tanggal_selesai}}'] = (string) $vars['selesai'];
+        }
+        if (isset($vars['durasi'])) {
+            $replace['{{magang.durasi}}'] = (string) $vars['durasi'];
+        }
+        if (isset($vars['instansi'])) {
+            $replace['{{pemagang.institusi}}'] = (string) $vars['instansi'];
+        }
+        if (isset($vars['nim'])) {
+            $replace['{{pemagang.nim}}'] = (string) $vars['nim'];
+        }
+
+        return strtr($template, $replace);
     }
 
     private function toDataUri(?string $path): ?string

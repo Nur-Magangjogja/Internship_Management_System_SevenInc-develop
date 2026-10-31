@@ -391,10 +391,40 @@ class InternExtraController extends Controller
 
     private function buildBodyText(string $template, array $vars): string
     {
+        $replace = [];
         foreach ($vars as $key => $value) {
-            $template = str_replace('{' . $key . '}', $value, $template);
+            $replace['{' . $key . '}'] = (string) $value;
+            $replace['{{' . $key . '}}'] = (string) $value;
         }
-        return $template;
+
+        // Kompatibilitas variabel mail-merge terpadu DocumentTemplate
+        if (isset($vars['nama'])) {
+            $replace['{{pemagang.nama}}'] = (string) $vars['nama'];
+        }
+        if (isset($vars['divisi'])) {
+            $replace['{{magang.divisi}}'] = (string) $vars['divisi'];
+        }
+        if (isset($vars['company_brand'])) {
+            $replace['{{perusahaan.nama}}'] = (string) $vars['company_brand'];
+            $replace['{{brand.nama}}'] = (string) $vars['company_brand'];
+        }
+        if (isset($vars['mulai'])) {
+            $replace['{{magang.tanggal_mulai}}'] = (string) $vars['mulai'];
+        }
+        if (isset($vars['selesai'])) {
+            $replace['{{magang.tanggal_selesai}}'] = (string) $vars['selesai'];
+        }
+        if (isset($vars['durasi'])) {
+            $replace['{{magang.durasi}}'] = (string) $vars['durasi'];
+        }
+        if (isset($vars['instansi'])) {
+            $replace['{{pemagang.institusi}}'] = (string) $vars['instansi'];
+        }
+        if (isset($vars['nim'])) {
+            $replace['{{pemagang.nim}}'] = (string) $vars['nim'];
+        }
+
+        return strtr($template, $replace);
     }
 
     private function toDataUri(?string $path): ?string

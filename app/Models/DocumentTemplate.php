@@ -350,6 +350,9 @@ class DocumentTemplate extends Model
             'peserta' => [
                 'nama' => 'Ananda Pratama, S.Kom.',
             ],
+            'rekomendasi' => [
+                'isi' => 'Yang bersangkutan telah melaksanakan magang di ' . $companyName . ' sejak 1 Februari ' . $year . ' sampai dengan 31 Juli ' . $year . '. Selama masa magang, saudara/i Ananda Pratama, S.Kom. menunjukkan performa luar biasa, kemampuan komunikasi yang efektif, serta komitmen tinggi dalam menyelesaikan setiap proyek yang diberikan.',
+            ],
             'asset' => [
                 'company' => [
                     'logo' => $logo,
@@ -797,7 +800,7 @@ HTML,
     </tr>
 </table>
 
-<p style="text-align: justify; text-indent: 28px;">Yang bersangkutan telah melaksanakan magang di {{perusahaan.nama}} sejak {{magang.tanggal_mulai}} sampai dengan {{magang.tanggal_selesai}}. Selama masa magang, saudara/i {{pemagang.nama}} menunjukkan performa luar biasa, kemampuan komunikasi yang efektif, serta komitmen tinggi dalam menyelesaikan setiap proyek yang diberikan.</p>
+<p style="text-align: justify; text-indent: 28px;">{{rekomendasi.isi}}</p>
 
 <p style="text-align: justify; text-indent: 28px;">Berdasarkan kinerja dan kepribadian profesional tersebut, kami dengan senang hati dan tanpa keraguan merekomendasikan yang bersangkutan untuk dapat berkarir maupun melanjutkan studi di institusi/perusahaan Bapak/Ibu.</p>
 

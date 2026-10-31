@@ -691,6 +691,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,hr_staff
     // Review & Raw Preview SKL
     Route::get('/skl/generate/{intern}', [SKLController::class, 'review'])->name('skl.review');
     Route::get('/skl/raw/{intern}', [SKLController::class, 'rawPreview'])->name('skl.raw');
+    Route::post('/skl/regenerate/{intern}', [SKLController::class, 'regenerate'])->name('skl.regenerate');
 
     // Preview untuk panel editor (dipanggil dari iframe)
     Route::get('/skl/preview', [SKLController::class, 'preview'])->name('skl.preview');

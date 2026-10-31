@@ -166,7 +166,11 @@ class InternDocumentIssuanceService
         $canonical = self::normalizeType($documentType);
         $intern->load(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
 
-        $brandModel = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
+        $selectedBrandId = !empty($options['brand_id']) ? (int) $options['brand_id'] : null;
+        $brandModel = ($selectedBrandId ? Brand::find($selectedBrandId) : null)
+            ?? $intern->brandRel
+            ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null)
+            ?? Brand::getDefaultBrand();
         $instModel  = $intern->institution;
 
         // 1. Ekstraksi nomor dokumen: utamakan nomor custom dari options, nomor historis existing, baru generate nomor baru
@@ -491,7 +495,11 @@ class InternDocumentIssuanceService
 
         // 1b. Perlindungan kelengkapan profil operasional brand
         $intern->loadMissing('brandRel');
-        $brandModel = $intern->brandRel ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null) ?? Brand::getDefaultBrand();
+        $selectedBrandId = !empty($options['brand_id']) ? (int) $options['brand_id'] : null;
+        $brandModel = ($selectedBrandId ? Brand::find($selectedBrandId) : null)
+            ?? $intern->brandRel
+            ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null)
+            ?? Brand::getDefaultBrand();
         if ($brandModel && !$brandModel->isProfileCompleteForDocuments()) {
             $missing = implode(', ', $brandModel->getMissingDocumentFields());
             throw new \DomainException(
@@ -608,7 +616,8 @@ class InternDocumentIssuanceService
                 pdfBinary: $pdfBinary,
                 template: $template,
                 isRevision: $isRevision,
-                revisionVersion: $revisionVersion
+                revisionVersion: $revisionVersion,
+                forceRefresh: !empty($options['force_refresh'])
             );
 
             // 6. Sinkronisasi tabel historis/legacy untuk kompatibilitas mundur 100% tanpa mengubah riwayat
@@ -801,7 +810,9 @@ class InternDocumentIssuanceService
         string $companyName,
         string $duration
     ): string {
-        $division = $intern->division?->name ?? ($intern->internship_interest ?? 'divisi kerja');
-        return "Dengan ini menerangkan bahwa pemagang tersebut di atas telah menyelesaikan program magang selama {$duration} di divisi {$division} {$companyName} dengan dedikasi, integritas, dan performa kerja yang sangat baik. Kami merekomendasikan yang bersangkutan untuk berkarier secara profesional.";
+        $startDateStr = $intern->start_date ? Carbon::parse($intern->start_date)->locale('id')->translatedFormat('d F Y') : 'awal periode';
+        $endDateStr   = $intern->end_date ? Carbon::parse($intern->end_date)->locale('id')->translatedFormat('d F Y') : 'akhir periode';
+        $name = $intern->fullname ?? 'pemagang';
+        return "Yang bersangkutan telah melaksanakan magang di {$companyName} sejak {$startDateStr} sampai dengan {$endDateStr}. Selama masa magang, saudara/i {$name} menunjukkan performa luar biasa, kemampuan komunikasi yang efektif, serta komitmen tinggi dalam menyelesaikan setiap proyek yang diberikan.";
     }
 }

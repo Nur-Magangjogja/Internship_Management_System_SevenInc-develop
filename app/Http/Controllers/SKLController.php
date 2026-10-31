@@ -433,6 +433,68 @@ class SKLController extends Controller
     }
 
     /**
+     * POST /admin/skl/regenerate/{intern}
+     * Render ulang SKL (force refresh) atau terbitkan versi revisi baru resmi.
+     */
+    public function regenerate(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role, ['admin', 'superadmin', 'super_admin', 'hr_staff'], true)) {
+            abort(403, 'Hanya Admin atau HR Staff yang berwenang merevisi dokumen.');
+        }
+
+        $intern = IR::with(['brandRel', 'division', 'institution', 'studyProgramRel', 'user'])->findOrFail($id);
+
+        if ($intern->internship_status !== 'completed') {
+            $msg = 'SKL hanya dapat diproses setelah status pemagang Selesai (completed).';
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'error' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
+        $isRevision = $request->boolean('is_revision');
+
+        /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
+        $issuanceService = app(\App\Services\InternDocumentIssuanceService::class);
+        $activeTemplate = $issuanceService->resolveActiveTemplate('skl', failClosed: false);
+
+        try {
+            $issued = $issuanceService->issueDocument(
+                intern: $intern,
+                documentType: 'skl',
+                options: [
+                    'template_id'   => $activeTemplate?->id,
+                    'force_refresh' => true,
+                    'is_revision'   => $isRevision,
+                ],
+                actor: $user
+            );
+
+            $msg = $isRevision
+                ? "Revisi resmi SKL berhasil diterbitkan (v{$issued->template_version}, Nomor: {$issued->document_number}) dan disinkronkan ke Google Drive."
+                : "Dokumen SKL berhasil dirender ulang dan disinkronkan ke Google Drive.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok'              => true,
+                    'message'         => $msg,
+                    'document_number' => $issued->document_number,
+                    'download_url'    => route('admin.skl.download.for_user', ['user' => $intern->user_id ?: $user->id]) . '?intern_id=' . $intern->id . '&force_refresh=1',
+                ]);
+            }
+
+            return redirect()->route('skl.review', $intern->id)->with('success', $msg);
+        } catch (\Throwable $e) {
+            $err = 'Gagal memperbarui SKL: ' . $e->getMessage();
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'error' => $err], 500);
+            }
+            return back()->with('error', $err);
+        }
+    }
+
+    /**
      * GET /admin/skl/download/{user} — download SKL dari Data SKL (tetap ada)
      */
     public function download(Request $request, $userId = null)
@@ -479,8 +541,8 @@ class SKLController extends Controller
                 ->latest('id')
                 ->first();
 
-            // Cek apakah berkas fisik yang valid dan berukuran penuh (> 260KB) sudah tersedia
-            if ($genDoc && Storage::disk('local')->exists($genDoc->file_path)) {
+            // Cek apakah berkas fisik yang valid dan berukuran penuh (> 260KB) sudah tersedia (abaikan jika force_refresh)
+            if (!$request->boolean('force_refresh') && $genDoc && Storage::disk('local')->exists($genDoc->file_path)) {
                 $fullPath = Storage::disk('local')->path($genDoc->file_path);
                 if (filesize($fullPath) > 260000) {
                     return response()->download($fullPath, $fileName, ['Content-Type' => 'application/pdf']);

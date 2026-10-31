@@ -48,7 +48,8 @@ class DocumentPublishingService
         ?string $pdfBinary = null,
         ?\App\Models\DocumentTemplate $template = null,
         bool $isRevision = false,
-        int $revisionVersion = 1
+        int $revisionVersion = 1,
+        bool $forceRefresh = false
     ): GeneratedDocument {
         // 1. Validasi Kelayakan Bisnis
         if (!$this->docNumberService->canGenerate($intern, $documentType)) {
@@ -70,9 +71,20 @@ class DocumentPublishingService
             ? 'PUB-DOC-' . md5("intern-{$intern->id}-{$documentType}-v{$revisionVersion}")
             : 'PUB-DOC-' . md5("intern-{$intern->id}-{$documentType}");
 
-        // Cek jika dokumen dengan idempotency key ini sudah pernah dibuat/dipublish
+        // Kumpulkan file ID lama di Google Drive sebelum upload jika revisi/force refresh
+        $oldDriveFileIds = ($isRevision || $forceRefresh)
+            ? GeneratedDocument::where('internship_registration_id', $intern->id)
+                ->where('document_type', $documentType)
+                ->whereNotNull('drive_file_id')
+                ->pluck('drive_file_id')
+                ->filter()
+                ->unique()
+                ->all()
+            : [];
+
+        // Cek jika dokumen dengan idempotency key ini sudah pernah dibuat/dipublish (abaikan jika dipaksa refresh)
         $existing = GeneratedDocument::where('idempotency_key', $idempotencyKey)->first();
-        if ($existing) {
+        if ($existing && !$forceRefresh) {
             $hasLocalFile = Storage::disk('local')->exists($existing->file_path);
             if (in_array($existing->status, [GeneratedDocument::STATUS_GENERATED, GeneratedDocument::STATUS_SYNC_PENDING, GeneratedDocument::STATUS_SYNCED]) && $hasLocalFile) {
                 return $existing;
@@ -153,6 +165,20 @@ class DocumentPublishingService
         // 5. Coba sinkronisasi ke Google Drive Folder Pemagang Existing
         try {
             $this->syncDocumentToDrive($doc, $actor);
+
+            // Bersihkan file lama di Google Drive jika ini revisi atau render ulang
+            if (($isRevision || $forceRefresh) && !empty($oldDriveFileIds)) {
+                $newDriveFileId = $doc->fresh()?->drive_file_id;
+                foreach ($oldDriveFileIds as $oldId) {
+                    if (!empty($oldId) && $oldId !== $newDriveFileId && !str_starts_with($oldId, 'local_sim_') && !str_starts_with($oldId, 'DRIVE-MOCK-')) {
+                        try {
+                            $this->cloudDriver->deleteFile($oldId);
+                        } catch (\Throwable $delEx) {
+                            Log::warning("Gagal menghapus file lama di Drive ({$oldId}): " . $delEx->getMessage());
+                        }
+                    }
+                }
+            }
         } catch (\Throwable $syncEx) {
             Log::warning("Sinkronisasi otomatis ke Google Drive ditunda: " . $syncEx->getMessage());
         }

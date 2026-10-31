@@ -606,6 +606,28 @@ HTML;
         </div>
         {$footerBlock}
     </div>
+    <script>
+        function autoScaleSheet() {
+            var sheet = document.querySelector('.letter-paper-sheet');
+            if (!sheet) return;
+            var availableW = window.innerWidth - 24;
+            var targetW = 794;
+            if (availableW < targetW) {
+                var scale = availableW / targetW;
+                sheet.style.transform = 'scale(' + scale + ')';
+                sheet.style.transformOrigin = 'top center';
+                var diff = (sheet.getBoundingClientRect().height) - sheet.offsetHeight;
+                sheet.style.marginBottom = diff + 'px';
+            } else {
+                sheet.style.transform = '';
+                sheet.style.transformOrigin = '';
+                sheet.style.marginBottom = '';
+            }
+        }
+        window.addEventListener('resize', autoScaleSheet);
+        window.addEventListener('DOMContentLoaded', autoScaleSheet);
+        setTimeout(autoScaleSheet, 50);
+    </script>
 </body>
 </html>
 HTML;

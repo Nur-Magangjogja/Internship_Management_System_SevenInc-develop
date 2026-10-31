@@ -191,7 +191,12 @@ class DocumentGeneratorService
      * Pastikan dokumen LOA (record database dan file PDF) telah digenerate untuk pemagang.
      * Sangat berguna saat pemagang masuk langsung berstatus aktif (misal dari Absen Djuragan).
      */
-    public function ensureLoaGenerated(InternshipRegistration $intern, ?User $actor = null, bool $forceRefresh = false): InternLoa
+    public function ensureLoaGenerated(
+        InternshipRegistration $intern,
+        ?User $actor = null,
+        bool $forceRefresh = false,
+        bool $isRevision = false
+    ): InternLoa
     {
         $intern->loadMissing(['brandRel', 'division', 'institution', 'studyProgramRel', 'user']);
 
@@ -214,7 +219,7 @@ class DocumentGeneratorService
         $publicSize    = Storage::disk('public')->exists($relPath) ? (int)Storage::disk('public')->size($relPath) : 0;
 
         // Berkas PDF legacy berukuran ~3KB, template modern ~150KB+. Jika < 15KB atau dipaksa refresh, render ulang dari template.
-        $needsRegen    = $forceRefresh || $localSize < 15000 || $publicSize < 15000;
+        $needsRegen    = $forceRefresh || $isRevision || $localSize < 15000 || $publicSize < 15000;
 
         if ($needsRegen) {
             /** @var \App\Services\InternDocumentIssuanceService $issuanceService */
@@ -232,15 +237,32 @@ class DocumentGeneratorService
                     $generatedDoc = $issuanceService->issueDocument(
                         intern: $intern,
                         documentType: 'loa',
-                        options: ['document_number' => $loaNumber, 'template_id' => $template->id],
+                        options: [
+                            'document_number' => $isRevision ? null : $loaNumber,
+                            'template_id'     => $template->id,
+                            'force_refresh'   => $forceRefresh || $isRevision,
+                            'is_revision'     => $isRevision,
+                        ],
                         actor: $actor
                     );
 
-                    if ($generatedDoc && Storage::disk('local')->exists($generatedDoc->file_path)) {
-                        Storage::disk('local')->put($generatedDoc->file_path, $pdfBinary);
-                        $generatedDoc->file_size_bytes = strlen($pdfBinary);
-                        $generatedDoc->checksum_sha256 = hash('sha256', $pdfBinary);
-                        $generatedDoc->save();
+                    if ($generatedDoc) {
+                        $loaNumber = $generatedDoc->document_number;
+                        $safeLoaNumber = str_replace(['/', '\\'], '-', $loaNumber);
+                        $fileName = "{$safeLoaNumber}-{$safeName}.pdf";
+                        $relPath = 'documents/loa/' . $fileName;
+
+                        Storage::disk('local')->put($relPath, $pdfBinary);
+                        Storage::disk('public')->put($relPath, $pdfBinary);
+
+                        if (Storage::disk('local')->exists($generatedDoc->file_path)) {
+                            Storage::disk('local')->put($generatedDoc->file_path, $pdfBinary);
+                            $generatedDoc->file_size_bytes = strlen($pdfBinary);
+                            $generatedDoc->checksum_sha256 = hash('sha256', $pdfBinary);
+                            $generatedDoc->save();
+                        }
+
+                        $internLoa = InternLoa::where('intern_id', $intern->id)->latest('id')->first() ?: $internLoa;
                     }
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::warning("Gagal issue LOA via DocumentTemplate: " . $e->getMessage() . " — mencoba render langsung");

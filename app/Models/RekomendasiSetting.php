@@ -28,6 +28,6 @@ class RekomendasiSetting extends Model
      */
     public static function defaultBodyTemplate(): string
     {
-        return 'Adalah alumni magang dari {company_brand} yang telah melaksanakan magang selama {durasi} sebagai {divisi} dengan tuntas sejak {mulai} – {selesai} dan mematuhi seluruh peraturan yang berlaku di {company_brand}. Saudara/i {nama} merupakan salah satu pemagang terbaik kami yang memiliki semangat dan etos kerja yang baik.';
+        return 'Yang bersangkutan telah melaksanakan magang di {company_brand} sejak {mulai} sampai dengan {selesai}. Selama masa magang, saudara/i {nama} menunjukkan performa luar biasa, kemampuan komunikasi yang efektif, serta komitmen tinggi dalam menyelesaikan setiap proyek yang diberikan.';
     }
 }

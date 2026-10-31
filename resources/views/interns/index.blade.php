@@ -741,6 +741,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pendaftar' && status === 'accepted') {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -757,6 +762,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pemagang' && (status === 'active' || status === 'accepted')) {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>
@@ -766,6 +776,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (MODE === 'pemagang' && status === 'completed') {
             contextualItems += `
+            <a href="{{ url('admin/loa/generate') }}/${it.id}" onclick="closeAllDropdowns()"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-50">
+                <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Review & Perbarui LOA</span>
+            </a>
             <a href="{{ url('admin/loa/download') }}/${it.id}" target="_blank" onclick="closeAllDropdowns()"
                 class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-[#1F5F3F] transition hover:bg-[#E8F5E9]">
                 <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>

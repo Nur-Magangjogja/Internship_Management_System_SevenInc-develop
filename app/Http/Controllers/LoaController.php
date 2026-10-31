@@ -188,7 +188,9 @@ class LoaController extends Controller
     public function generate(Request $request)
     {
         $validated = $request->validate([
-            'intern_id' => ['required', 'integer', 'exists:internship_registrations,id'],
+            'intern_id'     => ['required', 'integer', 'exists:internship_registrations,id'],
+            'force_refresh' => ['nullable', 'boolean'],
+            'is_revision'   => ['nullable', 'boolean'],
         ]);
 
         $user = $request->user();
@@ -196,7 +198,7 @@ class LoaController extends Controller
         /** @var \App\Services\DocumentGeneratorService $docService */
         $docService = app(\App\Services\DocumentGeneratorService::class);
 
-        if ($user->role === 'admin') {
+        if ($user->role === 'admin' || $user->role === 'hr_staff') {
             $intern = IR::where('id', $validated['intern_id'])->firstOrFail();
         } elseif ($user->role === 'pemagang') {
             $intern = IR::where('id', $validated['intern_id'])->first();
@@ -209,6 +211,33 @@ class LoaController extends Controller
             $this->ensureCanAccessCompletedDocs($user, $intern);
         } else {
             abort(403, 'Anda tidak memiliki hak untuk membuat LOA.');
+        }
+
+        $forceRefresh = $request->boolean('force_refresh');
+        $isRevision   = $request->boolean('is_revision');
+
+        if ($forceRefresh || $isRevision) {
+            $internLoa = $docService->ensureLoaGenerated(
+                intern: $intern,
+                actor: $user,
+                forceRefresh: true,
+                isRevision: $isRevision
+            );
+
+            $msg = $isRevision
+                ? "Revisi resmi LOA berhasil diterbitkan (Nomor: {$internLoa->loa_number}) dan disinkronkan ke Google Drive."
+                : "Dokumen LOA berhasil dirender ulang dan disinkronkan ke Google Drive.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok'           => true,
+                    'message'      => $msg,
+                    'loa_number'   => $internLoa->loa_number,
+                    'download_url' => route('admin.loa.download', $intern->id),
+                ]);
+            }
+
+            return redirect()->route('admin.loa.review', $intern->id)->with('success', $msg);
         }
 
         // Delegate to downloadSingle
