@@ -1158,7 +1158,12 @@
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                         <h3 class="text-sm font-bold text-amber-950 flex items-center gap-2">
-                            <span>⏸️</span> Antrean Sinkronisasi Dibekukan (paused_target_rebind)
+                            <svg class="h-4 w-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="10" y1="15" x2="10" y2="9"/>
+                                <line x1="14" y1="15" x2="14" y2="9"/>
+                            </svg>
+                            <span>Antrean Sinkronisasi Dibekukan (paused_target_rebind)</span>
                         </h3>
                         <p class="text-xs text-amber-800 mt-1">
                             Terdapat <strong>{{ $pausedQueuesSummary['total_count'] }}</strong> baris sinkronisasi yang dibekukan karena pergantian target Spreadsheet. Data pendaftar di database tetap aman dan tidak terhapus.

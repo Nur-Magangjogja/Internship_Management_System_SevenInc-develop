@@ -163,12 +163,19 @@
                 <div class="space-y-2.5 text-xs">
                     <div>
                         <span class="text-slate-500 font-medium block">Nama Peserta / Pemagang:</span>
-                        <span class="font-semibold text-slate-800">{{ $registration->user?->name ?? 'Tidak Ada User' }}</span>
+                        <span class="font-semibold text-slate-800">{{ $registration->fullname ?: ($registration->user?->name ?? 'Tidak Ada User') }}</span>
                     </div>
+
+                    @if ($registration->user)
+                    <div>
+                        <span class="text-slate-500 font-medium block">Akun Pengguna (User):</span>
+                        <span class="text-slate-700 font-mono">{{ $registration->user->name }}</span>
+                    </div>
+                    @endif
 
                     <div>
                         <span class="text-slate-500 font-medium block">Email:</span>
-                        <span class="font-mono text-slate-700">{{ $registration->user?->email ?? '-' }}</span>
+                        <span class="font-mono text-slate-700">{{ $registration->email ?? $registration->user?->email ?? '-' }}</span>
                     </div>
 
                     <div>

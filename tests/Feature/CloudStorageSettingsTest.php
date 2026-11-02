@@ -45,8 +45,9 @@ class CloudStorageSettingsTest extends TestCase
         $response = $this->actingAs($this->admin)->get(route('admin.cloud-storage.index'));
 
         $response->assertStatus(200);
-        $response->assertSee('Pusat Pengaturan Penyimpanan Cloud');
-        $response->assertSee('Folder Induk Tunggal Google Drive (Kanonikal)');
+        $response->assertSee('Integrasi Google Drive');
+        $response->assertSee('Link Folder Induk Google Drive');
+        $response->assertSee('Link Endpoint Web Google Apps Script');
     }
 
     public function test_admin_can_update_folder_urls_and_ids_are_extracted(): void
@@ -58,6 +59,8 @@ class CloudStorageSettingsTest extends TestCase
 
         $response = $this->actingAs($this->admin)->put(route('admin.cloud-storage.update'), [
             'name'                          => 'Penyimpanan Utama Google Drive SertIF',
+            'canonical_parent_folder_url'   => 'https://drive.google.com/drive/folders/1CanonicalFolderTest123',
+            'apps_script_endpoint_url'      => 'https://script.google.com/macros/s/AKfycbz_test_endpoint_mock/exec',
             'system_assets_folder_url'      => $assetsUrl,
             'document_templates_folder_url' => $templatesUrl,
             'generated_docs_folder_url'     => $generatedDocsUrl,
@@ -70,6 +73,8 @@ class CloudStorageSettingsTest extends TestCase
 
         $setting = CloudStorageSetting::first();
         $this->assertNotNull($setting);
+        $this->assertEquals('1CanonicalFolderTest123', $setting->canonical_parent_folder_id);
+        $this->assertEquals('https://script.google.com/macros/s/AKfycbz_test_endpoint_mock/exec', $setting->apps_script_endpoint_url);
         $this->assertEquals('1ABCDEF1234567890xyz_test_asset', $setting->system_assets_folder_id);
         $this->assertEquals('2BCDEF2345678901xyz_test_template', $setting->document_templates_folder_id);
         $this->assertEquals('3CDEFG3456789012xyz_test_gen', $setting->generated_docs_folder_id);
@@ -118,6 +123,7 @@ class CloudStorageSettingsTest extends TestCase
         $setting = CloudStorageSetting::getEffectiveSettings();
         $setting->update([
             'canonical_parent_folder_id' => 'mock_folder_123',
+            'apps_script_endpoint_url'   => 'https://script.google.com/macros/s/test_settings_gas/exec',
             'provider'                   => 'apps_script_drive',
         ]);
 

@@ -250,6 +250,9 @@
                             default                                 => [$field->field_key],
                         };
                         $hasExistingFile = $reg->attachments->filter(function ($att) use ($aliasTypes) {
+                            if (method_exists($att, 'isPlaceholder') && $att->isPlaceholder()) {
+                                return false;
+                            }
                             return in_array($att->attachment_type ?? '', $aliasTypes, true)
                                 || in_array($att->category ?? '', $aliasTypes, true)
                                 || in_array($att->document_category ?? '', $aliasTypes, true);
@@ -386,7 +389,12 @@
 
     @php
         $attachmentsList = ($reg && $reg->attachments)
-            ? $reg->attachments->reject(fn($a) => $a->mime_type === 'application/vnd.google-apps.folder' || str_starts_with((string)$a->file_path, 'drive_root:') || $a->attachment_type === \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
+            ? $reg->attachments->reject(fn($a) => 
+                $a->mime_type === 'application/vnd.google-apps.folder' 
+                || str_starts_with((string)$a->file_path, 'drive_root:') 
+                || $a->attachment_type === \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE
+                || (method_exists($a, 'isPlaceholder') && $a->isPlaceholder())
+            )
             : collect();
     @endphp
     @if($attachmentsList->isNotEmpty() || $reg?->profile_photo)

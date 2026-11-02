@@ -472,6 +472,11 @@ class InternshipRegistration extends Model
         return $this->facultyRel();
     }
 
+    public function getNameAttribute(): ?string
+    {
+        return $this->fullname ?: ($this->user?->name ?? null);
+    }
+
     public function getEmailAttribute()
     {
         if (empty($this->user_id)) {

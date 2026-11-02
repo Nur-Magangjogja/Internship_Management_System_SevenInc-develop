@@ -68,10 +68,7 @@ class SpreadsheetConnectionService
         }
 
         // 2. Brand-specific Registration Connections (11 Brands)
-        $defaultEndpoint = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
-            ->whereNotNull('apps_script_endpoint_url')
-            ->value('apps_script_endpoint_url')
-            ?: 'https://script.google.com/macros/s/AKfycbzY7ApK_y_kLy6ImJtnVFcynUUr1ilWIkQEsalkBsXqGMG_4QD4W8_47yHns-sJs-_MsA/exec';
+        $defaultEndpoint = $this->resolveAppsScriptEndpoint();
 
         $brands = \App\Models\Brand::whereNotNull('registration_host')
             ->orderBy('name')
@@ -91,6 +88,32 @@ class SpreadsheetConnectionService
                 ]
             );
         }
+    }
+
+    /**
+     * Dapatkan URL endpoint Apps Script Gateway terpadu (1 akun untuk seluruh integrasi).
+     */
+    public function resolveAppsScriptEndpoint(?SpreadsheetConnection $connection = null): ?string
+    {
+        try {
+            $cloudSetting = \App\Models\CloudStorageSetting::first();
+            if (!empty($cloudSetting?->apps_script_endpoint_url)) {
+                return trim($cloudSetting->apps_script_endpoint_url);
+            }
+        } catch (\Throwable) {}
+
+        if (!empty($connection?->apps_script_endpoint_url)) {
+            return trim($connection->apps_script_endpoint_url);
+        }
+
+        try {
+            $fallback = SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->value('apps_script_endpoint_url');
+            if (!empty($fallback)) {
+                return trim($fallback);
+            }
+        } catch (\Throwable) {}
+
+        return function_exists('config') ? config('services.google_apps_script.endpoint_url') : null;
     }
 
     /**
@@ -349,12 +372,17 @@ class SpreadsheetConnectionService
                 $connection->display_name = $data['display_name'] ?? $connection->display_name;
                 $connection->spreadsheet_url = $spreadsheetUrl;
                 $connection->spreadsheet_id = $spreadsheetId;
-                $connection->apps_script_endpoint_url = $appsScriptUrl;
+                if (array_key_exists('apps_script_endpoint_url', $data)) {
+                    $connection->apps_script_endpoint_url = $appsScriptUrl;
+                } elseif (empty($connection->apps_script_endpoint_url)) {
+                    $connection->apps_script_endpoint_url = $this->resolveAppsScriptEndpoint($connection);
+                }
                 $connection->updated_by = $actor?->id;
 
                 // Reset status to untested / not_configured if URL or endpoint changed
+                $effectiveEndpoint = $connection->apps_script_endpoint_url ?: $this->resolveAppsScriptEndpoint($connection);
                 if ($connection->isDirty('spreadsheet_url') || $connection->isDirty('apps_script_endpoint_url')) {
-                    $connection->connection_status = (empty($spreadsheetUrl) || empty($appsScriptUrl))
+                    $connection->connection_status = (empty($spreadsheetUrl) || empty($effectiveEndpoint))
                         ? SpreadsheetConnection::STATUS_NOT_CONFIGURED
                         : SpreadsheetConnection::STATUS_UNTESTED;
                     $connection->last_error_summary = null;
@@ -480,11 +508,11 @@ class SpreadsheetConnectionService
             $connection->spreadsheet_id = $spreadsheetId;
         }
 
-        // 3. Validasi Apps Script Endpoint URL eksplisit pada model koneksi (tanpa fallback diam-diam)
-        $endpoint = $connection->apps_script_endpoint_url;
+        // 3. Validasi Apps Script Endpoint URL (terpusat)
+        $endpoint = $this->resolveAppsScriptEndpoint($connection);
         if (empty($endpoint)) {
             $status = SpreadsheetConnection::STATUS_NOT_CONFIGURED;
-            $summary = 'Apps Script Endpoint URL belum dikonfigurasi pada koneksi ini.';
+            $summary = 'Apps Script Endpoint URL belum dikonfigurasi pada sistem. Silakan atur di menu Integrasi Drive & Apps Script.';
 
             $connection->connection_status = $status;
             $connection->last_error_summary = $summary;
@@ -800,7 +828,8 @@ class SpreadsheetConnectionService
         ?User $actor = null,
         bool $confirmPromoteLegacy = false
     ): array {
-        if (empty($connection->apps_script_endpoint_url) || empty($connection->spreadsheet_id)) {
+        $endpoint = $this->resolveAppsScriptEndpoint($connection);
+        if (empty($endpoint) || empty($connection->spreadsheet_id)) {
             return [
                 'success' => false,
                 'message' => 'Endpoint Apps Script dan ID Spreadsheet wajib dikonfigurasi sebelum aktivasi target.',
@@ -817,7 +846,7 @@ class SpreadsheetConnectionService
 
         $transport = new \App\Services\SpreadsheetTransport\GoogleAppsScriptTransport([
             'enabled'         => true,
-            'endpoint_url'    => $connection->apps_script_endpoint_url,
+            'endpoint_url'    => $endpoint,
             'shared_secret'   => $sharedSecret,
             'timeout_seconds' => 15,
         ]);

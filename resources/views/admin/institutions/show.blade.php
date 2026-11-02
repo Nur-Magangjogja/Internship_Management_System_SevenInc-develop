@@ -679,7 +679,7 @@
                                 {{ ($interns->currentPage() - 1) * $interns->perPage() + $loop->iteration }}
                             </td>
                             <td class="px-5 py-3">
-                                <span class="font-semibold text-slate-800">{{ $intern->name ?? $intern->user?->name ?? 'Pemagang' }}</span>
+                                <span class="font-semibold text-slate-800">{{ $intern->fullname ?? $intern->name ?? $intern->user?->name ?? 'Pemagang' }}</span>
                                 <p class="text-[11px] text-slate-400">{{ $intern->user?->email ?? '-' }}</p>
                             </td>
                             <td class="px-5 py-3 text-slate-600">

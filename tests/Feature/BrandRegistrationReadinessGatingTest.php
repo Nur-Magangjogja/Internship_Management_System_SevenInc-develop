@@ -64,6 +64,9 @@ class BrandRegistrationReadinessGatingTest extends TestCase
         $postResponse = $this->actingAs($applicant)
             ->post('http://daftar.unverified.test' . route('pemagang.registration.store', [], false), [
                 'fullname' => 'Test Applicant',
+                'start_date' => now()->addDays(30)->format('Y-m-d'),
+                'born_date' => '2000-01-01',
+                'religion' => 'Islam',
             ]);
         $postResponse->assertSessionHasErrors('internship_interest');
     }
@@ -118,6 +121,8 @@ class BrandRegistrationReadinessGatingTest extends TestCase
             ->post('http://daftar.tanpadrive.test' . route('pemagang.registration.store', [], false), [
                 'fullname' => 'Test Applicant',
                 'gender' => 'Laki-laki',
+                'born_date' => '2000-01-01',
+                'religion' => 'Islam',
                 'email' => $applicant->email,
                 'phone_number' => '081234567890',
                 'current_status' => 'Mahasiswa',

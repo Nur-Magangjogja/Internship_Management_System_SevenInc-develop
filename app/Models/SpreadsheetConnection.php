@@ -82,6 +82,25 @@ class SpreadsheetConnection extends Model
     }
 
     /**
+     * Dapatkan endpoint Apps Script (fallback ke setting terpusat CloudStorageSetting).
+     */
+    public function getAppsScriptEndpointUrlAttribute($value): ?string
+    {
+        if (!empty($value)) {
+            return $value;
+        }
+
+        try {
+            $cloudSetting = CloudStorageSetting::first();
+            if (!empty($cloudSetting?->apps_script_endpoint_url)) {
+                return $cloudSetting->apps_script_endpoint_url;
+            }
+        } catch (\Throwable) {}
+
+        return function_exists('config') ? config('services.google_apps_script.endpoint_url') : null;
+    }
+
+    /**
      * Memeriksa apakah link folder Google Drive sudah terhubung dan valid.
      */
     public function isDriveConnected(): bool

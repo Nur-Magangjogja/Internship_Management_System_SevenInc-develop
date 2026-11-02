@@ -97,6 +97,27 @@ class RegistrationAttachment extends Model
     }
 
     /**
+     * Cek apakah lampiran merupakan dummy/placeholder otomatis sistem (bukan unggahan asli pemagang).
+     */
+    public function isPlaceholder(): bool
+    {
+        if ((int) $this->document_version === 0) {
+            return true;
+        }
+
+        if ($this->attachment_type === self::TYPE_CV
+            && (int) $this->file_size <= 1024
+            && str_starts_with((string) $this->file_path, 'attachments/')
+            && str_starts_with((string) $this->original_name, 'CV_')
+            && str_ends_with((string) $this->original_name, '.pdf')
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Cek apakah lampiran sudah tersinkronisasi secara sah ke Google Drive.
      */
     public function isSyncedToDrive(): bool

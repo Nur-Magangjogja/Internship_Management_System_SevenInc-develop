@@ -118,6 +118,8 @@ class BrandDivisionContractTest extends TestCase
             ->post('http://daftar.tukanglas.org' . route('pemagang.registration.store', [], false), [
                 'fullname' => 'Peserta Uji Kontrak',
                 'gender' => 'Laki-laki',
+                'born_date' => '2000-01-01',
+                'religion' => 'Islam',
                 'email' => 'peserta_uji_' . uniqid() . '@example.com',
                 'phone_number' => '081234567890',
                 'current_status' => 'Mahasiswa',
