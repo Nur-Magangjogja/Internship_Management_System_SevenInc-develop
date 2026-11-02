@@ -371,27 +371,71 @@
             </div>
 
             <!-- 2. Folder Induk Google Drive (Penyimpanan Asset) -->
+            @php
+                $canonicalDriveHref = $settings->canonical_parent_folder_url;
+                if (empty($canonicalDriveHref) && !empty($settings->canonical_parent_folder_id)) {
+                    $canonicalDriveHref = 'https://drive.google.com/drive/folders/' . $settings->canonical_parent_folder_id;
+                } elseif (!empty($canonicalDriveHref) && !str_starts_with($canonicalDriveHref, 'http')) {
+                    $canonicalDriveHref = 'https://drive.google.com/drive/folders/' . $canonicalDriveHref;
+                }
+            @endphp
             <div class="space-y-2 rounded-xl border-2 {{ $settings->is_verified ? 'border-emerald-300 bg-emerald-50/20' : ($settings->canonical_parent_folder_id ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 bg-slate-50/50') }} p-4">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                     <label for="canonical_parent_folder_url" class="block text-xs font-bold uppercase tracking-wider text-slate-700">
                         Link Folder Induk Google Drive (Penyimpanan Asset &amp; Berkas) <span class="text-rose-500">*</span>
                     </label>
-                    @if ($settings->canonical_parent_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-0.5 text-xs font-mono font-bold text-slate-700">
-                            ID: {{ $settings->canonical_parent_folder_id }}
-                        </span>
-                    @endif
+                    <div class="flex flex-wrap items-center gap-2">
+                        @if ($settings->canonical_parent_folder_id)
+                            <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-0.5 text-xs font-mono font-bold text-slate-700">
+                                ID: {{ $settings->canonical_parent_folder_id }}
+                            </span>
+                        @endif
+                        @if (!empty($canonicalDriveHref))
+                            <a
+                                href="{{ $canonicalDriveHref }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:text-blue-900"
+                                title="Buka Folder Induk di Google Drive pada Tab Baru"
+                            >
+                                <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                                <span>Buka Folder di Drive</span>
+                            </a>
+                        @endif
+                    </div>
                 </div>
 
                 <div class="flex flex-col gap-2 sm:flex-row">
-                    <input
-                        type="text"
-                        name="canonical_parent_folder_url"
-                        id="canonical_parent_folder_url"
-                        value="{{ old('canonical_parent_folder_url', $settings->canonical_parent_folder_url ?: $settings->canonical_parent_folder_id) }}"
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                        placeholder="Contoh: https://drive.google.com/drive/folders/1a2B3c... atau 1a2B3c..."
-                    />
+                    <div class="relative flex-1">
+                        <input
+                            type="text"
+                            name="canonical_parent_folder_url"
+                            id="canonical_parent_folder_url"
+                            value="{{ old('canonical_parent_folder_url', $settings->canonical_parent_folder_url ?: $settings->canonical_parent_folder_id) }}"
+                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono {{ !empty($canonicalDriveHref) ? 'pr-20' : '' }}"
+                            placeholder="Contoh: https://drive.google.com/drive/folders/1a2B3c... atau 1a2B3c..."
+                        />
+                        @if (!empty($canonicalDriveHref))
+                            <a
+                                href="{{ $canonicalDriveHref }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="absolute inset-y-1 right-1 inline-flex items-center gap-1 rounded-md px-2.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition"
+                                title="Buka Folder di Google Drive"
+                            >
+                                <span>Buka</span>
+                                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                            </a>
+                        @endif
+                    </div>
                 </div>
 
                 <!-- Status Verifikasi Folder Induk -->
@@ -467,82 +511,291 @@
 
             <hr class="border-slate-100" />
 
-            <!-- Referensi Folder Registrasi Pemagang (Read Only) -->
-            <div class="rounded-xl border border-amber-200/90 bg-amber-50/40 p-5 shadow-sm">
+            <!-- Referensi Folder Registrasi Pemagang Multi-Brand -->
+            <div
+                x-data="{
+                    isOpen: false,
+                    page: 1,
+                    perPage: 5,
+                    total: {{ count($brandFolderItems ?? []) }},
+                    get totalPages() {
+                        return Math.ceil(this.total / this.perPage) || 1;
+                    },
+                    get itemsOnCurrentPage() {
+                        if (this.total === 0) return 0;
+                        return Math.min(this.perPage, this.total - (this.page - 1) * this.perPage);
+                    },
+                    get emptyRows() {
+                        if (this.total === 0) return [];
+                        const count = Math.max(0, this.perPage - this.itemsOnCurrentPage);
+                        return Array.from({ length: count }, (_, i) => i + 1);
+                    },
+                    nextPage() {
+                        if (this.page < this.totalPages) this.page++;
+                    },
+                    prevPage() {
+                        if (this.page > 1) this.page--;
+                    },
+                    goToPage(p) {
+                        this.page = p;
+                    }
+                }"
+                class="rounded-xl border border-amber-200/90 bg-white p-5 shadow-sm space-y-4"
+            >
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div class="flex items-start gap-3">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
                             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                             </svg>
                         </div>
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
-                                <h3 class="text-sm font-bold text-slate-800">Referensi Folder Registrasi Pemagang</h3>
+                                <h3 class="text-sm font-bold text-slate-800">Referensi Folder Registrasi Pemagang (Multi-Brand)</h3>
                                 <span class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 border border-amber-300/60">Read-Only</span>
                             </div>
                             <p class="mt-1 text-xs text-slate-600 max-w-2xl leading-relaxed">
-                                Dikonfigurasi melalui modul <strong class="text-slate-800">Integrasi Spreadsheet (Registration Connection)</strong>. Dokumen individu pemagang (LOA, SKL, sertifikat) otomatis tersimpan ke subfolder pemagang di dalam folder ini.
+                                Dokumen pendaftaran pemagang (LOA, SKL, sertifikat, berkas) disimpan per brand sesuai konfigurasi pada modul <strong class="text-slate-800">Integrasi Spreadsheet &amp; Drive</strong>.
                             </p>
                         </div>
                     </div>
-                    <div class="shrink-0 self-start">
+                    <div class="flex flex-wrap items-center gap-2 shrink-0 self-start">
+                        <!-- Tombol Buka / Tutup Daftar -->
+                        <button
+                            type="button"
+                            @click="isOpen = !isOpen"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 hover:text-slate-900"
+                        >
+                            <span x-text="isOpen ? 'Sembunyikan Daftar Folder' : 'Lihat Daftar Folder ({{ count($brandFolderItems ?? []) }})'">Lihat Daftar Folder ({{ count($brandFolderItems ?? []) }})</span>
+                            <svg :class="isOpen ? 'rotate-180' : ''" class="h-3.5 w-3.5 text-slate-500 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+
                         <a
                             href="{{ route('admin.spreadsheet-connections.index') }}"
-                            class="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100/60 hover:border-amber-400"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50/80 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-xs transition hover:bg-amber-100 hover:border-amber-400"
                         >
                             <svg class="h-3.5 w-3.5 text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
-                            <span>Ubah di Spreadsheet</span>
+                            <span>Kelola di Spreadsheet</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- Display ID & Action Box -->
-                <div class="mt-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                    <div x-data="{ copied: false }" class="relative flex-1">
-                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                            <span class="text-[11px] font-mono font-bold text-slate-400">ID:</span>
+                <!-- Ringkasan Statistik Status Folder Multi-Brand -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    <div class="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-slate-500">Total Brand</span>
+                        <span class="text-sm font-extrabold text-slate-800">{{ $folderStats['total_brands'] ?? count($brandFolderItems ?? []) }}</span>
+                    </div>
+                    <div class="rounded-lg bg-emerald-50 border border-emerald-200/80 p-2.5 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-emerald-700">Folder Terpasang</span>
+                        <span class="text-sm font-extrabold text-emerald-800">{{ $folderStats['configured_count'] ?? 0 }}</span>
+                    </div>
+                    <div class="rounded-lg bg-amber-50 border border-amber-200/80 p-2.5 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-amber-700">Belum Diatur</span>
+                        <span class="text-sm font-extrabold text-amber-800">{{ $folderStats['unconfigured_count'] ?? 0 }}</span>
+                    </div>
+                    <div class="rounded-lg bg-blue-50 border border-blue-200/80 p-2.5 text-center">
+                        <span class="block text-[10px] uppercase font-bold text-blue-700">Folder Bersama (Shared)</span>
+                        <span class="text-sm font-extrabold text-blue-800">{{ $folderStats['shared_count'] ?? 0 }}</span>
+                    </div>
+                </div>
+
+                <!-- Panel Daftar yang Dapat Dibuka / Ditutup -->
+                <div x-show="isOpen" x-transition.opacity.duration.200ms class="space-y-4 pt-2 border-t border-slate-100" style="display: none;">
+                    <!-- Tabel Ringkas Folder Per Brand (5 per halaman) -->
+                    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                                    <tr>
+                                        <th class="py-2.5 px-3.5">Brand</th>
+                                        <th class="py-2.5 px-3.5">Status Folder</th>
+                                        <th class="py-2.5 px-3.5">Folder Google Drive (ID)</th>
+                                        <th class="py-2.5 px-3.5 text-right">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @forelse (($brandFolderItems ?? []) as $index => $item)
+                                        <tr
+                                            x-show="page === (Math.floor({{ $index }} / perPage) + 1)"
+                                            class="h-[46px] hover:bg-slate-50/70 transition"
+                                        >
+                                            <td class="py-2.5 px-3.5">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="inline-flex h-6 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-[10px] font-bold font-mono text-slate-700 border border-slate-200">
+                                                        {{ $item['brand_code'] }}
+                                                    </span>
+                                                    <div>
+                                                        <span class="font-bold text-slate-800">{{ $item['brand_name'] }}</span>
+                                                        @if ($item['is_default'])
+                                                            <span class="ml-1 rounded bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-800 border border-emerald-200">Default</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="py-2.5 px-3.5">
+                                                @if ($item['is_drive_connected'])
+                                                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                                                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                        Terpasang
+                                                    </span>
+                                                @else
+                                                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200">
+                                                        <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                                                        Belum Diatur
+                                                    </span>
+                                                @endif
+                                            </td>
+                                            <td class="py-2.5 px-3.5">
+                                                @if ($item['is_drive_connected'])
+                                                    <div class="flex flex-wrap items-center gap-1.5" x-data="{ copied: false }">
+                                                        <span class="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 max-w-[200px] truncate" title="{{ $item['drive_folder_id'] }}">
+                                                            {{ $item['drive_folder_id'] }}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            @click="navigator.clipboard.writeText('{{ $item['drive_folder_id'] }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                                            class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                                                            :title="copied ? 'Tersalin!' : 'Salin Folder ID'"
+                                                        >
+                                                            <svg x-show="!copied" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                                                                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                                                            </svg>
+                                                            <svg x-show="copied" class="h-3.5 w-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                                            </svg>
+                                                        </button>
+                                                        @if (!empty($item['drive_folder_url']))
+                                                            <a
+                                                                href="{{ $item['drive_folder_url'] }}"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                class="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline ml-1"
+                                                                title="Buka Folder di Google Drive (Tab Baru)"
+                                                            >
+                                                                <span>Buka</span>
+                                                                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                                                </svg>
+                                                            </a>
+                                                        @endif
+                                                        @if ($item['is_shared'])
+                                                            <span class="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 border border-blue-200" title="Folder ini digunakan bersama oleh {{ $item['shared_count'] }} brand">
+                                                                <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                                                </svg>
+                                                                Shared ({{ $item['shared_count'] }} Brand)
+                                                            </span>
+                                                        @endif
+                                                    </div>
+                                                @else
+                                                    <span class="text-slate-400 italic text-[11px]">Belum dikonfigurasi</span>
+                                                @endif
+                                            </td>
+                                            <td class="py-2.5 px-3.5 text-right whitespace-nowrap">
+                                                <a
+                                                    href="{{ $item['edit_url'] }}"
+                                                    class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 hover:underline"
+                                                >
+                                                    <span>{{ $item['is_drive_connected'] ? 'Kelola' : 'Atur Folder' }}</span>
+                                                    <span>&rarr;</span>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="4" class="py-4 text-center text-slate-500 italic">
+                                                Belum ada data brand terdaftar.
+                                            </td>
+                                        </tr>
+                                    @endforelse
+
+                                    <!-- Slot Kosong Pelengkap (Selalu Mengisi 5 Baris agar Tinggi Tabel Tetap Stabil saat Navigasi Halaman) -->
+                                    <template x-for="i in emptyRows" :key="'placeholder-' + page + '-' + i">
+                                        <tr class="h-[46px] select-none pointer-events-none bg-slate-50/20">
+                                            <td class="py-2.5 px-3.5">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="inline-flex h-6 w-8 shrink-0 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-[10px] font-mono text-slate-300">—</span>
+                                                    <span class="text-[11px] text-slate-300 italic">—</span>
+                                                </div>
+                                            </td>
+                                            <td class="py-2.5 px-3.5">
+                                                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100/50 px-2 py-0.5 text-[11px] text-slate-300 border border-dashed border-slate-200">
+                                                    <span class="h-1.5 w-1.5 rounded-full bg-slate-200"></span>
+                                                    —
+                                                </span>
+                                            </td>
+                                            <td class="py-2.5 px-3.5">
+                                                <span class="text-[11px] text-slate-300 font-mono">—</span>
+                                            </td>
+                                            <td class="py-2.5 px-3.5 text-right">
+                                                <span class="text-[11px] text-slate-300 font-mono">—</span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
                         </div>
-                        <input
-                            type="text"
-                            readonly
-                            value="{{ $registrationRef['folder_id'] ?: 'Belum diatur' }}"
-                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-24 font-mono text-xs font-semibold text-slate-800 shadow-sm focus:outline-none select-all"
-                        />
-                        @if ($registrationRef['folder_id'])
-                            <button
-                                type="button"
-                                @click="navigator.clipboard.writeText('{{ $registrationRef['folder_id'] }}'); copied = true; setTimeout(() => copied = false, 2000)"
-                                class="absolute inset-y-1 right-1 inline-flex items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                                title="Salin Folder ID"
-                            >
-                                <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
-                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-                                </svg>
-                                <span x-text="copied ? 'Tersalin!' : 'Salin'">Salin</span>
-                            </button>
-                        @endif
+
+                        <!-- Bar Pagination Per 5 Brand -->
+                        <template x-if="totalPages > 1">
+                            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-slate-50/70 border-t border-slate-200 text-xs">
+                                <div class="text-slate-500">
+                                    Menampilkan <span class="font-semibold text-slate-800" x-text="(page - 1) * perPage + 1"></span> s/d <span class="font-semibold text-slate-800" x-text="Math.min(page * perPage, total)"></span> dari <span class="font-semibold text-slate-800" x-text="total"></span> brand
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        @click="prevPage()"
+                                        :disabled="page === 1"
+                                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                    >
+                                        &larr; Sebelumnya
+                                    </button>
+
+                                    <div class="flex items-center gap-1">
+                                        <template x-for="p in totalPages" :key="p">
+                                            <button
+                                                type="button"
+                                                @click="goToPage(p)"
+                                                :class="page === p ? 'bg-amber-600 text-white font-bold border-amber-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'"
+                                                class="min-w-[28px] h-7 rounded-lg border text-xs font-semibold transition flex items-center justify-center px-1.5"
+                                                x-text="p"
+                                            ></button>
+                                        </template>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        @click="nextPage()"
+                                        :disabled="page === totalPages"
+                                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                    >
+                                        Selanjutnya &rarr;
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
                     </div>
 
-                    @if ($registrationRef['folder_url'])
-                        <a
-                            href="{{ $registrationRef['folder_url'] }}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 hover:border-blue-300 shrink-0"
-                        >
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                                <polyline points="15 3 21 3 21 9"/>
-                                <line x1="10" y1="14" x2="21" y2="3"/>
-                            </svg>
-                            <span>Buka di Google Drive &rarr;</span>
-                        </a>
-                    @endif
+                    <!-- Info Sinkronisasi Folder Bersama (Shared Folder) -->
+                    <p class="text-[11px] text-slate-500 flex items-start gap-1.5">
+                        <svg class="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                        <span><strong>Catatan Sinkronisasi:</strong> Folder penyimpanan dapat diatur unik per brand atau digunakan bersama (*Shared*). Jika beberapa brand menggunakan Folder ID yang sama, dokumen dari masing-masing brand tersebut otomatis tersimpan di folder Google Drive yang sama.</span>
+                    </p>
                 </div>
             </div>
 

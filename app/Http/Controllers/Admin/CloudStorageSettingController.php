@@ -57,6 +57,89 @@ class CloudStorageSettingController extends Controller
             $maskedEndpoint = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . substr($path, 0, 16) . '.../exec';
         }
 
+        // 4. Daftar Referensi Folder Registrasi Multi-Brand & Deteksi Shared Folder
+        $allBrands = \App\Models\Brand::query()
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        $brandConnections = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+            ->with('brand')
+            ->get();
+
+        $folderUsageCounts = $brandConnections
+            ->whereNotNull('drive_folder_id')
+            ->pluck('drive_folder_id')
+            ->countBy();
+
+        $connectionsByBrand = $brandConnections->whereNotNull('brand_id')->keyBy('brand_id');
+        $brandFolderItems = collect();
+
+        foreach ($allBrands as $brand) {
+            $conn = $connectionsByBrand->get($brand->id);
+            $folderId = $conn?->drive_folder_id;
+            $folderUrl = $conn?->drive_folder_url;
+            if (empty($folderUrl) && !empty($folderId)) {
+                $folderUrl = 'https://drive.google.com/drive/folders/' . $folderId;
+            }
+
+            $isShared = !empty($folderId) && (($folderUsageCounts[$folderId] ?? 0) > 1);
+            $sharedCount = $isShared ? (int) $folderUsageCounts[$folderId] : 1;
+
+            $brandFolderItems->push([
+                'brand_id'           => $brand->id,
+                'brand_code'         => $brand->code,
+                'brand_name'         => $brand->name,
+                'is_default'         => (bool) $brand->is_default,
+                'connection_id'      => $conn?->id,
+                'connection_status'  => $conn?->connection_status ?? 'not_configured',
+                'is_enabled'         => (bool) ($conn?->is_enabled ?? false),
+                'drive_folder_id'    => $folderId,
+                'drive_folder_url'   => $folderUrl,
+                'is_drive_connected' => !empty($folderId),
+                'is_shared'          => $isShared,
+                'shared_count'       => $sharedCount,
+                'edit_url'           => $conn
+                    ? route('admin.spreadsheet-connections.edit', $conn->id)
+                    : route('admin.spreadsheet-connections.index'),
+            ]);
+        }
+
+        // Sertakan koneksi registrasi global / legacy (jika ada brand_id null)
+        $legacyGlobals = $brandConnections->whereNull('brand_id');
+        foreach ($legacyGlobals as $legacyConn) {
+            $folderId = $legacyConn->drive_folder_id;
+            $folderUrl = $legacyConn->drive_folder_url;
+            if (empty($folderUrl) && !empty($folderId)) {
+                $folderUrl = 'https://drive.google.com/drive/folders/' . $folderId;
+            }
+
+            $isShared = !empty($folderId) && (($folderUsageCounts[$folderId] ?? 0) > 1);
+
+            $brandFolderItems->prepend([
+                'brand_id'           => null,
+                'brand_code'         => 'GLOBAL',
+                'brand_name'         => $legacyConn->display_name ?: 'Koneksi Pendaftaran Global (Legacy)',
+                'is_default'         => false,
+                'connection_id'      => $legacyConn->id,
+                'connection_status'  => $legacyConn->connection_status ?? 'not_configured',
+                'is_enabled'         => (bool) $legacyConn->is_enabled,
+                'drive_folder_id'    => $folderId,
+                'drive_folder_url'   => $folderUrl,
+                'is_drive_connected' => !empty($folderId),
+                'is_shared'          => $isShared,
+                'shared_count'       => $isShared ? (int) $folderUsageCounts[$folderId] : 1,
+                'edit_url'           => route('admin.spreadsheet-connections.edit', $legacyConn->id),
+            ]);
+        }
+
+        $folderStats = [
+            'total_brands'       => $allBrands->count() ?: $brandFolderItems->count(),
+            'configured_count'   => $brandFolderItems->where('is_drive_connected', true)->count(),
+            'unconfigured_count' => $brandFolderItems->where('is_drive_connected', false)->count(),
+            'shared_count'       => $folderUsageCounts->filter(fn($c) => $c > 1)->count(),
+        ];
+
         return view('admin.cloud-storage.index', [
             'settings'                => $settings,
             'registrationRef'         => $registrationRef,
@@ -69,6 +152,8 @@ class CloudStorageSettingController extends Controller
             'appsScriptEndpoint'      => $appsScriptEndpoint,
             'maskedEndpoint'          => $maskedEndpoint,
             'hasSharedSecret'         => $hasSharedSecret,
+            'brandFolderItems'        => $brandFolderItems,
+            'folderStats'             => $folderStats,
         ]);
     }
 

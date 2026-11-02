@@ -48,13 +48,23 @@
     @if (!empty($pausedQueuesSummary['total_count']) && $pausedQueuesSummary['total_count'] > 0)
         <div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-                <h4 class="font-bold text-amber-950">⏸️ Antrean Sinkronisasi Dibekukan (paused_target_rebind)</h4>
+                <h4 class="font-bold text-amber-950 flex items-center gap-2">
+                    <svg class="h-4 w-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="10" y1="15" x2="10" y2="9"/>
+                        <line x1="14" y1="15" x2="14" y2="9"/>
+                    </svg>
+                    <span>Antrean Sinkronisasi Dibekukan (paused_target_rebind)</span>
+                </h4>
                 <p class="text-xs text-amber-800 mt-0.5">
                     Terdapat <strong>{{ $pausedQueuesSummary['total_count'] }}</strong> antrean sinkronisasi yang dibekukan karena pergantian target Spreadsheet.
                 </p>
             </div>
             <a href="{{ route('admin.spreadsheet-connections.show', $connection) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition">
-                Rekonsiliasi Antrean &rarr;
+                <span>Rekonsiliasi Antrean</span>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
             </a>
         </div>
     @endif
@@ -108,13 +118,13 @@
                                     {{ $connection->brand->name }} ({{ $connection->brand->code }})
                                 </span>
                                 @if ($connection->brand->registration_host)
-                                    <span class="inline-flex items-center gap-1.5 text-xs text-slate-600 font-mono">
-                                        <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-sky-50 text-sky-700 border border-sky-200 shadow-2xs" title="Host Pendaftaran: {{ $connection->brand->registration_host }}">
+                                        <svg class="h-3.5 w-3.5 text-sky-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <circle cx="12" cy="12" r="10"/>
                                             <line x1="2" y1="12" x2="22" y2="12"/>
                                             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                                         </svg>
-                                        {{ $connection->brand->registration_host }}
+                                        <span>{{ $connection->brand->registration_host }}</span>
                                     </span>
                                 @endif
                             </div>

@@ -150,30 +150,39 @@
                 <div>
                     <!-- Card Top Header -->
                     <div class="flex items-start justify-between gap-4 mb-4">
-                        <div>
-                            <span class="inline-block px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider rounded-md {{ $conn->connection_key === 'registration' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-purple-50 text-purple-700 border border-purple-200' }}">
-                                {{ $conn->connection_key }}
-                            </span>
-                            @if ($conn->brand)
-                                <span class="inline-block ml-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-                                    Brand: {{ $conn->brand->name }} ({{ $conn->brand->code }})
+                        <div class="flex-1 min-w-0">
+                            <!-- Dynamic Badges -->
+                            <div class="flex flex-wrap items-center gap-2 mb-2">
+                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider rounded-md {{ $conn->connection_key === 'registration' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-purple-50 text-purple-700 border border-purple-200' }}">
+                                    {{ $conn->connection_key }}
                                 </span>
-                                @if ($conn->brand->is_default)
-                                    <span class="inline-block ml-1 px-2.5 py-0.5 text-xs font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                        <i class="fa-solid fa-star text-amber-500 mr-1"></i> Default
+                                @if ($conn->brand)
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                                        <span class="text-amber-700/80 font-medium">Brand:</span>
+                                        <span>{{ $conn->brand->name }}</span>
+                                        <span class="text-amber-700/80 font-normal">({{ $conn->brand->code }})</span>
                                     </span>
+                                    @if ($conn->brand->registration_host)
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium rounded-md bg-sky-50 text-sky-700 border border-sky-200 shadow-2xs" title="Host Pendaftaran: {{ $conn->brand->registration_host }}">
+                                            <svg class="h-3.5 w-3.5 text-sky-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <circle cx="12" cy="12" r="10"/>
+                                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                            </svg>
+                                            <span>{{ $conn->brand->registration_host }}</span>
+                                        </span>
+                                    @endif
                                 @endif
-                                @if ($conn->brand->registration_host)
-                                    <span class="inline-block ml-1 px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                        {{ $conn->brand->registration_host }}
-                                    </span>
-                                @endif
-                            @endif
-                            <div class="mt-2 flex items-center gap-2">
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2">
                                 <h2 class="text-lg font-bold text-slate-800">{{ $conn->display_name }}</h2>
                                 @if ($conn->brand?->is_default)
                                     <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                                        <i class="fa-solid fa-star text-amber-500 text-[10px]"></i> Default
+                                        <svg class="h-3 w-3 text-amber-500 fill-current" viewBox="0 0 24 24">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                        </svg>
+                                        <span>Default</span>
                                     </span>
                                 @endif
                             </div>
@@ -181,12 +190,15 @@
                                 <form action="{{ route('admin.brands.set-default', $conn->brand->id) }}" method="POST" class="inline" onsubmit="return confirm('Jadikan brand {{ addslashes($conn->brand->name) }} sebagai Brand Default sistem SertIF?');">
                                     @csrf
                                     <button type="submit" class="text-[11px] font-semibold text-[#2D8659] hover:underline inline-flex items-center gap-1 mt-1">
-                                        <i class="fa-regular fa-star text-amber-500"></i> Jadikan Brand Default
+                                        <svg class="h-3 w-3 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                        </svg>
+                                        <span>Jadikan Brand Default</span>
                                     </button>
                                 </form>
                             @endif
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 shrink-0">
                             <!-- Status Active Badge -->
                             @if ($conn->is_enabled)
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -209,27 +221,47 @@
                             <div class="rounded-lg border border-amber-300 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-xs">
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="flex items-center gap-2">
-                                        <span class="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-                                        <span class="font-bold text-amber-950">⚠️ Tanda: Link Penghubung Belum Terhubung ke SertIF</span>
+                                        <svg class="h-4 w-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                            <line x1="12" y1="9" x2="12" y2="13"/>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                        </svg>
+                                        <span class="font-bold text-amber-950">Tanda: Link Penghubung Belum Terhubung ke SertIF</span>
                                     </div>
                                     <a href="{{ route('admin.spreadsheet-connections.edit', $conn) }}" class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 underline shrink-0">
-                                        Hubungkan &rarr;
+                                        <span>Hubungkan</span>
+                                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="9 18 15 12 9 6"/>
+                                        </svg>
                                     </a>
                                 </div>
                                 <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                                     @if (!$conn->isSpreadsheetConnected())
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
-                                            ✕ Link Spreadsheet Belum Diisi
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
+                                            <svg class="h-3 w-3 text-rose-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                                <line x1="6" y1="6" x2="18" y2="18"/>
+                                            </svg>
+                                            <span>Link Spreadsheet Belum Diisi</span>
                                         </span>
                                     @endif
                                     @if ($conn->connection_key === \App\Models\SpreadsheetConnection::KEY_REGISTRATION && !$conn->isDriveConnected())
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
-                                            ✕ Link Folder Drive Belum Diisi
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-medium">
+                                            <svg class="h-3 w-3 text-rose-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                                <line x1="6" y1="6" x2="18" y2="18"/>
+                                            </svg>
+                                            <span>Link Folder Drive Belum Diisi</span>
                                         </span>
                                     @endif
                                     @if ($conn->connection_status !== \App\Models\SpreadsheetConnection::STATUS_CONNECTED)
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 font-medium">
-                                            ! Status: {{ ucfirst(str_replace('_', ' ', $conn->connection_status ?? 'untested')) }} (Perlu Uji Koneksi)
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 font-medium">
+                                            <svg class="h-3 w-3 text-amber-700 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                                <circle cx="12" cy="12" r="10"/>
+                                                <line x1="12" y1="8" x2="12" y2="12"/>
+                                                <line x1="12" y1="16" x2="12.01" y2="16"/>
+                                            </svg>
+                                            <span>Status: {{ ucfirst(str_replace('_', ' ', $conn->connection_status ?? 'untested')) }} (Perlu Uji Koneksi)</span>
                                         </span>
                                     @endif
                                 </div>
@@ -297,18 +329,35 @@
                         @endphp
 
                         @if ($conn->hasTargetChanged())
-                            <div class="rounded-lg p-2.5 border border-amber-200 bg-amber-50 text-amber-900 text-xs">
-                                <span class="font-bold">⚠️ Perubahan Target:</span> ID Spreadsheet diubah. Klik <strong>Aktifkan Target</strong> untuk memperbarui Script Properties pada Apps Script Gateway.
+                            <div class="rounded-lg p-2.5 border border-amber-200 bg-amber-50 text-amber-900 text-xs flex items-center gap-2">
+                                <svg class="h-4 w-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                                <div>
+                                    <span class="font-bold">Perubahan Target:</span> ID Spreadsheet diubah. Klik <strong>Aktifkan Target</strong> untuk memperbarui Script Properties pada Apps Script Gateway.
+                                </div>
                             </div>
                         @endif
 
                         @if ($pausedCount > 0)
                             <div class="rounded-lg p-2.5 border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-center justify-between">
-                                <div>
-                                    <span class="font-bold">⏸️ Antrean Dibekukan:</span> Terdapat {{ $pausedCount }} baris sinkronisasi dibekukan karena pergantian target.
+                                <div class="flex items-center gap-2">
+                                    <svg class="h-4 w-4 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <line x1="10" y1="15" x2="10" y2="9"/>
+                                        <line x1="14" y1="15" x2="14" y2="9"/>
+                                    </svg>
+                                    <div>
+                                        <span class="font-bold">Antrean Dibekukan:</span> Terdapat {{ $pausedCount }} baris sinkronisasi dibekukan karena pergantian target.
+                                    </div>
                                 </div>
-                                <a href="{{ route('admin.spreadsheet-connections.show', $conn) }}" class="underline font-bold text-amber-800 hover:text-amber-950">
-                                    Rekonsiliasi &rarr;
+                                <a href="{{ route('admin.spreadsheet-connections.show', $conn) }}" class="underline font-bold text-amber-800 hover:text-amber-950 inline-flex items-center gap-1">
+                                    <span>Rekonsiliasi</span>
+                                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="9 18 15 12 9 6"/>
+                                    </svg>
                                 </a>
                             </div>
                         @endif
