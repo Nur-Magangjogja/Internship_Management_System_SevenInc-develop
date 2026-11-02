@@ -29,8 +29,9 @@ class SpreadsheetConnectionController extends Controller
     public function index()
     {
         $connections = $this->service->getAllConnections();
+        $centralEndpoint = $this->service->resolveAppsScriptEndpoint();
 
-        return view('admin.spreadsheet-connections.index', compact('connections'));
+        return view('admin.spreadsheet-connections.index', compact('connections', 'centralEndpoint'));
     }
 
     /**
@@ -168,10 +169,12 @@ class SpreadsheetConnectionController extends Controller
     public function edit(SpreadsheetConnection $spreadsheetConnection)
     {
         $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
+        $centralEndpoint = $this->service->resolveAppsScriptEndpoint($spreadsheetConnection);
 
         return view('admin.spreadsheet-connections.edit', [
             'connection'          => $spreadsheetConnection->fresh(),
             'pausedQueuesSummary' => $pausedQueuesSummary,
+            'centralEndpoint'     => $centralEndpoint,
         ]);
     }
 

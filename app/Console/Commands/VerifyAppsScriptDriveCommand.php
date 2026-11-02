@@ -54,7 +54,9 @@ class VerifyAppsScriptDriveCommand extends Command
         $sprConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
             ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
 
-        $endpoint = $sprConn?->apps_script_endpoint_url ?: config('services.google_apps_script.endpoint_url');
+        $endpoint = $setting->apps_script_endpoint_url
+            ?: $sprConn?->apps_script_endpoint_url
+            ?: config('services.google_apps_script.endpoint_url');
         $hasEndpoint = !empty($endpoint);
         $maskedEndpoint = $this->maskEndpointUrl($endpoint);
         $this->line("  • Web App Endpoint        : " . ($hasEndpoint ? "<fg=green>TERPASANG</> ({$maskedEndpoint})" : "<fg=red>KOSONG</>"));

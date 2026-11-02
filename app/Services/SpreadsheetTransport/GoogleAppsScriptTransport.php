@@ -34,6 +34,15 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $this->endpointUrl    = $cfg['endpoint_url'] ?? null;
         $this->sharedSecret   = $cfg['shared_secret'] ?? null;
         $this->timeoutSeconds = (int) ($cfg['timeout_seconds'] ?? 60);
+
+        if (empty($this->endpointUrl)) {
+            try {
+                $cloudSetting = \App\Models\CloudStorageSetting::first();
+                if (!empty($cloudSetting?->apps_script_endpoint_url)) {
+                    $this->endpointUrl = $cloudSetting->apps_script_endpoint_url;
+                }
+            } catch (\Throwable) {}
+        }
     }
 
     public function setTimeoutSeconds(int $seconds): self

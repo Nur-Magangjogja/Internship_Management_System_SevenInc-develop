@@ -1,4 +1,4 @@
-@extends('layouts.dashboard', ['title' => 'Pengaturan Penyimpanan Cloud'])
+@extends('layouts.dashboard', ['title' => 'Integrasi Google Drive & Apps Script'])
 
 @section('content')
 <div class="px-6 py-8">
@@ -8,10 +8,10 @@
             <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
                 <span>Pengaturan Sistem</span>
                 <span class="text-slate-300">&bull;</span>
-                <span class="text-slate-600">Penyimpanan Cloud</span>
+                <span class="text-slate-600">Integrasi Drive &amp; Apps Script</span>
             </div>
-            <h1 class="text-2xl font-bold text-slate-800">Pusat Pengaturan Penyimpanan Asset</h1>
-            <p class="text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">Konfigurasi penyimpanan Google Drive untuk seluruh aset sistem, template dokumen, dan berkas pendaftaran melalui Google Apps Script Gateway.</p>
+            <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Drive &amp; Apps Script Gateway</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">Pusat konfigurasi tunggal terpadu untuk link Folder Induk Google Drive (Penyimpanan Asset &amp; Berkas) dan link Endpoint Web Google Apps Script Gateway untuk seluruh integrasi sistem SertIF.</p>
         </div>
 
         <!-- Tautan Navigasi Modul Terkait (Kanan Atas) -->
@@ -329,29 +329,69 @@
 
             <hr class="border-slate-100" />
 
-            <!-- Single Canonical Parent Root Configuration -->
+            <!-- Single Canonical Integration Links (Drive & Apps Script Endpoint) -->
             <div>
-                <h2 class="text-base font-bold text-slate-800">Folder Induk Tunggal Google Drive (Kanonikal)</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Satu-satunya folder induk yang diverifikasi. Seluruh folder berkas (REGISTRASI, SYSTEM-ASSETS, GENERATED-DOCUMENTS) otomatis dibuat secara otomatis (*lazy-create*) di bawah folder ini.</p>
+                <h2 class="text-base font-bold text-slate-800">Link Integrasi Sistem (Google Drive &amp; Apps Script Gateway)</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Konfigurasi 1 akun Google untuk seluruh sistem. Link Endpoint Web Apps Script bertindak sebagai gateway API terpadu, dan Link Folder Google Drive bertindak sebagai pusat penyimpanan aset dan berkas.</p>
             </div>
 
+            <!-- 1. Endpoint Web Apps Script Gateway -->
+            <div class="space-y-2 rounded-xl border-2 {{ $settings->apps_script_endpoint_url ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-slate-50/50' }} p-4">
+                <div class="flex items-center justify-between">
+                    <label for="apps_script_endpoint_url" class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Link Endpoint Web Google Apps Script (Gateway Terpadu) <span class="text-rose-500">*</span>
+                    </label>
+                    @if ($settings->apps_script_endpoint_url)
+                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            Terpasang (1 Akun Terpadu)
+                        </span>
+                    @else
+                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                            <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                            Belum Dikonfigurasi
+                        </span>
+                    @endif
+                </div>
+
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    <input
+                        type="url"
+                        name="apps_script_endpoint_url"
+                        id="apps_script_endpoint_url"
+                        value="{{ old('apps_script_endpoint_url', $settings->apps_script_endpoint_url ?: $appsScriptEndpoint) }}"
+                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                        placeholder="Contoh: https://script.google.com/macros/s/AKfycb.../exec"
+                    />
+                </div>
+
+                <p class="text-[11px] text-slate-500">
+                    Satu-satunya endpoint Web App Google Apps Script (/exec) untuk mengeksekusi operasi Google Drive (penyimpanan aset &amp; dokumen) serta integrasi Google Spreadsheet multi-brand.
+                </p>
+            </div>
+
+            <!-- 2. Folder Induk Google Drive (Penyimpanan Asset) -->
             <div class="space-y-2 rounded-xl border-2 {{ $settings->is_verified ? 'border-emerald-300 bg-emerald-50/20' : ($settings->canonical_parent_folder_id ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 bg-slate-50/50') }} p-4">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Folder Induk Google Drive (URL atau Folder ID) <span class="text-rose-500">*</span>
-                </label>
+                <div class="flex items-center justify-between">
+                    <label for="canonical_parent_folder_url" class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Link Folder Induk Google Drive (Penyimpanan Asset &amp; Berkas) <span class="text-rose-500">*</span>
+                    </label>
+                    @if ($settings->canonical_parent_folder_id)
+                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-0.5 text-xs font-mono font-bold text-slate-700">
+                            ID: {{ $settings->canonical_parent_folder_id }}
+                        </span>
+                    @endif
+                </div>
+
                 <div class="flex flex-col gap-2 sm:flex-row">
                     <input
                         type="text"
                         name="canonical_parent_folder_url"
+                        id="canonical_parent_folder_url"
                         value="{{ old('canonical_parent_folder_url', $settings->canonical_parent_folder_url ?: $settings->canonical_parent_folder_id) }}"
                         class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                         placeholder="Contoh: https://drive.google.com/drive/folders/1a2B3c... atau 1a2B3c..."
                     />
-                    @if ($settings->canonical_parent_folder_id)
-                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono font-bold text-slate-700">
-                            ID: {{ $settings->canonical_parent_folder_id }}
-                        </span>
-                    @endif
                 </div>
 
                 <!-- Status Verifikasi Folder Induk -->
@@ -382,12 +422,12 @@
                 @endif
             </div>
 
-            <!-- Detail Gateway Google Apps Script -->
+            <!-- Detail Gateway Google Apps Script & Kredensial HMAC -->
             <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs space-y-2">
-                <h3 class="font-bold text-slate-800 uppercase tracking-wider">Konfigurasi Gateway Apps Script</h3>
+                <h3 class="font-bold text-slate-800 uppercase tracking-wider">Status Keamanan Gateway Apps Script</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                     <div>
-                        <span class="text-slate-500 block">Web App Endpoint URL:</span>
+                        <span class="text-slate-500 block">Web App Endpoint Aktif:</span>
                         <span class="font-mono text-slate-800 break-all font-semibold">{{ $maskedEndpoint ?: 'Belum diatur' }}</span>
                     </div>
                     <div>

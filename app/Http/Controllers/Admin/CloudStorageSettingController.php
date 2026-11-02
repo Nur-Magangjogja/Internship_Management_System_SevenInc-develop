@@ -45,7 +45,8 @@ class CloudStorageSettingController extends Controller
         $hasSpreadsheetMismatch = $settings->hasSpreadsheetFolderMismatch($spreadsheetConn);
 
         // 3. Status Endpoint Google Apps Script (Masked untuk Keamanan)
-        $appsScriptEndpoint = $spreadsheetConn?->apps_script_endpoint_url
+        $appsScriptEndpoint = $settings->apps_script_endpoint_url
+            ?: $spreadsheetConn?->apps_script_endpoint_url
             ?: config('services.google_apps_script.endpoint_url');
         $hasSharedSecret = !empty(config('services.google_apps_script.shared_secret'));
 
@@ -80,6 +81,7 @@ class CloudStorageSettingController extends Controller
             'name'                          => 'required|string|max:255',
             'provider'                      => 'nullable|string|in:apps_script_drive,local_fallback',
             'canonical_parent_folder_url'   => 'nullable|string|max:500',
+            'apps_script_endpoint_url'      => 'nullable|string|max:500',
             'system_assets_folder_url'      => 'nullable|string|max:500',
             'document_templates_folder_url' => 'nullable|string|max:500',
             'generated_docs_folder_url'     => 'nullable|string|max:500',
@@ -95,7 +97,7 @@ class CloudStorageSettingController extends Controller
         $this->storageService->updateSettings($validated, Auth::user());
 
         return redirect()->route('admin.cloud-storage.index')
-            ->with('success', 'Konfigurasi penyimpanan cloud Google Drive berhasil disimpan.');
+            ->with('success', 'Konfigurasi integrasi Google Drive & Apps Script Gateway berhasil disimpan.');
     }
 
     /**

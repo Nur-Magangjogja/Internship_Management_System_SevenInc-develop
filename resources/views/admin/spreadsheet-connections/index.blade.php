@@ -30,7 +30,7 @@
                     </span>
                 @endif
             </div>
-            <p class="text-sm text-slate-500 mt-1">Konfigurasi koneksi mirror operasional satu arah dari database SertIF ke Google Spreadsheet.</p>
+            <p class="text-sm text-slate-500 mt-1">Konfigurasi link dokumen Google Spreadsheet dan folder Google Drive pendaftaran per brand melalui gateway terpadu Apps Script.</p>
         </div>
         <div class="flex items-center gap-3">
             @php
@@ -314,11 +314,15 @@
                         @endif
 
                         <div>
-                            <span class="font-medium text-slate-500 block">Apps Script Endpoint URL:</span>
-                            @if ($conn->apps_script_endpoint_url)
-                                <span class="font-mono text-slate-700 break-all">{{ $conn->apps_script_endpoint_url }}</span>
+                            <span class="font-medium text-slate-500 block">Apps Script Gateway (Endpoint Terpadu):</span>
+                            @php
+                                $dispEndpoint = $conn->apps_script_endpoint_url ?: ($centralEndpoint ?? null);
+                            @endphp
+                            @if ($dispEndpoint)
+                                <span class="font-mono text-slate-700 break-all">{{ $dispEndpoint }}</span>
+                                <span class="inline-block ml-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Terpadu (1 Akun)</span>
                             @else
-                                <span class="text-slate-400 italic">Belum dikonfigurasi (Opsional / Fase S9E)</span>
+                                <span class="text-slate-400 italic">Belum diatur di Integrasi Drive &amp; Apps Script</span>
                             @endif
                         </div>
 

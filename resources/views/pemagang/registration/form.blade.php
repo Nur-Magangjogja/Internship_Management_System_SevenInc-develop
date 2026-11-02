@@ -667,6 +667,7 @@
                   ->where('attachment_type', '!=', \App\Models\RegistrationAttachment::TYPE_LEGACY_BUNDLE)
                   ->where('file_path', 'not like', 'drive_root:%')
                   ->latest('id')->get()
+                  ->reject(fn($a) => method_exists($a, 'isPlaceholder') && $a->isPlaceholder())
             : collect();
         @endphp
         @if($allAttachments->isNotEmpty() || $reg?->profile_photo)

@@ -28,6 +28,7 @@ class CloudStorageSetting extends Model
         'provider',
         'canonical_parent_folder_url',
         'canonical_parent_folder_id',
+        'apps_script_endpoint_url',
         'system_assets_folder_url',
         'system_assets_folder_id',
         'document_templates_folder_url',
@@ -218,6 +219,23 @@ class CloudStorageSetting extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Dapatkan endpoint Google Apps Script Gateway yang efektif (terpusat).
+     */
+    public function getEffectiveAppsScriptEndpoint(): ?string
+    {
+        if (!empty($this->apps_script_endpoint_url)) {
+            return trim($this->apps_script_endpoint_url);
+        }
+
+        $legacyConn = SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
+        if (!empty($legacyConn?->apps_script_endpoint_url)) {
+            return trim($legacyConn->apps_script_endpoint_url);
+        }
+
+        return function_exists('config') ? config('services.google_apps_script.endpoint_url') : null;
     }
 
     public function createdByUser(): BelongsTo

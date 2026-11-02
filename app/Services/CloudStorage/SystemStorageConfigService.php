@@ -47,7 +47,34 @@ class SystemStorageConfigService
         $canonicalId = CloudStorageSetting::extractDriveFolderId($canonicalUrl)
             ?: CloudStorageSetting::extractDriveFolderId($data['canonical_parent_folder_id'] ?? null);
 
+        $endpointUrl = isset($data['apps_script_endpoint_url']) ? trim($data['apps_script_endpoint_url']) : null;
+        if (!empty($endpointUrl)) {
+            if (!filter_var($endpointUrl, FILTER_VALIDATE_URL)) {
+                throw new \DomainException('Format URL Apps Script Endpoint tidak valid.');
+            }
+
+            $parsedUrl = parse_url($endpointUrl);
+            $scheme = strtolower($parsedUrl['scheme'] ?? '');
+            $host = strtolower($parsedUrl['host'] ?? '');
+            $path = $parsedUrl['path'] ?? '';
+
+            if ($scheme !== 'https' || $host !== 'script.google.com' || !preg_match('#^/macros/s/([a-zA-Z0-9-_]+)/exec$#', $path)) {
+                throw new \DomainException('Format URL Apps Script Endpoint tidak valid. Harus berupa URL HTTPS resmi Google Apps Script (contoh: https://script.google.com/macros/s/.../exec).');
+            }
+
+            // Pastikan tidak ada credential/secret/token di query parameter
+            if (!empty($parsedUrl['query'])) {
+                parse_str($parsedUrl['query'], $queryParams);
+                foreach (['key', 'token', 'secret', 'password', 'auth', 'bearer'] as $forbiddenKey) {
+                    if (array_key_exists($forbiddenKey, $queryParams)) {
+                        throw new \DomainException('Dilarang menyertakan token atau kredensial rahasia pada parameter URL Apps Script Endpoint demi alasan keamanan.');
+                    }
+                }
+            }
+        }
+
         $hasCanonicalChanged = ($canonicalId !== $setting->canonical_parent_folder_id);
+        $hasEndpointChanged = ($endpointUrl !== null && $endpointUrl !== $setting->apps_script_endpoint_url);
         $newProvider = $data['provider'] ?? $setting->provider ?? CloudStorageSetting::PROVIDER_APPS_SCRIPT_DRIVE;
         $hasProviderChanged = ($newProvider !== $setting->provider);
 
@@ -56,6 +83,7 @@ class SystemStorageConfigService
             'provider'                      => $newProvider,
             'canonical_parent_folder_url'   => $canonicalUrl,
             'canonical_parent_folder_id'    => $canonicalId,
+            'apps_script_endpoint_url'      => $endpointUrl !== null ? $endpointUrl : $setting->apps_script_endpoint_url,
             'system_assets_folder_url'      => $data['system_assets_folder_url'] ?? $setting->system_assets_folder_url,
             'document_templates_folder_url' => $data['document_templates_folder_url'] ?? $setting->document_templates_folder_url,
             'generated_docs_folder_url'     => $data['generated_docs_folder_url'] ?? $setting->generated_docs_folder_url,
@@ -64,7 +92,7 @@ class SystemStorageConfigService
             'updated_by'                    => $actor?->id,
         ];
 
-        if ($hasCanonicalChanged || $hasProviderChanged) {
+        if ($hasCanonicalChanged || $hasProviderChanged || $hasEndpointChanged) {
             $updatePayload['is_verified'] = false;
             $updatePayload['verified_at'] = null;
             $updatePayload['validation_error'] = null;
@@ -94,6 +122,15 @@ class SystemStorageConfigService
 
         $setting->update($updatePayload);
 
+        // Sinkronkan ke seluruh spreadsheet_connections agar mengacu pada 1 endpoint terpadu
+        if (!empty($setting->apps_script_endpoint_url)) {
+            try {
+                SpreadsheetConnection::query()->update(['apps_script_endpoint_url' => $setting->apps_script_endpoint_url]);
+            } catch (\Throwable $e) {
+                Log::warning("Gagal sinkronisasi apps_script_endpoint_url ke spreadsheet_connections: " . $e->getMessage());
+            }
+        }
+
         ActivityLogger::log(
             action: 'cloud_storage_settings_updated',
             description: "Konfigurasi penyimpanan cloud '{$setting->name}' telah diperbarui.",
@@ -119,7 +156,9 @@ class SystemStorageConfigService
         $setting = $setting ?? $this->getSettings();
 
         // 1. Periksa apakah Folder Induk Kanonikal Google Drive sudah dikonfigurasi (Fail-Closed)
-        $canonicalFolderId = $setting->getEffectiveParentFolderId();
+        $canonicalFolderId = $setting->canonical_parent_folder_id
+            ?: CloudStorageSetting::extractDriveFolderId($setting->canonical_parent_folder_url)
+            ?: $setting->getEffectiveParentFolderId();
         if (empty($canonicalFolderId)) {
             $errorMsg = "Folder Induk Google Drive kanonikal belum dikonfigurasi pada antarmuka admin maupun konfigurasi server.";
             $setting->update([
@@ -181,7 +220,8 @@ class SystemStorageConfigService
             $spreadsheetConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
                 ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
 
-            $appsScriptEndpoint = $spreadsheetConn?->apps_script_endpoint_url
+            $appsScriptEndpoint = $setting->apps_script_endpoint_url
+                ?: $spreadsheetConn?->apps_script_endpoint_url
                 ?: config('services.google_apps_script.endpoint_url');
 
             try {
@@ -449,11 +489,22 @@ class SystemStorageConfigService
         $spreadsheetConn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first()
             ?: SpreadsheetConnection::whereNotNull('apps_script_endpoint_url')->first();
 
-        if (!$spreadsheetConn || empty($spreadsheetConn->apps_script_endpoint_url)) {
+        $endpoint = $setting->apps_script_endpoint_url
+            ?: $spreadsheetConn?->apps_script_endpoint_url
+            ?: config('services.google_apps_script.endpoint_url');
+
+        if (empty($endpoint)) {
             return [
                 'success' => false,
                 'message' => 'Koneksi Apps Script Endpoint belum tersedia untuk aktivasi Google Drive.',
             ];
+        }
+
+        if (!$spreadsheetConn) {
+            $spreadsheetConn = new SpreadsheetConnection([
+                'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
+                'apps_script_endpoint_url' => $endpoint,
+            ]);
         }
 
         $transport = app(\App\Services\SpreadsheetTransport\GoogleAppsScriptTransport::class);

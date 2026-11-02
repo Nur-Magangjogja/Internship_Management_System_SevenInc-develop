@@ -35,9 +35,9 @@
         [
             'label' => 'Pengaturan Sistem',
             'items' => [
-                ['label' => 'Penyimpanan Asset',      'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
-                ['label' => 'Integrasi Spreadsheet', 'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
-                ['label' => 'Monitoring Sinkronisasi', 'route' => 'admin.sync-monitoring.index', 'icon' => 'activity'],
+                ['label' => 'Integrasi Drive & Apps Script', 'route' => 'admin.cloud-storage.index',           'icon' => 'upload'],
+                ['label' => 'Integrasi Spreadsheet',        'route' => 'admin.spreadsheet-connections.index', 'icon' => 'table'],
+                ['label' => 'Monitoring Sinkronisasi',       'route' => 'admin.sync-monitoring.index',          'icon' => 'activity'],
                 ['label' => 'Impor Data Historis',    'route' => 'admin.legacy-import.index',           'icon' => 'upload'],
                 ['label' => 'Manajemen Brand',    'route' => 'admin.brands.index',             'icon' => 'settings'],
                 ['label' => 'Manajemen Divisi',   'route' => 'admin.form-settings.divisions',  'icon' => 'settings'],
@@ -176,6 +176,7 @@
                                 'admin.mou-templates.index' => request()->routeIs('admin.mou-templates.*'),
                                 'admin.mous.index'          => request()->routeIs('admin.mous.*'),
                                 'admin.activity-logs.index' => request()->routeIs('admin.activity-logs.*'),
+                                'admin.cloud-storage.index'  => request()->routeIs('admin.cloud-storage.*'),
                                 'admin.spreadsheet-connections.index' => request()->routeIs('admin.spreadsheet-connections.*'),
                                 'admin.sync-monitoring.index' => request()->routeIs('admin.sync-monitoring.*'),
                                 'admin.archive-exports.index' => request()->routeIs('admin.archive-exports.*'),

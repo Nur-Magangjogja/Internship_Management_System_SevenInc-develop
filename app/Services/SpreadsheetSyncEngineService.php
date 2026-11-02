@@ -2072,6 +2072,7 @@ class SpreadsheetSyncEngineService
                     'internship_registration_id' => $registration->id,
                     'attachment_type'            => \App\Models\RegistrationAttachment::TYPE_CV,
                     'category'                   => \App\Models\RegistrationAttachment::TYPE_CV,
+                    'document_version'           => 0,
                     'file_path'                  => "attachments/{$registration->id}/CV_{$slug}.pdf",
                     'original_name'              => "CV_{$slug}.pdf",
                     'file_size'                  => 1024,

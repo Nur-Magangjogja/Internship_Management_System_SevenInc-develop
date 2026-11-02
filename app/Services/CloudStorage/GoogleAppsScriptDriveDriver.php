@@ -25,14 +25,7 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
             // Database not accessible or running in standalone test environment
         }
 
-        try {
-            $this->endpointUrl = $conn?->apps_script_endpoint_url ?: (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null);
-            $this->sharedSecret = function_exists('config') ? config('services.google_apps_script.shared_secret') : null;
-        } catch (\Throwable) {
-            $this->endpointUrl = $conn?->apps_script_endpoint_url;
-            $this->sharedSecret = null;
-        }
-
+        $setting = null;
         $settingRoot = null;
         try {
             $setting = CloudStorageSetting::getEffectiveSettings();
@@ -41,7 +34,22 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
             // Database not accessible
         }
 
-        $this->rootFolderId = $settingRoot ?: $conn?->drive_folder_id;
+        $testEndpoint = (function_exists('app') && app()->runningUnitTests())
+            ? (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null)
+            : null;
+
+        try {
+            $this->endpointUrl = $testEndpoint
+                ?: $setting?->apps_script_endpoint_url
+                ?: $conn?->apps_script_endpoint_url
+                ?: (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null);
+            $this->sharedSecret = function_exists('config') ? config('services.google_apps_script.shared_secret') : null;
+        } catch (\Throwable) {
+            $this->endpointUrl = $testEndpoint ?: $setting?->apps_script_endpoint_url ?: $conn?->apps_script_endpoint_url;
+            $this->sharedSecret = null;
+        }
+
+        $this->rootFolderId = $settingRoot ?: $setting?->canonical_parent_folder_id ?: $conn?->drive_folder_id ?: (function_exists('config') ? config('services.google_apps_script.root_folder_id') : null);
     }
 
     public function isConfigured(): bool
