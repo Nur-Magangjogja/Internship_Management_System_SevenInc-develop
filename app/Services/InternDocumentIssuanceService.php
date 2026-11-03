@@ -360,7 +360,7 @@ class InternDocumentIssuanceService
                 $variables['company_logo']       = $logoData;
                 $variables['brand_logo']         = $logoData;
             }
-        } elseif (empty($variables['asset.company.logo']) && empty($variables['asset.brand.logo'])) {
+        } elseif (!$isLiveIssuance && empty($variables['asset.company.logo']) && empty($variables['asset.brand.logo'])) {
             $logoData = $resolveImageHelper(
                 'images/mou/seven-inc-logo.png',
                 'images/logos/logo_seveninc.png'
@@ -369,6 +369,9 @@ class InternDocumentIssuanceService
                 $variables['asset.company.logo'] = $logoData;
                 $variables['asset.brand.logo']   = $logoData;
             }
+        } else {
+            $variables['asset.company.logo'] = $variables['asset.company.logo'] ?? null;
+            $variables['asset.brand.logo']   = $variables['asset.brand.logo'] ?? null;
         }
 
         // 2. Tanda Tangan Penandatangan
@@ -380,7 +383,7 @@ class InternDocumentIssuanceService
                 $variables['signature']                = $sigData;
                 $variables['tanda_tangan']             = $sigData;
             }
-        } elseif (empty($variables['asset.signature']) && empty($variables['asset.brand.tanda_tangan'])) {
+        } elseif (!$isLiveIssuance && empty($variables['asset.signature']) && empty($variables['asset.brand.tanda_tangan'])) {
             $sigData = $resolveImageHelper(
                 'images/mou/signature-sample.png',
                 'images/signature/ttd_arisetiahusbana.png',
@@ -390,6 +393,11 @@ class InternDocumentIssuanceService
                 $variables['asset.signature']          = $sigData;
                 $variables['asset.brand.tanda_tangan'] = $sigData;
             }
+        } else {
+            $variables['asset.signature']          = null;
+            $variables['asset.brand.tanda_tangan'] = null;
+            $variables['signature']                = null;
+            $variables['tanda_tangan']             = null;
         }
 
         // 3. Stempel Perusahaan
@@ -402,7 +410,7 @@ class InternDocumentIssuanceService
                 $variables['stamp']               = $stampData;
                 $variables['stempel']             = $stampData;
             }
-        } elseif (empty($variables['asset.stamp']) && empty($variables['asset.brand.stempel'])) {
+        } elseif (!$isLiveIssuance && empty($variables['asset.stamp']) && empty($variables['asset.brand.stempel'])) {
             $stampData = $resolveImageHelper(
                 'images/mou/stamp-sample.png',
                 'images/stamps/stamp.png'
@@ -414,6 +422,12 @@ class InternDocumentIssuanceService
                 $variables['stamp']               = $stampData;
                 $variables['stempel']             = $stampData;
             }
+        } else {
+            $variables['asset.stamp']         = null;
+            $variables['asset.brand.stempel'] = null;
+            $variables['asset.company.stamp'] = null;
+            $variables['stamp']               = null;
+            $variables['stempel']             = null;
         }
 
         // 4. Background Sertifikat
@@ -677,10 +691,10 @@ class InternDocumentIssuanceService
                 $rec->fill([
                     'skl_number'           => $docNumber,
                     'company_name'         => $companyName,
-                    'company_logo_path'    => $brand?->logo ?? $rec->company_logo_path ?? 'images/logos/logo_seveninc.png',
+                    'company_logo_path'    => $brand?->logo ?? $rec->company_logo_path ?? null,
                     'signatory_name'       => $signatoryName,
                     'signatory_position'   => $signatoryPosition,
-                    'signature_image_path' => $brand?->signature ?? $rec->signature_image_path ?? 'images/signature/ttd_arisetiahusbana.png',
+                    'signature_image_path' => $brand?->signature ?? $rec->signature_image_path ?? null,
                 ])->save();
             }),
             self::TYPE_CERTIFICATE => tap(InternCertificate::firstOrNew(['intern_id' => $intern->id]), function ($rec) use ($docNumber, $companyName, $brand, $signatoryName, $signatoryPosition) {

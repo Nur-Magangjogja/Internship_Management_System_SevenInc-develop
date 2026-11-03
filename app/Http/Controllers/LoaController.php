@@ -76,9 +76,9 @@ class LoaController extends Controller
         $signatoryName = $brandData->signatory_name ?? 'Ari Setia Husbana';
         $signatoryPosition = $brandData->signatory_position ?? 'HRD';
         
-        $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-        $sigData   = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
-        $stampData = $this->resolveBase64Image($brandData?->stamp, 'images/mou/stamp-sample.png');
+        $logoData  = $this->resolveBase64Image($brandData?->logo, '');
+        $sigData   = $this->resolveBase64Image($brandData?->signature, '');
+        $stampData = $this->resolveBase64Image($brandData?->stamp, '');
 
         $dir = 'documents/loa';
         $this->ensurePublicDir($dir);
@@ -342,9 +342,9 @@ class LoaController extends Controller
         $signatoryName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
         $signatoryPosition = $brandData->signatory_position ?? 'HRD';
 
-        $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-        $sigData   = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
-        $stampData = $this->resolveBase64Image($brandData?->stamp, 'images/mou/stamp-sample.png');
+        $logoData  = $this->resolveBase64Image($brandData?->logo, '');
+        $sigData   = $this->resolveBase64Image($brandData?->signature, '');
+        $stampData = $this->resolveBase64Image($brandData?->stamp, '');
 
         // Jika sudah ada record snapshot LOA, gunakan nomor yang sama
         $loaRecord = InternLoa::where('intern_id', $intern->id)->latest('id')->first();

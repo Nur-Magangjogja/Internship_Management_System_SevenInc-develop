@@ -281,8 +281,8 @@ class DocumentGeneratorService
                 $companyAddress    = $brandData?->company_address;
                 $signatoryName     = $brandData->signatory_name ?? 'Ari Setia Husbana';
                 $signatoryPosition = $brandData->signatory_position ?? 'HRD';
-                $logoData  = $this->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-                $stampData = $this->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+                $logoData  = $this->resolveBase64Image($brandData?->logo, '');
+                $stampData = $this->resolveBase64Image($brandData?->signature, '');
                 $rows      = $this->buildRows([$intern]);
 
                 $pdf = Pdf::loadView('user.loa', [

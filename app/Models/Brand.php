@@ -112,9 +112,12 @@ class Brand extends Model
      */
     public function isProfileCompleteForDocuments(): bool
     {
+        $hasAddress = !empty(trim((string) $this->company_address)) || !empty(trim((string) $this->address));
+
         return !empty(trim((string) $this->signatory_name))
             && !empty(trim((string) $this->signatory_position))
-            && !empty(trim((string) $this->company_address));
+            && $hasAddress
+            && !empty($this->logo);
     }
 
     /**
@@ -131,8 +134,11 @@ class Brand extends Model
         if (empty(trim((string) $this->signatory_position))) {
             $missing['signatory_position'] = 'Jabatan Penandatangan';
         }
-        if (empty(trim((string) $this->company_address))) {
+        if (empty(trim((string) $this->company_address)) && empty(trim((string) $this->address))) {
             $missing['company_address'] = 'Alamat Resmi Kantor';
+        }
+        if (empty($this->logo)) {
+            $missing['logo'] = 'Berkas Logo Brand';
         }
 
         return $missing;

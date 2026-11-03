@@ -230,6 +230,12 @@ class DocumentTemplateRenderer
                 if (preg_match('/src="([^"]+)"/i', $src, $m)) {
                     $src = $m[1];
                 }
+
+                // Jika URL gambar kosong (misal logo belum diunggah), lewati render elemen agar tidak memunculkan kotak gambar rusak
+                if (empty(trim((string) $src))) {
+                    continue;
+                }
+
                 $src = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
                 
                 // Prioritaskan width_percent hasil kustomisasi visual studio, fallback ke width_px, lalu default 16.5% (~140px)

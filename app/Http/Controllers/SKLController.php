@@ -182,9 +182,9 @@ class SKLController extends Controller
                             'leaderName'             => $validated['leader_name'] ?? $brandData?->signatory_name ?? 'Ari Setia Husbana',
                             'leaderTitle'            => $validated['leader_title'] ?? $brandData?->signatory_position ?? 'HRD',
                             'letterNumber'           => $letterNumber,
-                            'logoData'               => $this->resolveBase64Image($request, 'logo', $logoPath ?? $brandData?->logo, 'images/logos/logo_seveninc.png'),
-                            'stampData'              => $this->resolveBase64Image($request, 'stamp', $stampPath ?? $brandData?->stamp, 'images/mou/stamp-sample.png'),
-                            'sigData'                => $this->resolveBase64Image($request, 'sig', $brandData?->signature, 'images/signature/ttd_arisetiahusbana.png'),
+                            'logoData'               => $this->resolveBase64Image($request, 'logo', $logoPath ?? $brandData?->logo, ''),
+                            'stampData'              => $this->resolveBase64Image($request, 'stamp', $stampPath ?? $brandData?->stamp, ''),
+                            'sigData'                => $this->resolveBase64Image($request, 'sig', $brandData?->signature, ''),
                             'participantName'        => $participantName,
                             'participantId'          => $participantId,
                             'participantMajor'       => $participantMajor,
@@ -276,11 +276,6 @@ class SKLController extends Controller
         $candidates = array_filter([
             $savedPath,
             $fallbackRelative,
-            'images/mou/seven-inc-logo.png',
-            'images/mou/signature-sample.png',
-            'images/mou/stamp-sample.png',
-            'images/logos/logo_seveninc.png',
-            'images/signature/ttd_arisetiahusbana.png',
         ]);
 
         foreach ($candidates as $cand) {
@@ -348,9 +343,9 @@ class SKLController extends Controller
         $letterNumber  = 'SKL/'.Carbon::parse($endAt)->format('Y').'/DEMO';
 
         // Assets
-        $logoData  = $this->resolveBase64Image($request, 'logo',  null, 'images/mou/seven-inc-logo.png');
-        $stampData = $this->resolveBase64Image($request, 'stamp', null, 'images/mou/stamp-sample.png');
-        $sigData   = $this->resolveBase64Image($request, 'sig',   null, 'images/mou/signature-sample.png');
+        $logoData  = $this->resolveBase64Image($request, 'logo',  null, '');
+        $stampData = $this->resolveBase64Image($request, 'stamp', null, '');
+        $sigData   = $this->resolveBase64Image($request, 'sig',   null, '');
 
         // Mendapatkan data dari request atau menggunakan default value
         $activityDescription = $request->get('activity_description', '');
@@ -417,9 +412,9 @@ class SKLController extends Controller
         $letterDateStr = Carbon::parse($endAt)->isoFormat('D MMMM Y');
         $letterNumber  = 'SKL/' . Carbon::parse($endAt)->format('Y') . '/' . str_pad($intern->id, 3, '0', STR_PAD_LEFT);
 
-        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $brandData?->logo,      'images/mou/seven-inc-logo.png');
-        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,     'images/mou/stamp-sample.png');
-        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $brandData?->signature, 'images/mou/signature-sample.png');
+        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $brandData?->logo,      '');
+        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,     '');
+        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $brandData?->signature, '');
 
         $activityDescription = 'Telah menyelesaikan seluruh rangkaian kegiatan program magang sesuai dengan ketentuan yang berlaku.';
         $participantAchievement = 'Sangat Baik';
@@ -633,9 +628,9 @@ class SKLController extends Controller
         $endStr        = $ir->end_date   ? Carbon::parse($ir->end_date)->isoFormat('D MMMM Y')   : '-';
         $letterDateStr = $ir->end_date   ? Carbon::parse($ir->end_date)->isoFormat('D MMMM Y')   : now()->translatedFormat('d F Y');
 
-        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $sklRecord->company_logo_path,  'images/mou/seven-inc-logo.png');
-        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,            'images/mou/stamp-sample.png');
-        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $sklRecord->signature_image_path, 'images/mou/signature-sample.png');
+        $logoData  = $this->resolveBase64Image(new Request(), 'logo',  $sklRecord->company_logo_path,  '');
+        $stampData = $this->resolveBase64Image(new Request(), 'stamp', $brandData?->stamp,            '');
+        $sigData   = $this->resolveBase64Image(new Request(), 'sig',   $sklRecord->signature_image_path, '');
 
         $data = [
             'companyName'            => $companyName,
