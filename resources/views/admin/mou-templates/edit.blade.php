@@ -84,6 +84,7 @@
                                 id="name"
                                 name="name"
                                 value="{{ old('name', $mouTemplate->name) }}"
+                                placeholder="Masukkan nama template (contoh: Template MoU)"
                                 required
                                 class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
                             >

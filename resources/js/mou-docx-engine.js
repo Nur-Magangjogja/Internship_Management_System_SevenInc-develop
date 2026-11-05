@@ -124,7 +124,12 @@ export async function importDocxFile(fileOrBuffer) {
     }
 
     const rawHtml = result.value || '';
-    const cleanHtml = reconstructMailMergePlaceholders(rawHtml);
+    let cleanHtml = reconstructMailMergePlaceholders(rawHtml);
+
+    // Normalize imported table structures from Word: assign standard bordered class and center alignment
+    cleanHtml = cleanHtml.replace(/<table(?![^>]*\bclass=)([^>]*)>/gi, (match, rest) => {
+        return `<table class="mou-table-bordered mou-correspondence-table" data-table-align="center"${rest}>`;
+    });
 
     // Scan detected placeholders
     const placeholderMatches = cleanHtml.match(/\{\{([a-zA-Z0-9_.]+)\}\}|\[([a-zA-Z0-9_.]+)\]/g) || [];
@@ -171,6 +176,18 @@ export async function exportProseMirrorJsonToDocx(docJson, pageConfig = {}) {
     const marginBottomMm = parseFloat(pageConfig.margin_bottom_mm ?? 20);
     const marginLeftMm = parseFloat(pageConfig.margin_left_mm ?? 20);
     const marginRightMm = parseFloat(pageConfig.margin_right_mm ?? 20);
+    const headerDistanceMm = parseFloat(pageConfig.header_distance_mm ?? 12);
+    const footerDistanceMm = parseFloat(pageConfig.footer_distance_mm ?? 10);
+    const showHeaderLogos = pageConfig.show_header_logos !== false;
+    const isMou = (pageConfig.document_type === 'mou' || pageConfig.is_mou);
+
+    const hlCfg = pageConfig.header_logos_config || {};
+    const instH = Math.min(105, Math.max(30, parseFloat(hlCfg.institution?.height ?? 66))) / 3.779527559;
+    const compH = Math.min(105, Math.max(30, parseFloat(hlCfg.company?.height ?? 66))) / 3.779527559;
+    const maxLogoHMm = Math.max(instH, compH);
+    const effectiveTopMarginMm = (isMou && showHeaderLogos)
+        ? Math.max(marginTopMm, Math.min(35.0, Math.ceil(headerDistanceMm + maxLogoHMm + 4.0)))
+        : marginTopMm;
 
     const docxChildren = [];
 
@@ -203,25 +220,139 @@ export async function exportProseMirrorJsonToDocx(docJson, pageConfig = {}) {
         docxChildren.push(new docx.Paragraph({ text: '' }));
     }
 
-    const doc = new docx.Document({
-        sections: [{
-            properties: {
-                page: {
-                    size: {
-                        width: docx.convertMillimetersToTwip(paperWidthMm),
-                        height: docx.convertMillimetersToTwip(paperHeightMm),
-                        orientation: isLandscape ? docx.PageOrientation.LANDSCAPE : docx.PageOrientation.PORTRAIT,
-                    },
-                    margin: {
-                        top: docx.convertMillimetersToTwip(marginTopMm),
-                        bottom: docx.convertMillimetersToTwip(marginBottomMm),
-                        left: docx.convertMillimetersToTwip(marginLeftMm),
-                        right: docx.convertMillimetersToTwip(marginRightMm),
-                    }
-                }
+    // Build Header elements (Kop Surat & Logo/Header text)
+    const headerChildren = [];
+    if (pageConfig.header_json && Array.isArray(pageConfig.header_json.content)) {
+        pageConfig.header_json.content.forEach(hNode => {
+            const converted = convertNodeToDocx(hNode);
+            if (converted) {
+                if (Array.isArray(converted)) headerChildren.push(...converted);
+                else headerChildren.push(converted);
+            }
+        });
+    }
+    if (headerChildren.length === 0 && (pageConfig.show_header_logos !== false && (isMou || pageConfig.document_type === 'mou'))) {
+        headerChildren.push(new docx.Paragraph({
+            children: [
+                new docx.TextRun({ text: '[KOP SURAT DOKUMEN RESMI]', bold: true, size: 18, color: '666666' })
+            ],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 120 }
+        }));
+    }
+
+    // Build Footer elements (Tabel Paraf & Nomor Halaman)
+    const footerChildren = [];
+    if (pageConfig.footer_json && Array.isArray(pageConfig.footer_json.content)) {
+        pageConfig.footer_json.content.forEach(fNode => {
+            const converted = convertNodeToDocx(fNode);
+            if (converted) {
+                if (Array.isArray(converted)) footerChildren.push(...converted);
+                else footerChildren.push(converted);
+            }
+        });
+    }
+
+    // If paraf box is enabled and not already provided in footer_json, build standard 2-column paraf table
+    if (pageConfig.show_paraf_box !== false && footerChildren.length === 0) {
+        footerChildren.push(new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            alignment: docx.AlignmentType.CENTER,
+            borders: {
+                top: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                left: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                right: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
             },
-            children: docxChildren
-        }]
+            rows: [
+                new docx.TableRow({
+                    children: [
+                        new docx.TableCell({
+                            children: [
+                                new docx.Paragraph({
+                                    children: [new docx.TextRun({ text: 'PIHAK PERTAMA (MITRA)', bold: true, size: 16 })],
+                                    alignment: docx.AlignmentType.CENTER
+                                }),
+                                new docx.Paragraph({
+                                    children: [new docx.TextRun({ text: 'Paraf: [ ___________ ]', italics: true, size: 14 })],
+                                    alignment: docx.AlignmentType.CENTER,
+                                    spacing: { before: 80, after: 60 }
+                                })
+                            ],
+                            width: { size: 50, type: docx.WidthType.PERCENTAGE },
+                            margins: { top: 80, bottom: 80, left: 100, right: 100 }
+                        }),
+                        new docx.TableCell({
+                            children: [
+                                new docx.Paragraph({
+                                    children: [new docx.TextRun({ text: 'PIHAK KEDUA (SEVEN INC)', bold: true, size: 16 })],
+                                    alignment: docx.AlignmentType.CENTER
+                                }),
+                                new docx.Paragraph({
+                                    children: [new docx.TextRun({ text: 'Paraf: [ ___________ ]', italics: true, size: 14 })],
+                                    alignment: docx.AlignmentType.CENTER,
+                                    spacing: { before: 80, after: 60 }
+                                })
+                            ],
+                            width: { size: 50, type: docx.WidthType.PERCENTAGE },
+                            margins: { top: 80, bottom: 80, left: 100, right: 100 }
+                        })
+                    ]
+                })
+            ]
+        }));
+    }
+
+    // Add page number at bottom right if enabled
+    if (pageConfig.show_page_number !== false) {
+        footerChildren.push(new docx.Paragraph({
+            children: [
+                new docx.TextRun({ text: 'Halaman ', size: 16 }),
+                docx.PageNumber.CURRENT,
+                new docx.TextRun({ text: ' dari ', size: 16 }),
+                docx.PageNumber.TOTAL_PAGES
+            ],
+            alignment: docx.AlignmentType.RIGHT,
+            spacing: { before: 80 }
+        }));
+    }
+
+    const sectionConfig = {
+        properties: {
+            page: {
+                size: {
+                    width: docx.convertMillimetersToTwip(paperWidthMm),
+                    height: docx.convertMillimetersToTwip(paperHeightMm),
+                    orientation: isLandscape ? docx.PageOrientation.LANDSCAPE : docx.PageOrientation.PORTRAIT,
+                },
+                margin: {
+                    top: docx.convertMillimetersToTwip(effectiveTopMarginMm),
+                    bottom: docx.convertMillimetersToTwip(marginBottomMm),
+                    left: docx.convertMillimetersToTwip(marginLeftMm),
+                    right: docx.convertMillimetersToTwip(marginRightMm),
+                    header: docx.convertMillimetersToTwip(headerDistanceMm),
+                    footer: docx.convertMillimetersToTwip(footerDistanceMm),
+                }
+            }
+        },
+        children: docxChildren
+    };
+
+    if (headerChildren.length > 0) {
+        sectionConfig.headers = {
+            default: new docx.Header({ children: headerChildren })
+        };
+    }
+    if (footerChildren.length > 0) {
+        sectionConfig.footers = {
+            default: new docx.Footer({ children: footerChildren })
+        };
+    }
+
+    const doc = new docx.Document({
+        sections: [sectionConfig]
     });
 
     if (typeof window === 'undefined') {
@@ -343,17 +474,33 @@ function convertNodeToDocx(node) {
                 }
             });
 
+            const isBorderless = (node.attrs && (
+                (typeof node.attrs.class === 'string' && node.attrs.class.includes('borderless')) ||
+                node.attrs.tableStyle === 'borderless' ||
+                node.attrs.borderStyle === 'none'
+            ));
+
+            const bordersConfig = isBorderless ? {
+                top: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+                bottom: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+                left: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+                right: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+                insideHorizontal: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+                insideVertical: { style: docx.BorderStyle.NONE, size: 0, color: 'auto' },
+            } : {
+                top: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                left: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                right: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+                insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: '000000' },
+            };
+
             return new docx.Table({
                 rows,
                 width: { size: 100, type: docx.WidthType.PERCENTAGE },
-                borders: {
-                    top: { style: docx.BorderStyle.SINGLE, size: 4, color: '888888' },
-                    bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '888888' },
-                    left: { style: docx.BorderStyle.SINGLE, size: 4, color: '888888' },
-                    right: { style: docx.BorderStyle.SINGLE, size: 4, color: '888888' },
-                    insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: 'CCCCCC' },
-                    insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: 'CCCCCC' },
-                }
+                alignment: docx.AlignmentType.CENTER,
+                borders: bordersConfig,
             });
         }
         case 'mouPageBreak':

@@ -22,11 +22,27 @@ import Highlight from '@tiptap/extension-highlight';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Image from '@tiptap/extension-image';
+import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { importDocxFile, exportProseMirrorJsonToDocx, downloadDocxBlob } from './mou-docx-engine.js';
 
 const MM_TO_PX = 96 / 25.4; // ~3.779527559 px per mm
+
+/**
+ * Standard Physical Paper Dimensions Helper (Shared Across Editors & NodeViews)
+ */
+function calcPaperDimensionsMm(paperSize = 'A4', orientation = 'portrait') {
+    const baseMap = {
+        A4: { width: 210, height: 297 },
+        LETTER: { width: 215.9, height: 279.4 },
+        LEGAL: { width: 215.9, height: 355.6 },
+    };
+    const base = baseMap[(paperSize || 'A4').toUpperCase()] || baseMap.A4;
+    return (orientation || 'portrait').toLowerCase() === 'landscape'
+        ? { width: base.height, height: base.width }
+        : { width: base.width, height: base.height };
+}
 
 /**
  * Helper: Extract a specific CSS property value from an inline style string.
@@ -70,15 +86,29 @@ class WordTableView extends TableView {
         if (!this.table) return;
         this.table.style.maxWidth = '100%';
         this.table.style.boxSizing = 'border-box';
+        this.table.style.tableLayout = 'fixed';
+        this.table.style.minWidth = ''; // Clear ProseMirror's minWidth so maxWidth: 100% is strictly honored!
+
+        if (this.dom) {
+            this.dom.style.maxWidth = '100%';
+            this.dom.style.boxSizing = 'border-box';
+            this.dom.style.position = 'relative';
+            this.dom.style.overflowX = 'visible';
+        }
+
         const attrs = node.attrs || {};
         if (attrs.class) {
             this.table.className = attrs.class;
         }
+        if (attrs.class && (attrs.class.includes('mou-table-bordered') || attrs.class.includes('mou-correspondence-table') || attrs.class.includes('mou-paraf-table'))) {
+            this.table.style.border = '1px solid #000000';
+            this.table.style.borderCollapse = 'collapse';
+        }
         if (attrs.tableWidth) {
             this.table.style.width = attrs.tableWidth;
-            this.table.style.minWidth = '';
             this.table.setAttribute('data-table-width', attrs.tableWidth);
         } else {
+            this.table.style.width = '100%';
             this.table.removeAttribute('data-table-width');
         }
 
@@ -93,6 +123,35 @@ class WordTableView extends TableView {
             } else {
                 this.table.style.marginLeft = '0';
                 this.table.style.marginRight = 'auto';
+            }
+        }
+
+        // Clamp & scale colgroup column widths if they exceed printable paper width
+        if (this.colgroup) {
+            const cols = Array.from(this.colgroup.children);
+            if (cols.length > 0) {
+                let totalColW = 0;
+                const widths = cols.map(c => {
+                    const w = parseFloat(c.style.width || c.getAttribute('width')) || 0;
+                    totalColW += w;
+                    return w;
+                });
+                let maxW = 601;
+                try {
+                    const pageBody = this.dom.closest('.mou-page-body-content') || document.querySelector('.mou-page-body-content');
+                    if (pageBody && pageBody.clientWidth > 100) {
+                        maxW = Math.max(100, pageBody.clientWidth - 2);
+                    }
+                } catch (_) {}
+
+                if (totalColW > maxW + 2 && totalColW > 0) {
+                    const scaleFactor = maxW / totalColW;
+                    cols.forEach((c, idx) => {
+                        const scaled = Math.max(14, Math.floor(widths[idx] * scaleFactor));
+                        c.style.width = `${scaled}px`;
+                        c.setAttribute('width', String(scaled));
+                    });
+                }
             }
         }
 
@@ -128,6 +187,7 @@ class WordTableView extends TableView {
     setupTableResizeHandle() {
         if (!this.dom) return;
         this.dom.style.position = 'relative';
+        if (this.dom.querySelector('.mou-table-width-handle')) return;
         const handle = document.createElement('div');
         handle.className = 'mou-table-width-handle no-print';
         handle.title = 'Tarik untuk mengubah lebar tabel keseluruhan';
@@ -150,6 +210,7 @@ const WordParagraph = Paragraph.extend({
             marginLeft: {
                 default: null,
                 parseHTML: el => el.style.marginLeft || extractStyleProperty(el.getAttribute('style'), 'margin-left') || null,
+                renderHTML: attrs => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft} !important;` } : {}),
             },
             marginRight: {
                 default: null,
@@ -176,9 +237,9 @@ const WordParagraph = Paragraph.extend({
     renderHTML({ node, HTMLAttributes }) {
         const styles = [];
         if (HTMLAttributes.style) styles.push(HTMLAttributes.style);
-        if (node.attrs.marginLeft) styles.push(`margin-left: ${node.attrs.marginLeft}`);
-        if (node.attrs.marginRight) styles.push(`margin-right: ${node.attrs.marginRight}`);
-        if (node.attrs.textIndent) styles.push(`text-indent: ${node.attrs.textIndent}`);
+        if (node.attrs.marginLeft) styles.push(`margin-left: ${node.attrs.marginLeft} !important`);
+        if (node.attrs.marginRight) styles.push(`margin-right: ${node.attrs.marginRight} !important`);
+        if (node.attrs.textIndent) styles.push(`text-indent: ${node.attrs.textIndent} !important`);
         if (node.attrs.marginTop) styles.push(`margin-top: ${node.attrs.marginTop}`);
         if (node.attrs.marginBottom) styles.push(`margin-bottom: ${node.attrs.marginBottom}`);
         if (node.attrs.lineHeight) styles.push(`line-height: ${node.attrs.lineHeight}`);
@@ -210,6 +271,15 @@ const WordHeading = Heading.extend({
                 parseHTML: el => el.getAttribute('class') || null,
                 renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
             },
+            marginLeft: {
+                default: null,
+                parseHTML: el => el.style.marginLeft || extractStyleProperty(el.getAttribute('style'), 'margin-left') || null,
+                renderHTML: attrs => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft} !important;` } : {}),
+            },
+            textIndent: {
+                default: null,
+                parseHTML: el => el.style.textIndent || extractStyleProperty(el.getAttribute('style'), 'text-indent') || null,
+            },
             marginTop: {
                 default: null,
                 parseHTML: el => el.style.marginTop || extractStyleProperty(el.getAttribute('style'), 'margin-top') || null,
@@ -230,12 +300,16 @@ const WordHeading = Heading.extend({
 
         const styles = [];
         if (HTMLAttributes.style) styles.push(HTMLAttributes.style);
+        if (node.attrs.marginLeft) styles.push(`margin-left: ${node.attrs.marginLeft} !important`);
+        if (node.attrs.textIndent) styles.push(`text-indent: ${node.attrs.textIndent} !important`);
         if (node.attrs.marginTop) styles.push(`margin-top: ${node.attrs.marginTop}`);
         if (node.attrs.marginBottom) styles.push(`margin-bottom: ${node.attrs.marginBottom}`);
         if (node.attrs.lineHeight) styles.push(`line-height: ${node.attrs.lineHeight}`);
 
         const finalAttrs = { ...HTMLAttributes };
         delete finalAttrs.level;
+        delete finalAttrs.marginLeft;
+        delete finalAttrs.textIndent;
         delete finalAttrs.marginTop;
         delete finalAttrs.marginBottom;
         delete finalAttrs.lineHeight;
@@ -248,7 +322,22 @@ const WordHeading = Heading.extend({
 });
 
 /**
- * Extended OrderedList supporting list numbering style (1, a, A, i, I) and class.
+ * Helper: Extract list numbering type (1, a, A, i, I) from inline CSS list-style-type.
+ */
+function extractListStyleType(styleStr) {
+    const raw = extractStyleProperty(styleStr, 'list-style-type');
+    if (!raw) return null;
+    const lower = raw.toLowerCase().trim();
+    if (lower === 'lower-alpha' || lower === 'lower-latin') return 'a';
+    if (lower === 'upper-alpha' || lower === 'upper-latin') return 'A';
+    if (lower === 'lower-roman') return 'i';
+    if (lower === 'upper-roman') return 'I';
+    if (lower === 'decimal') return '1';
+    return null;
+}
+
+/**
+ * Extended OrderedList supporting list numbering style (1, a, A, i, I), indentation, and class.
  */
 const WordOrderedList = OrderedList.extend({
     addAttributes() {
@@ -257,19 +346,91 @@ const WordOrderedList = OrderedList.extend({
             class: {
                 default: null,
                 parseHTML: el => el.getAttribute('class') || null,
-                renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
+            },
+            type: {
+                default: '1',
+                parseHTML: el => {
+                    const cls = el.getAttribute('class') || '';
+                    if (cls.includes('mou-list-lower-alpha')) return 'a';
+                    if (cls.includes('mou-list-upper-alpha')) return 'A';
+                    if (cls.includes('mou-list-lower-roman')) return 'i';
+                    if (cls.includes('mou-list-upper-roman')) return 'I';
+                    if (cls.includes('mou-list-decimal')) return '1';
+                    return el.getAttribute('data-list-type') || el.getAttribute('type') || extractListStyleType(el.getAttribute('style')) || '1';
+                },
             },
             listType: {
                 default: '1',
-                parseHTML: el => el.getAttribute('type') || null,
-                renderHTML: attrs => (attrs.listType ? { type: attrs.listType } : {}),
+                parseHTML: el => {
+                    const cls = el.getAttribute('class') || '';
+                    if (cls.includes('mou-list-lower-alpha')) return 'a';
+                    if (cls.includes('mou-list-upper-alpha')) return 'A';
+                    if (cls.includes('mou-list-lower-roman')) return 'i';
+                    if (cls.includes('mou-list-upper-roman')) return 'I';
+                    if (cls.includes('mou-list-decimal')) return '1';
+                    return el.getAttribute('data-list-type') || el.getAttribute('type') || extractListStyleType(el.getAttribute('style')) || '1';
+                },
             },
             marginLeft: {
                 default: null,
                 parseHTML: el => el.style.marginLeft || extractStyleProperty(el.getAttribute('style'), 'margin-left') || null,
-                renderHTML: attrs => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft};` } : {}),
+                renderHTML: attrs => (attrs.marginLeft ? { style: `margin-left: ${attrs.marginLeft} !important;` } : {}),
             },
         };
+    },
+    renderHTML({ node, HTMLAttributes }) {
+        const type = node.attrs.listType || node.attrs.type || '1';
+        const start = node.attrs.start || 1;
+        const styles = [];
+        if (HTMLAttributes.style) {
+            const clean = HTMLAttributes.style
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => s && !s.toLowerCase().startsWith('list-style-type'))
+                .join('; ');
+            if (clean) styles.push(clean);
+        }
+
+        const listStyleMap = {
+            '1': 'decimal',
+            'a': 'lower-alpha',
+            'A': 'upper-alpha',
+            'i': 'lower-roman',
+            'I': 'upper-roman',
+        };
+        const classMap = {
+            '1': 'mou-list-decimal',
+            'a': 'mou-list-lower-alpha',
+            'A': 'mou-list-upper-alpha',
+            'i': 'mou-list-lower-roman',
+            'I': 'mou-list-upper-roman',
+        };
+        const cssType = listStyleMap[type] || 'decimal';
+        const typeClass = classMap[type] || 'mou-list-decimal';
+        styles.push(`list-style-type: ${cssType} !important`);
+
+        if (node.attrs.marginLeft) {
+            styles.push(`margin-left: ${node.attrs.marginLeft} !important`);
+        }
+
+        const finalAttrs = { ...HTMLAttributes };
+        finalAttrs.type = type;
+        finalAttrs['data-list-type'] = type;
+        if (start !== 1) {
+            finalAttrs.start = start;
+        }
+
+        delete finalAttrs.listType;
+        delete finalAttrs.marginLeft;
+
+        const existingClasses = (finalAttrs.class || '').split(/\s+/).filter(c => c && !c.startsWith('mou-list-'));
+        existingClasses.push(typeClass);
+        finalAttrs.class = existingClasses.join(' ');
+
+        const styleStr = buildStyleString(styles);
+        if (styleStr) finalAttrs.style = styleStr;
+
+        return ['ol', mergeAttributes(this.options.HTMLAttributes, finalAttrs), 0];
     },
 });
 
@@ -301,9 +462,9 @@ const WordTable = Table.extend({
     addOptions() {
         return {
             ...this.parent?.(),
-            resizable: true,
+            resizable: false, // Disables raw unconstrained PM col-resizer; we use interactive Word-style column resizer below!
             View: WordTableView,
-            cellMinWidth: 36,
+            cellMinWidth: 14,
         };
     },
     addAttributes() {
@@ -510,13 +671,68 @@ function buildTableCellAttributes(parentAttrs) {
         },
         rawBorder: {
             default: null,
-            parseHTML: el => extractStyleProperty(el.getAttribute('style'), 'border') || null,
+            parseHTML: el => {
+                const style = el.getAttribute('style') || '';
+                const borderParts = style.split(';')
+                    .map(s => s.trim())
+                    .filter(s => /^border(-[a-z]+)?\s*:/i.test(s));
+                if (borderParts.length > 0) {
+                    return borderParts.join('; ');
+                }
+                return extractStyleProperty(style, 'border') || null;
+            },
         },
         class: {
             default: null,
             parseHTML: el => el.getAttribute('class') || null,
         },
     };
+}
+
+/**
+ * Merge or update individual border side declarations cleanly.
+ */
+function updateBorderProperties(existingRawBorder, updates) {
+    if (updates.border !== undefined) {
+        return updates.border;
+    }
+    const currentProps = {
+        'border-top': 'none',
+        'border-right': 'none',
+        'border-bottom': 'none',
+        'border-left': 'none',
+    };
+    if (existingRawBorder && existingRawBorder !== 'none') {
+        if (/^border(-[a-z]+)?\s*:/i.test(existingRawBorder)) {
+            const parts = existingRawBorder.split(';');
+            parts.forEach(p => {
+                const [k, v] = p.split(':').map(s => s?.trim());
+                if (k && v) {
+                    if (k === 'border') {
+                        currentProps['border-top'] = v;
+                        currentProps['border-right'] = v;
+                        currentProps['border-bottom'] = v;
+                        currentProps['border-left'] = v;
+                    } else if (currentProps[k] !== undefined) {
+                        currentProps[k] = v;
+                    }
+                }
+            });
+        } else {
+            currentProps['border-top'] = existingRawBorder;
+            currentProps['border-right'] = existingRawBorder;
+            currentProps['border-bottom'] = existingRawBorder;
+            currentProps['border-left'] = existingRawBorder;
+        }
+    }
+
+    Object.assign(currentProps, updates);
+
+    const { 'border-top': t, 'border-right': r, 'border-bottom': b, 'border-left': l } = currentProps;
+    if (t === r && r === b && b === l) {
+        return t || 'none';
+    }
+    return `border-top: ${t || 'none'}; border-right: ${r || 'none'}; border-bottom: ${b || 'none'}; border-left: ${l || 'none'}`;
 }
 
 function renderTableCellHTML(tag, node, HTMLAttributes, baseHTMLAttributes) {
@@ -552,7 +768,15 @@ function renderTableCellHTML(tag, node, HTMLAttributes, baseHTMLAttributes) {
         styles.push(`background-color: ${node.attrs.backgroundColor}`);
     }
 
-    if (node.attrs.borderStyle || node.attrs.borderWidth || node.attrs.borderColor) {
+    if (node.attrs.rawBorder) {
+        if (node.attrs.rawBorder === 'none') {
+            styles.push('border: none');
+        } else if (/^border(-[a-z]+)?\s*:/i.test(node.attrs.rawBorder)) {
+            styles.push(node.attrs.rawBorder);
+        } else {
+            styles.push(`border: ${node.attrs.rawBorder}`);
+        }
+    } else if (node.attrs.borderStyle || node.attrs.borderWidth || node.attrs.borderColor) {
         const bStyle = node.attrs.borderStyle || 'solid';
         const bWidth = node.attrs.borderWidth || (bStyle === 'none' ? '0' : '1px');
         const bColor = node.attrs.borderColor || '#000000';
@@ -564,8 +788,6 @@ function renderTableCellHTML(tag, node, HTMLAttributes, baseHTMLAttributes) {
         } else {
             styles.push(`border: ${bWidth} ${bStyle} ${bColor}`);
         }
-    } else if (node.attrs.rawBorder) {
-        styles.push(`border: ${node.attrs.rawBorder}`);
     }
 
     if (node.attrs.padding) {
@@ -622,6 +844,8 @@ class WordImageView {
         this.dom.setAttribute('data-tiptap-image-wrapper', 'true');
 
         this.img = document.createElement('img');
+        this.img.setAttribute('draggable', 'false');
+        this.img.draggable = false;
         this.img.onerror = () => {
             if (this.img.src && !this.img.src.startsWith('data:image/svg+xml')) {
                 this.img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60"><rect width="100%" height="100%" fill="%23f8fafc" stroke="%23cbd5e1" stroke-dasharray="4 2"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="10" fill="%2394a3b8">Asset Preview</text></svg>';
@@ -637,6 +861,19 @@ class WordImageView {
         this.badge = document.createElement('span');
         this.badge.className = 'mou-image-size-badge';
         this.overlay.appendChild(this.badge);
+
+        // Interactive Rotator Handle at Top Center (Word/Canva standard)
+        this.rotatorWrapper = document.createElement('div');
+        this.rotatorWrapper.className = 'mou-image-rotator-wrapper';
+        this.rotatorLine = document.createElement('div');
+        this.rotatorLine.className = 'mou-image-rotator-line';
+        this.rotatorHandle = document.createElement('div');
+        this.rotatorHandle.className = 'mou-image-rotator-handle';
+        this.rotatorHandle.title = 'Tarik untuk memutar gambar (Rotasi) • Klik ganda untuk kembali ke 0°';
+        this.rotatorWrapper.appendChild(this.rotatorLine);
+        this.rotatorWrapper.appendChild(this.rotatorHandle);
+        this.overlay.appendChild(this.rotatorWrapper);
+        this.attachRotatorDrag(this.rotatorHandle);
 
         this.handles = {};
         const positions = ['nw', 'ne', 'se', 'sw', 'n', 's', 'e', 'w'];
@@ -726,8 +963,15 @@ class WordImageView {
             }
         }
 
+        const rot = parseInt(attrs.rotation || 0, 10);
+        if (rot !== 0) {
+            styles.push(`transform: rotate(${rot}deg)`);
+            styles.push('transform-origin: center center');
+        }
+
         this.img.style.cssText = styles.join('; ');
-        this.badge.textContent = `${wPx} px`;
+        let hPx = Math.round(this.img.offsetHeight) || wPx;
+        this.badge.textContent = `${wPx} × ${hPx} px` + (rot !== 0 ? ` • ${rot}°` : '');
     }
 
     update(node) {
@@ -739,11 +983,129 @@ class WordImageView {
     selectNode() {
         this.dom.classList.add('is-selected');
         this.overlay.style.display = 'block';
+        window._mouActiveSelectedAsset = {
+            type: 'body-image',
+            nodeView: this,
+        };
+        const wInput = document.getElementById('ribbonImageWidthPx');
+        if (wInput) {
+            const w = parseInt(String(this.node.attrs?.width || '110').replace(/[^0-9]/g, ''), 10) || 110;
+            wInput.value = String(w);
+        }
+        const hInput = document.getElementById('ribbonImageHeightPx');
+        if (hInput) {
+            const h = parseInt(String(this.node.attrs?.height || '').replace(/[^0-9]/g, ''), 10);
+            hInput.value = h ? String(h) : '';
+        }
+        const rotInput = document.getElementById('ribbonImageRotationDeg');
+        if (rotInput) {
+            rotInput.value = String(this.node.attrs?.rotation || 0);
+        }
     }
 
     deselectNode() {
         this.dom.classList.remove('is-selected');
         this.overlay.style.display = 'none';
+        if (window._mouActiveSelectedAsset?.nodeView === this) {
+            window._mouActiveSelectedAsset = null;
+        }
+    }
+
+    deleteNode() {
+        if (typeof this.getPos === 'function' && this.view?.state?.tr) {
+            const pos = this.getPos();
+            if (pos !== undefined && typeof pos === 'number' && pos >= 0) {
+                const tr = this.view.state.tr.delete(pos, pos + this.node.nodeSize);
+                this.view.dispatch(tr);
+                window._mouActiveSelectedAsset = null;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    stopEvent(event) {
+        if (event.target.closest('.mou-image-handle') ||
+            event.target.closest('.mou-image-rotator-handle') ||
+            event.target.closest('.mou-image-rotator-wrapper') ||
+            event.target.closest('.mou-image-handle-overlay')) {
+            return true;
+        }
+        return false;
+    }
+
+    attachRotatorDrag(rotatorEl) {
+        rotatorEl.setAttribute('draggable', 'false');
+        rotatorEl.style.touchAction = 'none';
+
+        rotatorEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = this.img.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            let currentDeg = parseInt(this.node.attrs?.rotation || 0, 10);
+            this.selectNode();
+
+            const onRotateMove = (moveEv) => {
+                moveEv.preventDefault();
+                const rad = Math.atan2(moveEv.clientY - centerY, moveEv.clientX - centerX);
+                let deg = Math.round(rad * (180 / Math.PI)) + 90;
+                deg = ((deg % 360) + 360) % 360;
+                if (Math.abs(deg - 0) <= 4 || Math.abs(deg - 360) <= 4) deg = 0;
+                else if (Math.abs(deg - 90) <= 4) deg = 90;
+                else if (Math.abs(deg - 180) <= 4) deg = 180;
+                else if (Math.abs(deg - 270) <= 4) deg = 270;
+
+                currentDeg = deg;
+                this.img.style.transform = `rotate(${deg}deg)`;
+                this.img.style.transformOrigin = 'center center';
+                const w = parseInt(String(this.node.attrs?.width || '110').replace(/[^0-9]/g, ''), 10) || 110;
+                const h = Math.round(this.img.offsetHeight) || w;
+                this.badge.textContent = `${w} × ${h} px • ${deg}°`;
+
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = String(deg);
+            };
+
+            const onRotateUp = () => {
+                window.removeEventListener('pointermove', onRotateMove);
+                window.removeEventListener('pointerup', onRotateUp);
+                window.removeEventListener('pointercancel', onRotateUp);
+
+                if (typeof this.getPos === 'function' && this.view?.state?.tr) {
+                    const pos = this.getPos();
+                    if (pos !== undefined) {
+                        const tr = this.view.state.tr.setNodeMarkup(pos, undefined, {
+                            ...this.node.attrs,
+                            rotation: currentDeg,
+                        });
+                        this.view.dispatch(tr);
+                    }
+                }
+            };
+
+            window.addEventListener('pointermove', onRotateMove, { passive: false });
+            window.addEventListener('pointerup', onRotateUp);
+            window.addEventListener('pointercancel', onRotateUp);
+        });
+
+        rotatorEl.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof this.getPos === 'function' && this.view?.state?.tr) {
+                const pos = this.getPos();
+                if (pos !== undefined) {
+                    const tr = this.view.state.tr.setNodeMarkup(pos, undefined, {
+                        ...this.node.attrs,
+                        rotation: 0,
+                    });
+                    this.view.dispatch(tr);
+                }
+            }
+            const rotInput = document.getElementById('ribbonImageRotationDeg');
+            if (rotInput) rotInput.value = '0';
+        });
     }
 
     attachSelectionListeners() {
@@ -762,107 +1124,98 @@ class WordImageView {
             } catch (selErr) {
                 // Ignore selection boundary edge case
             }
-            const wInput = document.getElementById('ribbonImageWidthPx');
-            if (wInput) {
-                const w = parseInt(String(this.node.attrs?.width || '110').replace(/[^0-9]/g, ''), 10) || 110;
-                wInput.value = String(w);
-            }
         });
     }
 
     attachHandleDrag(handleEl, handlePos) {
-        let isDragging = false;
-        let startX = 0;
-        let startY = 0;
-        let startW = 0;
-        let startH = 0;
+        handleEl.setAttribute('draggable', 'false');
+        handleEl.style.touchAction = 'none';
 
         handleEl.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            isDragging = true;
-            try { handleEl.setPointerCapture(e.pointerId); } catch (_) {}
 
-            startX = e.clientX;
-            startY = e.clientY;
+            const startX = e.clientX;
+            const startY = e.clientY;
             const rect = this.img.getBoundingClientRect();
             const scale = (parseFloat(window.MouWordProcessor?.state?.zoomPercent) || 100) / 100;
-            startW = rect.width / scale;
-            startH = rect.height / scale;
-            this.selectNode();
-        });
-
-        handleEl.addEventListener('pointermove', (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            const scale = (parseFloat(window.MouWordProcessor?.state?.zoomPercent) || 100) / 100;
-            const deltaX = (e.clientX - startX) / scale;
-            const deltaY = (e.clientY - startY) / scale;
-
-            let newW = startW;
-            let newH = startH;
+            const startW = rect.width / scale;
+            const startH = rect.height / scale;
             const aspect = startW / (startH || 1);
+            this.selectNode();
 
-            if (handlePos === 'se') {
-                newW = Math.max(20, startW + deltaX);
-                newH = newW / aspect;
-            } else if (handlePos === 'sw') {
-                newW = Math.max(20, startW - deltaX);
-                newH = newW / aspect;
-            } else if (handlePos === 'ne') {
-                newW = Math.max(20, startW + deltaX);
-                newH = newW / aspect;
-            } else if (handlePos === 'nw') {
-                newW = Math.max(20, startW - deltaX);
-                newH = newW / aspect;
-            } else if (handlePos === 'e') {
-                newW = Math.max(20, startW + deltaX);
-            } else if (handlePos === 'w') {
-                newW = Math.max(20, startW - deltaX);
-            } else if (handlePos === 's') {
-                newH = Math.max(20, startH + deltaY);
-            } else if (handlePos === 'n') {
-                newH = Math.max(20, startH - deltaY);
-            }
+            let finalW = startW;
+            let finalH = startH;
 
-            // Clamp to max printable width (~640px)
-            const maxW = 640;
-            if (newW > maxW) {
-                newW = maxW;
-                if (['se', 'sw', 'ne', 'nw'].includes(handlePos)) newH = newW / aspect;
-            }
+            const onDragMove = (moveEv) => {
+                moveEv.preventDefault();
+                const deltaX = (moveEv.clientX - startX) / scale;
+                const deltaY = (moveEv.clientY - startY) / scale;
 
-            this.img.style.width = `${Math.round(newW)}px`;
-            this.img.style.height = `${Math.round(newH)}px`;
-            this.badge.textContent = `${Math.round(newW)} × ${Math.round(newH)} px`;
-        });
+                let newW = startW;
+                let newH = startH;
 
-        const stopDrag = (e) => {
-            if (!isDragging) return;
-            isDragging = false;
-            try { handleEl.releasePointerCapture(e.pointerId); } catch (_) {}
-
-            const finalW = Math.round(parseFloat(this.img.style.width) || startW);
-            const finalH = Math.round(parseFloat(this.img.style.height) || startH);
-
-            if (typeof this.getPos === 'function') {
-                const pos = this.getPos();
-                if (pos !== undefined && this.view?.state?.tr) {
-                    const tr = this.view.state.tr.setNodeMarkup(pos, undefined, {
-                        ...this.node.attrs,
-                        width: `${finalW}px`,
-                        height: `${finalH}px`,
-                    });
-                    this.view.dispatch(tr);
+                if (handlePos === 'se') {
+                    newW = Math.max(20, startW + deltaX);
+                    newH = newW / aspect;
+                } else if (handlePos === 'sw') {
+                    newW = Math.max(20, startW - deltaX);
+                    newH = newW / aspect;
+                } else if (handlePos === 'ne') {
+                    newW = Math.max(20, startW + deltaX);
+                    newH = newW / aspect;
+                } else if (handlePos === 'nw') {
+                    newW = Math.max(20, startW - deltaX);
+                    newH = newW / aspect;
+                } else if (handlePos === 'e') {
+                    newW = Math.max(20, startW + deltaX);
+                } else if (handlePos === 'w') {
+                    newW = Math.max(20, startW - deltaX);
+                } else if (handlePos === 's') {
+                    newH = Math.max(20, startH + deltaY);
+                } else if (handlePos === 'n') {
+                    newH = Math.max(20, startH - deltaY);
                 }
-            }
 
-            const wInput = document.getElementById('ribbonImageWidthPx');
-            if (wInput) wInput.value = String(finalW);
-        };
+                // Clamp to max printable width (~640px)
+                const maxW = 640;
+                if (newW > maxW) {
+                    newW = maxW;
+                    if (['se', 'sw', 'ne', 'nw'].includes(handlePos)) newH = newW / aspect;
+                }
 
-        handleEl.addEventListener('pointerup', stopDrag);
-        handleEl.addEventListener('pointercancel', stopDrag);
+                finalW = Math.round(newW);
+                finalH = Math.round(newH);
+                this.img.style.width = `${finalW}px`;
+                this.img.style.height = `${finalH}px`;
+                this.badge.textContent = `${finalW} × ${finalH} px`;
+            };
+
+            const onDragUp = () => {
+                window.removeEventListener('pointermove', onDragMove);
+                window.removeEventListener('pointerup', onDragUp);
+                window.removeEventListener('pointercancel', onDragUp);
+
+                if (typeof this.getPos === 'function') {
+                    const pos = this.getPos();
+                    if (pos !== undefined && this.view?.state?.tr) {
+                        const tr = this.view.state.tr.setNodeMarkup(pos, undefined, {
+                            ...this.node.attrs,
+                            width: `${finalW}px`,
+                            height: `${finalH}px`,
+                        });
+                        this.view.dispatch(tr);
+                    }
+                }
+
+                const wInput = document.getElementById('ribbonImageWidthPx');
+                if (wInput) wInput.value = String(finalW);
+            };
+
+            window.addEventListener('pointermove', onDragMove, { passive: false });
+            window.addEventListener('pointerup', onDragUp);
+            window.addEventListener('pointercancel', onDragUp);
+        });
     }
 
     destroy() {
@@ -939,6 +1292,17 @@ const WordImage = Image.extend({
                 default: null,
                 parseHTML: el => el.style.pointerEvents || extractStyleProperty(el.getAttribute('style'), 'pointer-events') || null,
             },
+            rotation: {
+                default: 0,
+                parseHTML: el => {
+                    const r = el.getAttribute('data-rotation');
+                    if (r !== null && r !== '') return parseInt(r, 10) || 0;
+                    const transform = el.style.transform || extractStyleProperty(el.getAttribute('style'), 'transform') || '';
+                    const match = transform.match(/rotate\(([-]?\d+(?:\.\d+)?)\s*deg\)/i);
+                    return match ? parseInt(match[1], 10) : 0;
+                },
+                renderHTML: attrs => attrs.rotation ? { 'data-rotation': attrs.rotation } : {},
+            },
         };
     },
     addNodeView() {
@@ -983,6 +1347,11 @@ const WordImage = Image.extend({
         if (node.attrs.opacity) styles.push(`opacity: ${node.attrs.opacity}`);
         if (node.attrs.zIndex) styles.push(`z-index: ${node.attrs.zIndex}`);
         if (node.attrs.pointerEvents) styles.push(`pointer-events: ${node.attrs.pointerEvents}`);
+        if (node.attrs.rotation) {
+            styles.push(`transform: rotate(${node.attrs.rotation}deg)`);
+            styles.push('transform-origin: center center');
+            attrs['data-rotation'] = node.attrs.rotation;
+        }
 
         if (node.attrs.position !== 'absolute') {
             if (node.attrs.align === 'center') {
@@ -1229,16 +1598,39 @@ function normalizeLegacyHtmlForTiptap(rawHtml) {
 
     // Ensure tables with colgroup or cell widths have explicit attributes for Tiptap
     root.querySelectorAll('table').forEach(table => {
-        const tWidth = table.getAttribute('data-table-width') || table.style.width;
-        if (tWidth) {
-            table.setAttribute('data-table-width', tWidth);
-            table.style.width = tWidth;
+        // Elevate bare / imported tables to standard bordered correspondence tables
+        if (!table.className || (!table.classList.contains('mou-table-bordered') && !table.classList.contains('mou-table-borderless') && !table.classList.contains('mou-correspondence-table') && !table.classList.contains('mou-paraf-table'))) {
+            table.classList.add('mou-table-bordered');
+            table.classList.add('mou-correspondence-table');
         }
+
+        const tWidth = table.getAttribute('data-table-width') || table.style.width || '100%';
+        table.setAttribute('data-table-width', tWidth);
+        table.style.width = tWidth;
+        table.style.borderCollapse = 'collapse';
+        table.style.tableLayout = 'fixed';
+
+        const tAlign = table.getAttribute('data-table-align') || 'center';
+        table.setAttribute('data-table-align', tAlign);
+        if (tAlign === 'center') {
+            table.style.marginLeft = 'auto';
+            table.style.marginRight = 'auto';
+        }
+
         table.querySelectorAll('tr').forEach(tr => {
             const rHeight = tr.getAttribute('data-row-height') || tr.style.height;
             if (rHeight) {
                 tr.setAttribute('data-row-height', rHeight);
                 tr.style.height = rHeight;
+            }
+        });
+
+        table.querySelectorAll('td, th').forEach(cell => {
+            if (!cell.style.padding) {
+                cell.style.padding = '5pt 7pt';
+            }
+            if (!cell.style.border) {
+                cell.style.border = '1px solid #000000';
             }
         });
     });
@@ -1490,6 +1882,253 @@ function synchronizeSerializedHtml(rawHtml) {
 }
 
 /**
+ * Shared indentation logic for both UI Indent/Outdent buttons and Tab/Shift-Tab keyboard events.
+ * Handles:
+ * - Selected text across multiple paragraphs or headings (increments/decrements each block's marginLeft).
+ * - Single paragraph/heading (collapsed cursor or single block selection).
+ * - Ordered and bullet lists (sinks nested sub-items with automatic numbering style progression e.g. I -> 1 -> a,
+ *   or shifts top-level list marginLeft without destroying the list structure).
+ */
+function executeEditorIndent(ed, deltaMm) {
+    if (!ed) return false;
+    const { state: editorState, view } = ed;
+    const { selection, doc } = editorState;
+    const { $from, from, to } = selection;
+
+    // 1. Inside a list item (orderedList, bulletList, or listItem)
+    if (ed.isActive('listItem')) {
+        let listItemDepthCount = 0;
+        let nearestListDepth = -1;
+        let parentOlType = '1';
+
+        for (let d = $from.depth; d > 0; d--) {
+            const n = $from.node(d);
+            if (n.type.name === 'listItem') {
+                listItemDepthCount++;
+            }
+            if ((n.type.name === 'orderedList' || n.type.name === 'bulletList') && nearestListDepth === -1) {
+                nearestListDepth = d;
+                if (n.type.name === 'orderedList') {
+                    parentOlType = n.attrs.listType || n.attrs.type || '1';
+                }
+            }
+        }
+
+        if (deltaMm > 0) {
+            // INCREASE INDENT:
+            const canSink = ed.can().sinkListItem('listItem');
+            if (canSink) {
+                ed.chain().focus().sinkListItem('listItem').run();
+                try {
+                    const newEdState = ed.state;
+                    const cur$from = newEdState.selection.$from;
+
+                    // Standard list progression: 1 -> a -> i -> 1 / I -> 1 -> a
+                    let subType = 'a';
+                    if (parentOlType === '1') subType = 'a';
+                    else if (parentOlType === 'a') subType = 'i';
+                    else if (parentOlType === 'A') subType = '1';
+                    else if (parentOlType === 'i') subType = '1';
+                    else if (parentOlType === 'I') subType = '1';
+
+                    for (let d = cur$from.depth; d > 0; d--) {
+                        const n = cur$from.node(d);
+                        if (n.type.name === 'orderedList') {
+                            const tr = newEdState.tr;
+                            tr.setNodeMarkup(cur$from.before(d), undefined, {
+                                ...n.attrs,
+                                listType: subType,
+                                type: subType,
+                            });
+                            ed.view.dispatch(tr);
+                            break;
+                        }
+                    }
+                } catch (_) {}
+            } else if (nearestListDepth > 0) {
+                // Cannot sink (first item of list): shift the whole list right via marginLeft
+                const listNode = $from.node(nearestListDepth);
+                const curMm = parseFloat(String(listNode.attrs.marginLeft || '0').replace('mm', '')) || 0;
+                const nextMm = Math.min(80, curMm + deltaMm);
+                const tr = editorState.tr;
+                tr.setNodeMarkup($from.before(nearestListDepth), undefined, {
+                    ...listNode.attrs,
+                    marginLeft: nextMm > 0 ? `${nextMm}mm` : null,
+                });
+                view.dispatch(tr);
+            }
+            return true;
+        } else {
+            // DECREASE INDENT (deltaMm < 0):
+            if (listItemDepthCount > 1) {
+                // Nested sub-item: lift back to parent level
+                ed.chain().focus().liftListItem('listItem').run();
+                return true;
+            } else if (nearestListDepth > 0) {
+                // Top-level list item: DO NOT call liftListItem because that destroys the numbering!
+                // Instead, reduce the list's marginLeft if it was indented
+                const listNode = $from.node(nearestListDepth);
+                const curMm = parseFloat(String(listNode.attrs.marginLeft || '0').replace('mm', '')) || 0;
+                if (curMm > 0) {
+                    const nextMm = Math.max(0, curMm + deltaMm);
+                    const tr = editorState.tr;
+                    tr.setNodeMarkup($from.before(nearestListDepth), undefined, {
+                        ...listNode.attrs,
+                        marginLeft: nextMm > 0 ? `${nextMm}mm` : null,
+                    });
+                    view.dispatch(tr);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // 2. Standard textblocks (paragraphs & headings outside lists)
+    const tr = editorState.tr;
+    let modified = false;
+
+    doc.nodesBetween(from, to, (node, pos) => {
+        if (node.isTextblock) {
+            const $pos = doc.resolve(pos);
+            let insideList = false;
+            for (let d = $pos.depth; d > 0; d--) {
+                if ($pos.node(d).type.name === 'listItem') {
+                    insideList = true;
+                    break;
+                }
+            }
+            if (!insideList) {
+                const curMm = parseFloat(String(node.attrs.marginLeft || '0').replace('mm', '')) || 0;
+                const nextMm = Math.max(0, Math.min(80, curMm + deltaMm));
+                const newMargin = nextMm > 0 ? `${nextMm}mm` : null;
+                if ((node.attrs.marginLeft || null) !== newMargin) {
+                    tr.setNodeMarkup(pos, undefined, {
+                        ...node.attrs,
+                        marginLeft: newMargin,
+                    });
+                    modified = true;
+                }
+            }
+        }
+    });
+
+    if (modified) {
+        tr.setSelection(selection.map(tr.doc, tr.mapping));
+        view.dispatch(tr);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Extension providing Microsoft Word-style Tab key and Tabulation (tab stop) support.
+ * - If text is selected (range selection across one or more paragraphs):
+ *   Pressing Tab indents the selected text (+6mm); Shift-Tab outdents (-6mm).
+ * - If inside a bullet or ordered list:
+ *   Pressing Tab sinks/indents the list item; Shift-Tab lifts/outdents it.
+ * - If cursor is inside a table cell without selection:
+ *   Inserts a tab stop character '\t'.
+ * - If collapsed cursor in regular paragraph:
+ *   Inserts a tab stop character '\t' (Word tab stop).
+ */
+const WordTabExtension = Extension.create({
+    name: 'wordTab',
+    addKeyboardShortcuts() {
+        return {
+            'Tab': ({ editor }) => {
+                if (editor.isActive('table') && editor.state.selection.empty) {
+                    return editor.commands.insertContent('\t');
+                }
+                if (!editor.state.selection.empty) {
+                    executeEditorIndent(editor, 6);
+                    if (typeof window !== 'undefined' && window.MouWordProcessor) {
+                        window.MouWordProcessor.scheduleSyncAndPagination?.();
+                        window.MouWordProcessor.updateRulerMarkersFromEditor?.();
+                        window.MouWordProcessor.scheduleReflow?.(true);
+                    }
+                    return true;
+                }
+                if (editor.isActive('listItem') || editor.isActive('bulletList') || editor.isActive('orderedList')) {
+                    executeEditorIndent(editor, 6);
+                    if (typeof window !== 'undefined' && window.MouWordProcessor) {
+                        window.MouWordProcessor.scheduleSyncAndPagination?.();
+                        window.MouWordProcessor.updateRulerMarkersFromEditor?.();
+                        window.MouWordProcessor.scheduleReflow?.(true);
+                    }
+                    return true;
+                }
+                return editor.commands.insertContent('\t');
+            },
+            'Shift-Tab': ({ editor }) => {
+                if (!editor.state.selection.empty) {
+                    executeEditorIndent(editor, -6);
+                    if (typeof window !== 'undefined' && window.MouWordProcessor) {
+                        window.MouWordProcessor.scheduleSyncAndPagination?.();
+                        window.MouWordProcessor.updateRulerMarkersFromEditor?.();
+                        window.MouWordProcessor.scheduleReflow?.(true);
+                    }
+                    return true;
+                }
+                if (editor.isActive('listItem') || editor.isActive('bulletList') || editor.isActive('orderedList')) {
+                    executeEditorIndent(editor, -6);
+                    if (typeof window !== 'undefined' && window.MouWordProcessor) {
+                        window.MouWordProcessor.scheduleSyncAndPagination?.();
+                        window.MouWordProcessor.updateRulerMarkersFromEditor?.();
+                        window.MouWordProcessor.scheduleReflow?.(true);
+                    }
+                    return true;
+                }
+                const attrs = editor.getAttributes('paragraph') || editor.getAttributes('heading') || {};
+                const curMm = parseFloat(String(attrs.marginLeft || '0').replace('mm', '')) || 0;
+                if (curMm > 0) {
+                    executeEditorIndent(editor, -6);
+                    if (typeof window !== 'undefined' && window.MouWordProcessor) {
+                        window.MouWordProcessor.scheduleSyncAndPagination?.();
+                        window.MouWordProcessor.updateRulerMarkersFromEditor?.();
+                        window.MouWordProcessor.scheduleReflow?.(true);
+                    }
+                    return true;
+                }
+                return false;
+            },
+        };
+    },
+});
+
+/**
+ * Unified Keyboard Undo/Redo Keymap Extension for all Word editors:
+ * Seamlessly integrates asset transformations (logo resize, move, rotate)
+ * with document text editing into standard Ctrl+Z and Ctrl+Y shortcuts.
+ */
+const UnifiedUndoKeymap = Extension.create({
+    name: 'unifiedUndoKeymap',
+    addKeyboardShortcuts() {
+        return {
+            'Mod-z': () => {
+                if (typeof window._mouGlobalUndoHandler === 'function') {
+                    return window._mouGlobalUndoHandler();
+                }
+                return false;
+            },
+            'Mod-y': () => {
+                if (typeof window._mouGlobalRedoHandler === 'function') {
+                    return window._mouGlobalRedoHandler();
+                }
+                return false;
+            },
+            'Mod-Shift-z': () => {
+                if (typeof window._mouGlobalRedoHandler === 'function') {
+                    return window._mouGlobalRedoHandler();
+                }
+                return false;
+            },
+        };
+    },
+});
+
+/**
  * Create the standard Tiptap extension list for Body, Header, and Footer editors.
  */
 function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') {
@@ -1508,12 +2147,14 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
                 },
             },
         }),
+        UnifiedUndoKeymap,
         WordParagraph,
         WordHeading.configure({ levels: [1, 2, 3, 4] }),
         WordBulletList,
         WordOrderedList,
         ListItem,
         ListKeymap,
+        WordTabExtension,
         TextStyle,
         FontFamily,
         FontSize,
@@ -1525,6 +2166,7 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
             alignments: ['left', 'center', 'right', 'justify'],
         }),
         Highlight.configure({ multicolor: true }),
+        Underline,
         Subscript,
         Superscript,
         WordImage,
@@ -1538,6 +2180,7 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
         Placeholder.configure({
             placeholder: placeholderText,
         }),
+        UnifiedUndoKeymap,
     ];
 }
 
@@ -1559,8 +2202,6 @@ const WordDocument = Node.create({
  */
 function renderWatermarkLayerHtml(state, isFirstPage) {
     if (!state) return '';
-    const isMou = (state.documentType === 'mou');
-    const showHeaderLogos = state.showHeaderLogos !== false;
     const showWatermark = state.showWatermark !== undefined ? Boolean(state.showWatermark) : true;
     let watermarkHtml = '';
 
@@ -1571,19 +2212,6 @@ function renderWatermarkLayerHtml(state, isFirstPage) {
         watermarkHtml += `
             <div class="mou-watermark-center-wrapper">
                 <img src="${wmUrl}" class="mou-watermark-center" style="opacity: ${wmOpacity};" alt="Watermark" />
-            </div>
-        `;
-    }
-
-    // Logo Tetap Header: HANYA untuk MOU (institusi di kiri, brand di kanan)
-    if (isMou && isFirstPage && showHeaderLogos) {
-        const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
-        const topHeaderMm = Math.max(10, state.marginTopMm - 10);
-        const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
-        watermarkHtml += `
-            <div class="mou-watermark-fixed-header" style="top: ${topHeaderMm}mm; left: ${state.marginLeftMm}mm; right: ${state.marginRightMm}mm;">
-                <img src="${instLogoUrl}" class="mou-watermark-logo-left" alt="Logo Institusi" title="Logo Institusi (Tetap / Watermark)" />
-                <img src="${compLogoUrl}" class="mou-watermark-logo-right" alt="Logo Seven Inc" title="Logo Seven Inc (Tetap / Watermark)" />
             </div>
         `;
     }
@@ -1630,6 +2258,12 @@ class MouPageView {
         this.footerEl.setAttribute('contenteditable', 'false');
         this.footerEl.title = 'Klik ganda (Double-Click) untuk mengedit Footer / Kotak Paraf';
         this.dom.appendChild(this.footerEl);
+
+        this.headerLogosLayer = document.createElement('div');
+        this.headerLogosLayer.className = 'mou-header-logos-interactive-stage no-print';
+        this.headerLogosLayer.setAttribute('data-pagination-artifact', 'true');
+        this.headerLogosLayer.setAttribute('contenteditable', 'false');
+        this.dom.appendChild(this.headerLogosLayer);
 
         this.attachEventListeners();
         this.updateAppearance();
@@ -1697,6 +2331,7 @@ class MouPageView {
         }
 
         this.watermarkEl.innerHTML = renderWatermarkLayerHtml(state, isFirstPage);
+        this.renderInteractiveHeaderLogos(isFirstPage);
 
         const headerHtml = (state.differentFirstPage && isFirstPage)
             ? (state.firstPageHeaderHtmlStore || '')
@@ -1705,15 +2340,35 @@ class MouPageView {
             ? (state.firstPageFooterHtmlStore || '')
             : (state.footerHtmlStore || '');
 
+        const isMou = (state.documentType === 'mou');
+        const showLogos = isMou && isFirstPage && (state.showHeaderLogos !== false);
+
+        // Bounded header space (MS Word standard Kop Surat boundary: 28mm, max 35mm)
+        const requiredHeaderHeightMm = showLogos ? 28.0 : 14.0;
+
+        this.headerEl.style.minHeight = `${requiredHeaderHeightMm}mm`;
+        this.headerEl.style.maxHeight = '35mm';
+        const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
+        this.headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
+
         const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
+        if (headerWrapper) {
+            headerWrapper.style.minHeight = `${requiredHeaderHeightMm}mm`;
+            headerWrapper.style.maxHeight = '35mm';
+        }
         if (!this.headerEl.contains(headerWrapper)) {
-            this.headerEl.innerHTML = headerHtml || `
-                <div class="mou-header-empty-indicator text-slate-300 italic text-[10px] py-0.5 select-none text-center border-b border-dashed border-slate-200">
-                    (Header Kosong &bull; Klik Ganda untuk Mengisi)
-                </div>
-            `;
-            const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
-            this.headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
+            if (isMou && showLogos) {
+                // Dokumen MoU: Area Header murni untuk wadah aset logo kop surat (bersih tanpa teks placeholder)
+                this.headerEl.innerHTML = headerHtml || '';
+            } else {
+                this.headerEl.innerHTML = headerHtml || `
+                    <div class="mou-header-empty-indicator text-slate-400 italic text-[10px] py-0.5 select-none text-center">
+                        <span class="inline-block px-2.5 py-0.5 rounded border border-dashed border-slate-300 bg-slate-50/80 text-slate-400 font-sans">
+                            (Area Header Kosong &bull; Klik Ganda untuk Menulis Kop)
+                        </span>
+                    </div>
+                `;
+            }
         }
 
         const footerWrapper = document.getElementById('mouFooterZoneWrapper');
@@ -1738,6 +2393,14 @@ class MouPageView {
         } else {
             this.contentDOM.classList.remove('mou-zone-dimmed');
         }
+
+        if (this.headerLogosLayer) {
+            if (state.activeZone === 'header') {
+                this.headerLogosLayer.classList.add('is-header-active');
+            } else {
+                this.headerLogosLayer.classList.remove('is-header-active');
+            }
+        }
     }
 
     attachEventListeners() {
@@ -1756,7 +2419,6 @@ class MouPageView {
             const pageNum = this.getPageIndex() + 1;
             if (setActiveZone) setActiveZone('header', pageNum);
         };
-        this.headerEl.addEventListener('click', activateHeader);
         this.headerEl.addEventListener('dblclick', activateHeader);
 
         const returnToBody = (e) => {
@@ -1770,10 +2432,533 @@ class MouPageView {
         this.contentDOM.addEventListener('dblclick', returnToBody);
     }
 
+    renderInteractiveHeaderLogos(isFirstPage) {
+        if (!this.headerLogosLayer) return;
+        const {
+            state,
+            getPaperDimensionsMm,
+            syncAllToHiddenInputs,
+            pushAssetHistory,
+            evaluateSmartGuides,
+            showSmartGuides,
+            hideSmartGuides,
+            showRulerObjectRange,
+            hideRulerObjectRange,
+        } = this.mouContext;
+        const isMou = (state?.documentType === 'mou');
+        const showLogos = isMou && isFirstPage && (state?.showHeaderLogos !== false);
+
+        if (!showLogos) {
+            this.headerLogosLayer.innerHTML = '';
+            this.headerLogosLayer.style.display = 'none';
+            return;
+        }
+
+        this.headerLogosLayer.style.display = 'block';
+
+        if (!state.headerLogosConfig) {
+            state.headerLogosConfig = {
+                institution: { width: 66, height: 66, rotation: 0, topOffsetMm: 0, leftOffsetMm: 0 },
+                company: { width: 66, height: 66, rotation: 0, topOffsetMm: 0, rightOffsetMm: 0 },
+            };
+        }
+
+        if (this.headerLogosLayer.dataset.mounted === 'true') {
+            if (state?.activeZone === 'header') {
+                this.headerLogosLayer.classList.add('is-header-active');
+            } else {
+                this.headerLogosLayer.classList.remove('is-header-active');
+            }
+            return;
+        }
+
+        this.headerLogosLayer.innerHTML = '';
+        this.headerLogosLayer.dataset.mounted = 'true';
+        if (state?.activeZone === 'header') {
+            this.headerLogosLayer.classList.add('is-header-active');
+        } else {
+            this.headerLogosLayer.classList.remove('is-header-active');
+        }
+
+        const topHeaderMm = Math.max(8, (state.marginTopMm || 25.4) - 10);
+        const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+        const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+
+        const createLogoBox = (slot, title, defaultSide, initialSrc) => {
+            const cfg = state.headerLogosConfig[slot] = state.headerLogosConfig[slot] || {
+                width: 66, height: 66, rotation: 0, topOffsetMm: 0,
+                ...(defaultSide === 'left' ? { leftOffsetMm: 0 } : { rightOffsetMm: 0 })
+            };
+
+            const box = document.createElement('div');
+            box.className = `mou-header-logo-interactive-box mou-logo-box-${defaultSide}`;
+            box.setAttribute('data-logo-slot', slot);
+            box.setAttribute('draggable', 'false');
+            box.style.touchAction = 'none';
+            box.style.userSelect = 'none';
+            box.title = `${title} • Klik untuk mengedit, drag untuk menggeser, putar, atau ubah ukuran`;
+
+            const img = document.createElement('img');
+            img.src = initialSrc;
+            img.alt = title;
+            img.className = 'mou-logo-img-el';
+            img.setAttribute('draggable', 'false');
+            img.draggable = false;
+            img.ondragstart = (e) => e.preventDefault();
+            box.ondragstart = (e) => e.preventDefault();
+            box.appendChild(img);
+
+            const overlay = document.createElement('div');
+            overlay.className = 'mou-image-handle-overlay no-print';
+            overlay.style.display = 'none';
+            box.appendChild(overlay);
+
+            // Rotator handle
+            const rotWrap = document.createElement('div');
+            rotWrap.className = 'mou-image-rotator-wrapper';
+            const rotLine = document.createElement('div');
+            rotLine.className = 'mou-image-rotator-line';
+            const rotKnob = document.createElement('div');
+            rotKnob.className = 'mou-image-rotator-handle';
+            rotKnob.title = 'Tarik untuk memutar logo • Klik ganda untuk 0°';
+            rotWrap.appendChild(rotLine);
+            rotWrap.appendChild(rotKnob);
+            overlay.appendChild(rotWrap);
+
+            // Sizing handles (8 directions)
+            const handles = {};
+            ['nw', 'ne', 'se', 'sw', 'n', 's', 'e', 'w'].forEach(pos => {
+                const h = document.createElement('div');
+                h.className = `mou-image-handle ${pos}`;
+                h.setAttribute('data-handle-pos', pos);
+                overlay.appendChild(h);
+                handles[pos] = h;
+            });
+
+            // Quick floating bar
+            const quickBar = document.createElement('div');
+            quickBar.className = 'mou-header-logo-quick-bar';
+            quickBar.innerHTML = `
+                <span class="font-bold text-[9px] mr-1 text-slate-300">${title}</span>
+                <span class="mou-header-logo-stat text-amber-300 font-mono text-[9px] mr-1"></span>
+                <button type="button" class="btn-quick-rot" title="Putar 90 Derajat">&#8635; 90&deg;</button>
+                <button type="button" class="btn-quick-reset" title="Kembalikan ukuran dan posisi default">Reset</button>
+            `;
+            box.appendChild(quickBar);
+
+            const updateBoxGeometry = () => {
+                cfg.width = Math.max(30, Math.min(105, cfg.width || 66));
+                cfg.height = Math.max(30, Math.min(105, cfg.height || 66));
+                cfg.topOffsetMm = Math.max(-4, Math.min(6, cfg.topOffsetMm || 0));
+                if (defaultSide === 'left') {
+                    cfg.leftOffsetMm = Math.max(-10, Math.min(45, cfg.leftOffsetMm || 0));
+                } else {
+                    cfg.rightOffsetMm = Math.max(-10, Math.min(45, cfg.rightOffsetMm || 0));
+                }
+
+                const w = cfg.width;
+                const h = cfg.height;
+                const r = cfg.rotation || 0;
+                const baseTopMm = Math.max(8, (state.marginTopMm || 25.4) - 10);
+                box.style.width = `${w}px`;
+                box.style.height = `${h}px`;
+                box.style.top = `${baseTopMm + cfg.topOffsetMm}mm`;
+                if (defaultSide === 'left') {
+                    box.style.left = `${state.marginLeftMm + cfg.leftOffsetMm}mm`;
+                    box.style.right = 'auto';
+                } else {
+                    box.style.right = `${state.marginRightMm + cfg.rightOffsetMm}mm`;
+                    box.style.left = 'auto';
+                }
+                img.style.transform = r ? `rotate(${r}deg)` : '';
+                img.style.transformOrigin = 'center center';
+
+                const statEl = quickBar.querySelector('.mou-header-logo-stat');
+                if (statEl) statEl.textContent = `${w}×${h}px • ${r}°`;
+
+                // Update hidden input
+                const inp = document.getElementById('inputHeaderLogosConfig');
+                if (inp) inp.value = JSON.stringify(state.headerLogosConfig);
+            };
+
+            updateBoxGeometry();
+
+            // Select & Selection management
+            const selectBox = () => {
+                if (state?.activeZone !== 'header') return;
+                document.querySelectorAll('.mou-header-logo-interactive-box').forEach(b => {
+                    b.classList.remove('is-selected');
+                    const o = b.querySelector('.mou-image-handle-overlay');
+                    if (o) o.style.display = 'none';
+                });
+                box.classList.add('is-selected');
+                overlay.style.display = 'block';
+
+                window._mouActiveSelectedAsset = {
+                    type: 'header-logo',
+                    slot: slot,
+                    boxEl: box,
+                    cfg: cfg,
+                    updateFn: updateBoxGeometry,
+                };
+
+                const wInput = document.getElementById('ribbonImageWidthPx');
+                if (wInput) wInput.value = String(cfg.width || 66);
+                const hInput = document.getElementById('ribbonImageHeightPx');
+                if (hInput) hInput.value = String(cfg.height || 66);
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = String(cfg.rotation || 0);
+
+                // Highlight range on ruler
+                const pageDims = typeof getPaperDimensionsMm === 'function' ? getPaperDimensionsMm() : calcPaperDimensionsMm(state?.paperSize, state?.orientation);
+                const boxWidthMm = (cfg.width || 66) / MM_TO_PX;
+                const isLeft = slot === 'institution';
+                const absLeftMm = isLeft
+                    ? ((state?.marginLeftMm || 25.4) + (cfg.leftOffsetMm || 0))
+                    : (pageDims.width - (state?.marginRightMm || 25.4) - (cfg.rightOffsetMm || 0) - boxWidthMm);
+                if (typeof showRulerObjectRange === 'function') {
+                    showRulerObjectRange(absLeftMm, boxWidthMm);
+                }
+            };
+
+            box.addEventListener('click', (e) => {
+                if (state?.activeZone !== 'header') return;
+                e.stopPropagation();
+                selectBox();
+            });
+
+            box.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                if (state?.activeZone !== 'header') {
+                    const pageNum = (typeof this.getPageIndex === 'function' ? this.getPageIndex() : 0) + 1;
+                    const { setActiveZone } = this.mouContext;
+                    if (typeof setActiveZone === 'function') {
+                        setActiveZone('header', pageNum);
+                        setTimeout(() => {
+                            selectBox();
+                        }, 60);
+                    }
+                }
+            });
+
+            // Quick actions
+            quickBar.querySelector('.btn-quick-rot')?.addEventListener('click', (e) => {
+                if (state?.activeZone !== 'header') return;
+                e.stopPropagation();
+                cfg.rotation = ((cfg.rotation || 0) + 90) % 360;
+                updateBoxGeometry();
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = String(cfg.rotation);
+                if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                if (typeof pushAssetHistory === 'function') pushAssetHistory('Putar Logo 90°');
+            });
+            quickBar.querySelector('.btn-quick-reset')?.addEventListener('click', (e) => {
+                if (state?.activeZone !== 'header') return;
+                e.stopPropagation();
+                cfg.width = 66;
+                cfg.height = 66;
+                cfg.rotation = 0;
+                cfg.topOffsetMm = 0;
+                if (defaultSide === 'left') cfg.leftOffsetMm = 0;
+                else cfg.rightOffsetMm = 0;
+                updateBoxGeometry();
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = '0';
+                const wInput = document.getElementById('ribbonImageWidthPx');
+                if (wInput) wInput.value = '66';
+                const hInput = document.getElementById('ribbonImageHeightPx');
+                if (hInput) hInput.value = '66';
+                if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                if (typeof pushAssetHistory === 'function') pushAssetHistory('Reset Logo Default');
+            });
+
+            // Handle Drag Movement of the whole box
+            box.addEventListener('pointerdown', (e) => {
+                if (state?.activeZone !== 'header') return;
+                if (e.target.closest('.mou-image-handle') || e.target.closest('.mou-image-rotator-handle') || e.target.closest('button')) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+
+                try {
+                    box.setPointerCapture(e.pointerId);
+                } catch (_) {}
+
+                const startClientX = e.clientX;
+                const startClientY = e.clientY;
+                const baseTopMm = Math.max(8, (state?.marginTopMm || 25.4) - 10);
+                const startTopOffsetMm = cfg.topOffsetMm || 0;
+                const startOffsetMm = defaultSide === 'left' ? (cfg.leftOffsetMm || 0) : (cfg.rightOffsetMm || 0);
+                const pageDims = typeof getPaperDimensionsMm === 'function' ? getPaperDimensionsMm() : calcPaperDimensionsMm(state?.paperSize, state?.orientation);
+                const boxWidthMm = (cfg.width || 66) / MM_TO_PX;
+                const boxHeightMm = (cfg.height || 66) / MM_TO_PX;
+                const siblingSlot = slot === 'institution' ? 'company' : 'institution';
+                const siblingCfg = state?.headerLogosConfig ? state.headerLogosConfig[siblingSlot] : null;
+
+                selectBox();
+                box.classList.add('is-dragging');
+                let hasMoved = false;
+
+                const onPointerMove = (moveEv) => {
+                    moveEv.preventDefault();
+                    hasMoved = true;
+                    const scale = (parseFloat(state?.zoomPercent) || 100) / 100;
+                    const deltaXpx = (moveEv.clientX - startClientX) / scale;
+                    const deltaYpx = (moveEv.clientY - startClientY) / scale;
+                    const deltaXmm = deltaXpx / MM_TO_PX;
+                    const deltaYmm = deltaYpx / MM_TO_PX;
+
+                    const rawTopOffsetMm = startTopOffsetMm + deltaYmm;
+                    const rawLeftOffsetMm = defaultSide === 'left' ? (startOffsetMm + deltaXmm) : 0;
+                    const rawRightOffsetMm = defaultSide === 'right' ? (startOffsetMm - deltaXmm) : 0;
+
+                    const rawAbsLeftMm = defaultSide === 'left'
+                        ? ((state?.marginLeftMm || 25.4) + rawLeftOffsetMm)
+                        : (pageDims.width - (state?.marginRightMm || 25.4) - rawRightOffsetMm - boxWidthMm);
+                    const rawAbsTopMm = baseTopMm + rawTopOffsetMm;
+
+                    // Evaluate Smart Guides with Magnetic Snapping
+                    const smart = typeof evaluateSmartGuides === 'function'
+                        ? evaluateSmartGuides({
+                            leftMm: rawAbsLeftMm,
+                            topMm: rawAbsTopMm,
+                            widthMm: boxWidthMm,
+                            heightMm: boxHeightMm,
+                        }, true, siblingCfg, defaultSide, baseTopMm)
+                        : { snapX: null, snapY: null, vGuide: null, hGuide: null };
+
+                    let displayLeftOffsetMm = rawLeftOffsetMm;
+                    let displayRightOffsetMm = rawRightOffsetMm;
+                    let displayTopOffsetMm = rawTopOffsetMm;
+                    let displayAbsLeftMm = rawAbsLeftMm;
+
+                    if (smart.snapX !== null) {
+                        if (defaultSide === 'left') {
+                            displayLeftOffsetMm = smart.snapX - (state?.marginLeftMm || 25.4);
+                        } else {
+                            displayRightOffsetMm = (pageDims.width - (state?.marginRightMm || 25.4)) - (smart.snapX + boxWidthMm);
+                        }
+                        displayAbsLeftMm = smart.snapX;
+                    }
+
+                    if (smart.snapY !== null) {
+                        displayTopOffsetMm = smart.snapY - baseTopMm;
+                    }
+
+                    if (defaultSide === 'left') {
+                        cfg.leftOffsetMm = Math.round(Math.max(-10, Math.min(45, displayLeftOffsetMm)) * 10) / 10;
+                    } else {
+                        cfg.rightOffsetMm = Math.round(Math.max(-10, Math.min(45, displayRightOffsetMm)) * 10) / 10;
+                    }
+                    cfg.topOffsetMm = Math.round(Math.max(-4, Math.min(6, displayTopOffsetMm)) * 10) / 10;
+
+                    updateBoxGeometry();
+                    if (typeof showSmartGuides === 'function') {
+                        showSmartGuides(smart.vGuide, smart.hGuide);
+                    }
+                    if (typeof showRulerObjectRange === 'function') {
+                        showRulerObjectRange(displayAbsLeftMm, boxWidthMm);
+                    }
+                };
+
+                const onPointerUp = () => {
+                    try {
+                        box.releasePointerCapture(e.pointerId);
+                    } catch (_) {}
+                    window.removeEventListener('pointermove', onPointerMove);
+                    window.removeEventListener('pointerup', onPointerUp);
+                    window.removeEventListener('pointercancel', onPointerUp);
+                    box.classList.remove('is-dragging');
+                    if (typeof hideSmartGuides === 'function') hideSmartGuides();
+                    updateBoxGeometry();
+                    if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                    if (hasMoved && typeof pushAssetHistory === 'function') {
+                        pushAssetHistory('Geser Logo Header');
+                    }
+                };
+
+                window.addEventListener('pointermove', onPointerMove, { passive: false });
+                window.addEventListener('pointerup', onPointerUp);
+                window.addEventListener('pointercancel', onPointerUp);
+            });
+
+            // Handle Resizing (8 handles)
+            Object.entries(handles).forEach(([pos, handleEl]) => {
+                handleEl.setAttribute('draggable', 'false');
+                handleEl.style.touchAction = 'none';
+
+                handleEl.addEventListener('pointerdown', (e) => {
+                    if (state?.activeZone !== 'header') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                        handleEl.setPointerCapture(e.pointerId);
+                    } catch (_) {}
+
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const startW = cfg.width || 66;
+                    const startH = cfg.height || 66;
+                    const rect = box.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const startDist = Math.hypot(startX - centerX, startY - centerY) || 1;
+                    const scale = (parseFloat(state?.zoomPercent) || 100) / 100;
+                    const aspect = startW / (startH || 1);
+                    selectBox();
+                    let hasResized = false;
+
+                    const onResizeMove = (moveEv) => {
+                        moveEv.preventDefault();
+                        hasResized = true;
+                        const deltaX = (moveEv.clientX - startX) / scale;
+                        const deltaY = (moveEv.clientY - startY) / scale;
+
+                        let newW = startW;
+                        let newH = startH;
+
+                        // Corner handles: uniform proportional scaling based on distance from box center.
+                        if (['se', 'sw', 'ne', 'nw'].includes(pos)) {
+                            const currentDist = Math.hypot(moveEv.clientX - centerX, moveEv.clientY - centerY);
+                            const ratio = currentDist / startDist;
+                            newW = Math.max(30, Math.min(105, startW * ratio));
+                            newH = newW / aspect;
+                        } else if (pos === 'e') {
+                            newW = Math.max(30, Math.min(105, startW + deltaX));
+                            newH = newW / aspect;
+                        } else if (pos === 'w') {
+                            newW = Math.max(30, Math.min(105, startW - deltaX));
+                            newH = newW / aspect;
+                        } else if (pos === 's') {
+                            newH = Math.max(30, Math.min(105, startH + deltaY));
+                            newW = newH * aspect;
+                        } else if (pos === 'n') {
+                            newH = Math.max(30, Math.min(105, startH - deltaY));
+                            newW = newH * aspect;
+                        }
+
+                        cfg.width = Math.round(Math.max(30, Math.min(105, newW)));
+                        cfg.height = Math.round(Math.max(30, Math.min(105, newH)));
+                        updateBoxGeometry();
+
+                        // Sync ribbon inputs live
+                        const wInput = document.getElementById('ribbonImageWidthPx');
+                        if (wInput) wInput.value = String(cfg.width);
+                        const hInput = document.getElementById('ribbonImageHeightPx');
+                        if (hInput) hInput.value = String(cfg.height);
+
+                        // Show ruler range
+                        const pageDims = typeof getPaperDimensionsMm === 'function' ? getPaperDimensionsMm() : calcPaperDimensionsMm(state?.paperSize, state?.orientation);
+                        const boxWidthMm = cfg.width / MM_TO_PX;
+                        const isLeft = slot === 'institution';
+                        const absLeftMm = isLeft
+                            ? ((state?.marginLeftMm || 25.4) + (cfg.leftOffsetMm || 0))
+                            : (pageDims.width - (state?.marginRightMm || 25.4) - (cfg.rightOffsetMm || 0) - boxWidthMm);
+                        if (typeof showRulerObjectRange === 'function') {
+                            showRulerObjectRange(absLeftMm, boxWidthMm);
+                        }
+                    };
+
+                    const onResizeUp = () => {
+                        try {
+                            handleEl.releasePointerCapture(e.pointerId);
+                        } catch (_) {}
+                        window.removeEventListener('pointermove', onResizeMove);
+                        window.removeEventListener('pointerup', onResizeUp);
+                        window.removeEventListener('pointercancel', onResizeUp);
+                        if (typeof hideSmartGuides === 'function') hideSmartGuides();
+                        updateBoxGeometry();
+                        if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                        if (hasResized && typeof pushAssetHistory === 'function') {
+                            pushAssetHistory('Ubah Ukuran Logo');
+                        }
+                    };
+
+                    window.addEventListener('pointermove', onResizeMove, { passive: false });
+                    window.addEventListener('pointerup', onResizeUp);
+                    window.addEventListener('pointercancel', onResizeUp);
+                });
+            });
+
+            // Handle Rotator knob
+            rotKnob.setAttribute('draggable', 'false');
+            rotKnob.style.touchAction = 'none';
+
+            rotKnob.addEventListener('pointerdown', (e) => {
+                if (state?.activeZone !== 'header') return;
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    rotKnob.setPointerCapture(e.pointerId);
+                } catch (_) {}
+
+                const rect = box.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                selectBox();
+                let hasRotated = false;
+
+                const onRotateMove = (moveEv) => {
+                    moveEv.preventDefault();
+                    hasRotated = true;
+                    const rad = Math.atan2(moveEv.clientY - centerY, moveEv.clientX - centerX);
+                    let deg = Math.round(rad * (180 / Math.PI)) + 90;
+                    deg = ((deg % 360) + 360) % 360;
+                    if (Math.abs(deg - 0) <= 4 || Math.abs(deg - 360) <= 4) deg = 0;
+                    else if (Math.abs(deg - 90) <= 4) deg = 90;
+                    else if (Math.abs(deg - 180) <= 4) deg = 180;
+                    else if (Math.abs(deg - 270) <= 4) deg = 270;
+
+                    cfg.rotation = deg;
+                    updateBoxGeometry();
+                    const rotInput = document.getElementById('ribbonImageRotationDeg');
+                    if (rotInput) rotInput.value = String(deg);
+                };
+
+                const onRotateUp = () => {
+                    try {
+                        rotKnob.releasePointerCapture(e.pointerId);
+                    } catch (_) {}
+                    window.removeEventListener('pointermove', onRotateMove);
+                    window.removeEventListener('pointerup', onRotateUp);
+                    window.removeEventListener('pointercancel', onRotateUp);
+                    updateBoxGeometry();
+                    if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                    if (hasRotated && typeof pushAssetHistory === 'function') {
+                        pushAssetHistory('Putar Logo');
+                    }
+                };
+
+                window.addEventListener('pointermove', onRotateMove, { passive: false });
+                window.addEventListener('pointerup', onRotateUp);
+                window.addEventListener('pointercancel', onRotateUp);
+            });
+
+            rotKnob.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                cfg.rotation = 0;
+                updateBoxGeometry();
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = '0';
+                if (typeof syncAllToHiddenInputs === 'function') syncAllToHiddenInputs();
+                if (typeof pushAssetHistory === 'function') pushAssetHistory('Reset Rotasi 0°');
+            });
+
+            return box;
+        };
+
+        const leftBox = createLogoBox('institution', 'Logo Institusi Mitra', 'left', instLogoUrl);
+        const rightBox = createLogoBox('company', 'Logo Seven Inc', 'right', compLogoUrl);
+
+        this.headerLogosLayer.appendChild(leftBox);
+        this.headerLogosLayer.appendChild(rightBox);
+    }
+
     update(updatedNode) {
         if (updatedNode.type.name !== 'mouPage') return false;
         this.node = updatedNode;
-        this.updateAppearance();
+        // Do not thrash DOM and reset scroll by re-rendering headers/watermark on every typing stroke!
         return true;
     }
 
@@ -1860,6 +3045,7 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         WordOrderedList,
         ListItem,
         ListKeymap,
+        WordTabExtension,
         TextStyle,
         FontFamily,
         FontSize,
@@ -1871,6 +3057,7 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
             alignments: ['left', 'center', 'right', 'justify'],
         }),
         Highlight.configure({ multicolor: true }),
+        Underline,
         Subscript,
         Superscript,
         WordImage,
@@ -1884,7 +3071,52 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         Placeholder.configure({
             placeholder: placeholderText,
         }),
+        UnifiedUndoKeymap,
     ];
+}
+
+/**
+ * Sanitizes and strictly clamps header logo configuration so logos cannot exceed
+ * the bounded top Header zone or blow up into oversized dimensions.
+ */
+function sanitizeHeaderLogosConfig(raw) {
+    let parsed = raw;
+    if (typeof raw === 'string') {
+        try {
+            parsed = JSON.parse(raw || '{}');
+        } catch (_) {
+            parsed = {};
+        }
+    }
+    parsed = parsed || {};
+
+    const clamp = (val, min, max, dflt) => {
+        const num = parseFloat(val);
+        if (isNaN(num)) return dflt;
+        return Math.max(min, Math.min(max, num));
+    };
+
+    const sanitizeSlot = (slotData, defaultSide) => {
+        const d = slotData || {};
+        const w = Math.round(clamp(d.width, 30, 105, 66));
+        const h = Math.round(clamp(d.height, 30, 105, 66));
+        const rot = ((parseInt(d.rotation || 0, 10) % 360) + 360) % 360;
+        const topOff = Math.round(clamp(d.topOffsetMm, -4, 6, 0) * 10) / 10;
+        return {
+            width: w,
+            height: h,
+            rotation: rot,
+            topOffsetMm: topOff,
+            ...(defaultSide === 'left'
+                ? { leftOffsetMm: Math.round(clamp(d.leftOffsetMm, -10, 45, 0) * 10) / 10 }
+                : { rightOffsetMm: Math.round(clamp(d.rightOffsetMm, -10, 45, 0) * 10) / 10 }),
+        };
+    };
+
+    return {
+        institution: sanitizeSlot(parsed.institution, 'left'),
+        company: sanitizeSlot(parsed.company, 'right'),
+    };
 }
 
 /**
@@ -1952,6 +3184,9 @@ export function initMouWordProcessor(config) {
             institution_logo_url: resolvedInstitutionLogo,
             company_logo_url: resolvedCompanyLogo,
         },
+        headerLogosConfig: sanitizeHeaderLogosConfig(pageConfig.header_logos_config),
+        showTableGridlines: true,
+        isBorderPainterActive: false,
         selectedImageNodePos: null,
     };
 
@@ -1981,6 +3216,155 @@ export function initMouWordProcessor(config) {
         ? ensureJsonHasMouPage(parsedInitialJson)
         : normalizeHtmlForBodyEditor(normalizedFallbackHtml);
 
+    // Asset History Stack for Header Logos and Transformations (Instant Ctrl+Z / Ctrl+Y)
+    const assetHistory = [];
+    let assetHistoryIndex = -1;
+    const MAX_ASSET_HISTORY = 40;
+
+    function pushAssetHistory(actionName = 'Transform Asset') {
+        const currentCfgJson = JSON.stringify(state.headerLogosConfig || {});
+        if (assetHistoryIndex >= 0 && assetHistory[assetHistoryIndex]?.configJson === currentCfgJson) {
+            return;
+        }
+        if (assetHistoryIndex < assetHistory.length - 1) {
+            assetHistory.splice(assetHistoryIndex + 1);
+        }
+        assetHistory.push({
+            action: actionName,
+            configJson: currentCfgJson,
+            config: JSON.parse(currentCfgJson),
+            timestamp: Date.now(),
+        });
+        if (assetHistory.length > MAX_ASSET_HISTORY) {
+            assetHistory.shift();
+        }
+        assetHistoryIndex = assetHistory.length - 1;
+        updateToolbarState();
+    }
+
+    let lastEditorDocChangeTimestamp = 0;
+
+    function undoAssetHistory() {
+        if (assetHistoryIndex > 0) {
+            assetHistoryIndex--;
+            const snap = assetHistory[assetHistoryIndex];
+            state.headerLogosConfig = sanitizeHeaderLogosConfig(snap.config);
+            updateAllMountedLogoBoxes();
+            syncAllToHiddenInputs();
+            refreshAllPageViews();
+            if (typeof scheduleReflow === 'function') {
+                scheduleReflow(true);
+            }
+            updateToolbarState();
+            return true;
+        }
+        return false;
+    }
+
+    function redoAssetHistory() {
+        if (assetHistoryIndex < assetHistory.length - 1) {
+            assetHistoryIndex++;
+            const snap = assetHistory[assetHistoryIndex];
+            state.headerLogosConfig = sanitizeHeaderLogosConfig(snap.config);
+            updateAllMountedLogoBoxes();
+            syncAllToHiddenInputs();
+            refreshAllPageViews();
+            if (typeof scheduleReflow === 'function') {
+                scheduleReflow(true);
+            }
+            updateToolbarState();
+            return true;
+        }
+        return false;
+    }
+
+    function updateAllMountedLogoBoxes() {
+        state.headerLogosConfig = sanitizeHeaderLogosConfig(state.headerLogosConfig);
+        document.querySelectorAll('.mou-header-logo-interactive-box').forEach(box => {
+            const slot = box.getAttribute('data-logo-slot');
+            if (!slot || !state.headerLogosConfig?.[slot]) return;
+            const cfg = state.headerLogosConfig[slot];
+            const defaultSide = box.classList.contains('mou-logo-box-left') ? 'left' : 'right';
+            const w = cfg.width || 66;
+            const h = cfg.height || 66;
+            const r = cfg.rotation || 0;
+            const baseTopMm = Math.max(8, (state.marginTopMm || 25.4) - 10);
+            box.style.width = `${w}px`;
+            box.style.height = `${h}px`;
+            box.style.top = `${baseTopMm + (cfg.topOffsetMm || 0)}mm`;
+            if (defaultSide === 'left') {
+                box.style.left = `${state.marginLeftMm + (cfg.leftOffsetMm || 0)}mm`;
+                box.style.right = 'auto';
+            } else {
+                box.style.right = `${state.marginRightMm + (cfg.rightOffsetMm || 0)}mm`;
+                box.style.left = 'auto';
+            }
+            const img = box.querySelector('.mou-logo-img-el');
+            if (img) {
+                img.style.transform = r ? `rotate(${r}deg)` : '';
+                img.style.transformOrigin = 'center center';
+            }
+            const statEl = box.querySelector('.mou-header-logo-stat');
+            if (statEl) statEl.textContent = `${w}×${h}px • ${r}°`;
+        });
+
+        // Sync hidden input
+        const inp = document.getElementById('inputHeaderLogosConfig');
+        if (inp) inp.value = JSON.stringify(state.headerLogosConfig);
+
+        // Sync ribbon inputs if an asset is currently selected
+        if (window._mouActiveSelectedAsset?.type === 'header-logo') {
+            const slot = window._mouActiveSelectedAsset.slot;
+            const cfg = state.headerLogosConfig[slot];
+            if (cfg) {
+                window._mouActiveSelectedAsset.cfg = cfg;
+                const wInput = document.getElementById('ribbonImageWidthPx');
+                if (wInput) wInput.value = String(cfg.width || 66);
+                const hInput = document.getElementById('ribbonImageHeightPx');
+                if (hInput) hInput.value = String(cfg.height || 66);
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = String(cfg.rotation || 0);
+            }
+        }
+    }
+
+    const sharedMouContext = {
+        state,
+        getPaperDimensionsMm: () => getPaperDimensionsMm(),
+        setActiveZone: (z, p) => setActiveZone(z, p),
+        syncAllToHiddenInputs: () => syncAllToHiddenInputs(),
+        pushAssetHistory: (action) => pushAssetHistory(action),
+        undoAssetHistory: () => undoAssetHistory(),
+        redoAssetHistory: () => redoAssetHistory(),
+        evaluateSmartGuides: (...args) => evaluateSmartGuides(...args),
+        showSmartGuides: (...args) => showSmartGuides(...args),
+        hideSmartGuides: () => hideSmartGuides(),
+        showRulerObjectRange: (...args) => showRulerObjectRange(...args),
+        hideRulerObjectRange: () => hideRulerObjectRange(),
+        updateAllMountedLogoBoxes: () => updateAllMountedLogoBoxes(),
+    };
+
+    // Global Keymap Handlers for Tiptap / ProseMirror to handle unified Undo/Redo
+    window._mouGlobalUndoHandler = () => {
+        const lastAssetTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
+            ? assetHistory[assetHistoryIndex].timestamp
+            : 0;
+        if (lastAssetTime > 0 && lastAssetTime >= lastEditorDocChangeTimestamp) {
+            return undoAssetHistory();
+        }
+        return false; // let ProseMirror history handle text undo
+    };
+
+    window._mouGlobalRedoHandler = () => {
+        const nextAssetTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
+            ? assetHistory[assetHistoryIndex + 1].timestamp
+            : 0;
+        if (nextAssetTime > 0 && nextAssetTime >= lastEditorDocChangeTimestamp) {
+            return redoAssetHistory();
+        }
+        return false; // let ProseMirror history handle text redo
+    };
+
     // Instantiate Paginated Body Editor with safe fallback from JSON to HTML if schema validation fails
     let bodyEditor;
     try {
@@ -2002,14 +3386,19 @@ export function initMouWordProcessor(config) {
             onTransaction: ({ transaction }) => {
                 updateToolbarState();
                 updateDocumentMetrics();
-                scheduleSyncAndPagination();
-                if (!transaction.getMeta(reflowPluginKey)) {
-                    reflowPassCount = 0;
-                    scheduleReflow(false);
+                // Hanya picu reflow dan sinkronisasi jika isi dokumen berubah (docChanged).
+                // Mencegah selection teks lepas / hilang saat kursor bergerak atau saat mouse drag memilih teks!
+                if (transaction.docChanged) {
+                    lastEditorDocChangeTimestamp = Date.now();
+                    scheduleSyncAndPagination();
+                    if (!transaction.getMeta(reflowPluginKey)) {
+                        reflowPassCount = 0;
+                        scheduleReflow(false);
+                    }
                 }
             },
         });
-        bodyEditor.mouContext = { state, getPaperDimensionsMm, setActiveZone };
+        bodyEditor.mouContext = sharedMouContext;
     } catch (initErr) {
         console.warn('Paginated Body editor JSON load failed, retrying with normalized HTML:', initErr);
         bodyMountEl.innerHTML = '';
@@ -2031,15 +3420,21 @@ export function initMouWordProcessor(config) {
             onTransaction: ({ transaction }) => {
                 updateToolbarState();
                 updateDocumentMetrics();
-                scheduleSyncAndPagination();
-                if (!transaction.getMeta(reflowPluginKey)) {
-                    reflowPassCount = 0;
-                    scheduleReflow(false);
+                if (transaction.docChanged) {
+                    lastEditorDocChangeTimestamp = Date.now();
+                    scheduleSyncAndPagination();
+                    if (!transaction.getMeta(reflowPluginKey)) {
+                        reflowPassCount = 0;
+                        scheduleReflow(false);
+                    }
                 }
             },
         });
-        bodyEditor.mouContext = { state, getPaperDimensionsMm, setActiveZone };
+        bodyEditor.mouContext = sharedMouContext;
     }
+
+    // Capture initial asset state into history
+    pushAssetHistory('Initial State');
 
     // Guarantee non-empty initial render when fallback HTML had content
     if (bodyEditor.isEmpty && normalizedFallbackHtml !== '<p></p>' && !normalizedFallbackHtml.includes('is-editor-empty')) {
@@ -2050,7 +3445,7 @@ export function initMouWordProcessor(config) {
     const headerEditor = headerMountEl
         ? new Editor({
               element: headerMountEl,
-              extensions: createWordExtensions('Klik ganda untuk mengisi Header dokumen (mis. Kop Surat / Logo)...'),
+              extensions: createWordExtensions(isMouDocument ? '' : 'Klik ganda untuk mengisi Header dokumen...'),
               content: state.headerHtmlStore,
               editable: false,
               onFocus: () => {
@@ -2059,10 +3454,13 @@ export function initMouWordProcessor(config) {
               onSelectionUpdate: () => {
                   updateToolbarState();
               },
-              onTransaction: () => {
-                  saveActiveHeaderFooterToStore();
+              onTransaction: ({ transaction }) => {
                   updateToolbarState();
-                  scheduleSyncAndPagination();
+                  if (transaction.docChanged) {
+                      lastEditorDocChangeTimestamp = Date.now();
+                      saveActiveHeaderFooterToStore();
+                      scheduleSyncAndPagination();
+                  }
               },
           })
         : null;
@@ -2080,10 +3478,13 @@ export function initMouWordProcessor(config) {
               onSelectionUpdate: () => {
                   updateToolbarState();
               },
-              onTransaction: () => {
-                  saveActiveHeaderFooterToStore();
+              onTransaction: ({ transaction }) => {
                   updateToolbarState();
-                  scheduleSyncAndPagination();
+                  if (transaction.docChanged) {
+                      lastEditorDocChangeTimestamp = Date.now();
+                      saveActiveHeaderFooterToStore();
+                      scheduleSyncAndPagination();
+                  }
               },
           })
         : null;
@@ -2139,6 +3540,10 @@ export function initMouWordProcessor(config) {
             const isMatch = p.getAttribute('data-ribbon-panel') === tabName;
             p.classList.toggle('hidden', !isMatch);
             p.classList.toggle('flex', isMatch);
+        });
+        requestAnimationFrame(() => {
+            syncRulerToPageSheet();
+            updateRulerMarkersFromEditor();
         });
     }
 
@@ -2229,27 +3634,73 @@ export function initMouWordProcessor(config) {
             }
         }
 
+        // Synchronize all Header Logos Interactive Stages across all pages
+        document.querySelectorAll('.mou-header-logos-interactive-stage').forEach(stage => {
+            if (zone === 'header') {
+                stage.classList.add('is-header-active');
+            } else {
+                stage.classList.remove('is-header-active');
+            }
+        });
+
+        // When leaving header mode, deselect any active header logo asset
+        if (zone !== 'header') {
+            if (window._mouActiveSelectedAsset?.type === 'header-logo') {
+                window._mouActiveSelectedAsset = null;
+            }
+            document.querySelectorAll('.mou-header-logo-interactive-box').forEach(b => {
+                b.classList.remove('is-selected', 'is-dragging');
+                const o = b.querySelector('.mou-image-handle-overlay');
+                if (o) o.style.display = 'none';
+            });
+            if (typeof hideSmartGuides === 'function') hideSmartGuides();
+            if (typeof hideRulerObjectRange === 'function') hideRulerObjectRange();
+        }
+
         if (closeHfBtn) {
             closeHfBtn.classList.toggle('hidden', zone === 'body');
         }
 
         if (zoneBadge) {
             if (zone === 'header') {
-                zoneBadge.textContent = state.differentFirstPage && state.editingFirstPageVariant
-                    ? `Mode Edit: Header Hal. ${targetPageNum} (Khusus Pertama)`
-                    : `Mode Edit: Header Dokumen (Hal. ${targetPageNum})`;
-                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-bold text-amber-800';
+                const label = state.differentFirstPage && state.editingFirstPageVariant
+                    ? `Edit: Header Hal. ${targetPageNum} (Khusus Pertama)`
+                    : `Edit: Header Dokumen (Hal. ${targetPageNum})`;
+                zoneBadge.innerHTML = `
+                    <svg class="h-3.5 w-3.5 text-amber-700 animate-pulse shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    <span>${label}</span>
+                `;
+                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[11px] font-bold text-amber-900 whitespace-nowrap shadow-2xs';
             } else if (zone === 'footer') {
-                zoneBadge.textContent = state.differentFirstPage && state.editingFirstPageVariant
-                    ? `Mode Edit: Footer / Kotak Paraf Hal. ${targetPageNum} (Khusus Pertama)`
-                    : `Mode Edit: Footer & Kotak Paraf (Hal. ${targetPageNum})`;
-                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-bold text-amber-800';
+                const label = state.differentFirstPage && state.editingFirstPageVariant
+                    ? `Edit: Footer Hal. ${targetPageNum} (Khusus Pertama)`
+                    : `Edit: Footer & Kotak Paraf (Hal. ${targetPageNum})`;
+                zoneBadge.innerHTML = `
+                    <svg class="h-3.5 w-3.5 text-amber-700 animate-pulse shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    <span>${label}</span>
+                `;
+                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[11px] font-bold text-amber-900 whitespace-nowrap shadow-2xs';
             } else {
-                zoneBadge.textContent = 'Mode Edit: Lembar Dokumen A4';
-                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-700';
+                zoneBadge.innerHTML = `
+                    <svg class="h-3.5 w-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>Mode: Lembar Dokumen A4</span>
+                `;
+                zoneBadge.className = 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 whitespace-nowrap';
             }
         }
         updateToolbarState();
+        requestAnimationFrame(() => {
+            syncRulerToPageSheet();
+        });
     }
 
     // Attach Double-Click listeners on Header, Footer, and Body zones (Word-style UX)
@@ -2265,12 +3716,205 @@ export function initMouWordProcessor(config) {
         });
     }
 
-    // Keydown listener for Esc key to exit Header/Footer edit mode
+    // Global Keyboard Shortcuts (Microsoft Word & Office Standard)
     window.addEventListener('keydown', (e) => {
+        const isCtrl = e.ctrlKey || e.metaKey;
+        const target = e.target;
+        const isTextInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && !target.closest('.ProseMirror');
+
+        // Enter Key in Editor: Lock viewport scroll position and trigger immediate reflow so new page is created promptly
+        if (e.key === 'Enter' && !isTextInput) {
+            setTimeout(() => {
+                if (typeof scheduleReflow === 'function') {
+                    scheduleReflow(true);
+                }
+            }, 10);
+            const workspaceViewport = document.getElementById('mouEditorWorkspaceView');
+            if (workspaceViewport) {
+                const lockScrollTop = workspaceViewport.scrollTop;
+                const lockWinY = window.scrollY;
+                const lockWinX = window.scrollX;
+                const restoreLock = () => {
+                    if (Math.abs(workspaceViewport.scrollTop - lockScrollTop) > 2) {
+                        workspaceViewport.scrollTop = lockScrollTop;
+                    }
+                    if (Math.abs(window.scrollY - lockWinY) > 2) {
+                        window.scrollTo(lockWinX, lockWinY);
+                    }
+                };
+                requestAnimationFrame(restoreLock);
+                setTimeout(restoreLock, 15);
+                setTimeout(restoreLock, 50);
+                setTimeout(restoreLock, 120);
+            }
+        }
+
+        // Escape: exit header/footer edit mode or deselect asset
         if (e.key === 'Escape' || e.keyCode === 27) {
             if (state.activeZone === 'header' || state.activeZone === 'footer') {
                 e.preventDefault();
                 setActiveZone('body');
+                return;
+            }
+            if (window._mouActiveSelectedAsset) {
+                e.preventDefault();
+                document.querySelectorAll('.mou-header-logo-interactive-box, .mou-image-wrapper').forEach(b => {
+                    b.classList.remove('is-selected');
+                    const o = b.querySelector('.mou-image-handle-overlay');
+                    if (o) o.style.display = 'none';
+                });
+                window._mouActiveSelectedAsset = null;
+                return;
+            }
+        }
+
+        // Arrow key nudging for active selected header logo
+        if (window._mouActiveSelectedAsset?.type === 'header-logo') {
+            if (state.activeZone !== 'header') return;
+            const isArrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+            if (isArrow && !isTextInput) {
+                e.preventDefault();
+                e.stopPropagation();
+                const step = e.shiftKey ? 2.5 : 0.5; // mm
+                const asset = window._mouActiveSelectedAsset;
+                const cfg = asset.cfg;
+                const isLeft = asset.slot === 'institution';
+
+                if (e.key === 'ArrowLeft') {
+                    if (isLeft) cfg.leftOffsetMm = Math.round(((cfg.leftOffsetMm || 0) - step) * 10) / 10;
+                    else cfg.rightOffsetMm = Math.round(((cfg.rightOffsetMm || 0) + step) * 10) / 10;
+                } else if (e.key === 'ArrowRight') {
+                    if (isLeft) cfg.leftOffsetMm = Math.round(((cfg.leftOffsetMm || 0) + step) * 10) / 10;
+                    else cfg.rightOffsetMm = Math.round(((cfg.rightOffsetMm || 0) - step) * 10) / 10;
+                } else if (e.key === 'ArrowUp') {
+                    cfg.topOffsetMm = Math.round(((cfg.topOffsetMm || 0) - step) * 10) / 10;
+                } else if (e.key === 'ArrowDown') {
+                    cfg.topOffsetMm = Math.round(((cfg.topOffsetMm || 0) + step) * 10) / 10;
+                }
+
+                asset.updateFn?.();
+                syncAllToHiddenInputs();
+
+                // Show ruler object range highlight
+                const dims = typeof getPaperDimensionsMm === 'function' ? getPaperDimensionsMm() : calcPaperDimensionsMm(state?.paperSize, state?.orientation);
+                const boxWidthMm = (cfg.width || 66) / MM_TO_PX;
+                const absLeftMm = isLeft
+                    ? ((state?.marginLeftMm || 25.4) + (cfg.leftOffsetMm || 0))
+                    : (dims.width - (state?.marginRightMm || 25.4) - (cfg.rightOffsetMm || 0) - boxWidthMm);
+                showRulerObjectRange(absLeftMm, boxWidthMm);
+
+                // Debounce push to asset history
+                clearTimeout(window._mouNudgeTimer);
+                window._mouNudgeTimer = setTimeout(() => {
+                    pushAssetHistory('Nudge Logo Keyboard');
+                    hideRulerObjectRange();
+                }, 400);
+                return;
+            }
+        }
+
+        // Ctrl + S -> Save Template Document
+        if (isCtrl && (e.key === 's' || e.key === 'S')) {
+            e.preventDefault();
+            e.stopPropagation();
+            api.saveDocument();
+            return;
+        }
+
+        if (!isTextInput) {
+            // Ctrl + B -> Bold
+            if (isCtrl && (e.key === 'b' || e.key === 'B')) {
+                e.preventDefault();
+                api.toggleBold();
+                return;
+            }
+            // Ctrl + I -> Italic
+            if (isCtrl && (e.key === 'i' || e.key === 'I')) {
+                e.preventDefault();
+                api.toggleItalic();
+                return;
+            }
+            // Ctrl + U -> Underline
+            if (isCtrl && (e.key === 'u' || e.key === 'U')) {
+                e.preventDefault();
+                api.toggleUnderline();
+                return;
+            }
+            // Ctrl + E -> Center Align
+            if (isCtrl && (e.key === 'e' || e.key === 'E')) {
+                e.preventDefault();
+                api.setTextAlign('center');
+                return;
+            }
+            // Ctrl + L -> Left Align
+            if (isCtrl && (e.key === 'l' || e.key === 'L')) {
+                e.preventDefault();
+                api.setTextAlign('left');
+                return;
+            }
+            // Ctrl + R -> Right Align
+            if (isCtrl && (e.key === 'r' || e.key === 'R')) {
+                e.preventDefault();
+                api.setTextAlign('right');
+                return;
+            }
+            // Ctrl + J -> Justify Align
+            if (isCtrl && (e.key === 'j' || e.key === 'J')) {
+                e.preventDefault();
+                api.setTextAlign('justify');
+                return;
+            }
+            // Ctrl + Z -> Undo, Ctrl + Y / Ctrl+Shift+Z -> Redo
+            if (isCtrl && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.shiftKey) api.redo();
+                else api.undo();
+                return;
+            }
+            if (isCtrl && (e.key === 'y' || e.key === 'Y')) {
+                e.preventDefault();
+                e.stopPropagation();
+                api.redo();
+                return;
+            }
+
+            // Ctrl + Space or Ctrl + \ -> Clear Formatting (Microsoft Word & Google Docs Standard)
+            if (isCtrl && (e.code === 'Space' || e.key === ' ' || e.key === '\\')) {
+                e.preventDefault();
+                api.clearFormatting();
+                return;
+            }
+
+            // Delete or Backspace for selected asset
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (window._mouActiveSelectedAsset) {
+                    e.preventDefault();
+                    api.deleteSelectedAsset();
+                    return;
+                }
+            }
+        }
+    });
+
+    // Click outside to deselect active asset box
+    window.addEventListener('click', (e) => {
+        if (!e.target.closest('.mou-header-logo-interactive-box') &&
+            !e.target.closest('.mou-image-wrapper') &&
+            !e.target.closest('.mou-word-ribbon-bar') &&
+            !e.target.closest('#mouWordRibbonBar') &&
+            !e.target.closest('.mou-ribbon-group') &&
+            !e.target.closest('[data-ribbon-tab-target]') &&
+            !e.target.closest('.mou-header-logo-quick-bar')) {
+            document.querySelectorAll('.mou-header-logo-interactive-box').forEach(b => {
+                b.classList.remove('is-selected');
+                const o = b.querySelector('.mou-image-handle-overlay');
+                if (o) o.style.display = 'none';
+            });
+            if (window._mouActiveSelectedAsset?.type === 'header-logo') {
+                window._mouActiveSelectedAsset = null;
+                hideRulerObjectRange();
+                hideSmartGuides();
             }
         }
     });
@@ -2306,13 +3950,13 @@ export function initMouWordProcessor(config) {
 
     /**
      * Locate row resize candidate by scanning all tr elements in the table.
-     * Matches if hovering within 7px of bottom edge of row i, or top edge of row i+1.
+     * Matches only if hovering precisely within 3px of bottom edge of row i, or top edge of row i+1.
      */
     function findRowResizeCandidate(tableEl, clientY) {
         if (!tableEl) return null;
         const trs = Array.from(tableEl.querySelectorAll('tr'));
         if (!trs.length) return null;
-        const hitTolerancePx = 7;
+        const hitTolerancePx = 3;
 
         for (let i = 0; i < trs.length; i++) {
             const tr = trs[i];
@@ -2324,6 +3968,37 @@ export function initMouWordProcessor(config) {
             // 2. Hover near top border of row i (if i > 0, that's bottom of row i-1)
             if (i > 0 && Math.abs(clientY - rect.top) <= hitTolerancePx) {
                 return { tr: trs[i - 1], rect: trs[i - 1].getBoundingClientRect(), rowIndex: i - 1, edge: 'bottom' };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Locate column resize candidate by scanning first row of cells in table.
+     * Matches only if hovering precisely within 3px of divider border.
+     */
+    function findColumnResizeCandidate(tableEl, clientX) {
+        if (!tableEl) return null;
+        const firstTr = tableEl.querySelector('tr');
+        if (!firstTr) return null;
+        const cells = Array.from(firstTr.querySelectorAll('td, th'));
+        if (cells.length === 0) return null;
+        const hitTolerancePx = 3;
+
+        for (let i = 0; i < cells.length; i++) {
+            const cell = cells[i];
+            const rect = cell.getBoundingClientRect();
+            // Hover near right border of cell i
+            if (Math.abs(clientX - rect.right) <= hitTolerancePx) {
+                if (i < cells.length - 1) {
+                    return { tableEl, colIndex: i, dividerX: rect.right, edge: 'column-divider' };
+                } else {
+                    return { tableEl, colIndex: i, dividerX: rect.right, edge: 'table-right-edge' };
+                }
+            }
+            // Hover near left border of cell i (if i > 0, that's divider between i-1 and i)
+            if (i > 0 && Math.abs(clientX - rect.left) <= hitTolerancePx) {
+                return { tableEl, colIndex: i - 1, dividerX: rect.left, edge: 'column-divider' };
             }
         }
         return null;
@@ -2347,22 +4022,31 @@ export function initMouWordProcessor(config) {
     }
 
     /**
-     * Interactive Row Height & Whole-Table Width Drag Resizing
+     * Interactive Row Height, Column Width & Whole-Table Width Drag Resizing
+     * Adjacent column width compensation ensures total table width never overflows the printable margins.
      * Works inside Body, Header, AND Footer editors, dispatching real ProseMirror transactions.
      */
     function attachInteractiveTableResizers(mountContainer, getEditorInstance) {
         if (!mountContainer) return;
 
-        let dragMode = null; // 'row-height' | 'table-width'
+        let dragMode = null; // 'row-height' | 'table-width' | 'col-width'
         let targetRowEl = null;
         let targetTableEl = null;
         let startRowIndex = -1;
+        let targetColIndex = -1;
         let currentCalculatedHeightPt = null;
         let currentCalculatedWidthPt = null;
+        let currentCalculatedLeftColPx = null;
+        let currentCalculatedRightColPx = null;
         let startY = 0;
         let startX = 0;
+        let startDividerX = 0;
         let startHeightPx = 0;
         let startWidthPx = 0;
+        let startLeftColWidthPx = 0;
+        let startRightColWidthPx = 0;
+        let totalPairWidthPx = 0;
+        let allColWidthsPx = [];
         let minContentHeightPx = 18;
 
         const guideLine = document.createElement('div');
@@ -2374,8 +4058,19 @@ export function initMouWordProcessor(config) {
 
         mountContainer.addEventListener('mousemove', (e) => {
             if (dragMode) return;
+            // Jika user sedang drag memilih teks (tombol kiri ditekan tanpa mode drag tabel), jangan ganggu seleksi teks!
+            if (e.buttons === 1) return;
+
             const editor = getEditorInstance();
             if (!editor || !editor.isEditable) return;
+
+            // Jika kursor berada tepat di atas konten teks / paragraf / span, prioritaskan seleksi teks biasa
+            if (e.target && e.target.closest('p, span, [data-token], a, strong, em, code, mark, [data-placeholder]')) {
+                if (mountContainer.style.cursor === 'row-resize' || mountContainer.style.cursor === 'col-resize' || mountContainer.style.cursor === 'ew-resize') {
+                    mountContainer.style.cursor = '';
+                }
+                return;
+            }
 
             let table = e.target.closest('table');
             if (!table) {
@@ -2383,16 +4078,21 @@ export function initMouWordProcessor(config) {
                 table = el ? el.closest('table') : null;
             }
             if (table) {
-                const resizeCandidate = findRowResizeCandidate(table, e.clientY);
-                if (resizeCandidate) {
+                const rowCandidate = findRowResizeCandidate(table, e.clientY);
+                if (rowCandidate) {
                     mountContainer.style.cursor = 'row-resize';
                     return;
                 }
+                const colCandidate = findColumnResizeCandidate(table, e.clientX);
+                if (colCandidate) {
+                    mountContainer.style.cursor = colCandidate.edge === 'column-divider' ? 'col-resize' : 'ew-resize';
+                    return;
+                }
             }
-            if (mountContainer.style.cursor === 'row-resize') {
+            if (mountContainer.style.cursor === 'row-resize' || mountContainer.style.cursor === 'col-resize' || mountContainer.style.cursor === 'ew-resize') {
                 mountContainer.style.cursor = '';
             }
-        }, { capture: true });
+        });
 
         mountContainer.addEventListener('mousedown', (e) => {
             const editor = getEditorInstance();
@@ -2406,7 +4106,6 @@ export function initMouWordProcessor(config) {
                 if (table) {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
                     dragMode = 'table-width';
                     targetTableEl = table;
                     startX = e.clientX;
@@ -2418,39 +4117,104 @@ export function initMouWordProcessor(config) {
                 }
             }
 
-            // 2. Check row border drag across whole table
+            // Jika pengguna mengklik di atas teks, JANGAN intercept mousedown agar ProseMirror dapat melakukan seleksi teks bebas!
+            const isClickingOnText = !!(e.target && e.target.closest('p, span, [data-token], a, strong, em, code, mark, [data-placeholder]'));
+            if (isClickingOnText) {
+                return;
+            }
+
+            // Hanya aktifkan resizer jika kursor memang berada pada divider garis (row-resize atau col-resize)
+            const isResizeCursor = mountContainer.style.cursor === 'row-resize' || mountContainer.style.cursor === 'col-resize' || mountContainer.style.cursor === 'ew-resize';
+            if (!isResizeCursor) {
+                return;
+            }
+
+            // 2. Check row border or column border drag across whole table
             let table = e.target.closest('table');
             if (!table) {
                 const el = document.elementFromPoint(e.clientX, e.clientY);
                 table = el ? el.closest('table') : null;
             }
             if (table) {
-                const resizeCandidate = findRowResizeCandidate(table, e.clientY);
-                if (resizeCandidate) {
+                const rowCandidate = findRowResizeCandidate(table, e.clientY);
+                if (rowCandidate) {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
                     dragMode = 'row-height';
-                    targetRowEl = resizeCandidate.tr;
+                    targetRowEl = rowCandidate.tr;
                     targetTableEl = table;
-                    startRowIndex = resizeCandidate.rowIndex;
+                    startRowIndex = rowCandidate.rowIndex;
                     startY = e.clientY;
                     const scale = (state.zoomPercent || 100) / 100;
-                    startHeightPx = resizeCandidate.rect.height / scale;
+                    startHeightPx = rowCandidate.rect.height / scale;
                     minContentHeightPx = computeRowMinContentHeightPx(targetRowEl, scale);
                     currentCalculatedHeightPt = Math.round((startHeightPx * 72) / 96);
 
                     guideLine.classList.remove('hidden');
                     guideLine.style.top = `${e.clientY}px`;
-                    guideLine.style.left = `${resizeCandidate.rect.left}px`;
-                    guideLine.style.width = `${resizeCandidate.rect.width}px`;
+                    guideLine.style.left = `${rowCandidate.rect.left}px`;
+                    guideLine.style.width = `${rowCandidate.rect.width}px`;
+                    guideLine.style.height = '0px';
+                    guideLine.style.borderTop = '2px dashed #1d4ed8';
+                    guideLine.style.borderLeft = 'none';
 
                     guideBadge.textContent = `Tinggi Baris: ${currentCalculatedHeightPt} pt (${(startHeightPx / MM_TO_PX).toFixed(1)} mm)`;
                     guideBadge.style.backgroundColor = '#1d4ed8';
                     document.body.style.cursor = 'row-resize';
+                    return;
+                }
+
+                const colCandidate = findColumnResizeCandidate(table, e.clientX);
+                if (colCandidate) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const scale = (state.zoomPercent || 100) / 100;
+
+                    if (colCandidate.edge === 'column-divider') {
+                        dragMode = 'col-width';
+                        targetTableEl = table;
+                        targetColIndex = colCandidate.colIndex;
+                        startX = e.clientX;
+                        startDividerX = colCandidate.dividerX;
+
+                        const firstTr = targetTableEl.querySelector('tr');
+                        const cells = firstTr ? Array.from(firstTr.querySelectorAll('td, th')) : [];
+                        allColWidthsPx = cells.map(c => Math.round(c.getBoundingClientRect().width / scale));
+                        startLeftColWidthPx = allColWidthsPx[targetColIndex] || 50;
+                        startRightColWidthPx = allColWidthsPx[targetColIndex + 1] || 50;
+                        totalPairWidthPx = startLeftColWidthPx + startRightColWidthPx;
+                        currentCalculatedLeftColPx = startLeftColWidthPx;
+                        currentCalculatedRightColPx = startRightColWidthPx;
+
+                        const tableRect = targetTableEl.getBoundingClientRect();
+                        guideLine.classList.remove('hidden');
+                        guideLine.style.top = `${tableRect.top}px`;
+                        guideLine.style.height = `${tableRect.height}px`;
+                        guideLine.style.left = `${colCandidate.dividerX}px`;
+                        guideLine.style.width = '0px';
+                        guideLine.style.borderLeft = '2px dashed #2563eb';
+                        guideLine.style.borderTop = 'none';
+
+                        const leftMm = (startLeftColWidthPx / MM_TO_PX).toFixed(1);
+                        const leftPt = Math.round((startLeftColWidthPx * 72) / 96);
+                        const rightMm = (startRightColWidthPx / MM_TO_PX).toFixed(1);
+                        const rightPt = Math.round((startRightColWidthPx * 72) / 96);
+                        guideBadge.textContent = `Kol ${targetColIndex + 1}: ${leftMm} mm (${leftPt} pt) • Kol ${targetColIndex + 2}: ${rightMm} mm (${rightPt} pt)`;
+                        guideBadge.style.backgroundColor = '#2563eb';
+                        document.body.style.cursor = 'col-resize';
+                        return;
+                    } else if (colCandidate.edge === 'table-right-edge') {
+                        dragMode = 'table-width';
+                        targetTableEl = table;
+                        startX = e.clientX;
+                        startWidthPx = targetTableEl.getBoundingClientRect().width / scale;
+                        currentCalculatedWidthPt = Math.round((startWidthPx * 72) / 96);
+                        document.body.style.cursor = 'ew-resize';
+                        return;
+                    }
                 }
             }
-        }, { capture: true });
+        });
 
         window.addEventListener('mousemove', (e) => {
             if (!dragMode) return;
@@ -2473,6 +4237,22 @@ export function initMouWordProcessor(config) {
                     guideBadge.textContent = `Tinggi Baris: ${ptVal} pt (${mmVal} mm)`;
                     guideBadge.style.backgroundColor = '#1d4ed8';
                 }
+            } else if (dragMode === 'col-width') {
+                const deltaX = (e.clientX - startX) / scale;
+                const minColW = 14;
+                const newLeftW = Math.max(minColW, Math.min(totalPairWidthPx - minColW, Math.round(startLeftColWidthPx + deltaX)));
+                const newRightW = totalPairWidthPx - newLeftW;
+                currentCalculatedLeftColPx = newLeftW;
+                currentCalculatedRightColPx = newRightW;
+
+                const actualDeltaPx = (newLeftW - startLeftColWidthPx) * scale;
+                guideLine.style.left = `${startDividerX + actualDeltaPx}px`;
+
+                const leftMm = (newLeftW / MM_TO_PX).toFixed(1);
+                const leftPt = Math.round((newLeftW * 72) / 96);
+                const rightMm = (newRightW / MM_TO_PX).toFixed(1);
+                const rightPt = Math.round((newRightW * 72) / 96);
+                guideBadge.textContent = `Kol ${targetColIndex + 1}: ${leftMm} mm (${leftPt} pt) • Kol ${targetColIndex + 2}: ${rightMm} mm (${rightPt} pt)`;
             } else if (dragMode === 'table-width') {
                 const deltaX = (e.clientX - startX) / scale;
                 const maxPrintableW = getPrintableWidthPx();
@@ -2492,6 +4272,8 @@ export function initMouWordProcessor(config) {
             if (dragMode === 'row-height' && editor && currentCalculatedHeightPt !== null) {
                 const finalRowHeight = `${currentCalculatedHeightPt}pt`;
                 applyRowHeightTransaction(editor, targetRowEl, finalRowHeight, targetTableEl, startRowIndex);
+            } else if (dragMode === 'col-width' && editor && targetTableEl && targetColIndex >= 0 && currentCalculatedLeftColPx !== null && currentCalculatedRightColPx !== null) {
+                applyColumnPairWidthTransaction(editor, targetTableEl, targetColIndex, currentCalculatedLeftColPx, currentCalculatedRightColPx, allColWidthsPx);
             } else if (dragMode === 'table-width' && editor && currentCalculatedWidthPt !== null) {
                 const finalTableWidth = `${currentCalculatedWidthPt}pt`;
                 applyTableWidthTransaction(editor, targetTableEl, finalTableWidth);
@@ -2501,10 +4283,80 @@ export function initMouWordProcessor(config) {
             targetRowEl = null;
             targetTableEl = null;
             startRowIndex = -1;
+            targetColIndex = -1;
             currentCalculatedHeightPt = null;
             currentCalculatedWidthPt = null;
+            currentCalculatedLeftColPx = null;
+            currentCalculatedRightColPx = null;
             scheduleSyncAndPagination();
         }, { capture: true });
+    }
+
+    /**
+     * Dispatch a ProseMirror transaction to adjust adjacent column widths compensating each other.
+     * Guaranteed to maintain exact table width and prevent overflowing outside page margins.
+     */
+    function applyColumnPairWidthTransaction(editor, tableDom, colIdx, newLeftW, newRightW, allColWidths = []) {
+        if (!editor || !editor.view || !tableDom) return;
+        try {
+            const cell = tableDom.querySelector('td, th');
+            if (!cell) return;
+            const cellPos = editor.view.posAtDOM(cell, 0);
+            if (cellPos < 0) return;
+            const $pos = editor.state.doc.resolve(cellPos);
+            let tablePos = null;
+            let tableNode = null;
+            for (let d = $pos.depth; d >= 0; d--) {
+                if ($pos.node(d).type.name === 'table') {
+                    tablePos = $pos.before(d);
+                    tableNode = $pos.node(d);
+                    break;
+                }
+            }
+            if (tablePos === null || !tableNode) return;
+
+            const tr = editor.state.tr;
+            let rowOffset = tablePos + 1;
+            for (let r = 0; r < tableNode.childCount; r++) {
+                const row = tableNode.child(r);
+                let cellOffset = rowOffset + 1;
+                let colAcc = 0;
+                for (let c = 0; c < row.childCount; c++) {
+                    const cNode = row.child(c);
+                    const colspan = cNode.attrs.colspan || 1;
+                    if (colspan === 1) {
+                        if (colAcc === colIdx) {
+                            tr.setNodeMarkup(cellOffset, undefined, {
+                                ...cNode.attrs,
+                                colwidth: [newLeftW],
+                                cellWidth: `${newLeftW}px`,
+                            });
+                        } else if (colAcc === colIdx + 1) {
+                            tr.setNodeMarkup(cellOffset, undefined, {
+                                ...cNode.attrs,
+                                colwidth: [newRightW],
+                                cellWidth: `${newRightW}px`,
+                            });
+                        } else if (allColWidths[colAcc] && (!cNode.attrs.colwidth || !cNode.attrs.colwidth[0])) {
+                            tr.setNodeMarkup(cellOffset, undefined, {
+                                ...cNode.attrs,
+                                colwidth: [allColWidths[colAcc]],
+                                cellWidth: `${allColWidths[colAcc]}px`,
+                            });
+                        }
+                    }
+                    colAcc += colspan;
+                    cellOffset += cNode.nodeSize;
+                }
+                rowOffset += row.nodeSize;
+            }
+
+            editor.view.dispatch(tr);
+            const cwInput = document.getElementById('ribbonColWidthInput');
+            if (cwInput) cwInput.value = String(newLeftW);
+        } catch (err) {
+            console.warn('Column width transaction error:', err);
+        }
     }
 
     /**
@@ -2626,6 +4478,48 @@ export function initMouWordProcessor(config) {
                     ...tableNode.attrs,
                     tableWidth: safeWidth,
                 });
+
+                // Measure old total width and new total width to scale child columns proportionally
+                let newWidthPx = maxPrintableW;
+                if (typeof safeWidth === 'string' && safeWidth.endsWith('pt')) {
+                    newWidthPx = (parseFloat(safeWidth) * 96) / 72;
+                } else if (typeof safeWidth === 'string' && safeWidth.endsWith('%')) {
+                    newWidthPx = Math.round((parseFloat(safeWidth) / 100) * maxPrintableW);
+                }
+
+                if (tableNode.childCount > 0) {
+                    const firstRow = tableNode.child(0);
+                    let oldTotal = 0;
+                    const oldWidths = [];
+                    for (let c = 0; c < firstRow.childCount; c++) {
+                        const cellNode = firstRow.child(c);
+                        const w = (Array.isArray(cellNode.attrs.colwidth) && cellNode.attrs.colwidth[0])
+                            ? Number(cellNode.attrs.colwidth[0])
+                            : (parseInt(cellNode.attrs.cellWidth, 10) || 50);
+                        oldWidths.push(w);
+                        oldTotal += w;
+                    }
+                    if (oldTotal > 0 && Math.abs(oldTotal - newWidthPx) > 5) {
+                        const ratio = newWidthPx / oldTotal;
+                        let rowOffset = tablePos + 1;
+                        for (let r = 0; r < tableNode.childCount; r++) {
+                            const row = tableNode.child(r);
+                            let cellOffset = rowOffset + 1;
+                            for (let c = 0; c < row.childCount; c++) {
+                                const cNode = row.child(c);
+                                const newW = Math.max(14, Math.floor((oldWidths[c] || 50) * ratio));
+                                tr.setNodeMarkup(cellOffset, undefined, {
+                                    ...cNode.attrs,
+                                    colwidth: [newW],
+                                    cellWidth: `${newW}px`,
+                                });
+                                cellOffset += cNode.nodeSize;
+                            }
+                            rowOffset += row.nodeSize;
+                        }
+                    }
+                }
+
                 editor.view.dispatch(tr);
                 const tableWidthInput = document.getElementById('ribbonTableWidthInput');
                 if (tableWidthInput) tableWidthInput.value = safeWidth;
@@ -2807,6 +4701,153 @@ export function initMouWordProcessor(config) {
         if (input) input.value = `${newPct}%`;
     }
 
+    function distributeColumnsEvenly() {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const { state: edState } = editor;
+        const { $from } = edState.selection;
+        let tableNode = null;
+        let tablePos = null;
+        for (let d = $from.depth; d >= 0; d--) {
+            if ($from.node(d).type.name === 'table') {
+                tableNode = $from.node(d);
+                tablePos = $from.before(d);
+                break;
+            }
+        }
+        if (!tableNode || tablePos === null || tableNode.childCount === 0) return;
+
+        const firstRow = tableNode.child(0);
+        let colCount = 0;
+        for (let i = 0; i < firstRow.childCount; i++) {
+            colCount += firstRow.child(i).attrs.colspan || 1;
+        }
+        if (colCount <= 0) return;
+
+        const maxPrintableW = getPrintableWidthPx();
+        const colWidthPx = Math.floor(maxPrintableW / colCount);
+        const remainderPx = maxPrintableW - (colWidthPx * colCount);
+
+        const tr = edState.tr;
+        tr.setNodeMarkup(tablePos, undefined, {
+            ...tableNode.attrs,
+            tableWidth: '100%',
+        });
+
+        let rowOffset = tablePos + 1;
+        for (let r = 0; r < tableNode.childCount; r++) {
+            const row = tableNode.child(r);
+            let cellOffset = rowOffset + 1;
+            let colAcc = 0;
+            for (let c = 0; c < row.childCount; c++) {
+                const cell = row.child(c);
+                const colspan = cell.attrs.colspan || 1;
+                let cellW = colWidthPx * colspan;
+                if (colAcc + colspan === colCount) {
+                    cellW += remainderPx;
+                }
+                tr.setNodeMarkup(cellOffset, undefined, {
+                    ...cell.attrs,
+                    colwidth: [cellW],
+                    cellWidth: `${cellW}px`,
+                });
+                colAcc += colspan;
+                cellOffset += cell.nodeSize;
+            }
+            rowOffset += row.nodeSize;
+        }
+
+        editor.view.dispatch(tr);
+        scheduleSyncAndPagination();
+    }
+
+    function fitTableToMargins() {
+        const editor = getActiveEditor();
+        if (!editor) return;
+        const { state: edState } = editor;
+        const { $from } = edState.selection;
+        let tableNode = null;
+        let tablePos = null;
+        for (let d = $from.depth; d >= 0; d--) {
+            if ($from.node(d).type.name === 'table') {
+                tableNode = $from.node(d);
+                tablePos = $from.before(d);
+                break;
+            }
+        }
+        if (!tableNode || tablePos === null || tableNode.childCount === 0) return;
+
+        // Choose representative row with highest cell count so merged header rows don't truncate column widths
+        let representativeRow = tableNode.child(0);
+        for (let r = 0; r < tableNode.childCount; r++) {
+            const row = tableNode.child(r);
+            if (row.childCount > representativeRow.childCount) {
+                representativeRow = row;
+            }
+        }
+
+        let colWidths = [];
+        let totalCurrentW = 0;
+        for (let i = 0; i < representativeRow.childCount; i++) {
+            const cell = representativeRow.child(i);
+            const w = Array.isArray(cell.attrs.colwidth) && cell.attrs.colwidth[0]
+                ? Number(cell.attrs.colwidth[0])
+                : (parseInt(cell.attrs.cellWidth, 10) || 100);
+            colWidths.push(w);
+            totalCurrentW += w;
+        }
+
+        const maxPrintableW = getPrintableWidthPx();
+        if (totalCurrentW <= 0) {
+            distributeColumnsEvenly();
+            return;
+        }
+
+        const ratio = maxPrintableW / totalCurrentW;
+        let scaledWidths = colWidths.map(w => Math.max(14, Math.floor(w * ratio)));
+        const scaledSum = scaledWidths.reduce((a, b) => a + b, 0);
+        const diff = maxPrintableW - scaledSum;
+        if (scaledWidths.length > 0) {
+            scaledWidths[scaledWidths.length - 1] += diff;
+        }
+
+        const tr = edState.tr;
+        tr.setNodeMarkup(tablePos, undefined, {
+            ...tableNode.attrs,
+            tableWidth: '100%',
+        });
+
+        let rowOffset = tablePos + 1;
+        for (let r = 0; r < tableNode.childCount; r++) {
+            const row = tableNode.child(r);
+            let cellOffset = rowOffset + 1;
+            let colIndex = 0;
+            for (let c = 0; c < row.childCount; c++) {
+                const cell = row.child(c);
+                const colspan = Number(cell.attrs.colspan) || 1;
+                let cellW = 0;
+                if (colspan >= scaledWidths.length) {
+                    cellW = maxPrintableW;
+                } else {
+                    for (let span = 0; span < colspan; span++) {
+                        cellW += scaledWidths[colIndex + span] || Math.floor(maxPrintableW / scaledWidths.length);
+                    }
+                }
+                tr.setNodeMarkup(cellOffset, undefined, {
+                    ...cell.attrs,
+                    colwidth: [cellW],
+                    cellWidth: `${cellW}px`,
+                });
+                colIndex += colspan;
+                cellOffset += cell.nodeSize;
+            }
+            rowOffset += row.nodeSize;
+        }
+
+        editor.view.dispatch(tr);
+        scheduleSyncAndPagination();
+    }
+
     function adjustFontSizeSpin(deltaPt) {
         const editor = getActiveEditor();
         if (!editor) return;
@@ -2835,6 +4876,9 @@ export function initMouWordProcessor(config) {
             const scaledH = naturalH * scale;
             deskStage.style.marginBottom = `${Math.max(48, scaledH - naturalH + 48)}px`;
         }
+        requestAnimationFrame(() => {
+            syncRulerToPageSheet();
+        });
     }
 
     function updateActiveTableCells(attrUpdates, applyToWholeTable = false) {
@@ -3075,6 +5119,7 @@ export function initMouWordProcessor(config) {
         setInputVal('inputCompanyLogo', compLogo);
         setInputVal('inputCompanyLogoUrl', compLogo);
         setInputVal('inputShowHeaderLogos', state.showHeaderLogos ? '1' : '0');
+        setInputVal('inputHeaderLogosConfig', JSON.stringify(state.headerLogosConfig || {}));
         setInputVal('inputShowWatermark', state.showWatermark ? '1' : '0');
         setInputVal('inputWatermarkOpacity', String(state.watermarkOpacity ?? 0.05));
     }
@@ -3107,12 +5152,213 @@ export function initMouWordProcessor(config) {
     }
 
     /**
-     * Render interactive-style Horizontal Millimeter Ruler showing active left/right margins.
+     * Synchronize Ruler position and scale directly to match the active A4 paper sheet.
+     */
+    function syncRulerToPageSheet() {
+        const rulerTrack = document.getElementById('mouHorizontalRulerTrack');
+        const rulerShelf = document.getElementById('mouRulerStickyHeader');
+        const deskStage = document.getElementById('mouPagesDeskStage');
+        if (!rulerTrack || !rulerShelf || !deskStage) return;
+
+        const firstPage = deskStage.querySelector('.mou-a4-page-node') || deskStage.querySelector('.mou-a4-paper-sheet');
+        if (!firstPage) return;
+
+        const shelfRect = rulerShelf.getBoundingClientRect();
+        const pageRect = firstPage.getBoundingClientRect();
+        const leftOffset = pageRect.left - shelfRect.left;
+
+        const scale = (parseFloat(state.zoomPercent) || 100) / 100;
+        const dims = getPaperDimensionsMm();
+
+        rulerTrack.style.width = `${dims.width}mm`;
+        rulerTrack.style.transformOrigin = '0 0';
+        rulerTrack.style.transform = `translateX(${leftOffset}px) scale(${scale})`;
+    }
+
+    /**
+     * Show vertical alignment guide line with real-time measurement badge.
+     * @param {number} posMm - Position in mm from the left edge of the paper sheet.
+     * @param {string} label - Formatted text to display in tooltip badge.
+     */
+    function showRulerGuideline(posMm, label) {
+        const guideLine = document.getElementById('mouRulerGuideLine');
+        const badge = document.getElementById('mouRulerTooltipBadge');
+        const deskStage = document.getElementById('mouPagesDeskStage');
+        if (!guideLine || !deskStage) return;
+
+        const firstPage = deskStage.querySelector('.mou-a4-page-node') || deskStage.querySelector('.mou-a4-paper-sheet');
+        if (!firstPage) return;
+
+        const leftPx = firstPage.offsetLeft + (posMm * MM_TO_PX);
+        guideLine.style.left = `${leftPx}px`;
+        guideLine.classList.remove('hidden');
+
+        if (badge) {
+            badge.textContent = label || `${(posMm / 10).toFixed(2)} cm (${posMm.toFixed(1)} mm)`;
+        }
+    }
+
+    /**
+     * Hide vertical alignment guide line.
+     */
+    function hideRulerGuideline() {
+        const guideLine = document.getElementById('mouRulerGuideLine');
+        if (guideLine) guideLine.classList.add('hidden');
+    }
+
+    /**
+     * Show/Hide Active Object Horizontal Range Highlight on the Ruler (MS Word Style).
+     */
+    function showRulerObjectRange(leftMm, widthMm) {
+        const rangeEl = document.getElementById('mouRulerObjectRange');
+        if (!rangeEl) return;
+        rangeEl.style.left = `${Math.max(0, leftMm)}mm`;
+        rangeEl.style.width = `${Math.max(1, widthMm)}mm`;
+        rangeEl.classList.remove('hidden');
+    }
+
+    function hideRulerObjectRange() {
+        const rangeEl = document.getElementById('mouRulerObjectRange');
+        if (rangeEl) rangeEl.classList.add('hidden');
+    }
+
+    /**
+     * Smart Guides / Alignment Engine:
+     * Evaluates an object's boundary against document targets (Left Margin, Page Center,
+     * Body Center, Right Margin, Sibling Object Y-alignment, and Header Boundary).
+     */
+    function evaluateSmartGuides(targetRect, isHeaderLogo = false, siblingLogoCfg = null, defaultSide = 'left', baseTopMm = null) {
+        const dims = getPaperDimensionsMm();
+        const snapMm = 2.0; // Snap threshold in mm (~7.5px)
+
+        let snapX = null;
+        let snapY = null;
+        let vGuide = null;
+        let hGuide = null;
+
+        const leftMarginMm = state.marginLeftMm;
+        const rightMarginMm = dims.width - state.marginRightMm;
+        const centerPaperMm = dims.width / 2;
+        const centerPrintableMm = leftMarginMm + (rightMarginMm - leftMarginMm) / 2;
+
+        const currentLeftMm = targetRect.leftMm;
+        const currentRightMm = targetRect.leftMm + targetRect.widthMm;
+        const currentCenterXMm = targetRect.leftMm + (targetRect.widthMm / 2);
+        const currentTopMm = targetRect.topMm;
+
+        // 1. Horizontal Snapping (Vertical Guide Lines)
+        // A. Left Margin Snap (Left edge aligns with Left Margin)
+        if (Math.abs(currentLeftMm - leftMarginMm) <= snapMm) {
+            snapX = leftMarginMm;
+            vGuide = { posMm: leftMarginMm, label: `⇥ Rata Margin Kiri (${(leftMarginMm / 10).toFixed(2)} cm)` };
+        }
+        // B. Page Center Snap (Center aligns with middle of A4 sheet)
+        else if (Math.abs(currentCenterXMm - centerPaperMm) <= snapMm) {
+            snapX = centerPaperMm - (targetRect.widthMm / 2);
+            vGuide = { posMm: centerPaperMm, label: `⇹ Tengah Lembar A4 (${(centerPaperMm / 10).toFixed(2)} cm)` };
+        }
+        // C. Printable Body Center Snap (Center aligns with middle of text margins)
+        else if (Math.abs(currentCenterXMm - centerPrintableMm) <= snapMm) {
+            snapX = centerPrintableMm - (targetRect.widthMm / 2);
+            vGuide = { posMm: centerPrintableMm, label: `⇹ Tengah Area Margin (${(centerPrintableMm / 10).toFixed(2)} cm)` };
+        }
+        // D. Right Margin Snap (Right edge aligns with Right Margin)
+        else if (Math.abs(currentRightMm - rightMarginMm) <= snapMm) {
+            snapX = rightMarginMm - targetRect.widthMm;
+            vGuide = { posMm: rightMarginMm, label: `⇤ Rata Margin Kanan (${(rightMarginMm / 10).toFixed(2)} cm)` };
+        }
+
+        // 2. Vertical Snapping (Horizontal Guide Lines)
+        if (isHeaderLogo) {
+            const topHeaderBaselineMm = baseTopMm !== null ? baseTopMm : Math.max(8, (state.marginTopMm || 25.4) - 10);
+            // A. Align with Sibling Logo Y position
+            if (siblingLogoCfg) {
+                const siblingTopMm = topHeaderBaselineMm + (siblingLogoCfg.topOffsetMm || 0);
+                if (Math.abs(currentTopMm - siblingTopMm) <= snapMm) {
+                    snapY = siblingTopMm;
+                    hGuide = { posMm: siblingTopMm, label: `⟺ Sejajar Logo Lain (Y: ${(siblingTopMm / 10).toFixed(2)} cm)` };
+                }
+            }
+            // B. Align with Top Header baseline distance
+            if (snapY === null && Math.abs(currentTopMm - topHeaderBaselineMm) <= snapMm) {
+                snapY = topHeaderBaselineMm;
+                hGuide = { posMm: topHeaderBaselineMm, label: `Batas Atas Header (${(topHeaderBaselineMm / 10).toFixed(2)} cm)` };
+            }
+        }
+
+        return { snapX, snapY, vGuide, hGuide };
+    }
+
+    /**
+     * Display vertical and/or horizontal Smart Guides across the document desk stage.
+     */
+    function showSmartGuides(vGuide, hGuide) {
+        const vLine = document.getElementById('mouSmartGuideV');
+        const hLine = document.getElementById('mouSmartGuideH');
+        const vLabel = document.getElementById('mouSmartGuideVLabel');
+        const hLabel = document.getElementById('mouSmartGuideHLabel');
+        const deskStage = document.getElementById('mouPagesDeskStage');
+        if (!deskStage) return;
+
+        const firstPage = deskStage.querySelector('.mou-a4-page-node') || deskStage.querySelector('.mou-a4-paper-sheet');
+        if (!firstPage) return;
+
+        if (vGuide && vLine) {
+            const leftPx = firstPage.offsetLeft + (vGuide.posMm * MM_TO_PX);
+            vLine.style.left = `${leftPx}px`;
+            if (vLabel) vLabel.textContent = vGuide.label;
+            vLine.classList.remove('hidden');
+        } else if (vLine) {
+            vLine.classList.add('hidden');
+        }
+
+        if (hGuide && hLine) {
+            const topPx = firstPage.offsetTop + (hGuide.posMm * MM_TO_PX);
+            hLine.style.top = `${topPx}px`;
+            if (hLabel) hLabel.textContent = hGuide.label;
+            hLine.classList.remove('hidden');
+        } else if (hLine) {
+            hLine.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Hide all active Smart Guides and object range highlight.
+     */
+    function hideSmartGuides() {
+        const vLine = document.getElementById('mouSmartGuideV');
+        const hLine = document.getElementById('mouSmartGuideH');
+        if (vLine) vLine.classList.add('hidden');
+        if (hLine) hLine.classList.add('hidden');
+        hideRulerObjectRange();
+    }
+
+    /**
+     * Helper to safely parse any CSS measurement to millimeters.
+     */
+    function parseMeasurementToMm(val) {
+        if (!val) return 0;
+        if (typeof val === 'number') return isNaN(val) ? 0 : val;
+        val = String(val).trim();
+        if (val.endsWith('mm')) return parseFloat(val) || 0;
+        if (val.endsWith('cm')) return (parseFloat(val) || 0) * 10;
+        if (val.endsWith('pt')) return (parseFloat(val) || 0) * (25.4 / 72);
+        if (val.endsWith('in')) return (parseFloat(val) || 0) * 25.4;
+        if (val.endsWith('px')) return (parseFloat(val) || 0) / MM_TO_PX;
+        return parseFloat(val) || 0;
+    }
+
+    /**
+     * Render interactive-style Horizontal Millimeter Ruler showing active left/right margins,
+     * cm/half-cm/mm ticks, numbers, and interactive handles.
      */
     function renderHorizontalRuler() {
         const rulerTrack = document.getElementById('mouHorizontalRulerTrack');
         const leftMarginMask = document.getElementById('mouRulerLeftMargin');
         const rightMarginMask = document.getElementById('mouRulerRightMargin');
+        const leftMarginHandle = document.getElementById('mouRulerLeftMarginHandle');
+        const rightMarginHandle = document.getElementById('mouRulerRightMarginHandle');
+        const ticksContainer = document.getElementById('mouHorizontalRulerTicksContainer');
         const dims = getPaperDimensionsMm();
 
         if (rulerTrack) {
@@ -3120,27 +5366,554 @@ export function initMouWordProcessor(config) {
         }
         if (leftMarginMask) leftMarginMask.style.width = `${state.marginLeftMm}mm`;
         if (rightMarginMask) rightMarginMask.style.width = `${state.marginRightMm}mm`;
+        if (leftMarginHandle) leftMarginHandle.style.left = `${state.marginLeftMm}mm`;
+        if (rightMarginHandle) rightMarginHandle.style.right = `${state.marginRightMm}mm`;
 
-        if (rulerTrack && rulerTrack.children.length <= 2) {
-            const maxCm = Math.ceil(dims.width / 10);
+        if (ticksContainer) {
+            ticksContainer.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            const totalWidthMm = Math.round(dims.width);
+            const maxCm = Math.floor(totalWidthMm / 10);
+
+            // 1. Millimeter ticks (every 1 mm)
+            for (let mm = 1; mm < totalWidthMm; mm++) {
+                if (mm % 10 === 0 || mm % 5 === 0) continue;
+                const mmTick = document.createElement('div');
+                mmTick.className = 'mou-ruler-mm';
+                mmTick.style.left = `${mm}mm`;
+                frag.appendChild(mmTick);
+            }
+
+            // 2. Half-centimeter ticks (every 5 mm)
+            for (let half = 5; half < totalWidthMm; half += 10) {
+                const halfTick = document.createElement('div');
+                halfTick.className = 'mou-ruler-half-cm';
+                halfTick.style.left = `${half}mm`;
+                frag.appendChild(halfTick);
+            }
+
+            // 3. Full centimeter ticks with bold number labels (every 10 mm)
             for (let cm = 0; cm <= maxCm; cm++) {
-                const tick = document.createElement('div');
-                tick.className = 'mou-ruler-cm';
-                tick.style.left = `${cm * 10}mm`;
+                const cmTick = document.createElement('div');
+                cmTick.className = 'mou-ruler-cm';
+                cmTick.style.left = `${cm * 10}mm`;
                 if (cm > 0 && cm < maxCm) {
                     const lbl = document.createElement('span');
                     lbl.textContent = String(cm);
-                    tick.appendChild(lbl);
+                    cmTick.appendChild(lbl);
                 }
-                rulerTrack.appendChild(tick);
+                frag.appendChild(cmTick);
+            }
 
-                if (cm < maxCm) {
-                    const halfTick = document.createElement('div');
-                    halfTick.className = 'mou-ruler-half-cm';
-                    halfTick.style.left = `${cm * 10 + 5}mm`;
-                    rulerTrack.appendChild(halfTick);
+            ticksContainer.appendChild(frag);
+        }
+
+        updateRulerMarkersFromEditor();
+        syncRulerToPageSheet();
+    }
+
+    /**
+     * Synchronize Ruler Indent Markers & Table Column Dividers with the active cursor selection.
+     */
+    function updateRulerMarkersFromEditor() {
+        const editor = getActiveEditor();
+        if (!editor) return;
+
+        const dims = getPaperDimensionsMm();
+        const firstLineEl = document.getElementById('mouRulerFirstLineIndent');
+        const hangingEl = document.getElementById('mouRulerHangingIndent');
+        const leftBoxEl = document.getElementById('mouRulerLeftIndentBox');
+        const rightIndentEl = document.getElementById('mouRulerRightIndent');
+        const tableColsLayer = document.getElementById('mouRulerTableColumnsLayer');
+
+        // Check active node attributes (paragraph, heading, or list)
+        const pAttrs = editor.getAttributes('paragraph') || {};
+        const hAttrs = editor.getAttributes('heading') || {};
+        const olAttrs = editor.getAttributes('orderedList') || {};
+        const blAttrs = editor.getAttributes('bulletList') || {};
+        const activeAttrs = editor.isActive('heading') ? hAttrs : pAttrs;
+
+        let paraMarginLeft = 0;
+        let paraTextIndent = 0;
+        let paraMarginRight = 0;
+
+        if (editor.isActive('listItem')) {
+            const listAttrs = editor.isActive('orderedList') ? olAttrs : blAttrs;
+            paraMarginLeft = parseMeasurementToMm(listAttrs.marginLeft);
+            paraTextIndent = 0;
+            paraMarginRight = 0;
+        } else {
+            paraMarginLeft = parseMeasurementToMm(activeAttrs.marginLeft);
+            paraTextIndent = parseMeasurementToMm(activeAttrs.textIndent);
+            paraMarginRight = parseMeasurementToMm(activeAttrs.marginRight);
+        }
+
+        // Calculate positions in mm from paper left edge
+        const baseLeftMm = state.marginLeftMm + paraMarginLeft;
+        const firstLineMm = Math.max(0, Math.min(dims.width, baseLeftMm + paraTextIndent));
+        const hangingMm = Math.max(0, Math.min(dims.width, baseLeftMm));
+        const rightMm = Math.max(0, Math.min(dims.width, dims.width - state.marginRightMm - paraMarginRight));
+
+        if (firstLineEl) firstLineEl.style.left = `${firstLineMm}mm`;
+        if (hangingEl) hangingEl.style.left = `${hangingMm}mm`;
+        if (leftBoxEl) leftBoxEl.style.left = `${hangingMm}mm`;
+        if (rightIndentEl) rightIndentEl.style.left = `${rightMm}mm`;
+
+        // If inside a table, display column boundary dividers on ruler
+        if (tableColsLayer) {
+            tableColsLayer.innerHTML = '';
+            const isInTable = editor.isActive('table');
+            if (isInTable) {
+                const domSel = window.getSelection();
+                if (domSel && domSel.anchorNode) {
+                    let cellEl = domSel.anchorNode;
+                    while (cellEl && !['TD', 'TH'].includes(cellEl.nodeName)) {
+                        cellEl = cellEl.parentElement;
+                    }
+                    if (cellEl) {
+                        const tableEl = cellEl.closest('table');
+                        if (tableEl) {
+                            const firstRow = tableEl.querySelector('tr');
+                            if (firstRow) {
+                                const cells = Array.from(firstRow.children);
+                                const tableRect = tableEl.getBoundingClientRect();
+                                const rulerTrack = document.getElementById('mouHorizontalRulerTrack');
+                                if (rulerTrack) {
+                                    const rulerRect = rulerTrack.getBoundingClientRect();
+                                    const pxPerMm = rulerRect.width / dims.width;
+                                    
+                                    // Table start in mm from paper left
+                                    const tableStartMm = (tableRect.left - rulerRect.left) / pxPerMm;
+                                    let accumWidthPx = 0;
+                                    
+                                    cells.forEach((c, idx) => {
+                                        accumWidthPx += c.getBoundingClientRect().width;
+                                        if (idx < cells.length - 1) {
+                                            const colBoundaryMm = tableStartMm + (accumWidthPx / pxPerMm);
+                                            const colMarker = document.createElement('div');
+                                            colMarker.className = 'mou-ruler-col-marker';
+                                            colMarker.style.left = `${colBoundaryMm}mm`;
+                                            colMarker.title = `Batas Kolom ${idx + 1} & ${idx + 2} (${(c.getBoundingClientRect().width / MM_TO_PX / 10).toFixed(2)} cm)`;
+                                            
+                                            const line = document.createElement('div');
+                                            line.className = 'col-line';
+                                            colMarker.appendChild(line);
+                                            
+                                            tableColsLayer.appendChild(colMarker);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Attach interactive drag handlers to Ruler margin handles, indent markers, and ruler track.
+     */
+    function attachInteractiveRulerEvents() {
+        const rulerTrack = document.getElementById('mouHorizontalRulerTrack');
+        const leftMarginHandle = document.getElementById('mouRulerLeftMarginHandle');
+        const rightMarginHandle = document.getElementById('mouRulerRightMarginHandle');
+        const leftMarginMask = document.getElementById('mouRulerLeftMargin');
+        const rightMarginMask = document.getElementById('mouRulerRightMargin');
+        const firstLineEl = document.getElementById('mouRulerFirstLineIndent');
+        const hangingEl = document.getElementById('mouRulerHangingIndent');
+        const leftBoxEl = document.getElementById('mouRulerLeftIndentBox');
+        const rightIndentEl = document.getElementById('mouRulerRightIndent');
+        if (!rulerTrack) return;
+
+        // Helper to get active scale
+        const getMetrics = () => {
+            const dims = getPaperDimensionsMm();
+            const rulerRect = rulerTrack.getBoundingClientRect();
+            const pxPerMm = rulerRect.width / dims.width;
+            return { dims, rulerRect, pxPerMm };
+        };
+
+        // 1. Drag Left Margin Handle
+        if (leftMarginHandle) {
+            leftMarginHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                leftMarginHandle.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                let currentNewMarginMm = state.marginLeftMm;
+
+                const onMouseMove = (moveEv) => {
+                    const currentX = moveEv.clientX - rulerRect.left;
+                    let newMargin = Math.max(5, Math.min(dims.width - state.marginRightMm - 20, currentX / pxPerMm));
+                    newMargin = Math.round(newMargin * 10) / 10;
+                    currentNewMarginMm = newMargin;
+
+                    if (leftMarginMask) leftMarginMask.style.width = `${newMargin}mm`;
+                    leftMarginHandle.style.left = `${newMargin}mm`;
+                    showRulerGuideline(newMargin, `Margin Kiri: ${(newMargin / 10).toFixed(2)} cm (${newMargin.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    leftMarginHandle.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    state.marginLeftMm = currentNewMarginMm;
+                    const inp = document.getElementById('layoutMarginLeft');
+                    if (inp) inp.value = String(currentNewMarginMm);
+                    applyPageLayoutToCanvas();
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 2. Drag Right Margin Handle
+        if (rightMarginHandle) {
+            rightMarginHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                rightMarginHandle.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                let currentNewMarginMm = state.marginRightMm;
+
+                const onMouseMove = (moveEv) => {
+                    const currentX = moveEv.clientX - rulerRect.left;
+                    let fromRightMm = dims.width - (currentX / pxPerMm);
+                    let newMargin = Math.max(5, Math.min(dims.width - state.marginLeftMm - 20, fromRightMm));
+                    newMargin = Math.round(newMargin * 10) / 10;
+                    currentNewMarginMm = newMargin;
+
+                    if (rightMarginMask) rightMarginMask.style.width = `${newMargin}mm`;
+                    rightMarginHandle.style.right = `${newMargin}mm`;
+                    const posFromLeftMm = dims.width - newMargin;
+                    showRulerGuideline(posFromLeftMm, `Margin Kanan: ${(newMargin / 10).toFixed(2)} cm (${newMargin.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    rightMarginHandle.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    state.marginRightMm = currentNewMarginMm;
+                    const inp = document.getElementById('layoutMarginRight');
+                    if (inp) inp.value = String(currentNewMarginMm);
+                    applyPageLayoutToCanvas();
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 3. Drag First Line Indent (Top Downward Triangle ▼)
+        if (firstLineEl) {
+            firstLineEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                firstLineEl.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                const editor = getActiveEditor();
+                const pAttrs = editor ? (editor.getAttributes('paragraph') || editor.getAttributes('heading') || {}) : {};
+                const paraMarginLeft = parseMeasurementToMm(pAttrs.marginLeft);
+                const baseLeftMm = state.marginLeftMm + paraMarginLeft;
+                let finalIndentMm = parseMeasurementToMm(pAttrs.textIndent);
+
+                const onMouseMove = (moveEv) => {
+                    const currentX = moveEv.clientX - rulerRect.left;
+                    const targetMm = Math.max(0, Math.min(dims.width, currentX / pxPerMm));
+                    const deltaFromParaLeftMm = targetMm - baseLeftMm;
+                    finalIndentMm = Math.round(deltaFromParaLeftMm * 10) / 10;
+
+                    firstLineEl.style.left = `${targetMm}mm`;
+                    showRulerGuideline(targetMm, `Indentasi Baris Pertama: ${(finalIndentMm / 10).toFixed(2)} cm (${finalIndentMm > 0 ? '+' : ''}${finalIndentMm.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    firstLineEl.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    if (editor) {
+                        const tr = editor.state.tr;
+                        const { from, to } = editor.state.selection;
+                        let modified = false;
+                        editor.state.doc.nodesBetween(from, to, (node, pos) => {
+                            if (node.isTextblock) {
+                                tr.setNodeMarkup(pos, undefined, {
+                                    ...node.attrs,
+                                    textIndent: finalIndentMm !== 0 ? `${finalIndentMm}mm` : null
+                                });
+                                modified = true;
+                            }
+                        });
+                        if (modified) {
+                            editor.view.dispatch(tr);
+                        } else {
+                            editor.chain().focus().updateAttributes('paragraph', {
+                                textIndent: finalIndentMm !== 0 ? `${finalIndentMm}mm` : null
+                            }).run();
+                        }
+                        const indInput = document.getElementById('layoutFirstLineIndent');
+                        if (indInput) indInput.value = String(Math.max(0, Math.round(finalIndentMm)));
+                    }
+                    updateRulerMarkersFromEditor();
+                    scheduleSyncAndPagination();
+                    scheduleReflow(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 4. Drag Left Indent Box (Bottom Rectangle ▄ - Moves Both First Line & Left Indent)
+        if (leftBoxEl) {
+            leftBoxEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                leftBoxEl.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                const editor = getActiveEditor();
+                const pAttrs = editor ? (editor.getAttributes('paragraph') || editor.getAttributes('heading') || {}) : {};
+                const olAttrs = editor ? (editor.getAttributes('orderedList') || {}) : {};
+                const blAttrs = editor ? (editor.getAttributes('bulletList') || {}) : {};
+                const isList = editor && editor.isActive('listItem');
+                const startParaMarginLeft = isList ? parseMeasurementToMm((editor.isActive('orderedList') ? olAttrs : blAttrs).marginLeft) : parseMeasurementToMm(pAttrs.marginLeft);
+                const startParaTextIndent = parseMeasurementToMm(pAttrs.textIndent);
+                const startClientX = e.clientX;
+                let finalMarginLeftMm = startParaMarginLeft;
+
+                const onMouseMove = (moveEv) => {
+                    const deltaMm = (moveEv.clientX - startClientX) / pxPerMm;
+                    let newParaMarginLeft = Math.max(0, Math.min(dims.width - state.marginLeftMm - state.marginRightMm - 20, startParaMarginLeft + deltaMm));
+                    newParaMarginLeft = Math.round(newParaMarginLeft * 10) / 10;
+                    finalMarginLeftMm = newParaMarginLeft;
+
+                    const totalPosMm = state.marginLeftMm + newParaMarginLeft;
+                    leftBoxEl.style.left = `${totalPosMm}mm`;
+                    if (hangingEl) hangingEl.style.left = `${totalPosMm}mm`;
+                    if (firstLineEl) firstLineEl.style.left = `${totalPosMm + startParaTextIndent}mm`;
+
+                    showRulerGuideline(totalPosMm, `Indentasi Kiri: ${(newParaMarginLeft / 10).toFixed(2)} cm (${newParaMarginLeft.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    leftBoxEl.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    if (editor) {
+                        if (editor.isActive('listItem')) {
+                            const listType = editor.isActive('orderedList') ? 'orderedList' : 'bulletList';
+                            editor.chain().focus().updateAttributes(listType, {
+                                marginLeft: finalMarginLeftMm > 0 ? `${finalMarginLeftMm}mm` : null
+                            }).run();
+                        } else {
+                            const tr = editor.state.tr;
+                            const { from, to } = editor.state.selection;
+                            let modified = false;
+                            editor.state.doc.nodesBetween(from, to, (node, pos) => {
+                                if (node.isTextblock) {
+                                    tr.setNodeMarkup(pos, undefined, {
+                                        ...node.attrs,
+                                        marginLeft: finalMarginLeftMm > 0 ? `${finalMarginLeftMm}mm` : null
+                                    });
+                                    modified = true;
+                                }
+                            });
+                            if (modified) {
+                                editor.view.dispatch(tr);
+                            } else {
+                                editor.chain().focus().updateAttributes('paragraph', {
+                                    marginLeft: finalMarginLeftMm > 0 ? `${finalMarginLeftMm}mm` : null
+                                }).run();
+                            }
+                        }
+                    }
+                    updateRulerMarkersFromEditor();
+                    scheduleSyncAndPagination();
+                    scheduleReflow(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 5. Drag Hanging Indent Marker (Middle Upward Triangle ▲)
+        if (hangingEl) {
+            hangingEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                hangingEl.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                const editor = getActiveEditor();
+                const pAttrs = editor ? (editor.getAttributes('paragraph') || editor.getAttributes('heading') || {}) : {};
+                const startParaMarginLeft = parseMeasurementToMm(pAttrs.marginLeft);
+                const startParaTextIndent = parseMeasurementToMm(pAttrs.textIndent);
+                const initialFirstLinePosMm = state.marginLeftMm + startParaMarginLeft + startParaTextIndent;
+                const startClientX = e.clientX;
+                let finalMarginLeftMm = startParaMarginLeft;
+                let finalTextIndentMm = startParaTextIndent;
+
+                const onMouseMove = (moveEv) => {
+                    const deltaMm = (moveEv.clientX - startClientX) / pxPerMm;
+                    let newParaMarginLeft = Math.max(0, Math.min(dims.width - state.marginLeftMm - state.marginRightMm - 20, startParaMarginLeft + deltaMm));
+                    newParaMarginLeft = Math.round(newParaMarginLeft * 10) / 10;
+                    finalMarginLeftMm = newParaMarginLeft;
+                    finalTextIndentMm = Math.round((initialFirstLinePosMm - (state.marginLeftMm + newParaMarginLeft)) * 10) / 10;
+
+                    const totalPosMm = state.marginLeftMm + newParaMarginLeft;
+                    hangingEl.style.left = `${totalPosMm}mm`;
+                    if (leftBoxEl) leftBoxEl.style.left = `${totalPosMm}mm`;
+
+                    showRulerGuideline(totalPosMm, `Indentasi Menggantung: ${(newParaMarginLeft / 10).toFixed(2)} cm (${newParaMarginLeft.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    hangingEl.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    if (editor) {
+                        const tr = editor.state.tr;
+                        const { from, to } = editor.state.selection;
+                        let modified = false;
+                        editor.state.doc.nodesBetween(from, to, (node, pos) => {
+                            if (node.isTextblock) {
+                                tr.setNodeMarkup(pos, undefined, {
+                                    ...node.attrs,
+                                    marginLeft: finalMarginLeftMm > 0 ? `${finalMarginLeftMm}mm` : null,
+                                    textIndent: finalTextIndentMm !== 0 ? `${finalTextIndentMm}mm` : null
+                                });
+                                modified = true;
+                            }
+                        });
+                        if (modified) {
+                            editor.view.dispatch(tr);
+                        } else {
+                            editor.chain().focus().updateAttributes('paragraph', {
+                                marginLeft: finalMarginLeftMm > 0 ? `${finalMarginLeftMm}mm` : null,
+                                textIndent: finalTextIndentMm !== 0 ? `${finalTextIndentMm}mm` : null
+                            }).run();
+                        }
+                    }
+                    updateRulerMarkersFromEditor();
+                    scheduleSyncAndPagination();
+                    scheduleReflow(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 6. Drag Right Indent Marker (Bottom Upward Triangle ▲ on Right)
+        if (rightIndentEl) {
+            rightIndentEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                rightIndentEl.classList.add('is-dragging');
+                const { dims, rulerRect, pxPerMm } = getMetrics();
+                const editor = getActiveEditor();
+                const pAttrs = editor ? (editor.getAttributes('paragraph') || editor.getAttributes('heading') || {}) : {};
+                const startParaMarginRight = parseMeasurementToMm(pAttrs.marginRight);
+                const startClientX = e.clientX;
+                let finalMarginRightMm = startParaMarginRight;
+
+                const onMouseMove = (moveEv) => {
+                    const deltaMm = (startClientX - moveEv.clientX) / pxPerMm;
+                    let newParaMarginRight = Math.max(0, Math.min(dims.width - state.marginLeftMm - state.marginRightMm - 20, startParaMarginRight + deltaMm));
+                    newParaMarginRight = Math.round(newParaMarginRight * 10) / 10;
+                    finalMarginRightMm = newParaMarginRight;
+
+                    const totalPosFromLeftMm = dims.width - state.marginRightMm - newParaMarginRight;
+                    rightIndentEl.style.left = `${totalPosFromLeftMm}mm`;
+
+                    showRulerGuideline(totalPosFromLeftMm, `Indentasi Kanan: ${(newParaMarginRight / 10).toFixed(2)} cm (${newParaMarginRight.toFixed(1)} mm)`);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    rightIndentEl.classList.remove('is-dragging');
+                    hideRulerGuideline();
+
+                    if (editor) {
+                        const tr = editor.state.tr;
+                        const { from, to } = editor.state.selection;
+                        let modified = false;
+                        editor.state.doc.nodesBetween(from, to, (node, pos) => {
+                            if (node.isTextblock) {
+                                tr.setNodeMarkup(pos, undefined, {
+                                    ...node.attrs,
+                                    marginRight: finalMarginRightMm > 0 ? `${finalMarginRightMm}mm` : null
+                                });
+                                modified = true;
+                            }
+                        });
+                        if (modified) {
+                            editor.view.dispatch(tr);
+                        } else {
+                            editor.chain().focus().updateAttributes('paragraph', {
+                                marginRight: finalMarginRightMm > 0 ? `${finalMarginRightMm}mm` : null
+                            }).run();
+                        }
+                    }
+                    updateRulerMarkersFromEditor();
+                    scheduleSyncAndPagination();
+                    scheduleReflow(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 7. Click & Drag on Ruler Bar (Precision Digital Alignment Caliper)
+        rulerTrack.addEventListener('mousedown', (e) => {
+            // Ignore if clicked on a marker or handle
+            if (e.target.closest('.mou-ruler-marker') || e.target.closest('.mou-ruler-margin-handle') || e.target.closest('.mou-ruler-col-marker')) {
+                return;
+            }
+            e.preventDefault();
+            const { dims, rulerRect, pxPerMm } = getMetrics();
+
+            const updateAlignment = (clientEv) => {
+                const currentX = clientEv.clientX - rulerRect.left;
+                const posMm = Math.max(0, Math.min(dims.width, currentX / pxPerMm));
+                const distFromMarginMm = posMm - state.marginLeftMm;
+                const distStr = distFromMarginMm >= 0
+                    ? `+${(distFromMarginMm / 10).toFixed(2)} cm dari margin kiri`
+                    : `${(distFromMarginMm / 10).toFixed(2)} cm di area margin`;
+                showRulerGuideline(posMm, `Penyelarasan: ${distStr} (${(posMm / 10).toFixed(2)} cm / ${posMm.toFixed(1)} mm)`);
+            };
+
+            updateAlignment(e);
+
+            const onMouseMove = (moveEv) => updateAlignment(moveEv);
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+                hideRulerGuideline();
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+
+        // 8. Synchronize Horizontal Ruler with Document Viewport Scroll & Page Position
+        const workspaceViewport = document.getElementById('mouEditorWorkspaceView');
+        if (workspaceViewport && rulerTrack) {
+            workspaceViewport.addEventListener('scroll', syncRulerToPageSheet, { passive: true });
         }
     }
 
@@ -3183,7 +5956,10 @@ export function initMouWordProcessor(config) {
                 pageDom.insertBefore(watermarkEl, pageDom.firstChild);
             }
 
-            watermarkEl.innerHTML = renderWatermarkLayerHtml(state, isFirstPage);
+            const targetWm = renderWatermarkLayerHtml(state, isFirstPage);
+            if (watermarkEl.innerHTML !== targetWm) {
+                watermarkEl.innerHTML = targetWm;
+            }
 
             const headerHtml = (state.differentFirstPage && isFirstPage)
                 ? (state.firstPageHeaderHtmlStore || '')
@@ -3194,14 +5970,33 @@ export function initMouWordProcessor(config) {
 
             const headerEl = pageDom.querySelector('.mou-a4-page-header');
             const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
-            if (headerEl && (!headerWrapper || !headerEl.contains(headerWrapper))) {
-                headerEl.innerHTML = headerHtml || `
-                    <div class="mou-header-empty-indicator text-slate-300 italic text-[10px] py-0.5 select-none text-center border-b border-dashed border-slate-200">
-                        (Header Kosong &bull; Klik Ganda untuk Mengisi)
-                    </div>
-                `;
+
+            const isMou = (state.documentType === 'mou');
+            const showLogos = isMou && isFirstPage && (state.showHeaderLogos !== false);
+            const requiredHeaderHeightMm = showLogos ? 28.0 : 14.0;
+
+            if (headerEl) {
+                headerEl.style.minHeight = `${requiredHeaderHeightMm}mm`;
+                headerEl.style.maxHeight = '35mm';
                 const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
                 headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
+
+                if (!headerWrapper || !headerEl.contains(headerWrapper)) {
+                    if (isMou && showLogos) {
+                        if (headerEl.innerHTML !== (headerHtml || '')) {
+                            headerEl.innerHTML = headerHtml || '';
+                        }
+                    } else {
+                        const targetHeader = headerHtml || `
+                            <div class="mou-header-empty-indicator text-slate-300 italic text-[10px] py-0.5 select-none text-center border-b border-dashed border-slate-200">
+                                (Header Kosong &bull; Klik Ganda untuk Mengisi)
+                            </div>
+                        `;
+                        if (headerEl.innerHTML !== targetHeader) {
+                            headerEl.innerHTML = targetHeader;
+                        }
+                    }
+                }
             }
 
             const footerEl = pageDom.querySelector('.mou-a4-page-footer');
@@ -3210,7 +6005,7 @@ export function initMouWordProcessor(config) {
                 const pageNumberHtml = state.showPageNumber
                     ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">Halaman ${pageNum} dari ${totalPages}</div>`
                     : '';
-                footerEl.innerHTML = `
+                const targetFooter = `
                     <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
                         <div class="mou-footer-paraf-area flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'}">
                             ${footerHtml}
@@ -3218,6 +6013,9 @@ export function initMouWordProcessor(config) {
                         ${pageNumberHtml}
                     </div>
                 `;
+                if (footerEl.innerHTML !== targetFooter) {
+                    footerEl.innerHTML = targetFooter;
+                }
                 const bodyBtmGapMm = Math.max(2, state.marginBottomMm - state.footerDistanceMm);
                 footerEl.style.marginTop = `${bodyBtmGapMm}mm`;
             }
@@ -3230,6 +6028,14 @@ export function initMouWordProcessor(config) {
                     contentDom.classList.remove('mou-zone-dimmed');
                 }
             }
+
+            pageDom.querySelectorAll('.mou-header-logos-interactive-stage').forEach(stage => {
+                if (state.activeZone === 'header') {
+                    stage.classList.add('is-header-active');
+                } else {
+                    stage.classList.remove('is-header-active');
+                }
+            });
         });
     }
 
@@ -3238,15 +6044,21 @@ export function initMouWordProcessor(config) {
      */
     let reflowTimer = null;
     let reflowPassCount = 0;
+    const MAX_REFLOW_PASSES = 150; // Allow seamless pagination for documents up to 100+ pages
+    let lastSplitAction = null;
+    let oscillationCounter = 0;
 
     function scheduleReflow(immediate = false) {
         if (reflowTimer) clearTimeout(reflowTimer);
-        const delay = immediate ? 0 : 25;
+        const delay = immediate ? 0 : 50; // Fast 50ms cascade for multi-page imports and responsive typing
         reflowTimer = setTimeout(() => {
             requestAnimationFrame(() => {
                 if (!bodyEditor || bodyEditor.isDestroyed) return;
-                if (reflowPassCount > 6) {
+                if (reflowPassCount > MAX_REFLOW_PASSES) {
+                    console.warn('[WordProcessor] Reached max reflow passes limit (150), stopping cascade.');
                     reflowPassCount = 0;
+                    oscillationCounter = 0;
+                    lastSplitAction = null;
                     return;
                 }
                 reflowPassCount++;
@@ -3276,8 +6088,17 @@ export function initMouWordProcessor(config) {
             return;
         }
 
-        // STEP 0: Clean up any trailing blank pages immediately
+        // STEP 0: Clean up any trailing blank pages immediately (never delete the page where user's cursor is currently located!)
+        let activePageIdx = -1;
+        try {
+            activePageIdx = edState.selection.$from.index(0);
+        } catch (_) {}
+
         for (let pIdx = pageCount - 1; pIdx > 0; pIdx--) {
+            if (pIdx === activePageIdx) {
+                // User is actively focused/typing in this page (e.g. just pressed Enter to spawn a new page)
+                continue;
+            }
             const pNode = doc.child(pIdx);
             const isEmptyPage = pNode.childCount === 0 ||
                 (pNode.childCount === 1 && pNode.child(0).type.name === 'paragraph' && pNode.child(0).textContent.trim() === '');
@@ -3316,7 +6137,7 @@ export function initMouWordProcessor(config) {
             const usableHeight = paperHeightPx
                 - (Math.min(state.headerDistanceMm, state.marginTopMm) * MM_TO_PX)
                 - (Math.min(state.footerDistanceMm, state.marginBottomMm) * MM_TO_PX)
-                - headerH - footerH - bodyTopGapPx - bodyBtmGapPx - 8;
+                - headerH - footerH - bodyTopGapPx - bodyBtmGapPx - 14;
 
             const children = contentDom.children;
             const contentDomRect = contentDom.getBoundingClientRect();
@@ -3338,39 +6159,19 @@ export function initMouWordProcessor(config) {
                 const scale = (state.zoomPercent || 100) / 100;
                 const childBottom = (childRect.bottom - contentDomRect.top) / scale;
 
-                // 12px tolerance buffer so minor padding/cursor adjustments never cause spurious page breaks
-                if (childBottom > usableHeight + 12) {
-                    const tableEl = childEl.querySelector('table') || (childEl.tagName === 'TABLE' ? childEl : null);
-                    if (tableEl) {
-                        const trs = Array.from(tableEl.querySelectorAll('tr'));
-                        if (trs.length > 1) {
-                            let splitRow = -1;
-                            for (let r = 0; r < trs.length; r++) {
-                                const rRect = trs[r].getBoundingClientRect();
-                                const rBottom = (rRect.bottom - contentDomRect.top) / scale;
-                                if (rBottom > usableHeight + 12) {
-                                    splitRow = r;
-                                    break;
-                                }
-                            }
-                            if (splitRow > 0) {
-                                splitAction = {
-                                    type: 'split_table',
-                                    pageIndex: pIdx,
-                                    nodeIndex: cIdx,
-                                    splitRowIndex: splitRow
-                                };
-                                needsReflow = true;
-                                break;
-                            }
-                        }
-                    }
+                // Strict 4px tolerance buffer so content never collides with or overlaps into the footer paraf table
+                if (childBottom > usableHeight + 4) {
                     overflowingIndex = cIdx;
                     break;
                 }
             }
 
             if (overflowingIndex !== -1 && overflowingIndex < pageNode.childCount) {
+                // If a single node on this page exceeds usable height, keep it intact to avoid infinite split loops
+                if (overflowingIndex === 0 && pageNode.childCount === 1) {
+                    continue;
+                }
+
                 let finalSplitIndex = overflowingIndex;
                 function isHeadingNode(n) {
                     if (!n) return false;
@@ -3383,20 +6184,16 @@ export function initMouWordProcessor(config) {
                     return false;
                 }
 
-                while (finalSplitIndex > 0 && isHeadingNode(pageNode.child(finalSplitIndex - 1))) {
+                // If moving a block leaves its preceding heading orphaned at the bottom, pull it over,
+                // but NEVER pull index 0 (which would leave the current page empty).
+                while (finalSplitIndex > 1 && isHeadingNode(pageNode.child(finalSplitIndex - 1))) {
                     finalSplitIndex--;
                 }
 
-                // If remaining nodes on the last page are merely empty paragraphs, do not spawn a new blank page!
-                let hasRealContent = false;
-                for (let c = finalSplitIndex; c < pageNode.childCount; c++) {
-                    const node = pageNode.child(c);
-                    if (node.type.name !== 'paragraph' || node.textContent.trim() !== '' || node.attrs?.isPageBreak) {
-                        hasRealContent = true;
-                        break;
-                    }
+                if (finalSplitIndex < 1) {
+                    finalSplitIndex = Math.max(1, overflowingIndex);
                 }
-                if (!hasRealContent && pIdx === pageCount - 1) {
+                if (finalSplitIndex >= pageNode.childCount) {
                     continue;
                 }
 
@@ -3444,8 +6241,34 @@ export function initMouWordProcessor(config) {
         }
 
         if (needsReflow && splitAction) {
+            // Ping-pong oscillation prevention: if underflow immediately reverses an overflow on the exact same page
+            if (lastSplitAction &&
+                lastSplitAction.type === 'overflow' &&
+                splitAction.type === 'underflow' &&
+                lastSplitAction.pageIndex === splitAction.toPageIndex) {
+                oscillationCounter++;
+                if (oscillationCounter >= 2) {
+                    console.warn('[WordProcessor] Page oscillation prevented between pages', splitAction.toPageIndex, 'and', splitAction.fromPageIndex);
+                    needsReflow = false;
+                    splitAction = null;
+                    reflowPassCount = 0;
+                    oscillationCounter = 0;
+                    lastSplitAction = null;
+                    updateDocumentMetrics();
+                    refreshAllPageViews();
+                    return;
+                }
+            } else {
+                oscillationCounter = 0;
+            }
+
+            lastSplitAction = splitAction;
             executeReflowTransaction(editor, splitAction);
         } else {
+            // Document reached stable multi-page layout
+            reflowPassCount = 0;
+            oscillationCounter = 0;
+            lastSplitAction = null;
             updateDocumentMetrics();
             refreshAllPageViews();
         }
@@ -3456,63 +6279,23 @@ export function initMouWordProcessor(config) {
         const doc = edState.doc;
         const tr = edState.tr;
 
-        if (action.type === 'split_table') {
-            const { pageIndex, nodeIndex, splitRowIndex } = action;
-            const pageNode = doc.child(pageIndex);
-            if (nodeIndex >= pageNode.childCount) return;
-            const tableNode = pageNode.child(nodeIndex);
-            if (!tableNode || tableNode.type.name !== 'table' || splitRowIndex <= 0 || splitRowIndex >= tableNode.childCount) return;
+        // Preserve viewport scroll position strictly so editor position never jumps
+        const scrollContainer = document.getElementById('mouEditorWorkspaceView');
+        const prevScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+        const prevScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+        const prevWinY = window.scrollY;
+        const prevWinX = window.scrollX;
+        const currentSel = edState.selection;
 
-            const table1Rows = [];
-            const table2Rows = [];
-            for (let r = 0; r < tableNode.childCount; r++) {
-                if (r < splitRowIndex) table1Rows.push(tableNode.child(r));
-                else table2Rows.push(tableNode.child(r));
+        const restoreScrollState = () => {
+            if (scrollContainer && Math.abs(scrollContainer.scrollTop - prevScrollTop) > 2) {
+                scrollContainer.scrollTop = prevScrollTop;
+                scrollContainer.scrollLeft = prevScrollLeft;
             }
-            if (table1Rows.length === 0 || table2Rows.length === 0) return;
-
-            const table1Node = edState.schema.nodes.table.create(tableNode.attrs, table1Rows);
-            const table2Node = edState.schema.nodes.table.create(tableNode.attrs, table2Rows);
-
-            let pagePos = 0;
-            for (let i = 0; i < pageIndex; i++) pagePos += doc.child(i).nodeSize;
-            let nodeOffset = 0;
-            for (let c = 0; c < nodeIndex; c++) nodeOffset += pageNode.child(c).nodeSize;
-
-            const tableStartPos = pagePos + 1 + nodeOffset;
-            const tableEndPos = tableStartPos + tableNode.nodeSize;
-
-            const followingNodes = [];
-            for (let c = nodeIndex + 1; c < pageNode.childCount; c++) {
-                followingNodes.push(pageNode.child(c));
+            if (Math.abs(window.scrollY - prevWinY) > 2) {
+                window.scrollTo(prevWinX, prevWinY);
             }
-
-            const pageEndPos = pagePos + 1 + pageNode.content.size;
-            tr.delete(tableStartPos, pageEndPos);
-            tr.insert(tableStartPos, table1Node);
-
-            const nodesToMove = [table2Node, ...followingNodes];
-
-            if (pageIndex + 1 < doc.childCount) {
-                let nextPagePos = 0;
-                for (let i = 0; i < pageIndex + 1; i++) nextPagePos += doc.child(i).nodeSize;
-                const mappedNextPageStart = tr.mapping.map(nextPagePos + 1);
-                tr.insert(mappedNextPageStart, nodesToMove);
-            } else {
-                const newPageNode = edState.schema.nodes.mouPage.create(
-                    { pageNumber: pageIndex + 2 },
-                    nodesToMove
-                );
-                const mappedInsertPos = tr.mapping.map(pagePos + pageNode.nodeSize);
-                tr.insert(mappedInsertPos, newPageNode);
-            }
-
-            tr.setMeta('addToHistory', false);
-            tr.setMeta(reflowPluginKey, true);
-            view.dispatch(tr);
-            scheduleReflow(false);
-            return;
-        }
+        };
 
         if (action.type === 'overflow') {
             const { pageIndex, splitIndex } = action;
@@ -3540,12 +6323,6 @@ export function initMouWordProcessor(config) {
             }
             if (nodesToMove.length === 0) return;
 
-            // Never spawn a new blank page if nodes to move are only empty paragraphs
-            if (pageIndex + 1 >= doc.childCount) {
-                const hasSubstance = nodesToMove.some(n => n.type.name !== 'paragraph' || n.textContent.trim() !== '');
-                if (!hasSubstance) return;
-            }
-
             if (pageIndex + 1 < doc.childCount) {
                 tr.delete(fromPos, toPos);
 
@@ -3567,10 +6344,26 @@ export function initMouWordProcessor(config) {
                 tr.insert(mappedInsertPos, newPageNode);
             }
 
+            if (currentSel) {
+                try {
+                    tr.setSelection(currentSel.map(tr.doc, tr.mapping));
+                } catch (e) {}
+            }
+
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
-            view.dispatch(tr);
-            scheduleReflow(false);
+            try {
+                view.dispatch(tr);
+            } catch (dispatchErr) {
+                console.error('[WordProcessor] Reflow dispatch error:', dispatchErr);
+            }
+
+            restoreScrollState();
+            requestAnimationFrame(restoreScrollState);
+            setTimeout(restoreScrollState, 20);
+            setTimeout(restoreScrollState, 60);
+
+            scheduleReflow(true);
         } else if (action.type === 'underflow') {
             const { fromPageIndex, toPageIndex } = action;
             const fromPageNode = doc.child(fromPageIndex);
@@ -3603,9 +6396,21 @@ export function initMouWordProcessor(config) {
                 tr.delete(mappedFromPagePos, mappedFromPagePos + 2);
             }
 
+            if (currentSel) {
+                try {
+                    tr.setSelection(currentSel.map(tr.doc, tr.mapping));
+                } catch (e) {}
+            }
+
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
             view.dispatch(tr);
+
+            restoreScrollState();
+            requestAnimationFrame(restoreScrollState);
+            setTimeout(restoreScrollState, 20);
+            setTimeout(restoreScrollState, 60);
+
             scheduleReflow(false);
         } else if (action.type === 'remove_empty_page') {
             const { pageIndex } = action;
@@ -3618,9 +6423,22 @@ export function initMouWordProcessor(config) {
             const pageEnd = pagePos + doc.child(pageIndex).nodeSize;
 
             tr.delete(pagePos, pageEnd);
+
+            if (currentSel) {
+                try {
+                    tr.setSelection(currentSel.map(tr.doc, tr.mapping));
+                } catch (e) {}
+            }
+
             tr.setMeta('addToHistory', false);
             tr.setMeta(reflowPluginKey, true);
             view.dispatch(tr);
+
+            restoreScrollState();
+            requestAnimationFrame(restoreScrollState);
+            setTimeout(restoreScrollState, 20);
+            setTimeout(restoreScrollState, 60);
+
             scheduleReflow(false);
         }
     }
@@ -3670,16 +6488,219 @@ export function initMouWordProcessor(config) {
             btn.classList.toggle('mou-ribbon-btn-active', editor.isActive(mark));
         });
 
+        // 2. Alignment Buttons (Left, Center, Right, Justify) with full block/cell fallback
+        let currentAlign = null;
+        if (editor.isActive({ textAlign: 'center' })) currentAlign = 'center';
+        else if (editor.isActive({ textAlign: 'right' })) currentAlign = 'right';
+        else if (editor.isActive({ textAlign: 'justify' })) currentAlign = 'justify';
+        else if (editor.isActive({ textAlign: 'left' })) currentAlign = 'left';
+
+        if (!currentAlign) {
+            try {
+                const { $from } = editor.state.selection;
+                for (let d = $from.depth; d > 0; d--) {
+                    const n = $from.node(d);
+                    if (n.attrs && n.attrs.textAlign) {
+                        currentAlign = n.attrs.textAlign;
+                        break;
+                    }
+                }
+            } catch (_) {}
+        }
+        if (!currentAlign) currentAlign = 'left';
+
         document.querySelectorAll('[data-tiptap-align]').forEach(btn => {
             const align = btn.getAttribute('data-tiptap-align');
-            btn.classList.toggle('mou-ribbon-btn-active', editor.isActive({ textAlign: align }));
+            btn.classList.toggle('mou-ribbon-btn-active', align === currentAlign);
         });
+
+        // 3. Undo / Redo ribbon button states
+        const undoBtn = document.getElementById('btnRibbonUndo');
+        if (undoBtn) {
+            const canEdUndo = typeof editor.can === 'function' && editor.can().undo();
+            const canAssetUndo = assetHistoryIndex > 0;
+            const canUndo = canEdUndo || canAssetUndo;
+            undoBtn.classList.toggle('opacity-40', !canUndo);
+            undoBtn.classList.toggle('cursor-not-allowed', !canUndo);
+        }
+        const redoBtn = document.getElementById('btnRibbonRedo');
+        if (redoBtn) {
+            const canEdRedo = typeof editor.can === 'function' && editor.can().redo();
+            const canAssetRedo = assetHistoryIndex < assetHistory.length - 1;
+            const canRedo = canEdRedo || canAssetRedo;
+            redoBtn.classList.toggle('opacity-40', !canRedo);
+            redoBtn.classList.toggle('cursor-not-allowed', !canRedo);
+        }
 
         const bulletBtn = document.getElementById('btnToggleBulletList');
         if (bulletBtn) bulletBtn.classList.toggle('mou-ribbon-btn-active', editor.isActive('bulletList'));
 
         const orderedBtn = document.getElementById('btnToggleOrderedList');
         if (orderedBtn) orderedBtn.classList.toggle('mou-ribbon-btn-active', editor.isActive('orderedList'));
+
+        // Synchronize Active Ordered List Numbering Style Dropdown & Split Button Label
+        let currentOrderedListType = '1';
+        if (editor.isActive('orderedList')) {
+            try {
+                const { $from } = editor.state.selection;
+                for (let d = $from.depth; d > 0; d--) {
+                    const n = $from.node(d);
+                    if (n.type.name === 'orderedList') {
+                        currentOrderedListType = n.attrs.listType || '1';
+                        break;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        const orderedListSelect = document.getElementById('ribbonOrderedListStyle');
+        if (orderedListSelect && document.activeElement !== orderedListSelect) {
+            orderedListSelect.value = currentOrderedListType;
+        }
+
+        const activeListLabel = document.getElementById('ribbonOrderedListActiveLabel');
+        if (activeListLabel) {
+            const labelMap = {
+                '1': '1. Nomor',
+                'a': 'a. Nomor',
+                'A': 'A. Nomor',
+                'i': 'i. Nomor',
+                'I': 'I. Nomor',
+            };
+            activeListLabel.textContent = editor.isActive('orderedList') ? (labelMap[currentOrderedListType] || '1. Nomor') : '1. Nomor';
+        }
+
+        // Highlight active format in custom dropdown menu
+        document.querySelectorAll('#orderedListStyleDropdown button[data-list-type]').forEach(btn => {
+            const isCur = editor.isActive('orderedList') && btn.getAttribute('data-list-type') === currentOrderedListType;
+            btn.classList.toggle('bg-blue-50', isCur);
+            btn.classList.toggle('text-blue-700', isCur);
+            btn.classList.toggle('font-semibold', isCur);
+        });
+
+        // Reflect Active Font Family, Size & Heading in Home Ribbon
+        const fontSelect = document.getElementById('ribbonFontFamily');
+        if (fontSelect && document.activeElement !== fontSelect) {
+            let ff = editor.getAttributes('textStyle')?.fontFamily;
+            if (!ff) {
+                try {
+                    const { $from } = editor.state.selection;
+                    for (let d = $from.depth; d > 0; d--) {
+                        const n = $from.node(d);
+                        if (n.attrs && n.attrs.fontFamily) { ff = n.attrs.fontFamily; break; }
+                    }
+                } catch (_) {}
+            }
+            if (!ff) ff = state.fontFamily || 'Times New Roman';
+            fontSelect.value = ff;
+        }
+        const fsSelect = document.getElementById('ribbonFontSize');
+        if (fsSelect && document.activeElement !== fsSelect) {
+            let fs = editor.getAttributes('textStyle')?.fontSize;
+            if (!fs) {
+                try {
+                    const { $from } = editor.state.selection;
+                    for (let d = $from.depth; d > 0; d--) {
+                        const n = $from.node(d);
+                        if (n.attrs && n.attrs.fontSize) { fs = n.attrs.fontSize; break; }
+                    }
+                } catch (_) {}
+            }
+            if (fs) {
+                const cleanFs = String(fs).replace('pt', '').trim();
+                fsSelect.value = cleanFs;
+            } else {
+                fsSelect.value = String(state.fontSize || 12);
+            }
+        }
+        const headingSelect = document.getElementById('ribbonHeadingStyle');
+        if (headingSelect && document.activeElement !== headingSelect) {
+            if (editor.isActive('heading', { level: 1 })) headingSelect.value = 'h1';
+            else if (editor.isActive('heading', { level: 2 })) headingSelect.value = 'h2';
+            else if (editor.isActive('heading', { level: 3 })) headingSelect.value = 'h3';
+            else if (editor.isActive('heading', { level: 4 })) headingSelect.value = 'h4';
+            else headingSelect.value = 'p';
+        }
+
+        // Reflect Active Line Height in Home Ribbon
+        let activeLh = null;
+        try {
+            const { $from } = editor.state.selection;
+            for (let d = $from.depth; d > 0; d--) {
+                const n = $from.node(d);
+                if (n.isTextblock) {
+                    if (n.attrs && n.attrs.lineHeight) {
+                        activeLh = n.attrs.lineHeight;
+                    }
+                    break;
+                }
+            }
+        } catch (_) {}
+
+        if (!activeLh) {
+            try {
+                const domNode = editor.view?.domAtPos(editor.state.selection.from)?.node;
+                const el = domNode?.nodeType === 1 ? domNode : domNode?.parentElement;
+                const blockEl = el?.closest('p, h1, h2, h3, h4, li');
+                if (blockEl) {
+                    const styleLh = blockEl.style.lineHeight || extractStyleProperty(blockEl.getAttribute('style'), 'line-height');
+                    if (styleLh) activeLh = styleLh;
+                }
+            } catch (_) {}
+        }
+
+        if (!activeLh) {
+            activeLh = editor.getAttributes('paragraph')?.lineHeight || editor.getAttributes('heading')?.lineHeight;
+        }
+
+        const rawLh = activeLh ? String(activeLh).trim() : '1';
+        const num = parseFloat(rawLh);
+        let matched = '1';
+        if (isNaN(num)) matched = '1';
+        else if (Math.abs(num - 1.0) < 0.1) matched = '1';
+        else if (Math.abs(num - 1.5) < 0.1) matched = '1.5';
+        else if (Math.abs(num - 2.0) < 0.1) matched = '2';
+        else if (Math.abs(num - 2.5) < 0.1) matched = '2.5';
+        else if (Math.abs(num - 3.0) < 0.1) matched = '3';
+        else if (Math.abs(num - 1.15) < 0.1) matched = '1';
+        else matched = String(num);
+
+        const lhSelect = document.getElementById('ribbonParagraphLineHeight');
+        if (lhSelect && document.activeElement !== lhSelect) {
+            lhSelect.value = matched;
+        }
+
+        const lhActiveLabel = document.getElementById('ribbonLineHeightActiveLabel');
+        if (lhActiveLabel) {
+            const labelMap = {
+                '1': 'Spasi 1.0',
+                '1.5': 'Spasi 1.5',
+                '2': 'Spasi 2.0',
+                '2.5': 'Spasi 2.5',
+                '3': 'Spasi 3.0',
+            };
+            lhActiveLabel.textContent = labelMap[matched] || `Spasi ${matched}`;
+        }
+
+        const lhToggleBtn = document.getElementById('btnParagraphLineHeightMenuToggle');
+        if (lhToggleBtn) {
+            const isCustom = matched !== '1';
+            lhToggleBtn.classList.toggle('border-blue-400', isCustom);
+            lhToggleBtn.classList.toggle('bg-blue-50/50', isCustom);
+        }
+
+        document.querySelectorAll('#paragraphLineHeightDropdown button[data-line-height]').forEach(btn => {
+            const isCur = btn.getAttribute('data-line-height') === matched;
+            btn.classList.toggle('bg-blue-50', isCur);
+            btn.classList.toggle('text-blue-700', isCur);
+            btn.classList.toggle('font-semibold', isCur);
+            btn.classList.toggle('is-active', isCur);
+            const checkIcon = btn.querySelector('svg');
+            if (checkIcon) {
+                checkIcon.classList.toggle('opacity-100', isCur);
+                checkIcon.classList.toggle('opacity-0', !isCur);
+            }
+        });
 
         // Update Table Context Indicator & inputs if inside a table
         const isInTable = editor.isActive('table');
@@ -3727,7 +6748,44 @@ export function initMouWordProcessor(config) {
                     cwInput.value = '';
                 }
             }
+
+            const padSelect = document.getElementById('ribbonCellPaddingSelect');
+            if (padSelect && document.activeElement !== padSelect) {
+                padSelect.value = cellAttrs.padding || '';
+            }
+            const valignSelect = document.getElementById('ribbonCellValignSelect');
+            if (valignSelect && document.activeElement !== valignSelect) {
+                valignSelect.value = cellAttrs.verticalAlign || 'top';
+            }
+            const cellBgInput = document.getElementById('ribbonCellBgColor');
+            if (cellBgInput && document.activeElement !== cellBgInput && cellAttrs.backgroundColor) {
+                cellBgInput.value = cellAttrs.backgroundColor;
+            }
         }
+
+        // Reflect Active Text Color & Highlight Color in ribbon
+        const textColorInput = document.getElementById('ribbonTextColor');
+        if (textColorInput && document.activeElement !== textColorInput) {
+            const currentColor = editor.getAttributes('textStyle')?.color;
+            if (currentColor && /^#[0-9a-fA-F]{6}$/i.test(currentColor)) {
+                textColorInput.value = currentColor;
+            }
+        }
+        const highlightColorInput = document.getElementById('ribbonHighlightColor');
+        if (highlightColorInput && document.activeElement !== highlightColorInput) {
+            const currentHl = editor.getAttributes('highlight')?.color;
+            if (currentHl && /^#[0-9a-fA-F]{6}$/i.test(currentHl)) {
+                highlightColorInput.value = currentHl;
+            }
+        }
+        const removeHlBtn = document.getElementById('btnRemoveHighlight');
+        if (removeHlBtn) {
+            removeHlBtn.classList.toggle('mou-ribbon-btn-active', editor.isActive('highlight'));
+        }
+
+        // Synchronize Horizontal Ruler Indent Markers & Table Column Dividers
+        updateRulerMarkersFromEditor();
+        syncRulerToPageSheet();
     }
 
     /**
@@ -3793,8 +6851,16 @@ export function initMouWordProcessor(config) {
         const sigSrc = state.mediaAssets?.signature || state.mediaAssets?.tanda_tangan || '/images/mou/signature-sample.png';
         const stampSrc = state.mediaAssets?.stamp || state.mediaAssets?.stempel || '/images/mou/stamp-sample.png';
 
-        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature)\s*\}\}(["'])/gi, `$1${sigSrc}$2`);
-        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp)\s*\}\}(["'])/gi, `$1${stampSrc}$2`);
+        const sigImg = `<img src="${sigSrc}" alt="Tanda Tangan" class="mou-preview-signature-img" style="height: 60px; max-width: 140px; object-fit: contain; display: inline-block; vertical-align: middle;" />`;
+        const stampImg = `<img src="${stampSrc}" alt="Stempel Resmi" class="mou-preview-stamp-img" style="height: 60px; max-width: 140px; object-fit: contain; display: inline-block; vertical-align: middle;" />`;
+
+        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\s*\}\}(["'])/gi, `$1${sigSrc}$2`);
+        out = out.replace(/(src=["'])\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\s*\}\}(["'])/gi, `$1${stampSrc}$2`);
+        out = out.replace(/(src=["'])\[(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\](["'])/gi, `$1${sigSrc}$2`);
+        out = out.replace(/(src=["'])\[(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\](["'])/gi, `$1${stampSrc}$2`);
+
+        out = out.replace(/\[(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\]|\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\s*\}\}/gi, sigImg);
+        out = out.replace(/\[(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\]|\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\s*\}\}/gi, stampImg);
 
         Object.entries(map).forEach(([key, val]) => {
             const safeVal = String(val)
@@ -3891,13 +6957,54 @@ export function initMouWordProcessor(config) {
                 sheet.style.fontSize = `${state.fontSizePt}pt`;
                 sheet.style.lineHeight = String(state.lineHeight);
 
-                // Watermark & Fixed Header Logo Layer
+                // Watermark Layer
                 const watermarkHtml = renderWatermarkLayerHtml(state, pageIndex === 1);
                 if (watermarkHtml) {
                     const watermarkEl = document.createElement('div');
                     watermarkEl.className = 'mou-page-watermark-layer';
                     watermarkEl.innerHTML = watermarkHtml;
                     sheet.appendChild(watermarkEl);
+                }
+
+                // Render Floating Header Logos on Page 1 from headerLogosConfig
+                if (pageIndex === 1 && state.showHeaderLogos !== false) {
+                    const isMou = (state?.documentType === 'mou');
+                    if (isMou) {
+                        const cfg = state.headerLogosConfig || {
+                            institution: { width: 66, height: 66, rotation: 0, topOffsetMm: 0, leftOffsetMm: 0 },
+                            company: { width: 66, height: 66, rotation: 0, topOffsetMm: 0, rightOffsetMm: 0 },
+                        };
+                        const topHeaderMm = Math.max(10, state.marginTopMm - 10);
+                        const compLogoUrl = state.mediaAssets?.company_logo || state.mediaAssets?.company_logo_url || '/images/mou/seven-inc-logo.png';
+                        const instLogoUrl = state.mediaAssets?.institution_logo || state.mediaAssets?.institution_logo_url || '/images/mou/institution-logo-placeholder.png';
+
+                        const inst = cfg.institution || {};
+                        const comp = cfg.company || {};
+                        const instW = inst.width || 66;
+                        const instH = inst.height || 66;
+                        const instRot = inst.rotation || 0;
+                        const instTop = topHeaderMm + (inst.topOffsetMm || 0);
+                        const instLeft = state.marginLeftMm + (inst.leftOffsetMm || 0);
+
+                        const compW = comp.width || 66;
+                        const compH = comp.height || 66;
+                        const compRot = comp.rotation || 0;
+                        const compTop = topHeaderMm + (comp.topOffsetMm || 0);
+                        const compRight = state.marginRightMm + (comp.rightOffsetMm || 0);
+
+                        const logosLayer = document.createElement('div');
+                        logosLayer.className = 'mou-preview-sheet-logos-stage';
+                        logosLayer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; box-sizing: border-box;';
+                        logosLayer.innerHTML = `
+                            <div style="position: absolute; top: ${instTop}mm; left: ${instLeft}mm; width: ${instW}px; height: ${instH}px;">
+                                <img src="${instLogoUrl}" alt="Logo Institusi" style="width: 100%; height: 100%; object-fit: contain; ${instRot ? `transform: rotate(${instRot}deg); transform-origin: center center;` : ''}" />
+                            </div>
+                            <div style="position: absolute; top: ${compTop}mm; right: ${compRight}mm; width: ${compW}px; height: ${compH}px;">
+                                <img src="${compLogoUrl}" alt="Logo Seven Inc" style="width: 100%; height: 100%; object-fit: contain; ${compRot ? `transform: rotate(${compRot}deg); transform-origin: center center;` : ''}" />
+                            </div>
+                        `;
+                        sheet.appendChild(logosLayer);
+                    }
                 }
 
                 // Header
@@ -3953,7 +7060,7 @@ export function initMouWordProcessor(config) {
         return totalPages;
     }
 
-    // Observe Header and Footer height changes (e.g. when resizing Kotak Paraf table)
+    // Observe Header, Footer, and Workspace Viewport changes for complete responsive layout
     if (typeof ResizeObserver !== 'undefined') {
         const ro = new ResizeObserver(() => {
             updateVisualPageBreakGuides();
@@ -3961,7 +7068,28 @@ export function initMouWordProcessor(config) {
         if (headerZoneWrapper) ro.observe(headerZoneWrapper);
         if (footerZoneWrapper) ro.observe(footerZoneWrapper);
         if (bodyMountEl) ro.observe(bodyMountEl);
+
+        const workspaceViewport = document.getElementById('mouEditorWorkspaceView');
+        if (workspaceViewport) {
+            const vpRo = new ResizeObserver(() => {
+                applyPageLayoutToCanvas();
+                updateVisualPageBreakGuides();
+                syncRulerToPageSheet();
+            });
+            vpRo.observe(workspaceViewport);
+        }
     }
+
+    // Debounced window resize event for screen changes (sidebar toggle, screen orientation, zoom)
+    let windowResizeDebounceTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(windowResizeDebounceTimer);
+        windowResizeDebounceTimer = setTimeout(() => {
+            applyPageLayoutToCanvas();
+            updateVisualPageBreakGuides();
+            syncRulerToPageSheet();
+        }, 80);
+    });
 
     // Initial layout & sync
     applyPageLayoutToCanvas();
@@ -3994,6 +7122,7 @@ export function initMouWordProcessor(config) {
         syncAllToHiddenInputs,
         applyPageLayoutToCanvas,
         renderMultiSheetPreview,
+        updateToolbarState,
 
         // Document-level actions
         newBlankDocument() {
@@ -4132,10 +7261,112 @@ export function initMouWordProcessor(config) {
             }
         },
 
-        // Formatting commands on active editor
-        undo: () => getActiveEditor()?.chain().focus().undo().run(),
-        redo: () => getActiveEditor()?.chain().focus().redo().run(),
-        clearFormatting: () => getActiveEditor()?.chain().focus().unsetAllMarks().clearNodes().run(),
+        // Formatting commands on active editor with unified Asset & Document History
+        undo: () => {
+            const lastAssetTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
+                ? assetHistory[assetHistoryIndex].timestamp
+                : 0;
+            const ed = getActiveEditor();
+            const canEdUndo = ed && typeof ed.can === 'function' && ed.can().undo();
+
+            if (lastAssetTime > 0 && (lastAssetTime >= lastEditorDocChangeTimestamp || !canEdUndo)) {
+                if (undoAssetHistory()) return;
+            }
+            if (canEdUndo) {
+                ed.chain().focus().undo().run();
+                return;
+            }
+            if (lastAssetTime > 0) {
+                undoAssetHistory();
+            }
+        },
+        redo: () => {
+            const nextAssetTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
+                ? assetHistory[assetHistoryIndex + 1].timestamp
+                : 0;
+            const ed = getActiveEditor();
+            const canEdRedo = ed && typeof ed.can === 'function' && ed.can().redo();
+
+            if (nextAssetTime > 0 && (nextAssetTime >= lastEditorDocChangeTimestamp || !canEdRedo)) {
+                if (redoAssetHistory()) return;
+            }
+            if (canEdRedo) {
+                ed.chain().focus().redo().run();
+                return;
+            }
+            if (nextAssetTime > 0) {
+                redoAssetHistory();
+            }
+        },
+        clearFormatting: () => {
+            const editor = getActiveEditor();
+            if (!editor) return;
+
+            const { state, view } = editor;
+            const { selection } = state;
+            let { from, to, empty, $from } = selection;
+
+            // 1. If selection is collapsed (cursor blinking without highlight), expand to the current paragraph block
+            if (empty && $from.parent && $from.parent.isTextblock) {
+                if ($from.parent.nodeSize > 2) {
+                    from = $from.start();
+                    to = $from.end();
+                }
+            }
+
+            if (from < to) {
+                const tr = state.tr;
+
+                // 2. Remove all registered marks in range (bold, italic, underline, strike, textStyle, highlight, sub/superscript, colors)
+                Object.values(state.schema.marks).forEach((markType) => {
+                    tr.removeMark(from, to, markType);
+                });
+
+                // 3. Clear stored marks on cursor
+                tr.setStoredMarks([]);
+
+                // 4. Reset headings to standard paragraph & reset paragraph attributes (alignment, indents, classes)
+                state.doc.nodesBetween(from, to, (node, pos) => {
+                    if (node.isTextblock) {
+                        const defaultType = state.schema.nodes.paragraph || node.type;
+                        tr.setNodeMarkup(pos, defaultType, {
+                            ...defaultType.defaultAttrs,
+                            textAlign: null,
+                            marginLeft: null,
+                            marginRight: null,
+                            textIndent: null,
+                            class: null,
+                        });
+                    }
+                });
+
+                view.dispatch(tr);
+            } else {
+                // Completely empty block: reset stored marks & reset block attributes
+                const tr = state.tr;
+                tr.setStoredMarks([]);
+                if ($from.parent && $from.parent.isTextblock) {
+                    const defaultType = state.schema.nodes.paragraph || $from.parent.type;
+                    tr.setNodeMarkup($from.before(), defaultType, {
+                        ...defaultType.defaultAttrs,
+                        textAlign: null,
+                        marginLeft: null,
+                        marginRight: null,
+                        textIndent: null,
+                        class: null,
+                    });
+                }
+                view.dispatch(tr);
+            }
+
+            // Also invoke TipTap chain unsetAllMarks().clearNodes() for safety
+            try {
+                editor.chain().focus().unsetAllMarks().clearNodes().run();
+            } catch (_) {}
+
+            updateToolbarState();
+            scheduleSyncAndPagination();
+        },
         toggleBold: () => getActiveEditor()?.chain().focus().toggleBold().run(),
         toggleItalic: () => getActiveEditor()?.chain().focus().toggleItalic().run(),
         toggleUnderline: () => getActiveEditor()?.chain().focus().toggleUnderline().run(),
@@ -4168,24 +7399,194 @@ export function initMouWordProcessor(config) {
         },
         setFontFamily: (font) => getActiveEditor()?.chain().focus().setFontFamily(font).run(),
         setFontSize: (sizePt) => getActiveEditor()?.chain().focus().setFontSize(sizePt).run(),
-        setTextColor: (color) => getActiveEditor()?.chain().focus().setColor(color).run(),
+        setTextColor: (color) => {
+            const ed = getActiveEditor();
+            if (!ed) return;
+            const { state } = ed;
+            const { selection } = state;
+            let { from, to, empty, $from } = selection;
+
+            if (empty && $from.parent && $from.parent.isTextblock) {
+                const text = $from.parent.textBetween(0, $from.parent.content.size, undefined, '\ufffc');
+                const offset = $from.parentOffset;
+                let start = offset;
+                let end = offset;
+                while (start > 0 && /\S/.test(text[start - 1])) start--;
+                while (end < text.length && /\S/.test(text[end])) end++;
+                if (start < end) {
+                    from = $from.start() + start;
+                    to = $from.start() + end;
+                    ed.chain().focus().setTextSelection({ from, to }).setColor(color).run();
+                    updateToolbarState();
+                    scheduleSyncAndPagination();
+                    return;
+                }
+            }
+
+            ed.chain().focus().setColor(color).run();
+            updateToolbarState();
+            scheduleSyncAndPagination();
+        },
+        removeHighlight: () => {
+            const ed = getActiveEditor();
+            if (!ed) return;
+            const { state, view } = ed;
+            const { selection } = state;
+            let { from, to, empty, $from } = selection;
+
+            if (empty && $from.parent && $from.parent.isTextblock) {
+                const highlightMarkType = state.schema.marks.highlight;
+                if (highlightMarkType) {
+                    const marks = $from.marks();
+                    const hasHighlight = marks.some(m => m.type === highlightMarkType);
+
+                    if (hasHighlight) {
+                        const parentStart = $from.start();
+                        const parentEnd = $from.end();
+                        let start = $from.pos;
+                        let end = $from.pos;
+
+                        while (start > parentStart) {
+                            const $pos = state.doc.resolve(start - 1);
+                            if ($pos.marks().some(m => m.type === highlightMarkType)) {
+                                start--;
+                            } else {
+                                break;
+                            }
+                        }
+                        while (end < parentEnd) {
+                            const $pos = state.doc.resolve(end + 1);
+                            if ($pos.marks().some(m => m.type === highlightMarkType)) {
+                                end++;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if (start < end) {
+                            const tr = state.tr;
+                            tr.removeMark(start, end, highlightMarkType);
+                            tr.removeStoredMark(highlightMarkType);
+                            view.dispatch(tr);
+                            ed.commands.focus();
+                            updateToolbarState();
+                            scheduleSyncAndPagination();
+                            return;
+                        }
+                    } else {
+                        const text = $from.parent.textBetween(0, $from.parent.content.size, undefined, '\ufffc');
+                        const offset = $from.parentOffset;
+                        let start = offset;
+                        let end = offset;
+                        while (start > 0 && /\S/.test(text[start - 1])) start--;
+                        while (end < text.length && /\S/.test(text[end])) end++;
+                        if (start < end) {
+                            const wordFrom = $from.start() + start;
+                            const wordTo = $from.start() + end;
+                            const tr = state.tr;
+                            tr.removeMark(wordFrom, wordTo, highlightMarkType);
+                            tr.removeStoredMark(highlightMarkType);
+                            view.dispatch(tr);
+                            ed.commands.focus();
+                            updateToolbarState();
+                            scheduleSyncAndPagination();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            ed.chain().focus().unsetHighlight().run();
+            updateToolbarState();
+            scheduleSyncAndPagination();
+        },
         setHighlightColor: (color) => {
             const ed = getActiveEditor();
             if (!ed) return;
             if (!color || color === 'transparent') {
-                ed.chain().focus().unsetHighlight().run();
-            } else {
-                ed.chain().focus().setHighlight({ color }).run();
+                api.removeHighlight();
+                return;
             }
+            const { state } = ed;
+            const { selection } = state;
+            let { from, to, empty, $from } = selection;
+
+            if (empty && $from.parent && $from.parent.isTextblock) {
+                const text = $from.parent.textBetween(0, $from.parent.content.size, undefined, '\ufffc');
+                const offset = $from.parentOffset;
+                let start = offset;
+                let end = offset;
+                while (start > 0 && /\S/.test(text[start - 1])) start--;
+                while (end < text.length && /\S/.test(text[end])) end++;
+                if (start < end) {
+                    from = $from.start() + start;
+                    to = $from.start() + end;
+                    ed.chain().focus().setTextSelection({ from, to }).setHighlight({ color }).run();
+                    updateToolbarState();
+                    scheduleSyncAndPagination();
+                    return;
+                }
+            }
+
+            ed.chain().focus().setHighlight({ color }).run();
+            updateToolbarState();
+            scheduleSyncAndPagination();
         },
-        setTextAlign: (align) => getActiveEditor()?.chain().focus().setTextAlign(align).run(),
+        setTextAlign: (align) => {
+            const ed = getActiveEditor();
+            if (!ed) return;
+            ed.chain().focus().setTextAlign(align).run();
+            updateToolbarState();
+            scheduleSyncAndPagination();
+            scheduleReflow();
+        },
         setLineHeight: (lh) => {
             const ed = getActiveEditor();
             if (!ed) return;
-            ed.chain().focus()
-                .updateAttributes('paragraph', { lineHeight: String(lh) })
-                .updateAttributes('heading', { lineHeight: String(lh) })
-                .run();
+            const { state: editorState, view } = ed;
+            const { selection } = editorState;
+            const { from, to, empty, $from } = selection;
+            const tr = editorState.tr;
+            let count = 0;
+            const targetLh = (lh !== null && lh !== undefined && lh !== '') ? String(lh) : null;
+
+            if (empty) {
+                let depth = $from.depth;
+                while (depth > 0 && !$from.node(depth).isTextblock) {
+                    depth--;
+                }
+                if (depth > 0 && $from.node(depth).isTextblock) {
+                    const pos = $from.before(depth);
+                    const node = $from.node(depth);
+                    tr.setNodeMarkup(pos, undefined, { ...node.attrs, lineHeight: targetLh });
+                    count++;
+                }
+            } else {
+                editorState.doc.nodesBetween(from, to, (node, pos) => {
+                    // Only modify textblocks that strictly overlap the selected range:
+                    if (node.isTextblock && pos < to && (pos + node.nodeSize) > from) {
+                        count++;
+                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, lineHeight: targetLh });
+                        return false;
+                    }
+                });
+            }
+
+            if (count > 0) {
+                tr.setSelection(selection.map(tr.doc, tr.mapping));
+                view.dispatch(tr);
+                view.focus();
+                updateToolbarState();
+                scheduleSyncAndPagination();
+                scheduleReflow();
+            } else {
+                ed.chain().focus()
+                    .updateAttributes('paragraph', { lineHeight: targetLh })
+                    .run();
+                updateToolbarState();
+                scheduleSyncAndPagination();
+                scheduleReflow();
+            }
         },
         setBlockStyle: (styleVal) => {
             const ed = getActiveEditor();
@@ -4203,37 +7604,196 @@ export function initMouWordProcessor(config) {
             ed.chain().focus().toggleBulletList().run();
             updateToolbarState();
         },
-        toggleOrderedList: (listType = null) => {
+        setOrderedListType: (targetType = '1') => {
             const ed = getActiveEditor();
             if (!ed) return;
-            if (listType) {
-                if (!ed.isActive('orderedList')) {
-                    ed.chain().focus().toggleOrderedList().updateAttributes('orderedList', { listType }).run();
-                } else {
-                    ed.chain().focus().updateAttributes('orderedList', { listType }).run();
+            const { state: editorState, view } = ed;
+            const { selection } = editorState;
+            const { $from, from, to } = selection;
+
+            // 1. If currently inside an orderedList:
+            if (ed.isActive('orderedList')) {
+                const tr = editorState.tr;
+                let found = false;
+
+                // Find innermost orderedList containing $from
+                let innerOlDepth = -1;
+                let innerOlPos = -1;
+                let innerOlNode = null;
+                for (let d = $from.depth; d > 0; d--) {
+                    const n = $from.node(d);
+                    if (n.type.name === 'orderedList') {
+                        innerOlDepth = d;
+                        innerOlPos = $from.before(d);
+                        innerOlNode = n;
+                        break;
+                    }
                 }
-            } else {
+
+                if (innerOlNode && innerOlPos !== -1) {
+                    // Update innermost list's type directly without splitting
+                    tr.setNodeMarkup(innerOlPos, undefined, {
+                        ...innerOlNode.attrs,
+                        listType: targetType,
+                        type: targetType,
+                    });
+                    found = true;
+
+                    // Also update any other ordered lists strictly within selection
+                    editorState.doc.nodesBetween(from, to, (node, pos) => {
+                        if (node.type.name === 'orderedList' && pos >= from && pos < to && pos !== innerOlPos) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...node.attrs,
+                                listType: targetType,
+                                type: targetType,
+                            });
+                            found = true;
+                        }
+                    });
+
+                    // Auto-join adjacent orderedList nodes having the same listType so consecutive items form one list
+                    try {
+                        let joinPos = -1;
+                        let maxJoins = 10;
+                        do {
+                            joinPos = -1;
+                            tr.doc.descendants((node, pos) => {
+                                if (node.type.name === 'orderedList') {
+                                    const afterPos = pos + node.nodeSize;
+                                    if (afterPos < tr.doc.content.size) {
+                                        const nextNode = tr.doc.nodeAt(afterPos);
+                                        if (nextNode && nextNode.type.name === 'orderedList') {
+                                            const t1 = node.attrs.listType || node.attrs.type || '1';
+                                            const t2 = nextNode.attrs.listType || nextNode.attrs.type || '1';
+                                            if (t1 === t2) {
+                                                joinPos = afterPos;
+                                                return false;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                            if (joinPos !== -1) {
+                                tr.join(joinPos);
+                            }
+                            maxJoins--;
+                        } while (joinPos !== -1 && maxJoins > 0);
+                    } catch (_) {}
+                }
+
+                if (found) {
+                    tr.setSelection(selection.map(tr.doc, tr.mapping));
+                    view.dispatch(tr);
+                    view.focus();
+                    updateToolbarState();
+                    scheduleSyncAndPagination();
+                    scheduleReflow();
+                    return;
+                }
+            }
+
+            // 2. If not yet in orderedList (e.g. unnumbered paragraphs or bulletList):
+            if (ed.isActive('bulletList')) {
+                ed.chain().focus().toggleBulletList().run();
+            }
+
+            // Wrap selection in orderedList with target attributes
+            try {
+                ed.chain().focus().toggleList('orderedList', 'listItem', false, {
+                    listType: targetType,
+                    type: targetType,
+                }).run();
+            } catch (_) {
                 ed.chain().focus().toggleOrderedList().run();
             }
+
+            // Set listType and type on newly created orderedList
+            try {
+                const newEdState = ed.state;
+                const newSel = newEdState.selection;
+                const cur$from = newSel.$from;
+                const tr = newEdState.tr;
+                let applied = false;
+                for (let d = cur$from.depth; d > 0; d--) {
+                    const n = cur$from.node(d);
+                    if (n.type.name === 'orderedList') {
+                        tr.setNodeMarkup(cur$from.before(d), undefined, {
+                            ...n.attrs,
+                            listType: targetType,
+                            type: targetType,
+                        });
+                        applied = true;
+                        break;
+                    }
+                }
+
+                // Auto-join adjacent orderedList nodes having the same listType so consecutive items form one list
+                let joinPos = -1;
+                let maxJoins = 10;
+                do {
+                    joinPos = -1;
+                    tr.doc.descendants((node, pos) => {
+                        if (node.type.name === 'orderedList') {
+                            const afterPos = pos + node.nodeSize;
+                            if (afterPos < tr.doc.content.size) {
+                                const nextNode = tr.doc.nodeAt(afterPos);
+                                if (nextNode && nextNode.type.name === 'orderedList') {
+                                    const t1 = node.attrs.listType || node.attrs.type || '1';
+                                    const t2 = nextNode.attrs.listType || nextNode.attrs.type || '1';
+                                    if (t1 === t2) {
+                                        joinPos = afterPos;
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    if (joinPos !== -1) {
+                        try {
+                            tr.join(joinPos);
+                            applied = true;
+                        } catch (_) {
+                            break;
+                        }
+                    }
+                    maxJoins--;
+                } while (joinPos !== -1 && maxJoins > 0);
+
+                if (applied) {
+                    tr.setSelection(newSel.map(tr.doc, tr.mapping));
+                    ed.view.dispatch(tr);
+                }
+            } catch (_) {}
+
+            view.focus();
             updateToolbarState();
+            scheduleSyncAndPagination();
+            scheduleReflow();
+        },
+        toggleOrderedList: (listType = null) => {
+            if (listType) {
+                api.setOrderedListType(listType);
+                return;
+            }
+            const ed = getActiveEditor();
+            if (!ed) return;
+            if (ed.isActive('orderedList')) {
+                ed.chain().focus().toggleOrderedList().run();
+                updateToolbarState();
+                scheduleSyncAndPagination();
+            } else {
+                api.setOrderedListType('1');
+            }
         },
         adjustIndent: (deltaMm) => {
             const ed = getActiveEditor();
             if (!ed) return;
-            if (ed.isActive('listItem')) {
-                if (deltaMm > 0) {
-                    ed.chain().focus().sinkListItem('listItem').run();
-                } else {
-                    ed.chain().focus().liftListItem('listItem').run();
-                }
-                return;
-            }
-            const attrs = ed.getAttributes('paragraph');
-            const curMm = parseFloat(String(attrs.marginLeft || '0').replace('mm', '')) || 0;
-            const nextMm = Math.max(0, Math.min(80, curMm + deltaMm));
-            ed.chain().focus().updateAttributes('paragraph', {
-                marginLeft: nextMm > 0 ? `${nextMm}mm` : null,
-            }).run();
+            executeEditorIndent(ed, deltaMm);
+            ed.commands.focus();
+            updateToolbarState();
+            updateRulerMarkersFromEditor();
+            scheduleSyncAndPagination();
+            scheduleReflow(true);
         },
         setFirstLineIndent: (mmVal) => {
             const ed = getActiveEditor();
@@ -4433,6 +7993,177 @@ export function initMouWordProcessor(config) {
             syncAllToHiddenInputs();
             return state.showWatermark;
         },
+        updateSelectedImage(w, h, rot) {
+            const asset = window._mouActiveSelectedAsset;
+            if (asset?.type === 'header-logo') {
+                if (w) asset.cfg.width = parseInt(String(w).replace(/[^0-9]/g, ''), 10) || asset.cfg.width;
+                if (h) asset.cfg.height = parseInt(String(h).replace(/[^0-9]/g, ''), 10) || asset.cfg.height;
+                if (rot !== null && rot !== undefined) asset.cfg.rotation = parseInt(rot, 10) || 0;
+                asset.updateFn?.();
+                syncAllToHiddenInputs();
+                pushAssetHistory('Ubah Ukuran Logo Ribbon');
+                return;
+            }
+            if (asset?.type === 'body-image') {
+                const nv = asset.nodeView;
+                if (nv && typeof nv.getPos === 'function' && nv.view?.state?.tr) {
+                    const pos = nv.getPos();
+                    if (pos !== undefined) {
+                        const attrs = { ...nv.node.attrs };
+                        if (w) attrs.width = /^\d+$/.test(String(w)) ? `${w}px` : w;
+                        if (h) attrs.height = /^\d+$/.test(String(h)) ? `${h}px` : h;
+                        if (rot !== null && rot !== undefined) attrs.rotation = parseInt(rot, 10) || 0;
+                        const tr = nv.view.state.tr.setNodeMarkup(pos, undefined, attrs);
+                        nv.view.dispatch(tr);
+                        scheduleSyncAndPagination();
+                    }
+                }
+            }
+        },
+        rotateSelectedImage(deltaDeg = 90) {
+            const asset = window._mouActiveSelectedAsset;
+            if (asset?.type === 'header-logo') {
+                asset.cfg.rotation = ((asset.cfg.rotation || 0) + deltaDeg) % 360;
+                asset.updateFn?.();
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = String(asset.cfg.rotation);
+                syncAllToHiddenInputs();
+                pushAssetHistory(`Putar Logo ${deltaDeg}°`);
+                return;
+            }
+            if (asset?.type === 'body-image') {
+                const nv = asset.nodeView;
+                if (nv && typeof nv.getPos === 'function' && nv.view?.state?.tr) {
+                    const pos = nv.getPos();
+                    if (pos !== undefined) {
+                        const currentRot = parseInt(nv.node.attrs?.rotation || 0, 10);
+                        const newRot = (currentRot + deltaDeg) % 360;
+                        const tr = nv.view.state.tr.setNodeMarkup(pos, undefined, {
+                            ...nv.node.attrs,
+                            rotation: newRot,
+                        });
+                        nv.view.dispatch(tr);
+                        const rotInput = document.getElementById('ribbonImageRotationDeg');
+                        if (rotInput) rotInput.value = String(newRot);
+                        scheduleSyncAndPagination();
+                    }
+                }
+            }
+        },
+        setSelectedImageRotation(deg = 0) {
+            const norm = ((parseInt(deg || 0, 10) % 360) + 360) % 360;
+            const asset = window._mouActiveSelectedAsset;
+            if (asset?.type === 'header-logo') {
+                asset.cfg.rotation = norm;
+                asset.updateFn?.();
+                syncAllToHiddenInputs();
+                pushAssetHistory(`Set Rotasi Logo ${norm}°`);
+                return;
+            }
+            if (asset?.type === 'body-image') {
+                const nv = asset.nodeView;
+                if (nv && typeof nv.getPos === 'function' && nv.view?.state?.tr) {
+                    const pos = nv.getPos();
+                    if (pos !== undefined) {
+                        const tr = nv.view.state.tr.setNodeMarkup(pos, undefined, {
+                            ...nv.node.attrs,
+                            rotation: norm,
+                        });
+                        nv.view.dispatch(tr);
+                        scheduleSyncAndPagination();
+                    }
+                }
+            }
+        },
+        resetSelectedImage() {
+            const asset = window._mouActiveSelectedAsset;
+            if (asset?.type === 'header-logo') {
+                asset.cfg.width = 66;
+                asset.cfg.height = 66;
+                asset.cfg.rotation = 0;
+                asset.cfg.topOffsetMm = 0;
+                if (asset.slot === 'institution') asset.cfg.leftOffsetMm = 0;
+                else asset.cfg.rightOffsetMm = 0;
+                asset.updateFn?.();
+                const rotInput = document.getElementById('ribbonImageRotationDeg');
+                if (rotInput) rotInput.value = '0';
+                const wInput = document.getElementById('ribbonImageWidthPx');
+                if (wInput) wInput.value = '66';
+                const hInput = document.getElementById('ribbonImageHeightPx');
+                if (hInput) hInput.value = '66';
+                syncAllToHiddenInputs();
+                pushAssetHistory('Reset Logo Default');
+                return;
+            }
+            if (asset?.type === 'body-image') {
+                const nv = asset.nodeView;
+                if (nv && typeof nv.getPos === 'function' && nv.view?.state?.tr) {
+                    const pos = nv.getPos();
+                    if (pos !== undefined) {
+                        const tr = nv.view.state.tr.setNodeMarkup(pos, undefined, {
+                            ...nv.node.attrs,
+                            width: '120px',
+                            height: 'auto',
+                            rotation: 0,
+                        });
+                        nv.view.dispatch(tr);
+                        const rotInput = document.getElementById('ribbonImageRotationDeg');
+                        if (rotInput) rotInput.value = '0';
+                        const wInput = document.getElementById('ribbonImageWidthPx');
+                        if (wInput) wInput.value = '120';
+                        const hInput = document.getElementById('ribbonImageHeightPx');
+                        if (hInput) hInput.value = '';
+                        scheduleSyncAndPagination();
+                    }
+                }
+            }
+        },
+        deleteSelectedAsset() {
+            const asset = window._mouActiveSelectedAsset;
+            if (asset?.type === 'header-logo') {
+                if (confirm('Sembunyikan logo header dari naskah? Anda dapat mengaktifkannya kembali lewat tombol Logo Header.')) {
+                    state.showHeaderLogos = false;
+                    applyPageLayoutToCanvas();
+                    syncAllToHiddenInputs();
+                    const btn = document.getElementById('btnToggleHeaderLogos');
+                    if (btn) btn.classList.remove('mou-ribbon-btn-active');
+                    window._mouActiveSelectedAsset = null;
+                }
+                return true;
+            }
+            if (asset?.type === 'body-image') {
+                return asset.nodeView?.deleteNode() || false;
+            }
+            return false;
+        },
+        saveDocument() {
+            syncAllToHiddenInputs();
+            const form = document.getElementById('mouTemplateForm') || document.getElementById('documentTemplateForm') || document.querySelector('form');
+            if (form) {
+                let toast = document.getElementById('mouSaveToast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.id = 'mouSaveToast';
+                    toast.className = 'fixed bottom-6 right-6 z-[9999] flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl';
+                    document.body.appendChild(toast);
+                }
+                toast.innerHTML = `
+                    <svg class="h-4 w-4 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+                        <path d="M12 2a10 10 0 0 1 10 10" />
+                    </svg>
+                    <span>Menyimpan template dokumen (Ctrl+S)...</span>
+                `;
+                toast.style.display = 'flex';
+                setTimeout(() => {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                }, 120);
+            }
+        },
         async uploadImageFile(file, slot = 'custom_image') {
             if (!file || !uploadMediaUrl) return null;
             const formData = new FormData();
@@ -4482,6 +8213,19 @@ export function initMouWordProcessor(config) {
         mergeCells: () => getActiveEditor()?.chain().focus().mergeCells().run(),
         splitCell: () => getActiveEditor()?.chain().focus().splitCell().run(),
         deleteTable: deleteCurrentTable,
+        insertTab: () => {
+            const ed = getActiveEditor();
+            if (ed) {
+                ed.chain().focus().insertContent('\t').run();
+            }
+        },
+        setTabSize: (size) => {
+            state.tabSize = size;
+            document.querySelectorAll('.ProseMirror, .mou-doc-canvas').forEach(el => {
+                el.style.tabSize = size;
+                el.style.setProperty('-moz-tab-size', size);
+            });
+        },
         setCurrentRowHeight,
         setCurrentTableWidth,
         setCurrentTableAlign,
@@ -4491,93 +8235,560 @@ export function initMouWordProcessor(config) {
         adjustTableWidthSpin,
         adjustFontSizeSpin,
         setZoomPercent,
+        distributeColumnsEvenly,
+        fitTableToMargins,
         async importDocx(fileOrBuffer, mode = 'replace') {
-            const result = await importDocxFile(fileOrBuffer);
-            if (mode === 'replace') {
-                bodyEditor.commands.setContent(normalizeHtmlForBodyEditor(result.html));
-                scheduleReflow(true);
-                scheduleSyncAndPagination();
-            } else {
-                bodyEditor.chain().focus().insertContent(result.html).run();
-                scheduleReflow(true);
-                scheduleSyncAndPagination();
+            if (state._isImportingDocx) {
+                console.warn('importDocx is already running, skipping duplicate invocation.');
+                return null;
             }
-            return result;
+            state._isImportingDocx = true;
+            try {
+                const result = await importDocxFile(fileOrBuffer);
+                if (mode === 'replace') {
+                    bodyEditor.commands.setContent(normalizeHtmlForBodyEditor(result.html));
+                    if (state.documentType === 'mou') {
+                        state.showHeaderLogos = true;
+                    }
+                    if (!state.footerHtmlStore && defaultParafHtml) {
+                        state.footerHtmlStore = defaultParafHtml;
+                    }
+                    reflowPassCount = 0;
+                    oscillationCounter = 0;
+                    lastSplitAction = null;
+                    scheduleReflow(true);
+                    scheduleSyncAndPagination();
+                    refreshPageSheets();
+                } else {
+                    bodyEditor.chain().focus().insertContent(result.html).run();
+                    reflowPassCount = 0;
+                    oscillationCounter = 0;
+                    lastSplitAction = null;
+                    scheduleReflow(true);
+                    scheduleSyncAndPagination();
+                    refreshPageSheets();
+                }
+                return result;
+            } finally {
+                setTimeout(() => {
+                    state._isImportingDocx = false;
+                }, 1000);
+            }
         },
         async exportDocx(filename = 'template.docx') {
-            const pageConfig = {
-                paper_size: state.paperSize,
-                orientation: state.orientation,
-                margin_top_mm: state.marginTopMm,
-                margin_bottom_mm: state.marginBottomMm,
-                margin_left_mm: state.marginLeftMm,
-                margin_right_mm: state.marginRightMm,
-            };
-            const docxBlob = await exportProseMirrorJsonToDocx(bodyEditor.getJSON(), pageConfig);
-            if (typeof window !== 'undefined' && window.document) {
-                downloadDocxBlob(docxBlob, filename);
+            if (state._isExportingDocx) {
+                console.warn('exportDocx is already in progress, skipping duplicate call.');
+                return null;
             }
-            return docxBlob;
+            state._isExportingDocx = true;
+            try {
+                const pageConfig = {
+                    paper_size: state.paperSize,
+                    orientation: state.orientation,
+                    margin_top_mm: state.marginTopMm,
+                    margin_bottom_mm: state.marginBottomMm,
+                    margin_left_mm: state.marginLeftMm,
+                    margin_right_mm: state.marginRightMm,
+                    header_distance_mm: state.headerDistanceMm,
+                    footer_distance_mm: state.footerDistanceMm,
+                    show_header_logos: state.showHeaderLogos,
+                    show_paraf_box: state.showParafBox,
+                    show_page_number: state.showPageNumber,
+                    document_type: state.documentType,
+                    media_assets: state.mediaAssets,
+                    header_logos_config: state.headerLogosConfig,
+                    header_json: headerEditor ? headerEditor.getJSON() : null,
+                    footer_json: footerEditor ? footerEditor.getJSON() : null,
+                };
+                const docxBlob = await exportProseMirrorJsonToDocx(bodyEditor.getJSON(), pageConfig);
+                if (typeof window !== 'undefined' && window.document) {
+                    downloadDocxBlob(docxBlob, filename);
+                }
+                return docxBlob;
+            } finally {
+                setTimeout(() => {
+                    state._isExportingDocx = false;
+                }, 1200);
+            }
         },
         updateActiveTableCells,
-        applyTablePreset(preset) {
+        setTableBorders(borderType, options = {}) {
+            if (borderType === 'gridlines') {
+                this.toggleTableGridlines();
+                return;
+            }
+
             const editor = getActiveEditor();
             if (!editor) return;
             const { state: edState } = editor;
-            const { $from } = edState.selection;
+            const { selection } = edState;
+            const { $from } = selection;
 
             let targetTable = null;
             let tablePos = null;
+            let tableDepth = -1;
             for (let d = $from.depth; d >= 0; d--) {
                 const n = $from.node(d);
                 if (n.type.name === 'table') {
                     targetTable = n;
                     tablePos = $from.before(d);
+                    tableDepth = d;
                     break;
                 }
             }
             if (!targetTable || tablePos === null) return;
 
-            let tableClass = 'mou-table-borderless';
-            let cellAttrs = { borderStyle: 'none', borderWidth: '0px', borderColor: 'transparent' };
-            let newTableWidth = targetTable.attrs.tableWidth || '100%';
+            const bWidth = options.borderWidth || document.getElementById('ribbonTableBorderWidth')?.value || '1px';
+            const bColor = options.borderColor || document.getElementById('ribbonTableBorderColor')?.value || '#000000';
+            const solidBorder = `${bWidth} solid ${bColor}`;
 
-            if (preset === 'bordered' || preset === 'grid') {
-                tableClass = 'mou-table-bordered';
-                cellAttrs = { borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000' };
-            } else if (preset === 'borderless') {
-                tableClass = 'mou-table-borderless';
-                cellAttrs = { borderStyle: 'none', borderWidth: '0px', borderColor: 'transparent' };
-            } else if (preset === 'paraf') {
-                tableClass = 'mou-paraf-table';
-                newTableWidth = '220pt';
-                cellAttrs = { borderStyle: 'solid', borderWidth: '1px', borderColor: '#000000', padding: '2pt 4pt' };
+            const totalRows = targetTable.childCount;
+            const tr = edState.tr;
+
+            // Handle MoU Paraf Box Preset
+            if (borderType === 'paraf') {
+                tr.setNodeMarkup(tablePos, undefined, {
+                    ...targetTable.attrs,
+                    class: 'mou-paraf-table',
+                    tableWidth: '220pt',
+                    tableStyle: 'paraf',
+                    'data-table-style': 'paraf',
+                });
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < row.childCount; c++) {
+                        const cell = row.child(c);
+                        tr.setNodeMarkup(cOffset, undefined, {
+                            ...cell.attrs,
+                            borderStyle: 'solid',
+                            borderWidth: '1px',
+                            borderColor: '#000000',
+                            rawBorder: '1px solid #000000',
+                            padding: '2pt 4pt',
+                        });
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+                editor.view.dispatch(tr);
+                scheduleSyncAndPagination();
+                return;
             }
 
-            const tr = edState.tr;
-            tr.setNodeMarkup(tablePos, undefined, {
-                ...targetTable.attrs,
-                class: tableClass,
-                tableWidth: newTableWidth,
-            });
+            // Check for CellSelection (multi-cell range)
+            let hasMultiCellSelection = false;
+            let minRow = 9999, maxRow = -1, minCol = 9999, maxCol = -1;
+            const cellMap = new Map();
+            const selectedPositions = [];
 
-            let rowOffset = tablePos + 1;
-            for (let r = 0; r < targetTable.childCount; r++) {
+            let rOffsetMap = tablePos + 1;
+            for (let r = 0; r < totalRows; r++) {
                 const row = targetTable.child(r);
-                let cellOffset = rowOffset + 1;
+                let cOffsetMap = rOffsetMap + 1;
                 for (let c = 0; c < row.childCount; c++) {
-                    const cell = row.child(c);
-                    tr.setNodeMarkup(cellOffset, undefined, {
-                        ...cell.attrs,
-                        ...cellAttrs,
-                    });
-                    cellOffset += cell.nodeSize;
+                    cellMap.set(cOffsetMap, { r, c });
+                    cOffsetMap += row.child(c).nodeSize;
                 }
-                rowOffset += row.nodeSize;
+                rOffsetMap += row.nodeSize;
+            }
+
+            if (selection.forEachCell) {
+                selection.forEachCell((node, pos) => {
+                    selectedPositions.push(pos);
+                    const info = cellMap.get(pos);
+                    if (info) {
+                        if (info.r < minRow) minRow = info.r;
+                        if (info.r > maxRow) maxRow = info.r;
+                        if (info.c < minCol) minCol = info.c;
+                        if (info.c > maxCol) maxCol = info.c;
+                    }
+                });
+                if (selectedPositions.length > 1) {
+                    hasMultiCellSelection = true;
+                }
+            }
+
+            // Multi-cell selection branch: applies specifically to selected cell range
+            if (hasMultiCellSelection) {
+                selectedPositions.forEach(pos => {
+                    const info = cellMap.get(pos);
+                    const cellNode = edState.doc.nodeAt(pos);
+                    if (!cellNode) return;
+                    const prevRaw = cellNode.attrs.rawBorder || '';
+
+                    if (borderType === 'none' || borderType === 'borderless') {
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...cellNode.attrs,
+                            borderStyle: 'none',
+                            borderWidth: '0px',
+                            borderColor: 'transparent',
+                            rawBorder: 'none',
+                        });
+                    } else if (borderType === 'all') {
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...cellNode.attrs,
+                            borderStyle: 'solid',
+                            borderWidth: bWidth,
+                            borderColor: bColor,
+                            rawBorder: solidBorder,
+                        });
+                    } else if (borderType === 'top') {
+                        if (info && info.r === minRow) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-top': solidBorder }),
+                            });
+                        }
+                    } else if (borderType === 'bottom') {
+                        if (info && info.r === maxRow) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-bottom': solidBorder }),
+                            });
+                        }
+                    } else if (borderType === 'left') {
+                        if (info && info.c === minCol) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-left': solidBorder }),
+                            });
+                        }
+                    } else if (borderType === 'right') {
+                        if (info && info.c === maxCol) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-right': solidBorder }),
+                            });
+                        }
+                    } else if (borderType === 'outside') {
+                        const isTop = (info && info.r === minRow);
+                        const isBottom = (info && info.r === maxRow);
+                        const isLeft = (info && info.c === minCol);
+                        const isRight = (info && info.c === maxCol);
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...cellNode.attrs,
+                            rawBorder: updateBorderProperties(prevRaw, {
+                                'border-top': isTop ? solidBorder : undefined,
+                                'border-bottom': isBottom ? solidBorder : undefined,
+                                'border-left': isLeft ? solidBorder : undefined,
+                                'border-right': isRight ? solidBorder : undefined,
+                            }),
+                        });
+                    } else if (borderType === 'inside') {
+                        const isTop = (info && info.r === minRow);
+                        const isBottom = (info && info.r === maxRow);
+                        const isLeft = (info && info.c === minCol);
+                        const isRight = (info && info.c === maxCol);
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...cellNode.attrs,
+                            rawBorder: updateBorderProperties(prevRaw, {
+                                'border-top': !isTop ? solidBorder : undefined,
+                                'border-bottom': !isBottom ? solidBorder : undefined,
+                                'border-left': !isLeft ? solidBorder : undefined,
+                                'border-right': !isRight ? solidBorder : undefined,
+                            }),
+                        });
+                    } else if (borderType === 'inside-horizontal') {
+                        const isBottom = (info && info.r === maxRow);
+                        if (!isBottom) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-bottom': solidBorder }),
+                            });
+                        }
+                    } else if (borderType === 'inside-vertical') {
+                        const isRight = (info && info.c === maxCol);
+                        if (!isRight) {
+                            tr.setNodeMarkup(pos, undefined, {
+                                ...cellNode.attrs,
+                                rawBorder: updateBorderProperties(prevRaw, { 'border-right': solidBorder }),
+                            });
+                        }
+                    }
+                });
+
+                editor.view.dispatch(tr);
+                scheduleSyncAndPagination();
+                return;
+            }
+
+            // Single cell or whole table targeting
+            let activeCellPos = null;
+            for (let d = $from.depth; d > tableDepth; d--) {
+                const n = $from.node(d);
+                if (n.type.name === 'tableCell' || n.type.name === 'tableHeader') {
+                    activeCellPos = $from.before(d);
+                    break;
+                }
+            }
+
+            if (borderType === 'none' || borderType === 'borderless') {
+                tr.setNodeMarkup(tablePos, undefined, {
+                    ...targetTable.attrs,
+                    class: 'mou-table-borderless',
+                    tableStyle: 'borderless',
+                    'data-table-style': 'borderless',
+                });
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < row.childCount; c++) {
+                        const cell = row.child(c);
+                        tr.setNodeMarkup(cOffset, undefined, {
+                            ...cell.attrs,
+                            borderStyle: 'none',
+                            borderWidth: '0px',
+                            borderColor: 'transparent',
+                            rawBorder: 'none',
+                        });
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'all') {
+                tr.setNodeMarkup(tablePos, undefined, {
+                    ...targetTable.attrs,
+                    class: 'mou-table-bordered',
+                    tableStyle: 'bordered',
+                    'data-table-style': 'bordered',
+                });
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < row.childCount; c++) {
+                        const cell = row.child(c);
+                        tr.setNodeMarkup(cOffset, undefined, {
+                            ...cell.attrs,
+                            borderStyle: 'solid',
+                            borderWidth: bWidth,
+                            borderColor: bColor,
+                            rawBorder: solidBorder,
+                        });
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'outside') {
+                tr.setNodeMarkup(tablePos, undefined, {
+                    ...targetTable.attrs,
+                    class: 'mou-table-outside-border',
+                    tableStyle: 'outside',
+                    'data-table-style': 'outside',
+                });
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    const totalCols = row.childCount;
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < totalCols; c++) {
+                        const cell = row.child(c);
+                        const isTop = (r === 0);
+                        const isBottom = (r === totalRows - 1);
+                        const isLeft = (c === 0);
+                        const isRight = (c === totalCols - 1);
+
+                        const topB = isTop ? solidBorder : 'none';
+                        const bottomB = isBottom ? solidBorder : 'none';
+                        const leftB = isLeft ? solidBorder : 'none';
+                        const rightB = isRight ? solidBorder : 'none';
+
+                        const raw = `border-top: ${topB}; border-bottom: ${bottomB}; border-left: ${leftB}; border-right: ${rightB}`;
+                        tr.setNodeMarkup(cOffset, undefined, {
+                            ...cell.attrs,
+                            borderStyle: (isTop || isBottom || isLeft || isRight) ? 'solid' : 'none',
+                            borderWidth: (isTop || isBottom || isLeft || isRight) ? bWidth : '0px',
+                            borderColor: (isTop || isBottom || isLeft || isRight) ? bColor : 'transparent',
+                            rawBorder: raw,
+                        });
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'inside') {
+                tr.setNodeMarkup(tablePos, undefined, {
+                    ...targetTable.attrs,
+                    class: 'mou-table-inside-border',
+                    tableStyle: 'inside',
+                    'data-table-style': 'inside',
+                });
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    const totalCols = row.childCount;
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < totalCols; c++) {
+                        const cell = row.child(c);
+                        const isTop = (r === 0);
+                        const isBottom = (r === totalRows - 1);
+                        const isLeft = (c === 0);
+                        const isRight = (c === totalCols - 1);
+
+                        const topB = isTop ? 'none' : solidBorder;
+                        const bottomB = isBottom ? 'none' : solidBorder;
+                        const leftB = isLeft ? 'none' : solidBorder;
+                        const rightB = isRight ? 'none' : solidBorder;
+
+                        const raw = `border-top: ${topB}; border-bottom: ${bottomB}; border-left: ${leftB}; border-right: ${rightB}`;
+                        tr.setNodeMarkup(cOffset, undefined, {
+                            ...cell.attrs,
+                            borderStyle: (!isTop || !isBottom || !isLeft || !isRight) ? 'solid' : 'none',
+                            borderWidth: (!isTop || !isBottom || !isLeft || !isRight) ? bWidth : '0px',
+                            borderColor: (!isTop || !isBottom || !isLeft || !isRight) ? bColor : 'transparent',
+                            rawBorder: raw,
+                        });
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'inside-horizontal') {
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < row.childCount; c++) {
+                        const cell = row.child(c);
+                        if (r < totalRows - 1) {
+                            const prevRaw = cell.attrs.rawBorder || '';
+                            const updated = updateBorderProperties(prevRaw, { 'border-bottom': solidBorder });
+                            tr.setNodeMarkup(cOffset, undefined, {
+                                ...cell.attrs,
+                                rawBorder: updated,
+                            });
+                        }
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'inside-vertical') {
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    const totalCols = row.childCount;
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < totalCols; c++) {
+                        const cell = row.child(c);
+                        if (c < totalCols - 1) {
+                            const prevRaw = cell.attrs.rawBorder || '';
+                            const updated = updateBorderProperties(prevRaw, { 'border-right': solidBorder });
+                            tr.setNodeMarkup(cOffset, undefined, {
+                                ...cell.attrs,
+                                rawBorder: updated,
+                            });
+                        }
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
+            } else if (borderType === 'top' || borderType === 'bottom' || borderType === 'left' || borderType === 'right') {
+                let rOffset = tablePos + 1;
+                for (let r = 0; r < totalRows; r++) {
+                    const row = targetTable.child(r);
+                    const totalCols = row.childCount;
+                    let cOffset = rOffset + 1;
+                    for (let c = 0; c < totalCols; c++) {
+                        const cell = row.child(c);
+                        let applyThisCell = false;
+
+                        if (activeCellPos && cOffset === activeCellPos) {
+                            applyThisCell = true;
+                        } else if (!activeCellPos) {
+                            if (borderType === 'top' && r === 0) applyThisCell = true;
+                            if (borderType === 'bottom' && r === totalRows - 1) applyThisCell = true;
+                            if (borderType === 'left' && c === 0) applyThisCell = true;
+                            if (borderType === 'right' && c === totalCols - 1) applyThisCell = true;
+                        }
+
+                        if (applyThisCell) {
+                            const prevRaw = cell.attrs.rawBorder || '';
+                            const edgeKey = `border-${borderType}`;
+                            const updated = updateBorderProperties(prevRaw, { [edgeKey]: solidBorder });
+                            tr.setNodeMarkup(cOffset, undefined, {
+                                ...cell.attrs,
+                                rawBorder: updated,
+                            });
+                        }
+                        cOffset += cell.nodeSize;
+                    }
+                    rOffset += row.nodeSize;
+                }
             }
 
             editor.view.dispatch(tr);
             scheduleSyncAndPagination();
+        },
+        toggleBorderPainter(force) {
+            state.isBorderPainterActive = force !== undefined ? Boolean(force) : !state.isBorderPainterActive;
+            const isActive = state.isBorderPainterActive;
+
+            const btn = document.getElementById('btnBorderPainterToggle');
+            if (btn) {
+                btn.classList.toggle('bg-blue-100', isActive);
+                btn.classList.toggle('border-blue-400', isActive);
+                btn.classList.toggle('text-blue-700', isActive);
+                btn.classList.toggle('ring-2', isActive);
+                btn.classList.toggle('ring-blue-300', isActive);
+            }
+
+            const shell = document.querySelector('.mou-word-studio-shell');
+            if (shell) {
+                shell.classList.toggle('mou-border-painter-mode', isActive);
+            }
+            document.getElementById('mouBodyMount')?.classList.toggle('mou-border-painter-mode', isActive);
+            document.getElementById('mouHeaderCanvas')?.classList.toggle('mou-border-painter-mode', isActive);
+            document.getElementById('mouFooterCanvas')?.classList.toggle('mou-border-painter-mode', isActive);
+        },
+        applyTablePreset(preset) {
+            this.setTableBorders(preset);
+        },
+        toggleTableGridlines(show) {
+            const shell = document.querySelector('.mou-word-studio-shell');
+            const isCurrentlyActive = shell ? shell.classList.contains('mou-table-gridlines-active') : true;
+            const nextState = show !== undefined ? Boolean(show) : !isCurrentlyActive;
+
+            state.showTableGridlines = nextState;
+
+            // Toggle active class on shell, editor mount, and preview stages
+            if (shell) shell.classList.toggle('mou-table-gridlines-active', nextState);
+            document.getElementById('mouBodyMount')?.classList.toggle('mou-table-gridlines-active', nextState);
+            document.getElementById('mouHeaderCanvas')?.classList.toggle('mou-table-gridlines-active', nextState);
+            document.getElementById('mouFooterCanvas')?.classList.toggle('mou-table-gridlines-active', nextState);
+
+            // Update UI buttons and checkboxes
+            const btnQuick = document.getElementById('btnQuickToggleGridlines');
+            if (btnQuick) {
+                btnQuick.classList.toggle('border-blue-500', nextState);
+                btnQuick.classList.toggle('bg-blue-50', nextState);
+                btnQuick.classList.toggle('text-blue-700', nextState);
+                btnQuick.classList.toggle('border-slate-300', !nextState);
+                btnQuick.classList.toggle('bg-white', !nextState);
+                btnQuick.classList.toggle('text-slate-700', !nextState);
+            }
+
+            const btnRibbon = document.getElementById('btnRibbonViewGridlines');
+            if (btnRibbon) {
+                btnRibbon.classList.toggle('border-blue-400', nextState);
+                btnRibbon.classList.toggle('bg-blue-50', nextState);
+                btnRibbon.classList.toggle('text-blue-700', nextState);
+                btnRibbon.classList.toggle('border-slate-300', !nextState);
+                btnRibbon.classList.toggle('bg-white', !nextState);
+                btnRibbon.classList.toggle('text-slate-700', !nextState);
+            }
+
+            const statusText = document.getElementById('ribbonGridlinesStatusText');
+            if (statusText) {
+                statusText.textContent = nextState ? 'Garis Kisi: Aktif' : 'Garis Kisi: Nonaktif';
+            }
+
+            const chkLayout = document.getElementById('ribbonToggleGridlinesLayout');
+            if (chkLayout) {
+                chkLayout.checked = nextState;
+            }
+
+            return nextState;
         },
 
         // Find & Replace in active editor
@@ -4603,7 +8814,475 @@ export function initMouWordProcessor(config) {
         },
 
         replaceLivePreviewPlaceholders,
+
+        // Ruler and precision alignment methods
+        toggleRuler(show) {
+            const stickyHeader = document.getElementById('mouRulerStickyHeader');
+            if (stickyHeader) {
+                const isHidden = show !== undefined ? !show : !stickyHeader.classList.contains('hidden');
+                stickyHeader.classList.toggle('hidden', isHidden);
+                const chk = document.getElementById('ribbonToggleRuler');
+                if (chk) chk.checked = !isHidden;
+                const btnQuick = document.getElementById('btnQuickToggleRuler');
+                if (btnQuick) {
+                    btnQuick.classList.toggle('border-blue-500', !isHidden);
+                    btnQuick.classList.toggle('bg-blue-50', !isHidden);
+                    btnQuick.classList.toggle('text-blue-700', !isHidden);
+                }
+                if (!isHidden) {
+                    requestAnimationFrame(() => {
+                        syncRulerToPageSheet();
+                        updateRulerMarkersFromEditor();
+                    });
+                }
+            }
+        },
+        showRulerGuideline,
+        hideRulerGuideline,
+        showSmartGuides,
+        hideSmartGuides,
+        showRulerObjectRange,
+        hideRulerObjectRange,
+        updateRuler: renderHorizontalRuler,
+        syncRuler: syncRulerToPageSheet,
     };
+
+    function attachRibbonEventListeners() {
+        // 1. Font Family & Size
+        const fontFamilySelect = document.getElementById('ribbonFontFamily');
+        if (fontFamilySelect) {
+            fontFamilySelect.addEventListener('change', (e) => {
+                api.setFontFamily(e.target.value);
+            });
+        }
+        const fontSizeSelect = document.getElementById('ribbonFontSize');
+        if (fontSizeSelect) {
+            fontSizeSelect.addEventListener('change', (e) => {
+                api.setFontSize(e.target.value);
+            });
+        }
+        const headingSelect = document.getElementById('ribbonHeadingStyle');
+        if (headingSelect) {
+            headingSelect.addEventListener('change', (e) => {
+                api.setBlockStyle(e.target.value);
+            });
+        }
+
+        // 2. Text Color & Highlight Color
+        const textColorInput = document.getElementById('ribbonTextColor');
+        if (textColorInput) {
+            textColorInput.addEventListener('input', (e) => {
+                api.setTextColor(e.target.value);
+            });
+        }
+        const highlightColorInput = document.getElementById('ribbonHighlightColor');
+        if (highlightColorInput) {
+            highlightColorInput.addEventListener('input', (e) => {
+                api.setHighlightColor(e.target.value);
+            });
+        }
+        const btnRemoveHl = document.getElementById('btnRemoveHighlight');
+        if (btnRemoveHl) {
+            btnRemoveHl.addEventListener('click', () => {
+                api.removeHighlight();
+            });
+        }
+
+        // 3. Line Height, List Styles & Tab Stop
+        const lineHeightSelect = document.getElementById('ribbonParagraphLineHeight');
+        if (lineHeightSelect && !lineHeightSelect.dataset.boundLh) {
+            lineHeightSelect.dataset.boundLh = '1';
+            lineHeightSelect.addEventListener('change', (e) => {
+                api.setLineHeight(e.target.value);
+            });
+        }
+        const listStyleSelect = document.getElementById('ribbonOrderedListStyle');
+        if (listStyleSelect && !listStyleSelect.dataset.boundLs) {
+            listStyleSelect.dataset.boundLs = '1';
+            listStyleSelect.addEventListener('change', (e) => {
+                if (typeof api.setOrderedListType === 'function') {
+                    api.setOrderedListType(e.target.value);
+                } else {
+                    api.toggleOrderedList(e.target.value);
+                }
+            });
+        }
+        const btnInsertTab = document.getElementById('btnInsertTabStop');
+        if (btnInsertTab) {
+            btnInsertTab.addEventListener('click', () => {
+                api.insertTab();
+            });
+        }
+        const tabSizeSelect = document.getElementById('ribbonTabSizeSelect');
+        if (tabSizeSelect) {
+            tabSizeSelect.addEventListener('change', (e) => {
+                api.setTabSize(e.target.value);
+            });
+        }
+
+        // 3b. Indent & Outdent buttons
+        const btnIndent = document.getElementById('btnRibbonIndent');
+        if (btnIndent) {
+            btnIndent.addEventListener('click', (e) => {
+                e.preventDefault();
+                api.adjustIndent(6);
+            });
+        }
+        const btnOutdent = document.getElementById('btnRibbonOutdent');
+        if (btnOutdent) {
+            btnOutdent.addEventListener('click', (e) => {
+                e.preventDefault();
+                api.adjustIndent(-6);
+            });
+        }
+
+        // 4. Find & Replace
+        const btnExecuteReplace = document.getElementById('btnExecuteReplaceAll');
+        if (btnExecuteReplace) {
+            btnExecuteReplace.addEventListener('click', () => {
+                const findVal = document.getElementById('ribbonFindInput')?.value || '';
+                const replaceVal = document.getElementById('ribbonReplaceInput')?.value || '';
+                if (!findVal) {
+                    alert('Silakan masukkan teks yang ingin dicari.');
+                    return;
+                }
+                const count = api.findAndReplace(findVal, replaceVal);
+                alert(`Berhasil mengganti ${count} kecocokan di area aktif.`);
+            });
+        }
+
+        // 5. Table Width, Column Width, Row Height (Set buttons & Enter keys)
+        const btnApplyTableW = document.getElementById('btnApplyTableWidth');
+        const tableWInput = document.getElementById('ribbonTableWidthInput');
+        const applyTableW = () => {
+            if (tableWInput && tableWInput.value) {
+                api.setCurrentTableWidth(tableWInput.value);
+            }
+        };
+        if (btnApplyTableW) btnApplyTableW.addEventListener('click', applyTableW);
+        if (tableWInput) {
+            tableWInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyTableW();
+                }
+            });
+        }
+
+        const btnApplyColW = document.getElementById('btnApplyColWidth');
+        const colWInput = document.getElementById('ribbonColWidthInput');
+        const applyColW = () => {
+            if (colWInput && colWInput.value) {
+                api.setCurrentColumnWidth(colWInput.value);
+            }
+        };
+        if (btnApplyColW) btnApplyColW.addEventListener('click', applyColW);
+        if (colWInput) {
+            colWInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyColW();
+                }
+            });
+        }
+
+        const btnApplyRowH = document.getElementById('btnApplyRowHeight');
+        const rowHInput = document.getElementById('ribbonRowHeightInput');
+        const applyRowH = () => {
+            if (rowHInput && rowHInput.value) {
+                const val = rowHInput.value.trim();
+                const safeVal = /^[0-9.]+$/.test(val) ? `${val}pt` : val;
+                api.setCurrentRowHeight(safeVal);
+            }
+        };
+        if (btnApplyRowH) btnApplyRowH.addEventListener('click', applyRowH);
+        if (rowHInput) {
+            rowHInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyRowH();
+                }
+            });
+        }
+
+        // 6. Cell Padding, Valign, Background Color
+        const cellPaddingSelect = document.getElementById('ribbonCellPaddingSelect');
+        if (cellPaddingSelect) {
+            cellPaddingSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    api.updateActiveTableCells({ padding: e.target.value }, false);
+                }
+            });
+        }
+        const cellValignSelect = document.getElementById('ribbonCellValignSelect');
+        if (cellValignSelect) {
+            cellValignSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    api.updateActiveTableCells({ verticalAlign: e.target.value }, false);
+                }
+            });
+        }
+        const cellBgColorInput = document.getElementById('ribbonCellBgColor');
+        if (cellBgColorInput) {
+            cellBgColorInput.addEventListener('input', (e) => {
+                api.updateActiveTableCells({ backgroundColor: e.target.value }, false);
+            });
+        }
+
+        // 7. Image Asset Controls in Ribbon
+        const btnRot90 = document.getElementById('btnRotateImage90');
+        if (btnRot90) btnRot90.addEventListener('click', () => api.rotateSelectedImage(90));
+        const btnResetImg = document.getElementById('btnResetImageAsset');
+        if (btnResetImg) btnResetImg.addEventListener('click', () => api.resetSelectedImage());
+        const btnDelImg = document.getElementById('btnDeleteSelectedImage');
+        if (btnDelImg) btnDelImg.addEventListener('click', () => api.deleteSelectedAsset());
+        const btnApplyImgSize = document.getElementById('btnApplyImageSize');
+        const applyImgSize = () => {
+            const w = document.getElementById('ribbonImageWidthPx')?.value;
+            const h = document.getElementById('ribbonImageHeightPx')?.value;
+            const rot = document.getElementById('ribbonImageRotationDeg')?.value;
+            api.updateSelectedImage(w, h, rot);
+        };
+        if (btnApplyImgSize) btnApplyImgSize.addEventListener('click', applyImgSize);
+
+        // 8. Quick Placeholder Insert
+        const quickPlaceholderSelect = document.getElementById('ribbonQuickPlaceholderSelect');
+        if (quickPlaceholderSelect) {
+            quickPlaceholderSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    getActiveEditor()?.chain().focus().insertContent(`[${e.target.value}]`).run();
+                    e.target.value = '';
+                }
+            });
+        }
+
+        // 9. Quick Symbol Insert
+        const quickSymbolSelect = document.getElementById('ribbonQuickSymbolSelect');
+        if (quickSymbolSelect) {
+            quickSymbolSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    getActiveEditor()?.chain().focus().insertContent(e.target.value).run();
+                    e.target.value = '';
+                }
+            });
+        }
+
+        // Note: Lifecycle actions (Export DOCX, Import DOCX, New Blank Document, Load Saved Template)
+        // are explicitly managed by the host view template (_word-editor.blade.php) to ensure proper
+        // template naming, confirmation handling, and to prevent duplicate download triggers.
+
+        // 10. Watermark toggle button
+        const btnWatermark = document.getElementById('btnToggleWatermark');
+        if (btnWatermark) {
+            btnWatermark.addEventListener('click', () => {
+                const enabled = api.toggleWatermark();
+                btnWatermark.classList.toggle('mou-ribbon-btn-active', enabled);
+            });
+        }
+
+        // 14. Interactive Horizontal Ruler & Alignment Controls
+        attachInteractiveRulerEvents();
+
+        const chkToggleRuler = document.getElementById('ribbonToggleRuler');
+        if (chkToggleRuler) {
+            chkToggleRuler.addEventListener('change', (e) => {
+                api.toggleRuler(e.target.checked);
+            });
+        }
+
+        const btnQuickRuler = document.getElementById('btnQuickToggleRuler');
+        if (btnQuickRuler) {
+            btnQuickRuler.addEventListener('click', () => {
+                const stickyHeader = document.getElementById('mouRulerStickyHeader');
+                const willShow = stickyHeader ? stickyHeader.classList.contains('hidden') : true;
+                api.toggleRuler(willShow);
+            });
+        }
+
+        // 15. Table Gridlines (Lihat Garis Kisi Tabel ala MS Word)
+        const btnQuickGridlines = document.getElementById('btnQuickToggleGridlines');
+        if (btnQuickGridlines) {
+            btnQuickGridlines.addEventListener('click', () => {
+                api.toggleTableGridlines();
+            });
+        }
+        const btnRibbonGridlines = document.getElementById('btnRibbonViewGridlines');
+        if (btnRibbonGridlines) {
+            btnRibbonGridlines.addEventListener('click', () => {
+                api.toggleTableGridlines();
+            });
+        }
+        const chkToggleGridlinesLayout = document.getElementById('ribbonToggleGridlinesLayout');
+        if (chkToggleGridlinesLayout) {
+            chkToggleGridlinesLayout.addEventListener('change', (e) => {
+                api.toggleTableGridlines(e.target.checked);
+            });
+        }
+
+        // 16. MS Word Floating Borders Dropdown Menu & Border Painter
+        const bordersDropdown = document.getElementById('wordBordersFloatingDropdown');
+        const bordersTriggers = [
+            document.getElementById('btnTableBordersDropdownToggle'),
+            document.getElementById('btnHomeBordersDropdownToggle'),
+        ].filter(Boolean);
+
+        function positionAndOpenBordersDropdown(triggerBtn) {
+            if (!bordersDropdown || !triggerBtn) return;
+            const isCurrentlyHidden = bordersDropdown.classList.contains('hidden');
+            if (isCurrentlyHidden) {
+                const rect = triggerBtn.getBoundingClientRect();
+                bordersDropdown.style.position = 'fixed';
+                bordersDropdown.style.top = `${rect.bottom + 4}px`;
+                bordersDropdown.style.left = `${Math.min(rect.left, window.innerWidth - 270)}px`;
+                bordersDropdown.style.zIndex = '99999';
+
+                // Synchronize View Gridlines checkmark
+                const gridCheck = document.getElementById('bordersDropdownGridlinesCheck');
+                if (gridCheck) {
+                    const shell = document.querySelector('.mou-word-studio-shell');
+                    const isGridActive = shell ? shell.classList.contains('mou-table-gridlines-active') : true;
+                    gridCheck.style.display = isGridActive ? 'inline' : 'none';
+                }
+
+                bordersDropdown.classList.remove('hidden');
+            } else {
+                bordersDropdown.classList.add('hidden');
+            }
+        }
+
+        bordersTriggers.forEach(btn => {
+            btn.addEventListener('mousedown', (e) => e.preventDefault());
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                positionAndOpenBordersDropdown(btn);
+            });
+        });
+
+        if (bordersDropdown) {
+            bordersDropdown.addEventListener('mousedown', (e) => e.preventDefault());
+            bordersDropdown.addEventListener('click', (e) => {
+                const actionBtn = e.target.closest('button[data-border-action]');
+                if (!actionBtn) return;
+                const action = actionBtn.getAttribute('data-border-action');
+                if (action) {
+                    api.setTableBorders(action);
+                }
+                bordersDropdown.classList.add('hidden');
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (bordersDropdown && !bordersDropdown.classList.contains('hidden')) {
+                if (!e.target.closest('#wordBordersFloatingDropdown, #btnTableBordersDropdownToggle, #btnHomeBordersDropdownToggle')) {
+                    bordersDropdown.classList.add('hidden');
+                }
+            }
+        });
+
+        // Border Color Hex Label Sync
+        const bColorInput = document.getElementById('ribbonTableBorderColor');
+        const bColorHex = document.getElementById('ribbonTableBorderColorHex');
+        if (bColorInput && bColorHex) {
+            bColorInput.addEventListener('input', (e) => {
+                bColorHex.textContent = e.target.value.toUpperCase();
+            });
+        }
+
+        // Border Painter Cell Click & Keyboard Listeners
+        document.addEventListener('click', (e) => {
+            if (!state.isBorderPainterActive) return;
+            if (e.target.closest('.mou-ribbon-bar, .mou-ribbon-panels-container, #wordBordersFloatingDropdown')) return;
+
+            const cellEl = e.target.closest('td, th');
+            if (!cellEl) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const bWidth = document.getElementById('ribbonTableBorderWidth')?.value || '1px';
+            const bColor = document.getElementById('ribbonTableBorderColor')?.value || '#000000';
+            const solidBorder = `${bWidth} solid ${bColor}`;
+
+            const editor = getActiveEditor();
+            if (!editor) return;
+
+            const pos = editor.view.posAtDOM(cellEl, 0);
+            if (pos >= 0) {
+                const { state: edState } = editor;
+                const $pos = edState.doc.resolve(pos);
+                for (let d = $pos.depth; d >= 0; d--) {
+                    const n = $pos.node(d);
+                    if (n.type.name === 'tableCell' || n.type.name === 'tableHeader') {
+                        const cellPos = $pos.before(d);
+                        const tr = edState.tr;
+                        tr.setNodeMarkup(cellPos, undefined, {
+                            ...n.attrs,
+                            borderStyle: 'solid',
+                            borderWidth: bWidth,
+                            borderColor: bColor,
+                            rawBorder: solidBorder,
+                        });
+                        editor.view.dispatch(tr);
+                        scheduleSyncAndPagination();
+                        break;
+                    }
+                }
+            }
+        }, true);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && state.isBorderPainterActive) {
+                api.toggleBorderPainter(false);
+            }
+        });
+
+        const btnResetMargins = document.getElementById('btnResetRulerMargins');
+        if (btnResetMargins) {
+            btnResetMargins.addEventListener('click', () => {
+                if (confirm('Kembalikan ukuran margin ke standar Normal (25.4 mm / 1 inci di semua sisi)?')) {
+                    state.marginTopMm = 25.4;
+                    state.marginBottomMm = 25.4;
+                    state.marginLeftMm = 25.4;
+                    state.marginRightMm = 25.4;
+
+                    const setVal = (id, val) => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = String(val);
+                    };
+                    setVal('layoutMarginTop', 25.4);
+                    setVal('layoutMarginBottom', 25.4);
+                    setVal('layoutMarginLeft', 25.4);
+                    setVal('layoutMarginRight', 25.4);
+
+                    applyPageLayoutToCanvas();
+                }
+            });
+        }
+
+        const btnApplyParaLayout = document.getElementById('btnApplyParagraphLayout');
+        if (btnApplyParaLayout) {
+            btnApplyParaLayout.addEventListener('click', () => {
+                const firstLine = parseFloat(document.getElementById('layoutFirstLineIndent')?.value || 0);
+                const spaceBefore = parseFloat(document.getElementById('layoutSpaceBefore')?.value || 0);
+                const spaceAfter = parseFloat(document.getElementById('layoutSpaceAfter')?.value || 0);
+
+                const ed = getActiveEditor();
+                if (ed) {
+                    ed.chain().focus().updateAttributes('paragraph', {
+                        textIndent: firstLine > 0 ? `${firstLine}mm` : null,
+                        marginTop: spaceBefore > 0 ? `${spaceBefore}pt` : null,
+                        marginBottom: spaceAfter > 0 ? `${spaceAfter}pt` : null,
+                    }).run();
+                    updateRulerMarkersFromEditor();
+                }
+            });
+        }
+    }
+
+    attachRibbonEventListeners();
+
+    // Default aktifkan Garis Kisi Tabel (View Gridlines) ala MS Word agar tabel borderless langsung terlihat batas selnya
+    api.toggleTableGridlines(true);
 
     window.MouWordProcessor = api;
     window.UnifiedWordProcessor = api;

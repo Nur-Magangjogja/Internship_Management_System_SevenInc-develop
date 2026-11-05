@@ -123,5 +123,6 @@ function toggleResetPasswords() {
   });
 }
 </script>
+<x-prevent-double-submit />
 </body>
 </html>

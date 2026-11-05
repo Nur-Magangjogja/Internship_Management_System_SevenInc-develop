@@ -86,7 +86,7 @@
                                     </form>
                                 @endif
 
-                                {{-- Aksi Status Aktif / Nonaktif --}}
+                                {{-- Aksi Status Aktif / Nonaktif (Dinamis, Tanpa Emotikon) --}}
                                 @if($brand->is_default)
                                     <span class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed" title="Brand default sistem terkunci (selalu aktif)">
                                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -95,41 +95,24 @@
                                         </svg>
                                     </span>
                                 @elseif($brand->lifecycle_status === \App\Models\Brand::STATUS_ACTIVE)
-                                    <form action="{{ route('admin.brands.suspend', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Nonaktifkan brand {{ addslashes($brand->name) }}? Host pendaftaran akan dikeluarkan sementara dari sistem.');">
+                                    <form action="{{ route('admin.brands.toggle', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Nonaktifkan brand {{ addslashes($brand->name) }}?');">
                                         @csrf
-                                        <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:border-amber-300 transition" title="Nonaktifkan Brand (Suspend)">
+                                        <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white transition shadow-2xs" title="Nonaktifkan Brand">
                                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                 <circle cx="12" cy="12" r="10"/>
                                                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                                             </svg>
                                         </button>
                                     </form>
-                                @elseif($brand->lifecycle_status === \App\Models\Brand::STATUS_SUSPENDED)
-                                    <form action="{{ route('admin.brands.unsuspend', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Aktifkan kembali brand {{ addslashes($brand->name) }}? Host pendaftaran akan kembali terhubung.');">
-                                        @csrf
-                                        <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#A5D6A7] bg-[#E8F5E9] text-[#1F5F3F] hover:bg-[#2D8659] hover:text-white transition" title="Aktifkan Kembali Brand (Reaktivasi)">
-                                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                                                <polyline points="22 4 12 14.01 9 11.01"/>
-                                            </svg>
-                                        </button>
-                                    </form>
-                                @elseif($brand->lifecycle_status === \App\Models\Brand::STATUS_READY)
-                                    <form action="{{ route('admin.brands.activate', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Aktifkan brand {{ addslashes($brand->name) }} sekarang?');">
-                                        @csrf
-                                        <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition" title="Aktifkan Brand">
-                                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <polygon points="5 3 19 12 5 21 5 3"/>
-                                            </svg>
-                                        </button>
-                                    </form>
                                 @else
-                                    <a href="{{ route('admin.brands.show', $brand->id) }}" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-600 transition" title="Konfigurasi Belum Lengkap (Klik untuk periksa Domain/Spreadsheet)">
-                                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <circle cx="12" cy="12" r="3"/>
-                                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                                        </svg>
-                                    </a>
+                                    <form action="{{ route('admin.brands.toggle', $brand->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Aktifkan brand {{ addslashes($brand->name) }}?');">
+                                        @csrf
+                                        <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#A5D6A7] bg-[#E8F5E9] text-[#1F5F3F] hover:bg-[#2D8659] hover:text-white transition shadow-2xs" title="Aktifkan Brand">
+                                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                        </button>
+                                    </form>
                                 @endif
 
                                 <a href="{{ route('admin.brands.show', $brand->id) }}" class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#DCE7E1] text-[#1B3A34] hover:border-[#1B3A34] hover:bg-[#F4F8F6] transition" title="Lihat">

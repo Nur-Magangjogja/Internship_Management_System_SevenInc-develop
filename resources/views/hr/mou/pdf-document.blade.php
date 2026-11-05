@@ -68,8 +68,25 @@
 
         $paperWidthMm = $paperSize === 'legal' ? 215.9 : ($paperSize === 'letter' ? 215.9 : 210.0);
         $contentWidthPt = ($paperWidthMm - $leftMm - $rightMm) * 2.83465;
-        $logoSizePt = 65.0;
-        $logoRightLeftPt = round($contentWidthPt - $logoSizePt, 2);
+        $logoSizePt     = 50.0;
+
+        $hlCfg = $pageConfig['header_logos_config'] ?? [];
+        $clampPt = fn($val, $min, $max, $dflt) => is_numeric($val) ? max($min, min($max, (float)$val)) : $dflt;
+        $instLogoW = $clampPt($hlCfg['institution']['width'] ?? 66, 30, 105, 66) * 0.75;
+        $instLogoH = $clampPt($hlCfg['institution']['height'] ?? 66, 30, 105, 66) * 0.75;
+        $instRot   = (int) ($hlCfg['institution']['rotation'] ?? 0);
+        $instTopPt = $clampPt($hlCfg['institution']['topOffsetMm'] ?? 0, -4, 6, 0) * 2.83465;
+        $instLeftPt = $clampPt($hlCfg['institution']['leftOffsetMm'] ?? 0, -10, 45, 0) * 2.83465;
+
+        $compLogoW = $clampPt($hlCfg['company']['width'] ?? 66, 30, 105, 66) * 0.75;
+        $compLogoH = $clampPt($hlCfg['company']['height'] ?? 66, 30, 105, 66) * 0.75;
+        $compRot   = (int) ($hlCfg['company']['rotation'] ?? 0);
+        $compTopPt = $clampPt($hlCfg['company']['topOffsetMm'] ?? 0, -4, 6, 0) * 2.83465;
+        $compRightPt = $clampPt($hlCfg['company']['rightOffsetMm'] ?? 0, -10, 45, 0) * 2.83465;
+        $logoRightLeftPt = round($contentWidthPt - $compLogoW - $compRightPt, 2);
+
+        $maxLogoBottomPt = max($instLogoH + max(0.0, $instTopPt), $compLogoH + max(0.0, $compTopPt));
+        $effectiveLogoBlockHeightPt = min(85.0, max(55.0, round($maxLogoBottomPt + 8.0, 2)));
     @endphp
     <style>
         @page {
@@ -141,26 +158,36 @@
             height: 16pt;
         }
         .mou-pdf-first-page-logos {
-            position: absolute;
-            top: 0;
-            left: 0;
+            position: relative;
             width: 100%;
-            height: {{ $logoSizePt }}pt;
+            height: {{ $effectiveLogoBlockHeightPt }}pt;
+            min-height: {{ $effectiveLogoBlockHeightPt }}pt;
+            margin-bottom: 14pt;
+            box-sizing: border-box;
+            clear: both;
         }
         .mou-pdf-logo-left {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: {{ $logoSizePt }}pt;
-            height: {{ $logoSizePt }}pt;
+            top: {{ $instTopPt }}pt;
+            left: {{ $instLeftPt }}pt;
+            width: {{ $instLogoW }}pt;
+            height: {{ $instLogoH }}pt;
+            object-fit: contain;
+            @if($instRot !== 0)
+            transform: rotate({{ $instRot }}deg);
+            @endif
         }
         .mou-pdf-logo-right {
             position: absolute;
-            top: 0;
+            top: {{ $compTopPt }}pt;
             left: {{ $logoRightLeftPt }}pt;
-            width: {{ $logoSizePt }}pt;
-            height: {{ $logoSizePt }}pt;
+            width: {{ $compLogoW }}pt;
+            height: {{ $compLogoH }}pt;
+            object-fit: contain;
             text-align: right;
+            @if($compRot !== 0)
+            transform: rotate({{ $compRot }}deg);
+            @endif
         }
     </style>
 </head>
@@ -203,13 +230,24 @@
         <div class="mou-pdf-first-page-footer-overlay" data-footer-zone="first-page">
             {!! $firstPageFooterHtml !!}
         </div>
+    @elseif(($showHeaderLogos ?? true) && $headerHtml !== '')
+        <div class="mou-pdf-first-page-header-overlay" data-header-zone="first-page" style="position: absolute; left: 0; right: 0; top: -{{ $headerTopOffsetMm }}mm; min-height: {{ $headerBoxHeightMm }}mm; background-color: #ffffff; z-index: 500;"></div>
     @endif
 
     <main class="mou-doc-canvas" style="position: relative;">
         @if(($showHeaderLogos ?? true) && !empty($institutionLogoBase64) && !empty($companyLogoBase64))
             <div class="mou-pdf-first-page-logos">
-                <img src="{{ $institutionLogoBase64 }}" width="{{ $logoSizePt }}" height="{{ $logoSizePt }}" class="mou-pdf-logo-left" alt="Logo Institusi" />
-                <img src="{{ $companyLogoBase64 }}" width="{{ $logoSizePt }}" height="{{ $logoSizePt }}" class="mou-pdf-logo-right" alt="Logo Seven Inc" />
+                <img src="{{ $institutionLogoBase64 }}" width="{{ $instLogoW ?? $logoSizePt }}" height="{{ $instLogoH ?? $logoSizePt }}" class="mou-pdf-logo-left" alt="Logo Institusi" />
+                @if($effectiveHeaderMm > 0 && !$differentFirstPage && $headerHtml !== '')
+                    <div style="margin: 0 {{ max(70.0, $compLogoW + 10.0) }}pt 0 {{ max(70.0, $instLogoW + 10.0) }}pt; text-align: center;">
+                        {!! $headerHtml !!}
+                    </div>
+                @elseif($differentFirstPage && $firstPageHeaderHtml !== '')
+                    <div style="margin: 0 {{ max(70.0, $compLogoW + 10.0) }}pt 0 {{ max(70.0, $instLogoW + 10.0) }}pt; text-align: center;">
+                        {!! $firstPageHeaderHtml !!}
+                    </div>
+                @endif
+                <img src="{{ $companyLogoBase64 }}" width="{{ $compLogoW ?? $logoSizePt }}" height="{{ $compLogoH ?? $logoSizePt }}" class="mou-pdf-logo-right" alt="Logo Seven Inc" />
             </div>
         @endif
         {!! $renderedHtml !!}

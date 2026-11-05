@@ -288,9 +288,21 @@ class AuthController extends Controller
             $candidateUrls[] = 'http://absen-djuragan.test/api/v1/external/verify-admin';
         }
 
+        // Cegah self-call jika url mengarah ke port/host aplikasi ini sendiri (mencegah deadlock single-thread php artisan serve)
+        $currentPort = (int) (request()->getPort() ?: 80);
+        $candidateUrls = array_values(array_filter($candidateUrls, function ($url) use ($currentPort) {
+            $parsed = parse_url($url);
+            $host = $parsed['host'] ?? '';
+            $port = (int) ($parsed['port'] ?? ($parsed['scheme'] === 'https' ? 443 : 80));
+            if (in_array($host, ['127.0.0.1', 'localhost'], true) && $port === $currentPort) {
+                return false;
+            }
+            return true;
+        }));
+
         foreach ($candidateUrls as $url) {
             try {
-                $response = \Illuminate\Support\Facades\Http::timeout(4)->withoutVerifying()->withHeaders([
+                $response = \Illuminate\Support\Facades\Http::connectTimeout(1.5)->timeout(2.5)->withoutVerifying()->withHeaders([
                     'X-API-KEY' => $apiKey,
                     'Accept'    => 'application/json',
                 ])->post($url, [
@@ -332,9 +344,21 @@ class AuthController extends Controller
             $candidateUrls[] = 'http://absen-djuragan.test/api/v1/external/verify-intern';
         }
 
+        // Cegah self-call jika url mengarah ke port/host aplikasi ini sendiri (mencegah deadlock single-thread php artisan serve)
+        $currentPort = (int) (request()->getPort() ?: 80);
+        $candidateUrls = array_values(array_filter($candidateUrls, function ($url) use ($currentPort) {
+            $parsed = parse_url($url);
+            $host = $parsed['host'] ?? '';
+            $port = (int) ($parsed['port'] ?? ($parsed['scheme'] === 'https' ? 443 : 80));
+            if (in_array($host, ['127.0.0.1', 'localhost'], true) && $port === $currentPort) {
+                return false;
+            }
+            return true;
+        }));
+
         foreach ($candidateUrls as $url) {
             try {
-                $response = \Illuminate\Support\Facades\Http::timeout(4)->withoutVerifying()->withHeaders([
+                $response = \Illuminate\Support\Facades\Http::connectTimeout(1.5)->timeout(2.5)->withoutVerifying()->withHeaders([
                     'X-API-KEY' => $apiKey,
                     'Accept'    => 'application/json',
                 ])->post($url, [

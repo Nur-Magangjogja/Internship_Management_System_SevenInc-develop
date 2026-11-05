@@ -529,6 +529,9 @@ class MouTemplateController extends Controller
             'show_page_number'         => $showPageNum,
             'show_page_numbers'        => $showPageNum,
             'show_header_logos'        => $showHeaderLogos,
+            'header_logos_config'      => is_array($request->input('header_logos_config'))
+                ? $request->input('header_logos_config')
+                : (json_decode((string) $request->input('header_logos_config', ''), true) ?: ($basePage['header_logos_config'] ?? [])),
             'show_watermark'           => $showWatermark,
             'watermark_opacity'        => $watermarkOpacity,
         ];
@@ -619,7 +622,12 @@ class MouTemplateController extends Controller
         $institutionLogo = $selectedInstitution?->logo_url
             ?? ($selectedInstitution?->logo ? ('/storage/' . $selectedInstitution->logo) : '/images/mou/institution-logo-placeholder.png');
 
+        $companyLogo = $companyDefaults['company_logo']
+            ?? ($mouTemplate->getMediaAssets()['company_logo'] ?? '/images/mou/seven-inc-logo.png');
+
         return array_merge($companyDefaults, $dateTokens, [
+            'company_logo'                    => $companyLogo,
+            'company_logo_path'               => $companyLogo,
             'institution_name'                => $selectedInstitution?->name ?? 'UNIVERSITAS CONTOH INDONESIA',
             'institution_logo'                => $institutionLogo,
             'institution_logo_path'           => $institutionLogo,
@@ -632,6 +640,22 @@ class MouTemplateController extends Controller
             'institution_signatory_name'      => $selectedInstitution?->contacts->first()?->name ?? 'Dr. Rido Kurnianto, M.Ag.',
             'institution_signatory_title'     => $selectedInstitution?->contacts->first()?->position_title ?? 'Rektor',
             'company_mou_number'              => '004/SPK.MAGANG/CEO/SEVEN/V/' . date('Y'),
+
+            // Mock aset tanda tangan dan stempel untuk simulasi Pratinjau Lembar Review Template
+            'signature'                       => '/images/mou/signature-sample.png',
+            'tanda_tangan'                    => '/images/mou/signature-sample.png',
+            'company_signature'               => '/images/mou/signature-sample.png',
+            'asset.signature'                 => '/images/mou/signature-sample.png',
+            'asset.brand.tanda_tangan'        => '/images/mou/signature-sample.png',
+            'asset.company.signature'         => '/images/mou/signature-sample.png',
+            'stamp'                           => '/images/mou/stamp-sample.png',
+            'stempel'                         => '/images/mou/stamp-sample.png',
+            'company_stamp'                   => '/images/mou/stamp-sample.png',
+            'asset.stamp'                     => '/images/mou/stamp-sample.png',
+            'asset.brand.stempel'             => '/images/mou/stamp-sample.png',
+            'asset.company.stamp'             => '/images/mou/stamp-sample.png',
+            'institution_signature'           => '/images/mou/signature-sample.png',
+            'institution_stamp'               => '/images/mou/stamp-sample.png',
         ]);
     }
 }

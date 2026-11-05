@@ -71,8 +71,7 @@
                           bg-white text-gray-900 placeholder-gray-400
                           border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                           dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
-            <button type="button" class="toggle-admin-register-password-btn" onclick="togglePasswordVisibility('password', this)" aria-label="Lihat password"
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition">
+            <button type="button" class="toggle-admin-register-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition" onclick="togglePasswordVisibility('password', this)" aria-label="Lihat password">
               <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
@@ -89,8 +88,7 @@
                           bg-white text-gray-900 placeholder-gray-400
                           border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                           dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:border-gray-700 dark:focus:ring-primary-400 dark:focus:border-primary-400"/>
-            <button type="button" class="toggle-admin-register-password-btn" onclick="togglePasswordVisibility('password_confirmation', this)" aria-label="Lihat konfirmasi password"
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition">
+            <button type="button" class="toggle-admin-register-password-btn absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none transition" onclick="togglePasswordVisibility('password_confirmation', this)" aria-label="Lihat konfirmasi password">
               <svg class="h-4 w-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
@@ -138,5 +136,6 @@
       });
     }
   </script>
+  <x-prevent-double-submit />
 </body>
 </html>

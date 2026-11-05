@@ -79,5 +79,6 @@
     </div>
   </div>
 </div>
+<x-prevent-double-submit />
 </body>
 </html>

@@ -110,5 +110,6 @@ function togglePasswordVisibility(fieldId, btn) {
   }
 }
 </script>
+<x-prevent-double-submit />
 </body>
 </html>
