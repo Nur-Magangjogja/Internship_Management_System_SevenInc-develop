@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Brand;
 use App\Models\FollowUpCycle;
 use App\Models\Institution;
 use App\Models\Mou;
@@ -544,5 +545,44 @@ class MouService
         }
 
         return $count;
+    }
+
+    /**
+     * Hasilkan saran nomor resmi dokumen MOU berbasis Brand dan tahun berjalan.
+     * Format: {URUT}/SPK.MAGANG/CEO/{BRAND_CODE}/{ROMAN_MONTH}/{YEAR}
+     *
+     * Contoh:
+     * - Default / Seven Inc: 001/SPK.MAGANG/CEO/SEVEN/XI/2026
+     * - Magang Jogja (MJ):   001/SPK.MAGANG/CEO/MJ/XI/2026
+     * - Area Kerja (AK):     001/SPK.MAGANG/CEO/AK/XI/2026
+     */
+    public function generateSuggestedMouNumber(?Brand $brand = null, ?int $year = null): string
+    {
+        $year = $year ?? (int) date('Y');
+        $romanMonths = [
+            1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI',
+            7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII',
+        ];
+        $romanMonth = $romanMonths[(int) date('n')] ?? 'I';
+
+        $brandCode = strtoupper(trim((string) ($brand?->code ?? '')));
+        if ($brandCode === '' || $brandCode === 'SI' || $brandCode === 'SEVEN' || strtoupper(trim((string) ($brand?->name ?? ''))) === 'SEVEN INC') {
+            $brandTag = 'SEVEN';
+        } else {
+            $brandTag = $brandCode;
+        }
+
+        $count = Mou::whereYear('created_at', $year)->count() + 1;
+
+        do {
+            $nextNumber = str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+            $candidateNumber = "{$nextNumber}/SPK.MAGANG/CEO/{$brandTag}/{$romanMonth}/{$year}";
+            $exists = Mou::where('company_mou_number', $candidateNumber)->exists();
+            if ($exists) {
+                $count++;
+            }
+        } while ($exists);
+
+        return $candidateNumber;
     }
 }

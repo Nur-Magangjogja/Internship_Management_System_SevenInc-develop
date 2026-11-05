@@ -134,17 +134,19 @@ class MouController extends Controller
 
         $institutions   = Institution::active()->orderBy('name')->get();
 
-        // Rekomendasi nomor surat Seven Inc sesuai format standar
-        $year = date('Y');
-        $romanMonths = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
-        $romanMonth = $romanMonths[(int) date('n')] ?? 'I';
-        $nextNumber = str_pad((Mou::whereYear('created_at', $year)->count() + 1), 3, '0', STR_PAD_LEFT);
-        $suggestedNumber = "{$nextNumber}/SPK.MAGANG/CEO/SEVEN/{$romanMonth}/{$year}";
+        $brands = \App\Models\Brand::orderBy('name')->get();
+
+        // Tentukan brand terpilih dari request atau brand default sistem
+        $selectedBrandId = $request->input('brand_id');
+        $selectedBrand = $selectedBrandId
+            ? $brands->firstWhere('id', (int) $selectedBrandId)
+            : ($brands->firstWhere('is_default', true) ?? $brands->first());
+
+        // Rekomendasi nomor surat resmi sesuai brand terpilih
+        $suggestedNumber = $this->mouService->generateSuggestedMouNumber($selectedBrand);
 
         // Cek apakah institusi terpilih telah memiliki MOU yang sedang aktif
         $activeMou = $selectedInstitution ? $selectedInstitution->activeMou : null;
-
-        $brands = \App\Models\Brand::orderBy('name')->get();
 
         return view('hr.mou.create', compact(
             'institutions',

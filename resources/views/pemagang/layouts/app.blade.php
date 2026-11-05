@@ -255,6 +255,5 @@
   </div>
 
   @stack('scripts')
-  <x-prevent-double-submit />
 </body>
 </html>

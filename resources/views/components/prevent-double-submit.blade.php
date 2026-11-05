@@ -1,8 +1,40 @@
 {{-- Script Global Pencegahan Double Submit Form & Animasi Loading --}}
 <script>
 (function() {
-    if (window.__preventDoubleSubmitLoaded) return;
-    window.__preventDoubleSubmitLoaded = true;
+    if (typeof window !== 'undefined') {
+        if (window.__preventDoubleSubmitLoaded) return;
+        window.__preventDoubleSubmitLoaded = true;
+    }
+
+    function resetFormState(form) {
+        if (!form) return;
+        form.dataset.submitting = 'false';
+
+        const submitBtns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        submitBtns.forEach(function(btn) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            if (btn.dataset.originalHtml) {
+                btn.innerHTML = btn.dataset.originalHtml;
+            }
+        });
+
+        if (form.id) {
+            const extBtns = document.querySelectorAll('button[type="submit"][form="' + form.id + '"]');
+            extBtns.forEach(function(btn) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+                if (btn.dataset.originalHtml) {
+                    btn.innerHTML = btn.dataset.originalHtml;
+                }
+            });
+        }
+
+        const cancelLinks = form.querySelectorAll('a[href]:not([target="_blank"])');
+        cancelLinks.forEach(function(link) {
+            link.classList.remove('pointer-events-none', 'opacity-50');
+        });
+    }
 
     document.addEventListener('submit', function (e) {
         const form = e.target;
@@ -65,36 +97,17 @@
         cancelLinks.forEach(function(link) {
             link.classList.add('pointer-events-none', 'opacity-50');
         });
+
+        setTimeout(function() {
+            if (form.dataset.submitting === 'true') {
+                resetFormState(form);
+            }
+        }, 15000);
     });
 
     window.addEventListener('pageshow', function () {
         document.querySelectorAll('form[data-submitting="true"]').forEach(function(form) {
-            form.dataset.submitting = 'false';
-            
-            const submitBtns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
-            submitBtns.forEach(function(btn) {
-                btn.disabled = false;
-                btn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
-                if (btn.dataset.originalHtml) {
-                    btn.innerHTML = btn.dataset.originalHtml;
-                }
-            });
-
-            if (form.id) {
-                const extBtns = document.querySelectorAll('button[type="submit"][form="' + form.id + '"]');
-                extBtns.forEach(function(btn) {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
-                    if (btn.dataset.originalHtml) {
-                        btn.innerHTML = btn.dataset.originalHtml;
-                    }
-                });
-            }
-
-            const cancelLinks = form.querySelectorAll('a[href]:not([target="_blank"])');
-            cancelLinks.forEach(function(link) {
-                link.classList.remove('pointer-events-none', 'opacity-50');
-            });
+            resetFormState(form);
         });
     });
 })();

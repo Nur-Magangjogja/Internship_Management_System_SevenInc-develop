@@ -127,6 +127,5 @@
       });
     }
   </script>
-  <x-prevent-double-submit />
 </body>
 </html>

@@ -529,7 +529,6 @@ HTML;
     <p style="text-align: center; text-transform: uppercase; margin-bottom: 8pt;"><strong>DENGAN [company_name]</strong></p>
     <p style="text-align: center; margin-bottom: 2pt;"><strong>TENTANG</strong></p>
     <p style="text-align: center; margin-bottom: 4pt;"><strong>PELAKSANAAN TRI DHARMA PERGURUAN TINGGI</strong></p>
-    <p style="text-align: center; margin-bottom: 2pt;"><strong>NOMOR: [institution_mou_number]</strong></p>
     <p style="text-align: center; margin-bottom: 12pt;"><strong>NOMOR: [company_mou_number]</strong></p>
 
     <p style="text-align: justify; margin-bottom: 8pt;">Pada hari ini, [agreement_day], [agreement_date_words] ([agreement_date_short]), bertempat di [agreement_place], yang bertanda tangan di bawah ini :</p>
