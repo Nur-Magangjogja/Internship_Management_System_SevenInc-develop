@@ -318,7 +318,16 @@ class MouTemplate extends Model
      */
     public static function getDefaultCompanyValues(): array
     {
+        $year = (int) date('Y');
+        $romanMonths = [
+            1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI',
+            7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII',
+        ];
+        $romanMonth = $romanMonths[(int) date('n')] ?? 'I';
+
         return [
+            'brand_id'                    => null,
+            'company_mou_number'          => "001/SPK.MAGANG/CEO/SEVEN/{$romanMonth}/{$year}",
             'company_name'                => 'SEVEN INC',
             'company_signatory_name'      => 'Rekario Danny Sanjaya, S.Kom.',
             'company_signatory_title'     => 'Pimpinan',

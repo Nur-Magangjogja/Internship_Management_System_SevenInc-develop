@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Brand;
 use App\Models\Institution;
 use App\Models\MouTemplate;
 use App\Services\ActivityLogger;
 use App\Services\MouDocumentRenderer;
+use App\Services\MouService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -46,6 +48,7 @@ class MouTemplateController extends Controller
         $defaultMediaAssets       = MouTemplate::getDefaultMediaAssets();
         $nextVersion              = (MouTemplate::max('version_number') ?? 0) + 1;
         $existingTemplatesPayload = $this->buildExistingTemplatesPayload();
+        [$brands, $brandsMap]     = $this->buildBrandsPayload();
 
         return view('admin.mou-templates.create', compact(
             'placeholders',
@@ -55,7 +58,9 @@ class MouTemplateController extends Controller
             'defaultPageConfig',
             'defaultMediaAssets',
             'nextVersion',
-            'existingTemplatesPayload'
+            'existingTemplatesPayload',
+            'brands',
+            'brandsMap'
         ));
     }
 
@@ -112,6 +117,7 @@ class MouTemplateController extends Controller
         $mediaAssets              = $mouTemplate->getMediaAssets();
         $editorJson               = $mouTemplate->getEditorJson();
         $existingTemplatesPayload = $this->buildExistingTemplatesPayload();
+        [$brands, $brandsMap]     = $this->buildBrandsPayload();
 
         return view('admin.mou-templates.edit', compact(
             'mouTemplate',
@@ -121,7 +127,9 @@ class MouTemplateController extends Controller
             'pageConfig',
             'mediaAssets',
             'editorJson',
-            'existingTemplatesPayload'
+            'existingTemplatesPayload',
+            'brands',
+            'brandsMap'
         ));
     }
 
@@ -405,6 +413,8 @@ class MouTemplateController extends Controller
     protected function validateTemplateRequest(Request $request): void
     {
         $request->validate([
+            'brand_id'                    => 'nullable|integer|exists:brands,id',
+            'company_mou_number'          => 'nullable|string|max:100',
             'name'                        => 'required|string|max:255',
             'version_number'              => 'required|integer|min:1|max:999',
             'template_html'               => 'required|string',
@@ -552,6 +562,8 @@ class MouTemplateController extends Controller
         }
 
         $result = [
+            'brand_id'                    => $request->filled('brand_id') ? (int) $request->input('brand_id') : ($baseDefaults['brand_id'] ?? null),
+            'company_mou_number'          => $request->input('company_mou_number') ?: ($baseDefaults['company_mou_number'] ?? null),
             'company_name'                => $request->input('company_name') ?: ($baseDefaults['company_name'] ?? 'SEVEN INC'),
             'company_address'             => $request->input('company_address') ?: ($baseDefaults['company_address'] ?? 'Yogyakarta'),
             'company_phone'               => $request->input('company_phone', $baseDefaults['company_phone'] ?? '089529002944'),
@@ -603,6 +615,33 @@ class MouTemplateController extends Controller
     }
 
     /**
+     * Susun daftar brand beserta mapping profil dan nomor rekomendasi untuk sinkronisasi template.
+     */
+    protected function buildBrandsPayload(): array
+    {
+        $brands = Brand::orderBy('name')->get();
+        $mouService = app(MouService::class);
+
+        $brandsMap = $brands->mapWithKeys(function (Brand $b) use ($mouService) {
+            return [
+                $b->id => [
+                    'id'                 => $b->id,
+                    'code'               => $b->code,
+                    'name'               => $b->name,
+                    'suggested_number'   => $mouService->generateSuggestedMouNumber($b),
+                    'logo_url'           => $b->logo_url ?: '/images/mou/seven-inc-logo.png',
+                    'company_address'    => $b->company_address,
+                    'signatory_name'     => $b->signatory_name,
+                    'signatory_position' => $b->signatory_position,
+                    'signatory_email'    => $b->signatory_email,
+                ],
+            ];
+        })->all();
+
+        return [$brands, $brandsMap];
+    }
+
+    /**
      * Bangun data simulasi pratinjau (mendukung baik institusi contoh maupun institusi terpilih).
      */
     protected function buildPreviewMockData(MouTemplate $mouTemplate, ?Institution $selectedInstitution = null): array
@@ -639,7 +678,7 @@ class MouTemplateController extends Controller
             'institution_email'               => $selectedInstitution?->email ?? 'kerjasama@univ-contoh.ac.id',
             'institution_signatory_name'      => $selectedInstitution?->contacts->first()?->name ?? 'Dr. Rido Kurnianto, M.Ag.',
             'institution_signatory_title'     => $selectedInstitution?->contacts->first()?->position_title ?? 'Rektor',
-            'company_mou_number'              => '004/SPK.MAGANG/CEO/SEVEN/V/' . date('Y'),
+            'company_mou_number'              => $companyDefaults['company_mou_number'] ?? ('004/SPK.MAGANG/CEO/SEVEN/V/' . date('Y')),
 
             // Mock aset tanda tangan dan stempel untuk simulasi Pratinjau Lembar Review Template
             'signature'                       => '/images/mou/signature-sample.png',

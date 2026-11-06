@@ -108,16 +108,64 @@
                 </div>
             </div>
 
-            <!-- Pengaturan Nilai Default Pihak Kedua (Seven Inc) (8 Cols) -->
+            <!-- Pengaturan Nilai Default Pihak Kedua & Masa Berlaku (8 Cols) -->
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-8">
                 <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                     <div>
-                        <h2 class="text-sm font-bold text-slate-800">Default Pihak Kedua (Seven Inc) & Masa Berlaku</h2>
+                        <h2 class="text-sm font-bold text-slate-800">Default Pihak Kedua & Masa Berlaku</h2>
                         <p class="text-[11px] text-slate-400">Nilai baku yang otomatis mengisi variabel Pihak Kedua saat dokumen diterbitkan.</p>
                     </div>
                 </div>
 
+                <!-- Pemilihan Identitas Brand (Sinkronisasi Otomatis) -->
+                <div class="mb-4 p-3 bg-blue-50/60 rounded-xl border border-blue-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <label for="templateBrandSelect" class="block text-xs font-bold text-slate-800">
+                            Identitas Brand Perusahaan <span class="text-blue-600 font-normal">(Pilih brand untuk sinkronisasi otomatis)</span>
+                        </label>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Memilih brand akan mengisi otomatis nama, pimpinan, alamat, dan nomor surat rekomendasi brand.</p>
+                    </div>
+                    <select
+                        id="templateBrandSelect"
+                        name="brand_id"
+                        class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none shrink-0"
+                        onchange="handleTemplateBrandSelectionChange(this.value)"
+                    >
+                        <option value="">-- Kustom / Tanpa Brand Khusus --</option>
+                        @foreach($brands ?? [] as $brandOption)
+                            <option
+                                value="{{ $brandOption->id }}"
+                                {{ (int) old('brand_id', $compDefs['brand_id'] ?? null) === (int) $brandOption->id ? 'selected' : '' }}
+                            >
+                                {{ $brandOption->name }} ({{ $brandOption->code }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label for="company_mou_number" class="block text-xs font-semibold text-slate-700">Nomor MOU Default (Pihak Kedua)</label>
+                            <button
+                                type="button"
+                                onclick="resetTemplateMouNumberToBrand()"
+                                class="text-[11px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                title="Gunakan nomor saran brand terpilih"
+                            >
+                                Format Brand
+                            </button>
+                        </div>
+                        <input
+                            type="text"
+                            id="company_mou_number"
+                            name="company_mou_number"
+                            value="{{ old('company_mou_number', $compDefs['company_mou_number'] ?? '') }}"
+                            placeholder="Contoh: 001/SPK.MAGANG/CEO/SEVEN/XI/2026"
+                            class="w-full rounded-lg border border-slate-300 p-2 text-xs font-mono text-slate-800 focus:border-blue-500 focus:outline-none"
+                        >
+                    </div>
+
                     <div>
                         <label for="company_name" class="block text-xs font-semibold text-slate-700">Nama Perusahaan</label>
                         <input
@@ -196,7 +244,7 @@
                     </div>
 
                     <div>
-                        <label for="company_correspondence_unit" class="block text-xs font-semibold text-slate-700">U.p / Unit Korespondensi Seven Inc</label>
+                        <label for="company_correspondence_unit" class="block text-xs font-semibold text-slate-700">U.p / Unit Korespondensi</label>
                         <input
                             type="text"
                             id="company_correspondence_unit"
@@ -217,8 +265,8 @@
                         >
                     </div>
 
-                    <div class="sm:col-span-3">
-                        <label for="company_address" class="block text-xs font-semibold text-slate-700">Alamat Lengkap Kantor Seven Inc</label>
+                    <div class="sm:col-span-2">
+                        <label for="company_address" class="block text-xs font-semibold text-slate-700">Alamat Lengkap Kantor</label>
                         <input
                             type="text"
                             id="company_address"
@@ -267,4 +315,65 @@
         </div>
     </form>
 </div>
+
+<script type="application/json" id="templateBrandsMapJson">{!! json_encode($brandsMap ?? []) !!}</script>
+<script>
+const templateBrandsMap = JSON.parse(document.getElementById('templateBrandsMapJson')?.textContent || '{}');
+let isTemplateMouNumberManuallyEdited = {{ old('company_mou_number') && old('company_mou_number') !== ($compDefs['company_mou_number'] ?? '') ? 'true' : 'false' }};
+
+document.addEventListener('DOMContentLoaded', function () {
+    const numInput = document.getElementById('company_mou_number');
+    if (numInput) {
+        numInput.addEventListener('input', function () {
+            isTemplateMouNumberManuallyEdited = true;
+        });
+    }
+});
+
+function resetTemplateMouNumberToBrand() {
+    const select = document.getElementById('templateBrandSelect');
+    const brandId = select ? select.value : '';
+    const numInput = document.getElementById('company_mou_number');
+    if (!numInput) return;
+
+    if (brandId && templateBrandsMap[brandId]?.suggested_number) {
+        numInput.value = templateBrandsMap[brandId].suggested_number;
+    }
+    isTemplateMouNumberManuallyEdited = false;
+}
+
+function handleTemplateBrandSelectionChange(brandId) {
+    if (!brandId || !templateBrandsMap[brandId]) {
+        return;
+    }
+
+    const brand = templateBrandsMap[brandId];
+
+    const nameInput = document.getElementById('company_name');
+    if (nameInput && brand.name) nameInput.value = brand.name;
+
+    const sigInput = document.getElementById('company_signatory_name');
+    if (sigInput && brand.signatory_name) sigInput.value = brand.signatory_name;
+
+    const titleInput = document.getElementById('company_signatory_title');
+    if (titleInput && brand.signatory_position) titleInput.value = brand.signatory_position;
+
+    const emailInput = document.getElementById('company_email');
+    if (emailInput && brand.signatory_email) emailInput.value = brand.signatory_email;
+
+    const addrInput = document.getElementById('company_address');
+    if (addrInput && brand.company_address) addrInput.value = brand.company_address;
+
+    const numInput = document.getElementById('company_mou_number');
+    if (numInput && !isTemplateMouNumberManuallyEdited && brand.suggested_number) {
+        numInput.value = brand.suggested_number;
+    }
+
+    // Jika editor memiliki input company_logo, perbarui juga
+    const logoInput = document.getElementById('companyLogoPathInput') || document.querySelector('input[name="company_logo"]');
+    if (logoInput && brand.logo_url) {
+        logoInput.value = brand.logo_url;
+    }
+}
+</script>
 @endsection

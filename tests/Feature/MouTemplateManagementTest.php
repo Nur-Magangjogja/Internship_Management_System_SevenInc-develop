@@ -1090,5 +1090,69 @@ HTML;
         $this->assertStringStartsWith('%PDF-1.', $pdfBinary);
         $this->assertGreaterThan(1000, strlen($pdfBinary));
     }
+
+    public function test_template_supports_brand_sync_and_custom_company_mou_number()
+    {
+        $brand = \App\Models\Brand::firstOrCreate(
+            ['code' => 'MJ_TEST'],
+            [
+                'name'               => 'Magang Jogja Test',
+                'company_address'    => 'Jl. Ringroad Utara, Sleman',
+                'signatory_name'     => 'Budi Test, M.Kom.',
+                'signatory_position' => 'Direktur Operasional',
+                'signatory_email'    => 'budi@mjtest.test',
+            ]
+        );
+
+        // 1. Verifikasi halaman create dan edit menampilkan selector brand dan input nomor MOU
+        $resCreate = $this->actingAs($this->admin)->get(route('admin.mou-templates.create'));
+        $resCreate->assertStatus(200);
+        $resCreate->assertSee('templateBrandSelect');
+        $resCreate->assertSee('company_mou_number');
+        $resCreate->assertSee('templateBrandsMapJson');
+
+        $template = MouTemplate::firstOrCreate(
+            ['name' => 'Template MoU Uji Brand', 'version_number' => 88],
+            [
+                'template_html'        => '<h1>MOU [company_name]</h1><p>NOMOR: [company_mou_number]</p>',
+                'allowed_placeholders' => ['company_name', 'company_mou_number'],
+                'default_values'       => MouTemplate::getDefaultCompanyValues(),
+                'is_active'            => false,
+            ]
+        );
+
+        $resEdit = $this->actingAs($this->admin)->get(route('admin.mou-templates.edit', $template));
+        $resEdit->assertStatus(200);
+        $resEdit->assertSee('templateBrandSelect');
+        $resEdit->assertSee('company_mou_number');
+
+        // 2. Simpan template dengan nomor MOU kustom dan brand_id terpilih
+        $customNumber = '088/SPK.MAGANG/CEO/MJ_TEST/XI/' . date('Y');
+        $updateRes = $this->actingAs($this->admin)->put(route('admin.mou-templates.update', $template), [
+            'name'                 => $template->name,
+            'version_number'       => $template->version_number,
+            'template_html'        => $template->template_html,
+            'brand_id'             => $brand->id,
+            'company_mou_number'   => $customNumber,
+            'company_name'         => $brand->name,
+            'company_signatory_name' => $brand->signatory_name,
+            'company_signatory_title' => $brand->signatory_position,
+            'company_email'        => $brand->signatory_email,
+            'company_address'      => $brand->company_address,
+        ]);
+
+        $updateRes->assertStatus(302);
+
+        $fresh = $template->fresh();
+        $defaults = $fresh->getCompanyDefaultValues();
+        $this->assertEquals($brand->id, $defaults['brand_id']);
+        $this->assertEquals($customNumber, $defaults['company_mou_number']);
+        $this->assertEquals($brand->name, $defaults['company_name']);
+
+        // 3. Verifikasi pratinjau (Preview) memuat nomor MOU yang telah disetting
+        $previewRes = $this->actingAs($this->admin)->get(route('admin.mou-templates.preview', $template));
+        $previewRes->assertStatus(200);
+        $this->assertStringContainsString($customNumber, $previewRes->getContent());
+    }
 }
 
