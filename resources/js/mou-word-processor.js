@@ -7969,13 +7969,14 @@ export function initMouWordProcessor(config) {
                 width = '110px';
             }
 
+            const assetCodeVal = asset.asset_code || asset.code || '';
             ed.chain().focus().setImage({
                 src,
                 alt: asset.name || 'Aset Sistem',
                 title: asset.name || '',
                 assetId: String(asset.id),
-                assetCode: asset.code || '',
-                token: asset.code ? `asset.${asset.code}` : '',
+                assetCode: assetCodeVal,
+                token: assetCodeVal ? (assetCodeVal.startsWith('asset.') ? assetCodeVal : `asset.${assetCodeVal}`) : '',
                 width,
                 align: 'center',
             }).run();

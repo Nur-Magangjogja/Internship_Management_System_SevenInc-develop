@@ -15,15 +15,34 @@
     $assets = array_merge($defaultAssets, $mediaAssets ?? []);
 
     if ($isMou) {
-        $placeholders = $placeholders ?? \App\Models\MouTemplate::getDefaultPlaceholders();
         $metaMap = $placeholderMeta ?? \App\Models\MouTemplate::getPlaceholderMetadata();
     } else {
         $metaMap = $placeholderMeta ?? \App\Services\DocumentTemplates\MailMergePlaceholderContract::getAvailablePlaceholders($docType);
-        $placeholders = $placeholders ?? array_map(fn($item) => is_array($item) ? ($item['label'] ?? '') : (string)$item, $metaMap);
     }
 
+    // Filter keluar variabel media/gambar dari Mail Merge (aset visual dikelola murni via tools Ribbon "Media & Aset")
+    $textMetaMap = array_filter($metaMap, function ($item) {
+        $type = is_array($item) ? ($item['type'] ?? $item['data_type'] ?? '') : '';
+        return $type !== \App\Models\MouTemplate::TOKEN_TYPE_IMAGE && $type !== 'image';
+    });
+
+    $rawPlaceholders = $placeholders ?? array_map(fn($item) => is_array($item) ? ($item['label'] ?? '') : (string)$item, $textMetaMap);
+    $placeholders = array_filter($rawPlaceholders, function ($desc, $key) use ($metaMap) {
+        $meta = $metaMap[$key] ?? null;
+        $type = is_array($meta) ? ($meta['type'] ?? $meta['data_type'] ?? '') : '';
+        if ($type === \App\Models\MouTemplate::TOKEN_TYPE_IMAGE || $type === 'image') {
+            return false;
+        }
+        $keyTrimmed = trim($key, '{}[]');
+        return !in_array($keyTrimmed, [
+            'company_logo', 'institution_logo',
+            'asset.brand.logo', 'asset.company.logo', 'asset.institusi.logo', 'asset.institution.logo',
+            'asset.signature', 'asset.stamp', 'asset.kop_surat', 'asset.background'
+        ], true);
+    }, ARRAY_FILTER_USE_BOTH);
+
     $placeholderGroups = [];
-    foreach ($metaMap as $phKey => $phItem) {
+    foreach ($textMetaMap as $phKey => $phItem) {
         $grp = is_array($phItem) ? ($phItem['group'] ?? 'Lainnya') : 'Lainnya';
         $placeholderGroups[$grp][] = $phKey;
     }
@@ -3834,6 +3853,13 @@
                 if (currentCategory) params.append('category', currentCategory);
                 if (currentSearch) params.append('search', currentSearch);
 
+                // Sinkronisasi otomatis dengan pilihan Brand aktif pada form
+                const brandSelect = document.getElementById('brand_id');
+                const activeBrandId = brandSelect?.value || '{{ $companyDefaults['brand_id'] ?? '' }}';
+                if (activeBrandId) {
+                    params.append('brand_id', activeBrandId);
+                }
+
                 const response = await fetch(`{{ route('admin.system-assets.api.index') }}?${params.toString()}`, {
                     headers: { 'Accept': 'application/json' }
                 });
@@ -3894,6 +3920,13 @@
 
         btnOpenAsset?.addEventListener('click', openAssetLibraryModal);
         btnCloseAsset?.addEventListener('click', closeAssetLibraryModal);
+
+        const formBrandSelect = document.getElementById('brand_id');
+        formBrandSelect?.addEventListener('change', () => {
+            if (assetModal && !assetModal.classList.contains('hidden')) {
+                fetchSystemAssets();
+            }
+        });
 
         categoryTabs?.querySelectorAll('button[data-cat]').forEach(btn => {
             btn.addEventListener('click', () => {

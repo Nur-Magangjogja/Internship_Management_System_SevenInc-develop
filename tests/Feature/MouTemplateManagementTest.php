@@ -935,11 +935,16 @@ HTML;
         $this->assertStringContainsString('Template Tersimpan Kustom ' . $this->unique, $html);
         $this->assertStringContainsString('SEVEN INC KUSTOM LOADER', $html);
 
-        // Panel Mail Merge terlihat langsung (tidak .hidden) dan dikelompokkan
+        // Panel Mail Merge terlihat langsung (tidak .hidden) dan dikelompokkan khusus data teks/skalar
         $this->assertStringContainsString('Pihak Kesatu (Institusi)', $html);
         $this->assertStringContainsString('Pihak Kedua (Perusahaan)', $html);
         $this->assertStringContainsString('Tempat &amp; Waktu Perjanjian', $html);
-        $this->assertStringContainsString('Logo &amp; Identitas Visual', $html);
+        // Token media/gambar tidak lagi disajikan sebagai teks Mail Merge
+        $this->assertStringNotContainsString('data-token-search="company_logo', $html);
+        $this->assertStringNotContainsString('data-token-search="institution_logo', $html);
+        // Namun tombol Media & Aset tersedia di Ribbon
+        $this->assertStringContainsString('id="btnOpenAssetLibraryModal"', $html);
+        $this->assertStringContainsString('id="btnToggleHeaderLogos"', $html);
         $this->assertStringContainsString('onmousedown="event.preventDefault()"', $html);
 
         // Kontrol Ribbon yang dipulihkan (Uppercase AA, Hyperlink, Simbol, Paper Size, Orientation, Diagnostic Banner)
@@ -1153,6 +1158,59 @@ HTML;
         $previewRes = $this->actingAs($this->admin)->get(route('admin.mou-templates.preview', $template));
         $previewRes->assertStatus(200);
         $this->assertStringContainsString($customNumber, $previewRes->getContent());
+    }
+
+    public function test_brand_assets_sync_and_mail_merge_excludes_image_tokens()
+    {
+        // 1. Verifikasi MouTemplate::getTextPlaceholders() tidak memuat company_logo maupun institution_logo
+        $textPlaceholders = MouTemplate::getTextPlaceholders();
+        $this->assertArrayNotHasKey('company_logo', $textPlaceholders);
+        $this->assertArrayNotHasKey('institution_logo', $textPlaceholders);
+        $this->assertArrayHasKey('company_name', $textPlaceholders);
+        $this->assertArrayHasKey('institution_name', $textPlaceholders);
+
+        // 2. Verifikasi MouTemplate::getDefaultPlaceholders() tetap mempertahankan backward compatibility
+        $allPlaceholders = MouTemplate::getDefaultPlaceholders();
+        $this->assertArrayHasKey('company_logo', $allPlaceholders);
+        $this->assertArrayHasKey('institution_logo', $allPlaceholders);
+
+        // 3. Verifikasi pencarian aset dengan brand_id mengembalikan aset brand dan global
+        $brand = \App\Models\Brand::firstOrCreate(
+            ['code' => 'TEST_SYNC'],
+            [
+                'name'               => 'Brand Test Sync',
+                'signatory_name'     => 'Tester',
+                'signatory_position' => 'Manager',
+                'logo'               => 'images/mou/seven-inc-logo.png',
+            ]
+        );
+
+        $assetService = app(\App\Services\SystemAssetService::class);
+        $assetService->syncBrandAssets($brand);
+
+        $searchResults = $assetService->searchAssets(['brand_id' => $brand->id]);
+        $this->assertGreaterThanOrEqual(1, $searchResults->total());
+
+        $hasBrandAsset = false;
+        $hasGlobalAsset = false;
+        foreach ($searchResults->items() as $item) {
+            if ($item->brand_id === $brand->id) {
+                $hasBrandAsset = true;
+            }
+            if ($item->scope === 'global') {
+                $hasGlobalAsset = true;
+            }
+        }
+
+        $this->assertTrue($hasBrandAsset, 'Aset khusus brand harus ditemukan.');
+        $this->assertTrue($hasGlobalAsset, 'Aset universal ber-scope global harus tetap disertakan.');
+
+        // 4. Verifikasi panggilan API dari editor mengembalikan data JSON dengan benar
+        $apiRes = $this->actingAs($this->admin)->getJson(route('admin.system-assets.api.index', ['brand_id' => $brand->id]));
+        $apiRes->assertStatus(200);
+        $apiRes->assertJsonPath('ok', true);
+        $apiData = $apiRes->json('data');
+        $this->assertNotEmpty($apiData);
     }
 }
 

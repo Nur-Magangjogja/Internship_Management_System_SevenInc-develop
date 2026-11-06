@@ -616,7 +616,11 @@ class SystemAssetService
         }
 
         if (!empty($filters['brand_id'])) {
-            $query->where('brand_id', (int) $filters['brand_id']);
+            $brandId = (int) $filters['brand_id'];
+            $query->where(function ($q) use ($brandId) {
+                $q->where('brand_id', $brandId)
+                  ->orWhere('scope', SystemAsset::SCOPE_GLOBAL);
+            });
         }
 
         if (!empty($filters['institution_id'])) {

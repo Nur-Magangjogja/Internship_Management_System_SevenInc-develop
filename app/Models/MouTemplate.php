@@ -314,6 +314,20 @@ class MouTemplate extends Model
     }
 
     /**
+     * Daftar placeholder khusus data teks/skalar untuk antarmuka Mail Merge (tanpa token gambar).
+     */
+    public static function getTextPlaceholders(): array
+    {
+        $result = [];
+        foreach (static::getPlaceholderMetadata() as $key => $meta) {
+            if (($meta['type'] ?? '') !== self::TOKEN_TYPE_IMAGE) {
+                $result[$key] = $meta['label'];
+            }
+        }
+        return $result;
+    }
+
+    /**
      * Nilai baku identitas Pihak Kedua (Seven Inc) sesuai dokumen Word standar.
      */
     public static function getDefaultCompanyValues(): array
