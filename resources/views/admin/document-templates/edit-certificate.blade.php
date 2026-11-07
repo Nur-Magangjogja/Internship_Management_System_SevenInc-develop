@@ -1,5 +1,9 @@
 @extends('layouts.dashboard', ['title' => 'Editor Sertifikat Visual: ' . $template->name])
 
+@php
+    $backUrl = route('admin.document-templates.index');
+@endphp
+
 @section('content')
 <!-- Google Fonts for Certificate Typography -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,7 +18,8 @@
         <!-- Left: Navigation & Document Meta -->
         <div class="flex items-center gap-3 min-w-0">
             <a
-                href="{{ route('admin.document-templates.index') }}"
+                href="{{ $backUrl }}"
+                @click="if (isDirty && !confirm('Ada perubahan yang belum disimpan pada template sertifikat ini.\n\nApakah Anda yakin ingin membatalkan dan membuang seluruh perubahan?')) $event.preventDefault()"
                 class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition"
                 title="Kembali ke Katalog Template"
             >
@@ -38,7 +43,7 @@
                         </span>
                     @endif
                 </div>
-                <p class="text-[11px] text-slate-400 mt-0.5">Visual Canvas Studio A4 Landscape • Penataan koordinat & layer presisi</p>
+                <p class="text-[11px] text-slate-400 mt-0.5">Kanvas Desain Sertifikat • Visual Canvas Studio A4 Landscape • Penataan koordinat & layer presisi</p>
             </div>
         </div>
 
@@ -81,6 +86,16 @@
                     <span>PDF</span>
                 </a>
             </div>
+
+            <!-- Tombol Batal -->
+            <a
+                href="{{ $backUrl }}"
+                @click="if (isDirty && !confirm('Ada perubahan yang belum disimpan pada template sertifikat ini.\n\nApakah Anda yakin ingin membatalkan dan membuang seluruh perubahan?')) $event.preventDefault()"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition"
+                title="Batalkan perubahan dan kembali ke Katalog Template"
+            >
+                Batal
+            </a>
 
             <!-- Save Changes Button -->
             <button
@@ -417,6 +432,7 @@
                                         
                                         <!-- Sig & Stamp Stack (Presisi tengah 1:1 dengan pratinjau & PDF) -->
                                         <div
+                                            style="height: 50px;"
                                             :style="`
                                                 height: ${(elem.sig_height_px || 50)}px;
                                                 position: relative;
@@ -426,6 +442,7 @@
                                         >
                                             <template x-if="elem.stamp_image">
                                                 <img
+                                                    style="height: 85px; width: 85px; top: -18px;"
                                                     :src="resolveImage(elem.stamp_image)"
                                                     :style="`
                                                         height: ${(elem.stamp_size_px || 120)}px;

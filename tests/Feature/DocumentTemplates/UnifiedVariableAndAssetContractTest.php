@@ -49,9 +49,11 @@ class UnifiedVariableAndAssetContractTest extends TestCase
             'code'               => 'SIA',
             'signatory_name'     => 'Rekario Danny Sanjaya, S.Kom.',
             'signatory_position' => 'Direktur Utama',
+            'company_address'    => 'Yogyakarta A',
             'address'            => 'Yogyakarta A',
             'phone'              => '0274-111111',
             'email'              => 'branda@seveninc.com',
+            'logo'               => '/images/mou/seven-inc-logo.png',
         ]);
 
         $this->brandB = Brand::create([
@@ -59,9 +61,11 @@ class UnifiedVariableAndAssetContractTest extends TestCase
             'code'               => 'SIB',
             'signatory_name'     => 'Budi Santoso, M.Kom.',
             'signatory_position' => 'Direktur Operasional',
+            'company_address'    => 'Yogyakarta B',
             'address'            => 'Yogyakarta B',
             'phone'              => '0274-222222',
             'email'              => 'brandb@seveninc.com',
+            'logo'               => '/images/mou/seven-inc-logo.png',
         ]);
 
         $this->institutionX = Institution::create([

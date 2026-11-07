@@ -211,7 +211,7 @@ class DocumentTemplateController extends Controller
         // Merge any explicit top-level fields from the Word processor studio into $pageConfig
         $studioPageFields = [
             'header_html', 'footer_html', 'first_page_header_html', 'first_page_footer_html',
-            'different_first_page', 'show_paraf_box', 'show_page_number',
+            'different_first_page', 'show_paraf_box', 'show_page_number', 'page_number_format',
             'paper_size', 'orientation',
             'margin_top_mm', 'margin_right_mm', 'margin_bottom_mm', 'margin_left_mm',
             'header_distance_mm', 'footer_distance_mm',

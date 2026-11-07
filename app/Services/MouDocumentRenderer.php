@@ -1208,6 +1208,9 @@ class MouDocumentRenderer
         // 3. Normalisasi tabel korespondensi agar proporsional, rapat, dan rapi
         $rendered = static::normalizeCorrespondenceTablesHtml($rendered);
 
+        // Bersihkan tag <img> yang kosong (src="") agar slot tanda tangan/stempel null tidak menghasilkan broken image
+        $rendered = preg_replace('/<img\b[^>]*?\bsrc=["\']\s*["\'][^>]*?\/?>/i', '', $rendered);
+
         // 4. Jika untuk snapshot terbit (Published MOU) atau PDF, konversi semua gambar lokal di dalam naskah ke Base64
         if ($forPublishedSnapshot) {
             $rendered = static::embedLocalImagesAsBase64($rendered);
@@ -1248,7 +1251,17 @@ class MouDocumentRenderer
                         . '</div>';
                 }
                 if ($showWatermark) {
-                    $watermarkHeaderHtml .= '<img src="' . e($compSrc) . '" class="mou-watermark-center" alt="Watermark" />';
+                    $wmPath = $pageConfig['watermark_image_url'] ?? ($mediaAssets['watermark_url'] ?? null);
+                    $brandSlug = strtolower(trim((string) ($merged['brand_slug'] ?? ($merged['brand_code'] ?? ($merged['brand_name'] ?? 'seven inc')))));
+                    $isSevenInc = str_contains($brandSlug, 'seven');
+                    if (!$wmPath && $isSevenInc) {
+                        $wmPath = '/images/mou/default-watermark.png';
+                    }
+                    if ($wmPath) {
+                        $wmSrc = !str_starts_with($wmPath, 'data:') ? (static::convertLocalPathToBase64($wmPath) ?? $wmPath) : $wmPath;
+                        $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
+                        $watermarkHeaderHtml .= '<img src="' . e($wmSrc) . '" class="mou-watermark-center" style="opacity: ' . $wmOpacity . ';" alt="Watermark" />';
+                    }
                 }
                 $watermarkHeaderHtml .= '</div>';
             }
@@ -2119,10 +2132,17 @@ CSS;
             $marginRightPt = ((float) ($config['margin_right_mm'] ?? 25.4)) * 2.83465;
 
             // Posisi kanan bawah sejajar dengan batas margin kanan dan baris Kotak Paraf
-            $x = max(40.0, $pageWidth - $marginRightPt - 78.0);
-            $y = $pageHeight - 36.0;
+            $x = max(40.0, $pageWidth - $marginRightPt - 88.0);
+            $y = $pageHeight - 52.0;
 
-            $canvas->page_text($x, $y, 'Halaman {PAGE_NUM} dari {PAGE_COUNT}', $font, 9, [0, 0, 0]);
+            $format = (string) ($config['page_number_format'] ?? 'Halaman [nomor_halaman] dari [total_halaman]');
+            $dompdfFormat = str_replace(
+                ['[nomor_halaman]', '[page_number]', '{PAGE}', '{PAGE_NUM}', '[total_halaman]', '[total_pages]', '{TOTAL}', '{PAGE_COUNT}'],
+                ['{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_COUNT}', '{PAGE_COUNT}', '{PAGE_COUNT}', '{PAGE_COUNT}'],
+                $format
+            );
+
+            $canvas->page_text($x, $y, $dompdfFormat, $font, 9, [0, 0, 0]);
         }
 
         return $dompdf->output();

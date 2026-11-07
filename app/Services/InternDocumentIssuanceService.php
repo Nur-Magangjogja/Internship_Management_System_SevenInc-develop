@@ -507,23 +507,28 @@ class InternDocumentIssuanceService
             );
         }
 
-        // 1b. Perlindungan kelengkapan profil operasional brand
-        $intern->loadMissing('brandRel');
-        $selectedBrandId = !empty($options['brand_id']) ? (int) $options['brand_id'] : null;
-        $brandModel = ($selectedBrandId ? Brand::find($selectedBrandId) : null)
-            ?? $intern->brandRel
-            ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null)
-            ?? Brand::getDefaultBrand();
-        if ($brandModel && !$brandModel->isProfileCompleteForDocuments()) {
-            $missing = implode(', ', $brandModel->getMissingDocumentFields());
-            throw new \DomainException(
-                "Penerbitan dokumen ditolak: Profil operasional brand '{$brandModel->name}' belum lengkap ({$missing} masih kosong). Silakan lengkapi data brand terlebih dahulu."
+        // 2. Resolve template aktif (Fail-Closed: larangan hidden preset pada penerbitan resmi)
+        $template = !empty($options['template_id'])
+            ? DocumentTemplate::findOrFail($options['template_id'])
+            : $this->resolveActiveTemplate($canonical, failClosed: true);
+
+        if (!$template || !$template->exists) {
+            throw new InvalidArgumentException(
+                "Belum ada template aktif untuk jenis dokumen '{$canonical}'. Penerbitan resmi ditolak hingga template diaktifkan."
             );
+        }
+
+        // Validasi kesesuaian tipe template & status aktif untuk penerbitan resmi
+        if ($template->type !== $canonical && !($canonical === self::TYPE_CERTIFICATE && $template->type === 'certificate')) {
+            throw new InvalidArgumentException("Tipe template '{$template->type}' tidak sesuai dengan jenis dokumen '{$canonical}'.");
+        }
+        if (!$template->is_active) {
+            throw new InvalidArgumentException("Template '{$template->name}' sedang tidak aktif.");
         }
 
         $isRevision = !empty($options['is_revision']) || (($options['action'] ?? '') === 'revision');
 
-        return DB::transaction(function () use ($intern, $canonical, $options, $actor, $isRevision) {
+        return DB::transaction(function () use ($intern, $canonical, $options, $actor, $isRevision, $template) {
             // Row lock untuk mencegah race condition concurrent issuance
             InternshipRegistration::where('id', $intern->id)->lockForUpdate()->first();
 
@@ -563,25 +568,6 @@ class InternDocumentIssuanceService
                 }
             }
 
-            // 2. Resolve template aktif (Fail-Closed: larangan hidden preset pada penerbitan resmi)
-            $template = !empty($options['template_id'])
-                ? DocumentTemplate::findOrFail($options['template_id'])
-                : $this->resolveActiveTemplate($canonical, failClosed: true);
-
-            if (!$template || !$template->exists) {
-                throw new InvalidArgumentException(
-                    "Belum ada template aktif untuk jenis dokumen '{$canonical}'. Penerbitan resmi ditolak hingga template diaktifkan."
-                );
-            }
-
-            // Validasi kesesuaian tipe template & status aktif untuk penerbitan resmi
-            if ($template->type !== $canonical && !($canonical === self::TYPE_CERTIFICATE && $template->type === 'certificate')) {
-                throw new InvalidArgumentException("Tipe template '{$template->type}' tidak sesuai dengan jenis dokumen '{$canonical}'.");
-            }
-            if (!$template->is_active) {
-                throw new InvalidArgumentException("Template '{$template->name}' sedang tidak aktif.");
-            }
-
             // 3. Bangun konteks variabel dan aset resmi (tanpa nilai tiruan/mock)
             $context = $this->buildContext($intern, $canonical, $options, isLiveIssuance: true);
             $variables = $context['variables'];
@@ -612,6 +598,20 @@ class InternDocumentIssuanceService
                 $detailStr = implode('; ', $errorMessages);
                 throw new InvalidArgumentException(
                     "Penerbitan dokumen {$canonical} ditolak: {$detailStr}."
+                );
+            }
+
+            // 4b. Perlindungan kelengkapan profil operasional brand (Logo & Profil Kantor)
+            $intern->loadMissing('brandRel');
+            $selectedBrandId = !empty($options['brand_id']) ? (int) $options['brand_id'] : null;
+            $brandModel = ($selectedBrandId ? Brand::find($selectedBrandId) : null)
+                ?? $intern->brandRel
+                ?? ($intern->brand_id ? Brand::find($intern->brand_id) : null)
+                ?? Brand::getDefaultBrand();
+            if ($brandModel && !$brandModel->isProfileCompleteForDocuments()) {
+                $missing = implode(', ', $brandModel->getMissingDocumentFields());
+                throw new \DomainException(
+                    "Penerbitan dokumen ditolak: Profil operasional brand '{$brandModel->name}' belum lengkap ({$missing} masih kosong). Silakan lengkapi data brand terlebih dahulu."
                 );
             }
 

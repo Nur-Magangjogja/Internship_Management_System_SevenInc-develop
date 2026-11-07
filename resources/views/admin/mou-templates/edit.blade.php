@@ -365,6 +365,9 @@ function resetTemplateMouNumberToBrand() {
 
 function handleTemplateBrandSelectionChange(brandId) {
     if (!brandId || !templateBrandsMap[brandId]) {
+        const logoInput = document.getElementById('companyLogoPathInput') || document.querySelector('input[name="company_logo"]');
+        if (logoInput) logoInput.value = '/images/mou/seven-inc-logo.png';
+        window.MouWordProcessor?.setCompanyLogo?.('/images/mou/seven-inc-logo.png');
         return;
     }
 
@@ -392,9 +395,11 @@ function handleTemplateBrandSelectionChange(brandId) {
 
     // Jika editor memiliki input company_logo, perbarui juga
     const logoInput = document.getElementById('companyLogoPathInput') || document.querySelector('input[name="company_logo"]');
-    if (logoInput && brand.logo_url) {
-        logoInput.value = brand.logo_url;
+    const targetLogo = brand.logo_url || '/images/mou/seven-inc-logo.png';
+    if (logoInput) {
+        logoInput.value = targetLogo;
     }
+    window.MouWordProcessor?.setCompanyLogo?.(targetLogo);
 }
 </script>
 @endsection

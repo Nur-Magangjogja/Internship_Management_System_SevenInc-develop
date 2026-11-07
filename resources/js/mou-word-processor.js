@@ -2106,23 +2106,26 @@ const UnifiedUndoKeymap = Extension.create({
     name: 'unifiedUndoKeymap',
     addKeyboardShortcuts() {
         return {
-            'Mod-z': () => {
+            'Mod-z': ({ editor }) => {
                 if (typeof window._mouGlobalUndoHandler === 'function') {
-                    return window._mouGlobalUndoHandler();
+                    const handled = window._mouGlobalUndoHandler(editor);
+                    if (handled) return true;
                 }
-                return false;
+                return editor.commands.undo();
             },
-            'Mod-y': () => {
+            'Mod-y': ({ editor }) => {
                 if (typeof window._mouGlobalRedoHandler === 'function') {
-                    return window._mouGlobalRedoHandler();
+                    const handled = window._mouGlobalRedoHandler(editor);
+                    if (handled) return true;
                 }
-                return false;
+                return editor.commands.redo();
             },
-            'Mod-Shift-z': () => {
+            'Mod-Shift-z': ({ editor }) => {
                 if (typeof window._mouGlobalRedoHandler === 'function') {
-                    return window._mouGlobalRedoHandler();
+                    const handled = window._mouGlobalRedoHandler(editor);
+                    if (handled) return true;
                 }
-                return false;
+                return editor.commands.redo();
             },
         };
     },
@@ -2374,7 +2377,7 @@ class MouPageView {
         const footerWrapper = document.getElementById('mouFooterZoneWrapper');
         if (!this.footerEl.contains(footerWrapper)) {
             const pageNumberHtml = state.showPageNumber
-                ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">Halaman ${pageNum} dari ${totalPages}</div>`
+                ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">${renderPageNumberString(state.pageNumberFormat, pageNum, totalPages)}</div>`
                 : '';
             this.footerEl.innerHTML = `
                 <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
@@ -3157,6 +3160,7 @@ export function initMouWordProcessor(config) {
         differentFirstPage: Boolean(pageConfig.different_first_page),
         showParafBox: pageConfig.show_paraf_box !== undefined ? Boolean(pageConfig.show_paraf_box) : true,
         showPageNumber: pageConfig.show_page_number !== undefined ? Boolean(pageConfig.show_page_number) : true,
+        pageNumberFormat: pageConfig.page_number_format || 'Halaman [nomor_halaman] dari [total_halaman]',
         showHeaderLogos: isMouDocument ? (pageConfig.show_header_logos !== undefined ? Boolean(pageConfig.show_header_logos) : true) : false,
         showWatermark: pageConfig.show_watermark !== undefined ? Boolean(pageConfig.show_watermark) : true,
         watermarkOpacity: parseFloat(pageConfig.watermark_opacity ?? 0.05),
@@ -3216,13 +3220,152 @@ export function initMouWordProcessor(config) {
         ? ensureJsonHasMouPage(parsedInitialJson)
         : normalizeHtmlForBodyEditor(normalizedFallbackHtml);
 
-    // Asset History Stack for Header Logos and Transformations (Instant Ctrl+Z / Ctrl+Y)
+    // Page Number Format Helper Functions
+    function sanitizePageNumberFormat(fmt) {
+        if (!fmt || typeof fmt !== 'string') return 'Halaman [nomor_halaman] dari [total_halaman]';
+        return fmt.trim();
+    }
+
+    function renderPageNumberString(formatStr, pageNum, totalPages) {
+        let fmt = formatStr || 'Halaman [nomor_halaman] dari [total_halaman]';
+        return fmt
+            .replace(/\[nomor_halaman\]|\[page_number\]|\{PAGE\}/gi, String(pageNum))
+            .replace(/\[total_halaman\]|\[total_pages\]|\{NUMPAGES\}/gi, String(totalPages))
+            .replace(/\[halaman_dari_total\]/gi, `${pageNum} / ${totalPages}`);
+    }
+
+    function focusActiveEditor() {
+        const ed = getActiveEditor() || bodyEditor;
+        if (ed && typeof ed.commands?.focus === 'function') {
+            ed.commands.focus();
+        }
+    }
+
+    // Unified Studio Configuration & Asset History Stack (Instant Ctrl+Z / Ctrl+Y)
     const assetHistory = [];
     let assetHistoryIndex = -1;
     const MAX_ASSET_HISTORY = 40;
 
+    function getCurrentConfigSnapshot() {
+        return {
+            logosConfig: JSON.parse(JSON.stringify(state.headerLogosConfig || {})),
+            pageNumberFormat: state.pageNumberFormat || 'Halaman [nomor_halaman] dari [total_halaman]',
+            showPageNumber: state.showPageNumber !== false,
+            showHeaderLogos: state.showHeaderLogos !== false,
+            showParafBox: state.showParafBox !== false,
+            differentFirstPage: Boolean(state.differentFirstPage),
+            marginTopMm: state.marginTopMm,
+            marginRightMm: state.marginRightMm,
+            marginBottomMm: state.marginBottomMm,
+            marginLeftMm: state.marginLeftMm,
+            headerDistanceMm: state.headerDistanceMm,
+            footerDistanceMm: state.footerDistanceMm,
+            paperSize: state.paperSize,
+            orientation: state.orientation,
+        };
+    }
+
+        function updatePopoverPresetHighlights(activeFormat, totalPages) {
+        const modalEl = document.getElementById('mouPageNumberFormatModal');
+        if (!modalEl) return;
+        const cleanActive = sanitizePageNumberFormat(activeFormat);
+        modalEl.querySelectorAll('.btn-page-preset').forEach(btn => {
+            const fmt = btn.getAttribute('data-format');
+            const cleanFmt = sanitizePageNumberFormat(fmt);
+            const isMatch = cleanFmt === cleanActive;
+            btn.classList.toggle('bg-blue-50/90', isMatch);
+            btn.classList.toggle('border-blue-400', isMatch);
+            btn.classList.toggle('ring-1', isMatch);
+            btn.classList.toggle('ring-blue-300', isMatch);
+            btn.classList.toggle('text-blue-800', isMatch);
+
+            const indicator = btn.querySelector('.preset-indicator');
+            if (indicator) {
+                indicator.innerHTML = isMatch
+                    ? '<div class="w-2 h-2 rounded-full bg-blue-600"></div>'
+                    : '';
+            }
+
+            const previewSpan = btn.querySelector('.preset-preview');
+            if (previewSpan && fmt) {
+                previewSpan.textContent = renderPageNumberString(fmt, state.activePageNum || 1, totalPages || 1);
+            }
+        });
+    }
+
+    function applyConfigSnapshot(snap) {
+        if (!snap) return;
+        const cfg = snap.data || snap;
+        if (cfg.logosConfig) {
+            state.headerLogosConfig = sanitizeHeaderLogosConfig(cfg.logosConfig);
+        } else if (cfg.config) {
+            state.headerLogosConfig = sanitizeHeaderLogosConfig(cfg.config);
+        } else if (typeof cfg === 'object' && !cfg.pageNumberFormat) {
+            state.headerLogosConfig = sanitizeHeaderLogosConfig(cfg);
+        }
+
+        if (cfg.pageNumberFormat !== undefined) {
+            state.pageNumberFormat = sanitizePageNumberFormat(cfg.pageNumberFormat);
+            const customInput = document.getElementById('inputCustomPageFormat');
+            if (customInput) customInput.value = state.pageNumberFormat;
+            const previewText = document.getElementById('mouFooterPageNumberPreviewText');
+            const totalPages = (bodyMountEl || document).querySelectorAll('.mou-a4-page-node').length || 1;
+            if (previewText) {
+                previewText.textContent = renderPageNumberString(state.pageNumberFormat, state.activePageNum || 1, totalPages);
+            }
+            updatePopoverPresetHighlights(state.pageNumberFormat, totalPages);
+        }
+
+        if (cfg.showPageNumber !== undefined) {
+            state.showPageNumber = Boolean(cfg.showPageNumber);
+            const chkModal = document.getElementById('chkShowPageNumberModal');
+            if (chkModal) chkModal.checked = state.showPageNumber;
+            const chkRibbon = document.getElementById('chkShowPageNumber');
+            if (chkRibbon) chkRibbon.checked = state.showPageNumber;
+            const previewEl = document.getElementById('mouFooterPageNumberPreview');
+            if (previewEl) {
+                previewEl.style.display = state.showPageNumber ? 'flex' : 'none';
+            }
+        }
+
+        if (cfg.showHeaderLogos !== undefined) {
+            state.showHeaderLogos = Boolean(cfg.showHeaderLogos);
+        }
+
+        if (cfg.showParafBox !== undefined) {
+            state.showParafBox = Boolean(cfg.showParafBox);
+            const chkParaf = document.getElementById('chkShowParafBox');
+            if (chkParaf) chkParaf.checked = state.showParafBox;
+        }
+
+        if (cfg.differentFirstPage !== undefined) {
+            state.differentFirstPage = Boolean(cfg.differentFirstPage);
+            const chkDiff = document.getElementById('chkDifferentFirstPage');
+            if (chkDiff) chkDiff.checked = state.differentFirstPage;
+        }
+
+        if (cfg.marginTopMm !== undefined) state.marginTopMm = cfg.marginTopMm;
+        if (cfg.marginRightMm !== undefined) state.marginRightMm = cfg.marginRightMm;
+        if (cfg.marginBottomMm !== undefined) state.marginBottomMm = cfg.marginBottomMm;
+        if (cfg.marginLeftMm !== undefined) state.marginLeftMm = cfg.marginLeftMm;
+        if (cfg.headerDistanceMm !== undefined) state.headerDistanceMm = cfg.headerDistanceMm;
+        if (cfg.footerDistanceMm !== undefined) state.footerDistanceMm = cfg.footerDistanceMm;
+        if (cfg.paperSize !== undefined) state.paperSize = cfg.paperSize;
+        if (cfg.orientation !== undefined) state.orientation = cfg.orientation;
+
+        updateAllMountedLogoBoxes();
+        applyPageLayoutToCanvas();
+        syncAllToHiddenInputs();
+        refreshAllPageViews();
+        if (typeof scheduleReflow === 'function') {
+            scheduleReflow(true);
+        }
+        updateToolbarState();
+    }
+
     function pushAssetHistory(actionName = 'Transform Asset') {
-        const currentCfgJson = JSON.stringify(state.headerLogosConfig || {});
+        const snap = getCurrentConfigSnapshot();
+        const currentCfgJson = JSON.stringify(snap);
         if (assetHistoryIndex >= 0 && assetHistory[assetHistoryIndex]?.configJson === currentCfgJson) {
             return;
         }
@@ -3232,7 +3375,8 @@ export function initMouWordProcessor(config) {
         assetHistory.push({
             action: actionName,
             configJson: currentCfgJson,
-            config: JSON.parse(currentCfgJson),
+            data: snap,
+            config: snap.logosConfig, // backwards-compatibility
             timestamp: Date.now(),
         });
         if (assetHistory.length > MAX_ASSET_HISTORY) {
@@ -3248,14 +3392,7 @@ export function initMouWordProcessor(config) {
         if (assetHistoryIndex > 0) {
             assetHistoryIndex--;
             const snap = assetHistory[assetHistoryIndex];
-            state.headerLogosConfig = sanitizeHeaderLogosConfig(snap.config);
-            updateAllMountedLogoBoxes();
-            syncAllToHiddenInputs();
-            refreshAllPageViews();
-            if (typeof scheduleReflow === 'function') {
-                scheduleReflow(true);
-            }
-            updateToolbarState();
+            applyConfigSnapshot(snap);
             return true;
         }
         return false;
@@ -3265,14 +3402,7 @@ export function initMouWordProcessor(config) {
         if (assetHistoryIndex < assetHistory.length - 1) {
             assetHistoryIndex++;
             const snap = assetHistory[assetHistoryIndex];
-            state.headerLogosConfig = sanitizeHeaderLogosConfig(snap.config);
-            updateAllMountedLogoBoxes();
-            syncAllToHiddenInputs();
-            refreshAllPageViews();
-            if (typeof scheduleReflow === 'function') {
-                scheduleReflow(true);
-            }
-            updateToolbarState();
+            applyConfigSnapshot(snap);
             return true;
         }
         return false;
@@ -3521,13 +3651,23 @@ export function initMouWordProcessor(config) {
             const targetH = (state.differentFirstPage && state.editingFirstPageVariant)
                 ? state.firstPageHeaderHtmlStore
                 : state.headerHtmlStore;
-            headerEditor.commands.setContent(targetH || '<p></p>', { emitUpdate: false });
+            const normH = targetH || '<p></p>';
+            if (headerEditor.getHTML() !== normH && !(headerEditor.isEmpty && normH === '<p></p>')) {
+                headerEditor.commands.setContent(normH, { emitUpdate: false });
+            }
         }
         if (footerEditor) {
-            const targetF = (state.differentFirstPage && state.editingFirstPageVariant)
+            let targetF = (state.differentFirstPage && state.editingFirstPageVariant)
                 ? state.firstPageFooterHtmlStore
                 : state.footerHtmlStore;
-            footerEditor.commands.setContent(targetF || '<p></p>', { emitUpdate: false });
+            if (targetF && targetF.includes('<table')) {
+                targetF = targetF.replace(/^(<p[^>]*>(\s*|<br\s*\/?>)<\/p>\s*)+/gi, '')
+                                 .replace(/(\s*<p[^>]*>(\s*|<br\s*\/?>)<\/p>)+$/gi, '');
+            }
+            const normF = targetF || '<p></p>';
+            if (footerEditor.getHTML() !== normF && !(footerEditor.isEmpty && normF === '<p></p>')) {
+                footerEditor.commands.setContent(normF, { emitUpdate: false });
+            }
         }
         scheduleSyncAndPagination();
     }
@@ -3866,6 +4006,12 @@ export function initMouWordProcessor(config) {
             }
             // Ctrl + Z -> Undo, Ctrl + Y / Ctrl+Shift+Z -> Redo
             if (isCtrl && (e.key === 'z' || e.key === 'Z')) {
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && !target.classList.contains('mou-editor-passthrough')) {
+                    return;
+                }
+                if (target && target.closest('.ProseMirror')) {
+                    return;
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 if (e.shiftKey) api.redo();
@@ -3873,6 +4019,12 @@ export function initMouWordProcessor(config) {
                 return;
             }
             if (isCtrl && (e.key === 'y' || e.key === 'Y')) {
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && !target.classList.contains('mou-editor-passthrough')) {
+                    return;
+                }
+                if (target && target.closest('.ProseMirror')) {
+                    return;
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 api.redo();
@@ -6003,7 +6155,7 @@ export function initMouWordProcessor(config) {
             const footerWrapper = document.getElementById('mouFooterZoneWrapper');
             if (footerEl && (!footerWrapper || !footerEl.contains(footerWrapper))) {
                 const pageNumberHtml = state.showPageNumber
-                    ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">Halaman ${pageNum} dari ${totalPages}</div>`
+                    ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">${renderPageNumberString(state.pageNumberFormat, pageNum, totalPages)}</div>`
                     : '';
                 const targetFooter = `
                     <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
@@ -6517,17 +6669,21 @@ export function initMouWordProcessor(config) {
         // 3. Undo / Redo ribbon button states
         const undoBtn = document.getElementById('btnRibbonUndo');
         if (undoBtn) {
-            const canEdUndo = typeof editor.can === 'function' && editor.can().undo();
-            const canAssetUndo = assetHistoryIndex > 0;
-            const canUndo = canEdUndo || canAssetUndo;
+            const ed = getActiveEditor() || bodyEditor;
+            const canEdUndo = typeof ed.can === 'function' && ed.can().undo();
+            const canBodyUndo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function') ? bodyEditor.can().undo() : false;
+            const canConfigUndo = assetHistoryIndex > 0;
+            const canUndo = canEdUndo || canBodyUndo || canConfigUndo;
             undoBtn.classList.toggle('opacity-40', !canUndo);
             undoBtn.classList.toggle('cursor-not-allowed', !canUndo);
         }
         const redoBtn = document.getElementById('btnRibbonRedo');
         if (redoBtn) {
-            const canEdRedo = typeof editor.can === 'function' && editor.can().redo();
-            const canAssetRedo = assetHistoryIndex < assetHistory.length - 1;
-            const canRedo = canEdRedo || canAssetRedo;
+            const ed = getActiveEditor() || bodyEditor;
+            const canEdRedo = typeof ed.can === 'function' && ed.can().redo();
+            const canBodyRedo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function') ? bodyEditor.can().redo() : false;
+            const canConfigRedo = assetHistoryIndex < assetHistory.length - 1;
+            const canRedo = canEdRedo || canBodyRedo || canConfigRedo;
             redoBtn.classList.toggle('opacity-40', !canRedo);
             redoBtn.classList.toggle('cursor-not-allowed', !canRedo);
         }
@@ -7261,41 +7417,144 @@ export function initMouWordProcessor(config) {
             }
         },
 
+        focusActiveEditor,
         // Formatting commands on active editor with unified Asset & Document History
         undo: () => {
-            const lastAssetTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
+            const lastConfigTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
                 ? assetHistory[assetHistoryIndex].timestamp
                 : 0;
-            const ed = getActiveEditor();
+            const ed = getActiveEditor() || bodyEditor;
             const canEdUndo = ed && typeof ed.can === 'function' && ed.can().undo();
+            const canBodyUndo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function')
+                ? bodyEditor.can().undo()
+                : false;
 
-            if (lastAssetTime > 0 && (lastAssetTime >= lastEditorDocChangeTimestamp || !canEdUndo)) {
+            if (lastConfigTime > 0 && (lastConfigTime >= lastEditorDocChangeTimestamp || (!canEdUndo && !canBodyUndo))) {
                 if (undoAssetHistory()) return;
             }
             if (canEdUndo) {
-                ed.chain().focus().undo().run();
+                ed.commands.undo();
+                ed.commands.focus();
                 return;
             }
-            if (lastAssetTime > 0) {
+            if (canBodyUndo) {
+                setActiveZone('body');
+                bodyEditor.commands.undo();
+                bodyEditor.commands.focus();
+                return;
+            }
+            if (lastConfigTime > 0) {
                 undoAssetHistory();
             }
         },
         redo: () => {
-            const nextAssetTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
+            const nextConfigTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
                 ? assetHistory[assetHistoryIndex + 1].timestamp
                 : 0;
-            const ed = getActiveEditor();
+            const ed = getActiveEditor() || bodyEditor;
             const canEdRedo = ed && typeof ed.can === 'function' && ed.can().redo();
+            const canBodyRedo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function')
+                ? bodyEditor.can().redo()
+                : false;
 
-            if (nextAssetTime > 0 && (nextAssetTime >= lastEditorDocChangeTimestamp || !canEdRedo)) {
+            if (nextConfigTime > 0 && (nextConfigTime >= lastEditorDocChangeTimestamp || (!canEdRedo && !canBodyRedo))) {
                 if (redoAssetHistory()) return;
             }
             if (canEdRedo) {
-                ed.chain().focus().redo().run();
+                ed.commands.redo();
+                ed.commands.focus();
                 return;
             }
-            if (nextAssetTime > 0) {
+            if (canBodyRedo) {
+                setActiveZone('body');
+                bodyEditor.commands.redo();
+                bodyEditor.commands.focus();
+                return;
+            }
+            if (nextConfigTime > 0) {
                 redoAssetHistory();
+            }
+        },
+        setPageNumberFormat(formatStr) {
+            if (!formatStr) return;
+            const sanitized = sanitizePageNumberFormat(formatStr);
+            state.pageNumberFormat = sanitized;
+            pushAssetHistory('Format Nomor Halaman');
+            const totalPages = (bodyMountEl || document).querySelectorAll('.mou-a4-page-node').length || 1;
+            const previewText = document.getElementById('mouFooterPageNumberPreviewText');
+            if (previewText) {
+                previewText.textContent = renderPageNumberString(sanitized, state.activePageNum || 1, totalPages);
+            }
+            const customInput = document.getElementById('inputCustomPageFormat');
+            if (customInput) customInput.value = sanitized;
+            const hiddenInp = document.getElementById('inputPageNumberFormat');
+            if (hiddenInp) hiddenInp.value = sanitized;
+            updatePopoverPresetHighlights(sanitized, totalPages);
+            syncAllToHiddenInputs();
+            refreshAllPageViews();
+        },
+        togglePageNumberVisibility(show) {
+            state.showPageNumber = Boolean(show);
+            pushAssetHistory('Visibilitas Nomor Halaman');
+            const previewEl = document.getElementById('mouFooterPageNumberPreview');
+            if (previewEl) {
+                previewEl.style.display = state.showPageNumber ? 'flex' : 'none';
+            }
+            const chkModal = document.getElementById('chkShowPageNumberModal');
+            if (chkModal) chkModal.checked = state.showPageNumber;
+            const chkRibbon = document.getElementById('chkShowPageNumber');
+            if (chkRibbon) chkRibbon.checked = state.showPageNumber;
+            applyPageLayoutToCanvas();
+            refreshAllPageViews();
+            syncAllToHiddenInputs();
+        },
+        insertPageNumberToken(token) {
+            const ed = getActiveEditor() || bodyEditor;
+            if (ed && token) {
+                ed.chain().focus().insertContent(token).run();
+            }
+        },
+        openPageNumberFormatModal() {
+            const modalEl = document.getElementById('mouPageNumberFormatModal');
+            if (!modalEl) return;
+            modalEl.classList.remove('hidden');
+            modalEl.classList.add('flex');
+            const totalPages = (bodyMountEl || document).querySelectorAll('.mou-a4-page-node').length || 1;
+            const customInput = document.getElementById('inputCustomPageFormat');
+            if (customInput) customInput.value = state.pageNumberFormat || 'Halaman [nomor_halaman] dari [total_halaman]';
+            const chkModal = document.getElementById('chkShowPageNumberModal');
+            if (chkModal) chkModal.checked = state.showPageNumber !== false;
+            updatePopoverPresetHighlights(state.pageNumberFormat, totalPages);
+        },
+        closePageNumberFormatModal() {
+            const modalEl = document.getElementById('mouPageNumberFormatModal');
+            if (!modalEl) return;
+            modalEl.classList.add('hidden');
+            modalEl.classList.remove('flex');
+            focusActiveEditor();
+        },
+        toggleLinkToPrevious() {
+            if (state.activePageNum <= 1) return false;
+            state.differentFirstPage = !state.differentFirstPage;
+            pushAssetHistory('Different First Page');
+            const chkDiff = document.getElementById('chkDifferentFirstPage');
+            if (chkDiff) chkDiff.checked = state.differentFirstPage;
+            if (!state.differentFirstPage) {
+                state.firstPageFooterHtmlStore = state.footerHtmlStore;
+                state.firstPageHeaderHtmlStore = state.headerHtmlStore;
+            }
+            loadHeaderFooterVariantIntoEditors();
+            refreshAllPageViews();
+            syncAllToHiddenInputs();
+            return state.differentFirstPage;
+        },
+        setWatermarkOpacity(opacity) {
+            const num = parseFloat(opacity);
+            if (!isNaN(num)) {
+                state.watermarkOpacity = Math.max(0.01, Math.min(1.0, num));
+                applyPageLayoutToCanvas();
+                syncAllToHiddenInputs();
+                refreshPageSheets();
             }
         },
         clearFormatting: () => {
@@ -8792,29 +9051,45 @@ export function initMouWordProcessor(config) {
             return nextState;
         },
 
-        // Find & Replace in active editor
+        // Find & Replace in active editor (Undoable via ProseMirror Transaction)
         findAndReplace(findStr, replaceStr) {
-            const ed = getActiveEditor();
-            if (!ed || !findStr) return 0;
-            const html = ed.getHTML();
+            const ed = getActiveEditor() || bodyEditor;
+            if (!ed || !findStr || !ed.view) return 0;
+            const { state, view } = ed;
+            const { doc } = state;
+            const tr = state.tr;
             const escaped = findStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`(?![^<]*>)${escaped}`, 'g');
-            let count = 0;
-            const updated = html.replace(regex, () => {
-                count++;
-                return replaceStr;
+            const regex = new RegExp(escaped, 'gi');
+            const matches = [];
+
+            doc.descendants((node, pos) => {
+                if (node.isText && node.text) {
+                    let m;
+                    while ((m = regex.exec(node.text)) !== null) {
+                        matches.push({
+                            from: pos + m.index,
+                            to: pos + m.index + m[0].length,
+                        });
+                    }
+                }
             });
-            if (count > 0) {
-                ed.commands.setContent(updated);
+
+            if (matches.length > 0) {
+                for (let i = matches.length - 1; i >= 0; i--) {
+                    const match = matches[i];
+                    tr.insertText(replaceStr, match.from, match.to);
+                }
+                view.dispatch(tr);
                 scheduleSyncAndPagination();
                 if (ed === bodyEditor) {
                     scheduleReflow(true);
                 }
+                return matches.length;
             }
-            return count;
+            return 0;
         },
 
-        replaceLivePreviewPlaceholders,
+                replaceLivePreviewPlaceholders,
 
         // Ruler and precision alignment methods
         toggleRuler(show) {

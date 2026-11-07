@@ -5,6 +5,7 @@
 function resetFormState(form) {
     if (!form) return;
     form.dataset.submitting = 'false';
+    form.dataset.preventDoubleSubmitActive = 'false';
 
     const submitBtns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
     submitBtns.forEach(btn => {
@@ -59,8 +60,8 @@ function initPreventDoubleSubmit() {
             return;
         }
 
-        // Cegah pengiriman jika form sedang dalam proses pengiriman
-        if (form.dataset.submitting === 'true') {
+        // Cegah pengiriman ganda jika form sedang diproses oleh script ini
+        if (form.dataset.preventDoubleSubmitActive === 'true') {
             e.preventDefault();
             e.stopPropagation();
             return false;
@@ -76,6 +77,7 @@ function initPreventDoubleSubmit() {
         }
 
         form.dataset.submitting = 'true';
+        form.dataset.preventDoubleSubmitActive = 'true';
 
         if (submitBtn && !submitBtn.hasAttribute('data-no-loading')) {
             if (!submitBtn.dataset.originalHtml) {
@@ -114,7 +116,7 @@ function initPreventDoubleSubmit() {
 
         // Safety timeout (15 detik): jika koneksi lambat atau ada kendala, pulihkan tombol agar user tidak terkunci
         setTimeout(() => {
-            if (form.dataset.submitting === 'true') {
+            if (form.dataset.preventDoubleSubmitActive === 'true' || form.dataset.submitting === 'true') {
                 resetFormState(form);
             }
         }, 15000);
@@ -122,7 +124,7 @@ function initPreventDoubleSubmit() {
 
     // 2. Pulihkan tombol jika pengguna kembali menggunakan navigasi browser (bfcache)
     window.addEventListener('pageshow', function () {
-        document.querySelectorAll('form[data-submitting="true"]').forEach(form => {
+        document.querySelectorAll('form[data-submitting="true"], form[data-prevent-double-submit-active="true"]').forEach(form => {
             resetFormState(form);
         });
     });

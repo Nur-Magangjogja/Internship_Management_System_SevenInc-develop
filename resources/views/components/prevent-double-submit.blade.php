@@ -9,6 +9,7 @@
     function resetFormState(form) {
         if (!form) return;
         form.dataset.submitting = 'false';
+        form.dataset.preventDoubleSubmitActive = 'false';
 
         const submitBtns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
         submitBtns.forEach(function(btn) {
@@ -50,7 +51,8 @@
             return;
         }
 
-        if (form.dataset.submitting === 'true') {
+        // Cegah pengiriman ganda jika form sedang diproses oleh script ini
+        if (form.dataset.preventDoubleSubmitActive === 'true') {
             e.preventDefault();
             e.stopPropagation();
             return false;
@@ -65,6 +67,7 @@
         }
 
         form.dataset.submitting = 'true';
+        form.dataset.preventDoubleSubmitActive = 'true';
 
         if (submitBtn && !submitBtn.hasAttribute('data-no-loading')) {
             if (!submitBtn.dataset.originalHtml) {
@@ -99,14 +102,14 @@
         });
 
         setTimeout(function() {
-            if (form.dataset.submitting === 'true') {
+            if (form.dataset.preventDoubleSubmitActive === 'true' || form.dataset.submitting === 'true') {
                 resetFormState(form);
             }
         }, 15000);
     });
 
     window.addEventListener('pageshow', function () {
-        document.querySelectorAll('form[data-submitting="true"]').forEach(function(form) {
+        document.querySelectorAll('form[data-submitting="true"], form[data-prevent-double-submit-active="true"]').forEach(function(form) {
             resetFormState(form);
         });
     });

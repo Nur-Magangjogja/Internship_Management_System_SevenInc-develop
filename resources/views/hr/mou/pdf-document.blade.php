@@ -120,6 +120,7 @@
             right: 0;
             bottom: -{{ $footerBottomOffsetMm }}mm;
             min-height: {{ $footerBoxHeightMm }}mm;
+            @if($showPageNumber) padding-right: 32mm; @endif
         }
         .mou-pdf-first-page-header-overlay {
             position: absolute;
@@ -138,6 +139,7 @@
             min-height: {{ $footerBoxHeightMm }}mm;
             background-color: #ffffff;
             z-index: 500;
+            @if($showPageNumber) padding-right: 32mm; @endif
         }
         .mou-pdf-paraf-box {
             width: 220pt;

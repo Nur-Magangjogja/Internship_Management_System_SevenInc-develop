@@ -538,6 +538,7 @@ class MouTemplateController extends Controller
             'paraf_second_party_label' => $parafSecondLabel,
             'show_page_number'         => $showPageNum,
             'show_page_numbers'        => $showPageNum,
+            'page_number_format'       => (string) $request->input('page_number_format', $basePage['page_number_format'] ?? 'Halaman [nomor_halaman] dari [total_halaman]'),
             'show_header_logos'        => $showHeaderLogos,
             'header_logos_config'      => is_array($request->input('header_logos_config'))
                 ? $request->input('header_logos_config')

@@ -50,7 +50,7 @@
 
       <div style="margin-bottom:14px;">
         <label for="username" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Username <span style="color:#ef4444;">*</span></label>
-        <input type="text" id="username" name="username" required value="{{ old('username') }}" placeholder="Masukkan username unik"
+        <input type="text" id="username" name="username" required value="{{ old('username') }}" placeholder="Masukkan username"
                style="width:100%;padding:10px 14px;border:1.5px solid {{ $errors->has('username') ? '#ef4444' : '#e5e7eb' }};border-radius:10px;font-size:13px;color:#111;background:#fff;box-sizing:border-box;"
                onfocus="this.style.borderColor='#1a5c38'" onblur="this.style.borderColor='{{ $errors->has('username') ? '#ef4444' : '#e5e7eb' }}'">
         @error('username')

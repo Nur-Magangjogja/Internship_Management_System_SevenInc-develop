@@ -366,7 +366,7 @@ class MouTemplate extends Model
         $safeSecond = e($secondPartyLabel);
 
         return <<<HTML
-<table class="mou-paraf-table" data-table-width="220pt" style="width: 220pt; border-collapse: collapse; border: 1px solid #000000; font-size: 8.5pt;">
+<table class="mou-paraf-table" data-table-width="220pt" data-table-align="left" style="width: 220pt; border-collapse: collapse; border: 1px solid #000000; font-size: 8.5pt; margin-left: 0; margin-right: auto;">
     <colgroup>
         <col width="147" style="width: 147px">
         <col width="147" style="width: 147px">
@@ -433,6 +433,7 @@ HTML;
             'paraf_second_party_label' => 'Paraf PIHAK KEDUA',
             'show_page_number'         => true,
             'show_page_numbers'        => true,
+            'page_number_format'       => 'Halaman [nomor_halaman] dari [total_halaman]',
         ];
     }
 

@@ -1,6 +1,14 @@
 @php
     $docType = $documentType ?? 'mou';
     $isMou = ($docType === 'mou');
+    $docTypeLabel = $isMou ? 'MoU' : match(strtolower((string)$docType)) {
+        'loa' => 'LOA',
+        'skl' => 'SKL',
+        'certificate' => 'Sertifikat',
+        'assessment' => 'Penilaian',
+        'recommendation' => 'Rekomendasi',
+        default => strtoupper((string)$docType),
+    };
 
     $defaultCfg = $isMou
         ? \App\Models\MouTemplate::getDefaultPageConfig()
@@ -786,12 +794,14 @@
         width: 100%;
         border: 1px dashed transparent;
         border-radius: 4px;
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
+        display: flex !important;
+        align-items: flex-end !important;
+        justify-content: space-between !important;
         gap: 4mm;
         box-sizing: border-box;
         transition: all 0.15s ease;
+        min-height: auto !important;
+        height: auto !important;
     }
     .mou-footer-zone-wrapper:hover {
         border-color: #cbd5e1;
@@ -837,6 +847,12 @@
         flex-shrink: 0;
         min-height: 14mm;
     }
+    .mou-a4-page-footer:has(.mou-zone-active),
+    .mou-a4-page-footer.mou-zone-active {
+        cursor: default !important;
+        -webkit-user-select: text !important;
+        user-select: text !important;
+    }
     .mou-page-body-content {
         flex: 1 1 0%;
         width: 100%;
@@ -879,15 +895,80 @@
         min-height: auto !important;
         height: auto !important;
     }
-    #mouHeaderCanvas .ProseMirror,
-    #mouFooterCanvas .ProseMirror {
+    #mouFooterCanvas {
+        text-align: left !important;
+        align-self: flex-end !important;
+    }
+    #mouHeaderCanvas .ProseMirror {
         min-height: auto !important;
         height: auto !important;
         padding: 0 !important;
         margin: 0 !important;
     }
+    #mouFooterCanvas .ProseMirror {
+        min-height: auto !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        text-align: left !important;
+        cursor: text !important;
+        box-sizing: border-box;
+    }
+    #mouFooterCanvas .ProseMirror p {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: normal !important;
+    }
+    #mouFooterCanvas .ProseMirror > p:first-child:empty,
+    #mouFooterCanvas .ProseMirror > p:first-child:has(> br:only-child) {
+        display: none !important;
+    }
+    #mouFooterCanvas .ProseMirror > p:last-child:empty,
+    #mouFooterCanvas .ProseMirror > p:last-child:has(> br:only-child) {
+        display: none !important;
+    }
     #mouFooterCanvas .tableWrapper {
         margin: 0 !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
+        width: fit-content !important;
+        max-width: 100% !important;
+        display: block !important;
+    }
+    #mouFooterPageNumberWrapper {
+        align-self: flex-end !important;
+        display: flex !important;
+        align-items: flex-end !important;
+        margin-bottom: 2px !important;
+    }
+    .mou-footer-content-row {
+        display: flex !important;
+        align-items: flex-end !important;
+        justify-content: space-between !important;
+        width: 100%;
+        gap: 4mm;
+    }
+    .mou-footer-paraf-area {
+        margin: 0 !important;
+        padding: 0 !important;
+        flex: 1 1 0%;
+        min-width: 0;
+    }
+    .mou-footer-paraf-area table {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
+    }
+    .mou-footer-paraf-area p:empty,
+    .mou-footer-paraf-area p:has(> br:only-child) {
+        display: none !important;
+        margin: 0 !important;
+    }
+    .mou-page-number-preview-text {
+        align-self: flex-end !important;
+        line-height: 1 !important;
+        padding-bottom: 2px !important;
     }
     .ProseMirror p.is-editor-empty:first-child::before {
         content: attr(data-placeholder);
@@ -912,9 +993,15 @@
     .mou-resize-guide-line,
     .mou-header-logos-interactive-stage,
     [data-pagination-artifact="true"],
-    .mou-table-width-handle {
+    .mou-table-width-handle,
+    .mou-table-move-handle {
         -webkit-user-select: none !important;
         user-select: none !important;
+    }
+    .mou-a4-page-footer:has(.mou-zone-active) [data-pagination-artifact="true"] {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+        pointer-events: auto !important;
     }
 
     /* ProseMirror Table Resizing & Printable Containment */
@@ -928,8 +1015,7 @@
     .ProseMirror table {
         border-collapse: collapse;
         table-layout: fixed;
-        width: 100%;
-        max-width: 100% !important;
+        max-width: 100%;
         box-sizing: border-box;
     }
     .ProseMirror td,
@@ -1070,6 +1156,35 @@
     }
     .ProseMirror .tableWrapper:hover .mou-table-width-handle,
     .mou-zone-active .tableWrapper .mou-table-width-handle {
+        opacity: 1;
+    }
+    .mou-table-move-handle {
+        position: absolute;
+        top: -11px;
+        left: -11px;
+        width: 22px;
+        height: 22px;
+        background: #ffffff;
+        border: 1.5px solid #94a3b8;
+        border-radius: 4px;
+        color: #475569;
+        cursor: move;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        z-index: 25;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    }
+    .mou-table-move-handle:hover {
+        background: #eff6ff;
+        border-color: #3b82f6;
+        color: #2563eb;
+    }
+    .ProseMirror .tableWrapper:hover .mou-table-move-handle,
+    .mou-zone-active .tableWrapper:hover .mou-table-move-handle,
+    .ProseMirror .tableWrapper.ProseMirror-selectednode .mou-table-move-handle {
         opacity: 1;
     }
 
@@ -1498,6 +1613,7 @@
 <input type="hidden" name="different_first_page" id="inputDifferentFirstPage" value="{{ !empty($cfg['different_first_page']) ? '1' : '0' }}">
 <input type="hidden" name="show_paraf_box" id="inputShowParafBox" value="{{ ($cfg['show_paraf_box'] ?? true) ? '1' : '0' }}">
 <input type="hidden" name="show_page_number" id="inputShowPageNumber" value="{{ ($cfg['show_page_number'] ?? true) ? '1' : '0' }}">
+<input type="hidden" name="page_number_format" id="inputPageNumberFormat" value="{{ $cfg['page_number_format'] ?? 'Halaman [nomor_halaman] dari [total_halaman]' }}">
 <input type="hidden" name="paper_size" id="inputPaperSize" value="{{ strtoupper($cfg['paper_size'] ?? 'A4') }}">
 <input type="hidden" name="orientation" id="inputOrientation" value="{{ strtolower($cfg['orientation'] ?? 'portrait') }}">
 <input type="hidden" name="allow_blank_template" id="inputAllowBlankTemplate" value="0">
@@ -1639,8 +1755,8 @@
                         <button type="button" id="btnNewBlankDoc" class="mou-ribbon-btn border-slate-300 bg-slate-50" title="Kosongkan halaman untuk menulis dari awal">
                             Halaman Kosong
                         </button>
-                        <button type="button" id="btnLoadSampleMou" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Muat contoh template MoU standar Seven Inc yang dapat diedit bebas">
-                            Contoh MoU
+                        <button type="button" id="btnLoadSampleMou" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Muat contoh template {{ $docTypeLabel }} standar yang dapat diedit bebas">
+                            Contoh {{ $docTypeLabel }}
                         </button>
                         <label for="btnImportDocxInput" class="mou-ribbon-btn border-indigo-200 bg-indigo-50 text-indigo-700 cursor-pointer" title="Import template dari file Microsoft Word (.docx) yang editable">
                             <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
@@ -2037,6 +2153,10 @@
                         <button type="button" id="btnToggleWatermark" class="mou-ribbon-btn border-slate-200 bg-slate-50 {{ ($cfg['show_watermark'] ?? true) ? 'mou-ribbon-btn-active' : '' }}" title="Aktifkan / Nonaktifkan Watermark Latar Tengah Kertas">
                             Watermark Tengah
                         </button>
+                        <div class="inline-flex items-center gap-1 border border-slate-200 rounded px-1.5 py-0.5 bg-white shadow-2xs" title="Tingkat Transparansi Watermark Latar">
+                            <span class="text-[10px] text-slate-500 font-semibold">Opasitas:</span>
+                            <input type="number" id="inputWatermarkOpacityRibbon" min="0.01" max="0.30" step="0.01" value="{{ $cfg['watermark_opacity'] ?? 0.05 }}" class="h-5 w-12 text-[10px] text-center border-0 p-0 focus:ring-0">
+                        </div>
                     </div>
                     <div class="mou-ribbon-group-label">{{ $isMou ? 'Logo & Sisip Media' : 'Watermark & Media' }}</div>
                 </div>
@@ -2499,6 +2619,60 @@
                     <div class="mou-ribbon-group-label">Pengaturan Halaman Pertama &amp; Visibilitas</div>
                 </div>
 
+                <!-- Group: Navigasi & Penomoran Halaman Dinamis -->
+                <div class="mou-ribbon-group">
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="btnToggleLinkToPrevious" class="mou-ribbon-btn border-slate-200 bg-white" title="Tautkan header/footer ini ke halaman sebelumnya (Sama Seperti Sebelumnya)">
+                            <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                            <span>Tautkan ke Sebelumnya</span>
+                        </button>
+
+                        <div class="relative inline-block" id="pageNumberDropdownContainer">
+                            <button type="button" id="btnInsertPageNumberField" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700" title="Sisipkan field dinamis nomor halaman pada posisi kursor">
+                                <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                </svg>
+                                <span>Nomor Halaman ▾</span>
+                            </button>
+                            <div id="dropdownPageNumberOptions" class="hidden absolute left-0 top-full mt-1 z-50 w-64 rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
+                                <button type="button" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between" data-page-token="Halaman [nomor_halaman] dari [total_halaman]">
+                                    <span>Halaman X dari Y</span>
+                                    <code class="text-[10px] text-blue-600 font-mono">Halaman [nomor_halaman]...</code>
+                                </button>
+                                <button type="button" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between" data-page-token="Hal. [nomor_halaman] dari [total_halaman]">
+                                    <span>Hal. X dari Y</span>
+                                    <code class="text-[10px] text-blue-600 font-mono">Hal. [nomor_halaman]...</code>
+                                </button>
+                                <button type="button" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between" data-page-token="[nomor_halaman] / [total_halaman]">
+                                    <span>X / Y</span>
+                                    <code class="text-[10px] text-blue-600 font-mono">[nomor_halaman] / [total_halaman]</code>
+                                </button>
+                                <button type="button" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between" data-page-token="[nomor_halaman]">
+                                    <span>Nomor Saja</span>
+                                    <code class="text-[10px] text-blue-600 font-mono">[nomor_halaman]</code>
+                                </button>
+                                <button type="button" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between" data-page-token="Halaman [nomor_halaman]">
+                                    <span>Halaman X</span>
+                                    <code class="text-[10px] text-blue-600 font-mono">Halaman [nomor_halaman]</code>
+                                </button>
+                                <div class="border-t border-slate-100 my-1"></div>
+                                <button type="button" id="btnOpenPageNumberModalFromRibbon" class="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium flex items-center gap-1.5 transition">
+                                    <svg class="w-3.5 h-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 20h9"/>
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                                    </svg>
+                                    <span>Format Nomor Halaman Lainnya...</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mou-ribbon-group-label">Tautan &amp; Nomor Halaman Dinamis</div>
+                </div>
+
                 <!-- Group: Jarak Header/Footer -->
                 <div class="mou-ribbon-group border-r-0">
                     <div class="flex items-center gap-2">
@@ -2784,10 +2958,23 @@
                     <div id="mouHeaderZoneWrapper" class="mou-header-zone-wrapper" title="Header dokumen">
                         <div id="mouHeaderCanvas"></div>
                     </div>
-                    <div id="mouFooterZoneWrapper" class="mou-footer-zone-wrapper" title="Footer dokumen &amp; Kotak Paraf">
+                    <div id="mouFooterZoneWrapper" class="mou-footer-zone-wrapper flex items-end justify-between gap-4 w-full" title="Footer dokumen &amp; Kotak Paraf">
                         <div id="mouFooterCanvas" class="flex-1 min-w-0"></div>
-                        <div id="mouFooterPageNumberPreview" class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none">
-                            Halaman 1 dari 1
+                        <div class="relative shrink-0 flex items-end" id="mouFooterPageNumberWrapper">
+                            <div id="mouFooterPageNumberPreview"
+                                 class="font-sans text-[10px] font-medium text-slate-700 bg-white/95 border border-blue-300 hover:border-blue-500 hover:bg-blue-50/80 rounded-md px-2.5 py-1 shadow-xs cursor-pointer transition select-none flex items-center gap-1.5"
+                                 title="Klik untuk memilih atau mengubah format penomoran halaman">
+                                <svg class="w-3.5 h-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                </svg>
+                                <span id="mouFooterPageNumberPreviewText">Halaman 1 dari 1</span>
+                                <svg class="w-3 h-3 text-slate-400 shrink-0 ml-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+
+                            
                         </div>
                     </div>
                 </div>
@@ -3214,6 +3401,136 @@
     </div>
 </div>
 
+<!-- Modal: Format Nomor Halaman (Word Standard Dialog) -->
+<div id="mouPageNumberFormatModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto no-print">
+    <div class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-700 text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-600 font-bold text-xs text-white shadow-xs">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                </span>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Format Nomor Halaman</h3>
+                    <p class="text-[11px] text-slate-400">Pilih gaya penomoran lembar dokumen atau tentukan pola kustom</p>
+                </div>
+            </div>
+            <button
+                type="button"
+                id="btnClosePageNumModal"
+                class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-lg font-bold"
+                title="Tutup Modal"
+            >
+                &times;
+            </button>
+        </div>
+
+        <!-- Body Content -->
+        <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            <!-- Toggle Visibility Row -->
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                <div>
+                    <div class="text-xs font-semibold text-slate-800">Tampilkan Nomor Halaman</div>
+                    <div class="text-[11px] text-slate-500">Munculkan penomoran di sudut kanan bawah setiap lembar dokumen</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="chkShowPageNumberModal" class="sr-only peer" checked>
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
+            <!-- Presets List -->
+            <div class="space-y-1.5">
+                <div class="text-[10.5px] uppercase tracking-wider text-slate-400 font-bold px-0.5">Pilihan Format Populer</div>
+                <div class="grid grid-cols-1 gap-1.5" id="mouPageNumberPresetsList">
+                    <button type="button" class="btn-page-preset w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between transition group" data-format="Halaman [nomor_halaman] dari [total_halaman]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="preset-indicator w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center group-hover:border-blue-500"></span>
+                            <div>
+                                <span class="font-medium text-slate-800 group-hover:text-blue-700 text-xs block">Halaman X dari Y</span>
+                                <span class="text-[10px] text-slate-400">Standar naskah resmi &amp; kontrak Seven Inc.</span>
+                            </div>
+                        </div>
+                        <span class="preset-preview text-xs text-slate-600 font-mono bg-slate-100 group-hover:bg-blue-100/70 group-hover:text-blue-800 px-2.5 py-1 rounded-md border border-slate-200">Halaman 1 dari 2</span>
+                    </button>
+                    <button type="button" class="btn-page-preset w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between transition group" data-format="Hal. [nomor_halaman] dari [total_halaman]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="preset-indicator w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center group-hover:border-blue-500"></span>
+                            <div>
+                                <span class="font-medium text-slate-800 group-hover:text-blue-700 text-xs block">Hal. X dari Y</span>
+                                <span class="text-[10px] text-slate-400">Singkat, formal</span>
+                            </div>
+                        </div>
+                        <span class="preset-preview text-xs text-slate-600 font-mono bg-slate-100 group-hover:bg-blue-100/70 group-hover:text-blue-800 px-2.5 py-1 rounded-md border border-slate-200">Hal. 1 dari 2</span>
+                    </button>
+                    <button type="button" class="btn-page-preset w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between transition group" data-format="[nomor_halaman] / [total_halaman]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="preset-indicator w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center group-hover:border-blue-500"></span>
+                            <div>
+                                <span class="font-medium text-slate-800 group-hover:text-blue-700 text-xs block">X / Y</span>
+                                <span class="text-[10px] text-slate-400">Ringkas modern</span>
+                            </div>
+                        </div>
+                        <span class="preset-preview text-xs text-slate-600 font-mono bg-slate-100 group-hover:bg-blue-100/70 group-hover:text-blue-800 px-2.5 py-1 rounded-md border border-slate-200">1 / 2</span>
+                    </button>
+                    <button type="button" class="btn-page-preset w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between transition group" data-format="Halaman [nomor_halaman]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="preset-indicator w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center group-hover:border-blue-500"></span>
+                            <div>
+                                <span class="font-medium text-slate-800 group-hover:text-blue-700 text-xs block">Halaman X</span>
+                                <span class="text-[10px] text-slate-400">Tanpa total halaman</span>
+                            </div>
+                        </div>
+                        <span class="preset-preview text-xs text-slate-600 font-mono bg-slate-100 group-hover:bg-blue-100/70 group-hover:text-blue-800 px-2.5 py-1 rounded-md border border-slate-200">Halaman 1</span>
+                    </button>
+                    <button type="button" class="btn-page-preset w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-between transition group" data-format="[nomor_halaman]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="preset-indicator w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center group-hover:border-blue-500"></span>
+                            <div>
+                                <span class="font-medium text-slate-800 group-hover:text-blue-700 text-xs block">Nomor Saja</span>
+                                <span class="text-[10px] text-slate-400">Minimalis angka murni</span>
+                            </div>
+                        </div>
+                        <span class="preset-preview text-xs text-slate-600 font-mono bg-slate-100 group-hover:bg-blue-100/70 group-hover:text-blue-800 px-2.5 py-1 rounded-md border border-slate-200">1</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Custom Format Section -->
+            <div class="border-t border-slate-200 pt-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <label for="inputCustomPageFormat" class="text-[10.5px] uppercase tracking-wider text-slate-400 font-bold px-0.5">Kustomisasi Pola:</label>
+                    <span class="text-[11px] text-blue-600 font-medium">Token dinamis otomatis dihitung</span>
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="inputCustomPageFormat"
+                           class="flex-1 rounded-xl border border-slate-300 bg-slate-50/70 px-3 py-2 text-xs font-mono text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                           placeholder="Halaman [nomor_halaman] dari [total_halaman]">
+                </div>
+                <div class="flex items-center gap-2 pt-0.5">
+                    <span class="text-[11px] text-slate-400 shrink-0">Sisipkan token:</span>
+                    <button type="button" class="btn-insert-token text-xs font-mono bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-600 transition" data-token="[nomor_halaman]">+ [nomor_halaman]</button>
+                    <button type="button" class="btn-insert-token text-xs font-mono bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-600 transition" data-token="[total_halaman]">+ [total_halaman]</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200 shrink-0">
+            <button type="button" id="btnCancelPageNumModal" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 active:scale-95 transition">Batal</button>
+            <button type="button" id="btnApplyCustomPageFormat" class="px-5 py-2 rounded-xl bg-blue-600 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 active:scale-95 transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                <span>Terapkan Format</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Template Data Store for Sample, Default Paraf, Saved Templates & Initial Editor JSON -->
 <script type="application/json" id="mouSampleHtmlJson">{!! json_encode($sampleWordHtml) !!}</script>
 <script type="application/json" id="mouDefaultParafHtmlJson">{!! json_encode($defaultParafHtml) !!}</script>
@@ -3365,10 +3682,22 @@
                 headerMountEl,
                 footerMountEl,
                 documentType: '{{ $docType }}',
-                initialBodyHtml: document.getElementById('inputTemplateHtml')?.value || sampleWordHtml || '<p></p>',
+                initialBodyHtml: (function() {
+                    const raw = document.getElementById('inputTemplateHtml')?.value;
+                    if (raw !== undefined && raw !== null && raw !== '') return raw;
+                    const f = document.getElementById('{{ $formId ?? "mouTemplateForm" }}');
+                    const isCreate = f && f.action && (f.action.endsWith('/store') || f.action.includes('/store'));
+                    return isCreate ? (sampleWordHtml || '<p></p>') : '<p></p>';
+                })(),
                 initialEditorJson: initialEditorJson,
                 initialHeaderHtml: document.getElementById('inputHeaderHtml')?.value || '',
-                initialFooterHtml: document.getElementById('inputFooterHtml')?.value || defaultParafHtml,
+                initialFooterHtml: (function() {
+                    const raw = document.getElementById('inputFooterHtml')?.value;
+                    if (raw !== undefined && raw !== null && raw !== '') return raw;
+                    const f = document.getElementById('{{ $formId ?? "mouTemplateForm" }}');
+                    const isCreate = f && f.action && (f.action.endsWith('/store') || f.action.includes('/store'));
+                    return isCreate ? (defaultParafHtml || '') : '';
+                })(),
                 initialFirstPageHeaderHtml: document.getElementById('inputFirstPageHeaderHtml')?.value || '',
                 initialFirstPageFooterHtml: document.getElementById('inputFirstPageFooterHtml')?.value || defaultParafHtml,
                 defaultSampleHtml: sampleWordHtml,
@@ -3505,6 +3834,7 @@
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             document.body.classList.remove('overflow-hidden', 'mou-preview-modal-open');
+            window.MouWordProcessor?.focusActiveEditor();
         }
 
         // Mode Edit vs Mode Pratinjau Lembar A4
@@ -3610,7 +3940,8 @@
             }
         });
         document.getElementById('btnLoadSampleMou')?.addEventListener('click', () => {
-            if (confirm('Muat contoh naskah MoU standar Seven Inc. ke dalam editor? Isi saat ini akan digantikan.')) {
+            const docLabel = '{{ $docTypeLabel }}';
+            if (confirm(`Muat contoh naskah ${docLabel} standar ke dalam editor? Isi saat ini akan digantikan.`)) {
                 processor.loadSampleMouDocument();
             }
         });
@@ -3916,6 +4247,7 @@
 
         function closeAssetLibraryModal() {
             if (assetModal) assetModal.classList.add('hidden');
+            window.MouWordProcessor?.focusActiveEditor();
         }
 
         btnOpenAsset?.addEventListener('click', openAssetLibraryModal);
@@ -4184,8 +4516,97 @@
             processor.applyPageLayoutToCanvas();
         });
         document.getElementById('chkShowPageNumber')?.addEventListener('change', (e) => {
-            processor.state.showPageNumber = e.target.checked;
-            processor.applyPageLayoutToCanvas();
+            processor.togglePageNumberVisibility(e.target.checked);
+        });
+
+        // Link to Previous toggle
+        document.getElementById('btnToggleLinkToPrevious')?.addEventListener('click', () => {
+            processor.toggleLinkToPrevious();
+        });
+
+        // Insert Page Number Field Dropdown
+        const btnPageNum = document.getElementById('btnInsertPageNumberField');
+        const dropdownPageNum = document.getElementById('dropdownPageNumberOptions');
+        btnPageNum?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownPageNum?.classList.toggle('hidden');
+        });
+        dropdownPageNum?.querySelectorAll('button[data-page-token]').forEach(b => {
+            b.addEventListener('click', () => {
+                const token = b.getAttribute('data-page-token');
+                dropdownPageNum?.classList.add('hidden');
+                if (token && processor.setPageNumberFormat) {
+                    processor.setPageNumberFormat(token);
+                } else if (token && processor.insertPageNumberToken) {
+                    processor.insertPageNumberToken(token);
+                }
+            });
+        });
+        document.getElementById('btnOpenPageNumberModalFromRibbon')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownPageNum?.classList.add('hidden');
+            if (processor.openPageNumberFormatModal) {
+                processor.openPageNumberFormatModal();
+            }
+        });
+
+        // Open Page Number Format Modal from Footer Pill
+        document.getElementById('mouFooterPageNumberPreview')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            processor.openPageNumberFormatModal?.();
+        });
+
+        // Close Page Number Format Modal handlers
+        document.getElementById('btnClosePageNumModal')?.addEventListener('click', () => {
+            processor.closePageNumberFormatModal?.();
+        });
+        document.getElementById('btnCancelPageNumModal')?.addEventListener('click', () => {
+            processor.closePageNumberFormatModal?.();
+        });
+        document.getElementById('chkShowPageNumberModal')?.addEventListener('change', (e) => {
+            processor.togglePageNumberVisibility?.(e.target.checked);
+        });
+
+        // Page Number Modal Preset selections
+        document.querySelectorAll('#mouPageNumberPresetsList .btn-page-preset')?.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fmt = btn.getAttribute('data-format');
+                if (fmt && processor.setPageNumberFormat) {
+                    processor.setPageNumberFormat(fmt);
+                    processor.closePageNumberFormatModal?.();
+                }
+            });
+        });
+
+        // Custom format apply button
+        document.getElementById('btnApplyCustomPageFormat')?.addEventListener('click', () => {
+            const val = document.getElementById('inputCustomPageFormat')?.value;
+            if (val && processor.setPageNumberFormat) {
+                processor.setPageNumberFormat(val);
+                processor.closePageNumberFormatModal?.();
+            }
+        });
+
+        // Custom format token chips
+        document.querySelectorAll('#mouPageNumberFormatModal button[data-insert-token]')?.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const token = chip.getAttribute('data-insert-token');
+                const inp = document.getElementById('inputCustomPageFormat');
+                if (inp && token) {
+                    inp.value = (inp.value ? inp.value + ' ' : '') + token;
+                }
+            });
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#pageNumberDropdownContainer')) {
+                dropdownPageNum?.classList.add('hidden');
+            }
+        });
+
+        // Watermark Opacity Ribbon Input
+        document.getElementById('inputWatermarkOpacityRibbon')?.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) || 0.05;
+            processor.setWatermarkOpacity(val);
         });
         document.getElementById('inputRibbonHeaderDist')?.addEventListener('input', (e) => {
             processor.state.headerDistanceMm = parseFloat(e.target.value || '12') || 12;
