@@ -20,9 +20,40 @@
                     <line x1="12" y1="8" x2="12" y2="12"/>
                     <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
-                {{ $registrations->total() }} Menunggu Verifikasi
+                {{ $registrations->total() }} Menunggu Tindakan
             </span>
         </div>
+    </div>
+
+    <!-- Navigasi Kategori Tab Antrean -->
+    <div class="mb-6 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
+        <a
+            href="{{ route($routePrefix . '.index', array_merge(request()->query(), ['tab' => 'needs_review', 'page' => 1])) }}"
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition {{ ($tab ?? 'needs_review') === 'needs_review' ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200' }}"
+        >
+            <span>Perlu Review (Ada Input)</span>
+            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {{ ($tab ?? 'needs_review') === 'needs_review' ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-700' }}">
+                {{ $counts['needs_review'] ?? 0 }}
+            </span>
+        </a>
+        <a
+            href="{{ route($routePrefix . '.index', array_merge(request()->query(), ['tab' => 'empty', 'page' => 1])) }}"
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition {{ ($tab ?? 'needs_review') === 'empty' ? 'bg-blue-100 text-blue-900 border border-blue-300 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200' }}"
+        >
+            <span>Belum Ada Pembimbing (Kosong)</span>
+            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {{ ($tab ?? 'needs_review') === 'empty' ? 'bg-blue-200 text-blue-900' : 'bg-slate-100 text-slate-700' }}">
+                {{ $counts['empty'] ?? 0 }}
+            </span>
+        </a>
+        <a
+            href="{{ route($routePrefix . '.index', array_merge(request()->query(), ['tab' => 'all', 'page' => 1])) }}"
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition {{ ($tab ?? 'needs_review') === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200' }}"
+        >
+            <span>Semua Belum Tertaut</span>
+            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {{ ($tab ?? 'needs_review') === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700' }}">
+                {{ $counts['all'] ?? 0 }}
+            </span>
+        </a>
     </div>
 
     <!-- Alert Success / Error -->
@@ -49,6 +80,7 @@
     <!-- Filter & Pencarian -->
     <div class="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <form method="GET" action="{{ route($routePrefix . '.index') }}" class="flex flex-col sm:flex-row gap-3">
+            <input type="hidden" name="tab" value="{{ $tab ?? 'needs_review' }}">
             <div class="flex-1 relative">
                 <input
                     type="text"
@@ -71,7 +103,7 @@
                 </button>
                 @if (request('search') || request('institution_id'))
                     <a
-                        href="{{ route($routePrefix . '.index') }}"
+                        href="{{ route($routePrefix . '.index', ['tab' => $tab ?? 'needs_review']) }}"
                         class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                         Reset
@@ -97,6 +129,8 @@
                     @forelse ($registrations as $reg)
                         @php
                             $contacts = $canonicalContactsByInstitution->get($reg->institution_id, collect());
+                            $hasSupervisorInput = !\App\Services\ContactMatchingService::isPlaceholder($reg->supervisor_name)
+                                || !\App\Services\ContactMatchingService::isPlaceholder($reg->supervisor_contact);
                         @endphp
                         <tr class="hover:bg-slate-50/70 transition">
                             <td class="px-5 py-4 text-center font-medium text-slate-400">
@@ -114,67 +148,82 @@
                                 @endif
                             </td>
                             <td class="px-5 py-4">
-                                <div class="space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs font-medium text-slate-500 w-20">Pembimbing:</span>
-                                        <span class="text-xs font-bold text-slate-800">{{ $reg->supervisor_name ?: '-' }}</span>
+                                @if (!$hasSupervisorInput)
+                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-xs">
+                                        <svg class="h-3.5 w-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span class="italic">Belum ada data dari pemagang</span>
                                     </div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs font-medium text-slate-500 w-20">No. Kontak:</span>
-                                        <span class="text-xs font-mono text-slate-700">{{ $reg->supervisor_contact ?: '-' }}</span>
+                                @else
+                                    <div class="space-y-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-medium text-slate-500 w-20">Pembimbing:</span>
+                                            <span class="text-xs font-bold text-slate-800">{{ $reg->supervisor_name ?: '-' }}</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-medium text-slate-500 w-20">No. Kontak:</span>
+                                            <span class="text-xs font-mono text-slate-700">{{ $reg->supervisor_contact ?: '-' }}</span>
+                                        </div>
                                     </div>
-                                </div>
+                                @endif
                             </td>
                             <td class="px-5 py-4">
-                                <div class="flex flex-col gap-2.5 max-w-md">
-                                    <!-- Form Tautkan Kontak yang Sudah Ada -->
-                                    @if ($contacts->isNotEmpty())
-                                        <form method="POST" action="{{ route($routePrefix . '.link', $reg) }}" class="flex items-center gap-2">
-                                            @csrf
-                                            <select
-                                                name="institution_contact_id"
-                                                class="flex-1 rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                required
-                                            >
-                                                <option value="">-- Pilih Kontak Resmi --</option>
-                                                @foreach ($contacts as $contact)
-                                                    <option value="{{ $contact->id }}">
-                                                        {{ $contact->name }} ({{ $contact->position_title ?: 'Staf/Dosen' }}) - {{ $contact->phone ?: 'No Phone' }}
-                                                    </option>
-                                                @endforeach
-                                            </select>
+                                @if (!$reg->institution_id)
+                                    <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 max-w-sm">
+                                        Institusi belum ditentukan. Hubungkan institusi pemagang terlebih dahulu agar dapat menautkan pembimbing.
+                                    </p>
+                                @else
+                                    <div class="flex flex-col gap-2.5 max-w-md">
+                                        <!-- Form Tautkan Kontak yang Sudah Ada -->
+                                        @if ($contacts->isNotEmpty())
+                                            <form method="POST" action="{{ route($routePrefix . '.link', $reg) }}" class="flex items-center gap-2">
+                                                @csrf
+                                                <select
+                                                    name="institution_contact_id"
+                                                    class="flex-1 rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    required
+                                                >
+                                                    <option value="">-- Pilih Kontak Resmi --</option>
+                                                    @foreach ($contacts as $contact)
+                                                        <option value="{{ $contact->id }}">
+                                                            {{ $contact->name }} ({{ $contact->position_title ?: 'Staf/Dosen' }}) - {{ $contact->phone ?: 'No Phone' }}
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                                <button
+                                                    type="submit"
+                                                    class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                                                >
+                                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                                    </svg>
+                                                    Tautkan
+                                                </button>
+                                            </form>
+                                        @else
+                                            <p class="text-xs italic text-slate-400">Belum ada kontak resmi terverifikasi di institusi ini.</p>
+                                        @endif
+
+                                        <!-- Tombol Buat & Verifikasi Kontak Baru -->
+                                        <div class="flex items-center gap-2">
                                             <button
-                                                type="submit"
-                                                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                                                type="button"
+                                                onclick="openCreateModal('{{ $reg->public_uuid ?? $reg->id }}', '{{ addslashes(!\App\Services\ContactMatchingService::isPlaceholder($reg->supervisor_name) ? $reg->supervisor_name : '') }}', '{{ addslashes(!\App\Services\ContactMatchingService::isPlaceholder($reg->supervisor_contact) ? $reg->supervisor_contact : '') }}', '{{ route($routePrefix . '.create-and-verify', $reg) }}')"
+                                                class="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                                             >
                                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                                                    <circle cx="9" cy="7" r="4"/>
+                                                    <line x1="19" y1="8" x2="19" y2="14"/>
+                                                    <line x1="22" y1="11" x2="16" y2="11"/>
                                                 </svg>
-                                                Tautkan
+                                                {{ $hasSupervisorInput ? 'Buat & Verifikasi Baru' : '+ Tambah Kontak Pembimbing' }}
                                             </button>
-                                        </form>
-                                    @else
-                                        <p class="text-xs italic text-slate-400">Belum ada kontak resmi terverifikasi di institusi ini.</p>
-                                    @endif
-
-                                    <!-- Tombol Buat & Verifikasi Kontak Baru -->
-                                    <div class="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onclick="openCreateModal('{{ $reg->public_uuid ?? $reg->id }}', '{{ addslashes($reg->supervisor_name ?? '') }}', '{{ addslashes($reg->supervisor_contact ?? '') }}', '{{ route($routePrefix . '.create-and-verify', $reg) }}')"
-                                            class="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                                        >
-                                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                                                <circle cx="9" cy="7" r="4"/>
-                                                <line x1="19" y1="8" x2="19" y2="14"/>
-                                                <line x1="22" y1="11" x2="16" y2="11"/>
-                                            </svg>
-                                            Buat & Verifikasi Baru
-                                        </button>
+                                        </div>
                                     </div>
-                                </div>
+                                @endif
                             </td>
                         </tr>
                     @empty
@@ -184,8 +233,16 @@
                                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                                     <polyline points="22 4 12 14.01 9 11.01"/>
                                 </svg>
-                                <p class="text-sm font-semibold text-slate-600">Semua Data Kontak Telah Ditinjau</p>
-                                <p class="text-xs text-slate-400 mt-1">Tidak ada pendaftaran yang membutuhkan verifikasi pembimbing saat ini.</p>
+                                @if (($tab ?? 'needs_review') === 'empty')
+                                    <p class="text-sm font-semibold text-slate-600">Semua Pemagang Sudah Memiliki Kontak Pembimbing</p>
+                                    <p class="text-xs text-slate-400 mt-1">Tidak ada peserta magang yang data kontak pembimbingnya kosong saat ini.</p>
+                                @elseif (($tab ?? 'needs_review') === 'all')
+                                    <p class="text-sm font-semibold text-slate-600">Semua Pemagang Telah Tertaut Pembimbing</p>
+                                    <p class="text-xs text-slate-400 mt-1">Seluruh data pendaftaran pemagang telah terhubung ke kontak pembimbing resmi institusi.</p>
+                                @else
+                                    <p class="text-sm font-semibold text-slate-600">Semua Data Kontak Telah Ditinjau</p>
+                                    <p class="text-xs text-slate-400 mt-1">Tidak ada pendaftaran yang membutuhkan verifikasi pembimbing saat ini.</p>
+                                @endif
                             </td>
                         </tr>
                     @endforelse

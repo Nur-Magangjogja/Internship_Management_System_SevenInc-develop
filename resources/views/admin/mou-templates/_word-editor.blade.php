@@ -2414,15 +2414,16 @@
                     <div class="flex items-center gap-1.5 mt-1.5">
                         <label class="text-xs font-semibold text-slate-600">Tinggi:</label>
                         <div class="inline-flex items-center rounded-md border border-slate-300 bg-white">
-                            <input type="number" id="ribbonRowHeightInput" placeholder="18" min="12" max="250" step="1" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
+                            <input type="number" id="ribbonRowHeightInput" placeholder="40" min="12" max="250" step="1" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
                             <div class="flex flex-col border-l border-slate-200">
                                 <button type="button" id="btnSpinRowHeightUp" onclick="window.MouWordProcessor?.adjustRowHeightSpin(1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600" title="Tambah tinggi baris (+1pt)">▲</button>
                                 <button type="button" id="btnSpinRowHeightDown" onclick="window.MouWordProcessor?.adjustRowHeightSpin(-1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600 border-t border-slate-200" title="Kurangi tinggi baris (-1pt)">▼</button>
                             </div>
                         </div>
                         <button type="button" id="btnApplyRowHeight" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Paraf">18pt (Paraf)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf diperbesar">28pt (Paraf+)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('40pt')" class="mou-ribbon-btn border-blue-300 bg-blue-50 text-blue-700 font-semibold" title="Tinggi standar ruang Paraf (40pt)">40pt (Paraf)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf ringkas (18pt)">18pt (Ringkas)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf sedang (28pt)">28pt (Sedang)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('26mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Tanda Tangan">26mm (TTD)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('35mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Tanda Tangan besar">35mm (TTD+)</button>
                     </div>
@@ -4505,8 +4506,12 @@
 
         // Header & Footer Controls
         document.getElementById('chkDifferentFirstPage')?.addEventListener('change', (e) => {
-            processor.state.differentFirstPage = e.target.checked;
-            processor.syncAllToHiddenInputs();
+            if (processor.toggleDifferentFirstPage) {
+                processor.toggleDifferentFirstPage(e.target.checked);
+            } else {
+                processor.state.differentFirstPage = e.target.checked;
+                processor.syncAllToHiddenInputs();
+            }
         });
         document.getElementById('selectHeaderFooterVariant')?.addEventListener('change', (e) => {
             processor.setHeaderFooterVariant(e.target.value === 'first');
@@ -4514,6 +4519,8 @@
         document.getElementById('chkShowParafBox')?.addEventListener('change', (e) => {
             processor.state.showParafBox = e.target.checked;
             processor.applyPageLayoutToCanvas();
+            processor.refreshAllPageViews?.();
+            processor.syncAllToHiddenInputs();
         });
         document.getElementById('chkShowPageNumber')?.addEventListener('change', (e) => {
             processor.togglePageNumberVisibility(e.target.checked);
@@ -4609,12 +4616,20 @@
             processor.setWatermarkOpacity(val);
         });
         document.getElementById('inputRibbonHeaderDist')?.addEventListener('input', (e) => {
-            processor.state.headerDistanceMm = parseFloat(e.target.value || '12') || 12;
-            processor.syncAllToHiddenInputs();
+            if (processor.setHeaderDistance) {
+                processor.setHeaderDistance(e.target.value);
+            } else {
+                processor.state.headerDistanceMm = parseFloat(e.target.value || '12') || 12;
+                processor.syncAllToHiddenInputs();
+            }
         });
         document.getElementById('inputRibbonFooterDist')?.addEventListener('input', (e) => {
-            processor.state.footerDistanceMm = parseFloat(e.target.value || '10') || 10;
-            processor.syncAllToHiddenInputs();
+            if (processor.setFooterDistance) {
+                processor.setFooterDistance(e.target.value);
+            } else {
+                processor.state.footerDistanceMm = parseFloat(e.target.value || '10') || 10;
+                processor.syncAllToHiddenInputs();
+            }
         });
 
         // Zoom Control

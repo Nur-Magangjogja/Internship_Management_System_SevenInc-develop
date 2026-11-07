@@ -425,8 +425,8 @@ HTML;
         $this->assertStringContainsString('Paraf PIHAK KESATU', $pdfViewHtml);
         $this->assertStringContainsString('Paraf PIHAK KEDUA', $pdfViewHtml);
         $this->assertStringContainsString('Halaman {PAGE_NUM} dari {PAGE_COUNT}', $pdfViewHtml);
-        // Pastikan margin bawah dokumen diamankan secara dinamis (>= 44mm untuk paraf standar) agar footer tidak menimpa teks/tabel
-        $this->assertMatchesRegularExpression('/margin:\s*25\.4mm\s+25\.4mm\s+4[4-9](\.\d+)?mm\s+25\.4mm/', $pdfViewHtml);
+        // Pastikan margin bawah dokumen diamankan secara dinamis (>= 44mm untuk paraf standar, ~53mm untuk paraf 40pt) agar footer tidak menimpa teks/tabel
+        $this->assertMatchesRegularExpression('/margin:\s*25\.4mm\s+25\.4mm\s+(4[4-9]|5[0-9])(\.\d+)?mm\s+25\.4mm/', $pdfViewHtml);
     }
 
     public function test_default_institution_logo_is_neutral_and_not_umpo_for_general_institutions()
@@ -857,7 +857,7 @@ HTML;
 
         // Perbesar tinggi baris Kotak Paraf menjadi 45mm
         $enlargedCfg = $defaultCfg;
-        $enlargedCfg['footer_html'] = str_replace('18pt', '45mm', MouTemplate::getDefaultFooterParafHtml());
+        $enlargedCfg['footer_html'] = preg_replace('/\b(18|40)pt\b/', '45mm', MouTemplate::getDefaultFooterParafHtml());
 
         $enlargedPdfHtml = view('hr.mou.pdf-document', [
             'title'        => 'Enlarged Paraf',

@@ -25,6 +25,7 @@ import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
+import { undoDepth, redoDepth } from '@tiptap/pm/history';
 import { importDocxFile, exportProseMirrorJsonToDocx, downloadDocxBlob } from './mou-docx-engine.js';
 
 const MM_TO_PX = 96 / 25.4; // ~3.779527559 px per mm
@@ -456,6 +457,50 @@ const WordBulletList = BulletList.extend({
 });
 
 /**
+ * Check if the active selection fully selects an entire table or all cells of a table
+ */
+function isTableFullySelected(state) {
+    if (!state || !state.selection) return false;
+    const { selection } = state;
+    // 1. Direct NodeSelection on table node
+    if (selection.node && selection.node.type.name === 'table') {
+        return true;
+    }
+    // 2. CellSelection spanning all cells or all rows
+    if (typeof selection.forEachCell === 'function') {
+        let table = null;
+        for (let d = selection.$from.depth; d >= 0; d--) {
+            if (selection.$from.node(d).type.name === 'table') {
+                table = selection.$from.node(d);
+                break;
+            }
+        }
+        if (!table && selection.$anchorCell) {
+            try { table = selection.$anchorCell.node(-1); } catch (_) {}
+        }
+        if (!table) return false;
+
+        let totalCells = 0;
+        table.descendants((node) => {
+            if (node.type.name === 'table') return false;
+            if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
+                totalCells++;
+            }
+        });
+
+        let selectedCellsCount = 0;
+        selection.forEachCell(() => {
+            selectedCellsCount++;
+        });
+
+        if (totalCells > 0 && selectedCellsCount >= totalCells) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Extended Table supporting tableWidth, tableAlign, and class preservation.
  */
 const WordTable = Table.extend({
@@ -465,6 +510,106 @@ const WordTable = Table.extend({
             resizable: false, // Disables raw unconstrained PM col-resizer; we use interactive Word-style column resizer below!
             View: WordTableView,
             cellMinWidth: 14,
+        };
+    },
+    addKeyboardShortcuts() {
+        return {
+            ...this.parent?.(),
+            Backspace: ({ editor }) => {
+                if (isTableFullySelected(editor.state)) {
+                    if (typeof window._mouDeleteCurrentTable === 'function') {
+                        window._mouDeleteCurrentTable(editor);
+                    } else {
+                        editor.commands.deleteTable();
+                    }
+                    return true;
+                }
+                const sel = editor.state.selection;
+                if (sel && typeof sel.isRowSelection === 'function' && sel.isRowSelection()) {
+                    return editor.commands.deleteRow();
+                }
+                if (sel && typeof sel.isColSelection === 'function' && sel.isColSelection()) {
+                    return editor.commands.deleteColumn();
+                }
+                return false;
+            },
+            Delete: ({ editor }) => {
+                if (isTableFullySelected(editor.state)) {
+                    if (typeof window._mouDeleteCurrentTable === 'function') {
+                        window._mouDeleteCurrentTable(editor);
+                    } else {
+                        editor.commands.deleteTable();
+                    }
+                    return true;
+                }
+                const sel = editor.state.selection;
+                if (sel && typeof sel.isRowSelection === 'function' && sel.isRowSelection()) {
+                    return editor.commands.deleteRow();
+                }
+                if (sel && typeof sel.isColSelection === 'function' && sel.isColSelection()) {
+                    return editor.commands.deleteColumn();
+                }
+                return false;
+            },
+            'Mod-Backspace': ({ editor }) => {
+                if (isTableFullySelected(editor.state)) {
+                    if (typeof window._mouDeleteCurrentTable === 'function') {
+                        window._mouDeleteCurrentTable(editor);
+                    } else {
+                        editor.commands.deleteTable();
+                    }
+                    return true;
+                }
+                return false;
+            },
+            'Mod-Delete': ({ editor }) => {
+                if (isTableFullySelected(editor.state)) {
+                    if (typeof window._mouDeleteCurrentTable === 'function') {
+                        window._mouDeleteCurrentTable(editor);
+                    } else {
+                        editor.commands.deleteTable();
+                    }
+                    return true;
+                }
+                return false;
+            },
+            'Shift-Delete': ({ editor }) => {
+                const edState = editor.state;
+                for (let d = edState.selection.$from.depth; d >= 0; d--) {
+                    if (edState.selection.$from.node(d).type.name === 'table') {
+                        if (typeof window._mouDeleteCurrentTable === 'function') {
+                            window._mouDeleteCurrentTable(editor);
+                        } else {
+                            editor.commands.deleteTable();
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            },
+            Tab: ({ editor }) => {
+                if (editor.can().goToNextCell()) {
+                    return editor.commands.goToNextCell();
+                }
+                let inTable = false;
+                for (let d = editor.state.selection.$from.depth; d >= 0; d--) {
+                    if (editor.state.selection.$from.node(d).type.name === 'table') {
+                        inTable = true;
+                        break;
+                    }
+                }
+                if (inTable && editor.can().addRowAfter()) {
+                    editor.chain().addRowAfter().goToNextCell().run();
+                    return true;
+                }
+                return false;
+            },
+            'Shift-Tab': ({ editor }) => {
+                if (editor.can().goToPreviousCell()) {
+                    return editor.commands.goToPreviousCell();
+                }
+                return false;
+            },
         };
     },
     addAttributes() {
@@ -2183,7 +2328,6 @@ function createWordExtensions(placeholderText = 'Ketik isi dokumen di sini...') 
         Placeholder.configure({
             placeholder: placeholderText,
         }),
-        UnifiedUndoKeymap,
     ];
 }
 
@@ -2228,6 +2372,22 @@ function renderWatermarkLayerHtml(state, isFirstPage) {
  * - Renders live Header slot, ProseMirror contentDOM (editable body), and Footer slot (Kotak Paraf & page number)
  * - Separated by 24px desk gap on the workspace
  */
+/**
+ * Page Number Format Helper Functions (Top-Level Scope for MouPageView & Editor)
+ */
+function sanitizePageNumberFormat(fmt) {
+    if (!fmt || typeof fmt !== 'string') return 'Halaman [nomor_halaman] dari [total_halaman]';
+    return fmt.trim();
+}
+
+function renderPageNumberString(formatStr, pageNum, totalPages) {
+    let fmt = formatStr || 'Halaman [nomor_halaman] dari [total_halaman]';
+    return fmt
+        .replace(/\[nomor_halaman\]|\[page_number\]|\{PAGE\}/gi, String(pageNum))
+        .replace(/\[total_halaman\]|\[total_pages\]|\{NUMPAGES\}/gi, String(totalPages))
+        .replace(/\[halaman_dari_total\]/gi, `${pageNum} / ${totalPages}`);
+}
+
 class MouPageView {
     constructor(node, editor, getPos) {
         this.node = node;
@@ -2408,6 +2568,11 @@ class MouPageView {
 
     attachEventListeners() {
         const activateFooter = (e) => {
+            const footerWrapper = document.getElementById('mouFooterZoneWrapper');
+            // If already in footer editing mode and click target is inside the active footer editor or page number preview, let user interact directly!
+            if (footerWrapper && footerWrapper.contains(e.target)) {
+                return;
+            }
             e.stopPropagation();
             const { setActiveZone } = this.mouContext;
             const pageNum = this.getPageIndex() + 1;
@@ -2417,16 +2582,27 @@ class MouPageView {
         this.footerEl.addEventListener('dblclick', activateFooter);
 
         const activateHeader = (e) => {
+            const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
+            // If already in header editing mode and click target is inside the active header editor, let user interact directly!
+            if (headerWrapper && headerWrapper.contains(e.target)) {
+                return;
+            }
             e.stopPropagation();
             const { setActiveZone } = this.mouContext;
             const pageNum = this.getPageIndex() + 1;
             if (setActiveZone) setActiveZone('header', pageNum);
         };
+        this.headerEl.addEventListener('click', activateHeader);
         this.headerEl.addEventListener('dblclick', activateHeader);
 
         const returnToBody = (e) => {
             const { state, setActiveZone } = this.mouContext;
             if (state && state.activeZone !== 'body' && setActiveZone) {
+                const hw = document.getElementById('mouHeaderZoneWrapper');
+                const fw = document.getElementById('mouFooterZoneWrapper');
+                if ((hw && hw.contains(e.target)) || (fw && fw.contains(e.target))) {
+                    return;
+                }
                 e.stopPropagation();
                 setActiveZone('body');
             }
@@ -2966,7 +3142,17 @@ class MouPageView {
     }
 
     destroy() {
-        // cleanup
+        const headerWrapper = document.getElementById('mouHeaderZoneWrapper');
+        const footerWrapper = document.getElementById('mouFooterZoneWrapper');
+        const hfStaging = document.getElementById('mouHfStagingContainer');
+        if (hfStaging) {
+            if (headerWrapper && this.headerEl && this.headerEl.contains(headerWrapper)) {
+                hfStaging.appendChild(headerWrapper);
+            }
+            if (footerWrapper && this.footerEl && this.footerEl.contains(footerWrapper)) {
+                hfStaging.appendChild(footerWrapper);
+            }
+        }
     }
 }
 
@@ -3074,7 +3260,6 @@ function createWordBodyExtensions(placeholderText = 'Mulai ketik naskah dokumen 
         Placeholder.configure({
             placeholder: placeholderText,
         }),
-        UnifiedUndoKeymap,
     ];
 }
 
@@ -3220,19 +3405,7 @@ export function initMouWordProcessor(config) {
         ? ensureJsonHasMouPage(parsedInitialJson)
         : normalizeHtmlForBodyEditor(normalizedFallbackHtml);
 
-    // Page Number Format Helper Functions
-    function sanitizePageNumberFormat(fmt) {
-        if (!fmt || typeof fmt !== 'string') return 'Halaman [nomor_halaman] dari [total_halaman]';
-        return fmt.trim();
-    }
 
-    function renderPageNumberString(formatStr, pageNum, totalPages) {
-        let fmt = formatStr || 'Halaman [nomor_halaman] dari [total_halaman]';
-        return fmt
-            .replace(/\[nomor_halaman\]|\[page_number\]|\{PAGE\}/gi, String(pageNum))
-            .replace(/\[total_halaman\]|\[total_pages\]|\{NUMPAGES\}/gi, String(totalPages))
-            .replace(/\[halaman_dari_total\]/gi, `${pageNum} / ${totalPages}`);
-    }
 
     function focusActiveEditor() {
         const ed = getActiveEditor() || bodyEditor;
@@ -3387,6 +3560,200 @@ export function initMouWordProcessor(config) {
     }
 
     let lastEditorDocChangeTimestamp = 0;
+    let lastModifiedZone = 'body';
+    let bodyEditor = null;
+    let headerEditor = null;
+    let footerEditor = null;
+
+    function handleUnifiedUndo() {
+        const lastConfigTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
+            ? assetHistory[assetHistoryIndex].timestamp
+            : 0;
+
+        const bodyDepth = bodyEditor ? undoDepth(bodyEditor.state) : 0;
+        const headerDepth = headerEditor ? undoDepth(headerEditor.state) : 0;
+        const footerDepth = footerEditor ? undoDepth(footerEditor.state) : 0;
+
+        const activeEd = getActiveEditor();
+        const activeDepth = activeEd ? undoDepth(activeEd.state) : 0;
+
+        // If asset history action is strictly newer than any editor document changes
+        if (lastConfigTime > 0 && (lastConfigTime >= lastEditorDocChangeTimestamp || (bodyDepth === 0 && headerDepth === 0 && footerDepth === 0))) {
+            if (undoAssetHistory()) {
+                updateToolbarState();
+                return true;
+            }
+        }
+
+        // 1. If active editor has undoable actions, undo in active editor
+        if (activeDepth > 0 && activeEd) {
+            activeEd.commands.undo();
+            activeEd.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        // 2. If active editor has NO undoable actions, check the editor that was modified last
+        if (lastModifiedZone === 'header' && headerDepth > 0 && headerEditor) {
+            setActiveZone('header');
+            headerEditor.commands.undo();
+            headerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (lastModifiedZone === 'footer' && footerDepth > 0 && footerEditor) {
+            setActiveZone('footer');
+            footerEditor.commands.undo();
+            footerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (bodyDepth > 0 && bodyEditor) {
+            if (state.activeZone !== 'body') {
+                setActiveZone('body');
+            }
+            bodyEditor.commands.undo();
+            bodyEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        // 3. Fallback to any editor that still has undo history
+        if (footerDepth > 0 && footerEditor) {
+            setActiveZone('footer');
+            footerEditor.commands.undo();
+            footerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (headerDepth > 0 && headerEditor) {
+            setActiveZone('header');
+            headerEditor.commands.undo();
+            headerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        // 4. Asset history fallback
+        if (lastConfigTime > 0) {
+            const res = undoAssetHistory();
+            updateToolbarState();
+            return res;
+        }
+
+        return false;
+    }
+
+    function handleUnifiedRedo() {
+        const nextConfigTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
+            ? assetHistory[assetHistoryIndex + 1].timestamp
+            : 0;
+
+        const bodyRedo = bodyEditor ? redoDepth(bodyEditor.state) : 0;
+        const headerRedo = headerEditor ? redoDepth(headerEditor.state) : 0;
+        const footerRedo = footerEditor ? redoDepth(footerEditor.state) : 0;
+
+        const activeEd = getActiveEditor();
+        const activeRedo = activeEd ? redoDepth(activeEd.state) : 0;
+
+        if (nextConfigTime > 0 && (nextConfigTime >= lastEditorDocChangeTimestamp || (bodyRedo === 0 && headerRedo === 0 && footerRedo === 0))) {
+            if (redoAssetHistory()) {
+                updateToolbarState();
+                return true;
+            }
+        }
+
+        if (activeRedo > 0 && activeEd) {
+            activeEd.commands.redo();
+            activeEd.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        if (lastModifiedZone === 'header' && headerRedo > 0 && headerEditor) {
+            setActiveZone('header');
+            headerEditor.commands.redo();
+            headerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (lastModifiedZone === 'footer' && footerRedo > 0 && footerEditor) {
+            setActiveZone('footer');
+            footerEditor.commands.redo();
+            footerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (bodyRedo > 0 && bodyEditor) {
+            if (state.activeZone !== 'body') {
+                setActiveZone('body');
+            }
+            bodyEditor.commands.redo();
+            bodyEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        if (footerRedo > 0 && footerEditor) {
+            setActiveZone('footer');
+            footerEditor.commands.redo();
+            footerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+        if (headerRedo > 0 && headerEditor) {
+            setActiveZone('header');
+            headerEditor.commands.redo();
+            headerEditor.commands.focus();
+            updateToolbarState();
+            return true;
+        }
+
+        if (nextConfigTime > 0) {
+            const res = redoAssetHistory();
+            updateToolbarState();
+            return res;
+        }
+
+        return false;
+    }
+
+    function createSharedEditorProps(targetEditorGetter) {
+        return {
+            handleKeyDown(view, event) {
+                if (event.key === 'Delete' || event.key === 'Backspace') {
+                    if (isTableFullySelected(view.state)) {
+                        event.preventDefault();
+                        deleteCurrentTable(targetEditorGetter());
+                        return true;
+                    }
+                    if (event.key === 'Delete' && event.shiftKey) {
+                        for (let d = view.state.selection.$from.depth; d >= 0; d--) {
+                            if (view.state.selection.$from.node(d).type.name === 'table') {
+                                event.preventDefault();
+                                deleteCurrentTable(targetEditorGetter());
+                                return true;
+                            }
+                        }
+                    }
+                    const sel = view.state.selection;
+                    if (sel && typeof sel.isRowSelection === 'function' && sel.isRowSelection()) {
+                        event.preventDefault();
+                        const ed = targetEditorGetter();
+                        ed?.commands.deleteRow();
+                        return true;
+                    }
+                    if (sel && typeof sel.isColSelection === 'function' && sel.isColSelection()) {
+                        event.preventDefault();
+                        const ed = targetEditorGetter();
+                        ed?.commands.deleteColumn();
+                        return true;
+                    }
+                }
+                return false;
+            },
+        };
+    }
 
     function undoAssetHistory() {
         if (assetHistoryIndex > 0) {
@@ -3476,33 +3843,21 @@ export function initMouWordProcessor(config) {
 
     // Global Keymap Handlers for Tiptap / ProseMirror to handle unified Undo/Redo
     window._mouGlobalUndoHandler = () => {
-        const lastAssetTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
-            ? assetHistory[assetHistoryIndex].timestamp
-            : 0;
-        if (lastAssetTime > 0 && lastAssetTime >= lastEditorDocChangeTimestamp) {
-            return undoAssetHistory();
-        }
-        return false; // let ProseMirror history handle text undo
+        return handleUnifiedUndo();
     };
 
     window._mouGlobalRedoHandler = () => {
-        const nextAssetTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
-            ? assetHistory[assetHistoryIndex + 1].timestamp
-            : 0;
-        if (nextAssetTime > 0 && nextAssetTime >= lastEditorDocChangeTimestamp) {
-            return redoAssetHistory();
-        }
-        return false; // let ProseMirror history handle text redo
+        return handleUnifiedRedo();
     };
 
     // Instantiate Paginated Body Editor with safe fallback from JSON to HTML if schema validation fails
-    let bodyEditor;
     try {
         bodyEditor = new Editor({
             element: bodyMountEl,
             extensions: createWordBodyExtensions('Mulai ketik naskah dokumen bebas di sini, sisipkan tabel, atau gunakan tombol Contoh Naskah MoU...'),
             content: initialContentToLoad,
             autofocus: false,
+            editorProps: createSharedEditorProps(() => bodyEditor),
             onFocus: () => {
                 if (state.activeZone !== 'body') {
                     setActiveZone('body');
@@ -3519,6 +3874,7 @@ export function initMouWordProcessor(config) {
                 // Hanya picu reflow dan sinkronisasi jika isi dokumen berubah (docChanged).
                 // Mencegah selection teks lepas / hilang saat kursor bergerak atau saat mouse drag memilih teks!
                 if (transaction.docChanged) {
+                    lastModifiedZone = 'body';
                     lastEditorDocChangeTimestamp = Date.now();
                     scheduleSyncAndPagination();
                     if (!transaction.getMeta(reflowPluginKey)) {
@@ -3537,6 +3893,7 @@ export function initMouWordProcessor(config) {
             extensions: createWordBodyExtensions('Mulai ketik naskah dokumen bebas di sini, sisipkan tabel, atau gunakan tombol Contoh Naskah MoU...'),
             content: normalizeHtmlForBodyEditor(normalizedFallbackHtml),
             autofocus: false,
+            editorProps: createSharedEditorProps(() => bodyEditor),
             onFocus: () => {
                 if (state.activeZone !== 'body') {
                     setActiveZone('body');
@@ -3551,6 +3908,7 @@ export function initMouWordProcessor(config) {
                 updateToolbarState();
                 updateDocumentMetrics();
                 if (transaction.docChanged) {
+                    lastModifiedZone = 'body';
                     lastEditorDocChangeTimestamp = Date.now();
                     scheduleSyncAndPagination();
                     if (!transaction.getMeta(reflowPluginKey)) {
@@ -3572,12 +3930,13 @@ export function initMouWordProcessor(config) {
     }
 
     // Instantiate Header Sub-Editor
-    const headerEditor = headerMountEl
+    headerEditor = headerMountEl
         ? new Editor({
               element: headerMountEl,
               extensions: createWordExtensions(isMouDocument ? '' : 'Klik ganda untuk mengisi Header dokumen...'),
               content: state.headerHtmlStore,
               editable: false,
+              editorProps: createSharedEditorProps(() => headerEditor),
               onFocus: () => {
                   updateToolbarState();
               },
@@ -3587,6 +3946,7 @@ export function initMouWordProcessor(config) {
               onTransaction: ({ transaction }) => {
                   updateToolbarState();
                   if (transaction.docChanged) {
+                      lastModifiedZone = 'header';
                       lastEditorDocChangeTimestamp = Date.now();
                       saveActiveHeaderFooterToStore();
                       scheduleSyncAndPagination();
@@ -3596,12 +3956,13 @@ export function initMouWordProcessor(config) {
         : null;
 
     // Instantiate Footer Sub-Editor (Houses the editable/resizable Kotak Paraf table)
-    const footerEditor = footerMountEl
+    footerEditor = footerMountEl
         ? new Editor({
               element: footerMountEl,
               extensions: createWordExtensions('Klik ganda untuk menyunting Footer / Tabel Kotak Paraf...'),
               content: state.footerHtmlStore,
               editable: false,
+              editorProps: createSharedEditorProps(() => footerEditor),
               onFocus: () => {
                   updateToolbarState();
               },
@@ -3611,6 +3972,7 @@ export function initMouWordProcessor(config) {
               onTransaction: ({ transaction }) => {
                   updateToolbarState();
                   if (transaction.docChanged) {
+                      lastModifiedZone = 'footer';
                       lastEditorDocChangeTimestamp = Date.now();
                       saveActiveHeaderFooterToStore();
                       scheduleSyncAndPagination();
@@ -3646,7 +4008,15 @@ export function initMouWordProcessor(config) {
         }
     }
 
-    function loadHeaderFooterVariantIntoEditors() {
+    let lastLoadedVariantKey = null;
+
+    function loadHeaderFooterVariantIntoEditors(force = false) {
+        const variantKey = `${state.differentFirstPage ? 'diff' : 'same'}_${state.editingFirstPageVariant ? 'first' : 'std'}`;
+        if (!force && lastLoadedVariantKey === variantKey) {
+            return;
+        }
+        lastLoadedVariantKey = variantKey;
+
         if (headerEditor) {
             const targetH = (state.differentFirstPage && state.editingFirstPageVariant)
                 ? state.firstPageHeaderHtmlStore
@@ -3687,8 +4057,83 @@ export function initMouWordProcessor(config) {
         });
     }
 
-    function setActiveZone(zone, targetPageNum = 1) {
+    function getCurrentlyVisiblePageNum() {
+        if (state.activePageNum && state.activePageNum >= 1) {
+            return state.activePageNum;
+        }
+        try {
+            if (bodyEditor && bodyEditor.state && bodyEditor.state.selection) {
+                const idx = bodyEditor.state.selection.$from.index(0);
+                if (idx >= 0) return idx + 1;
+            }
+        } catch (_) {}
+        const container = document.getElementById('mouEditorWorkspaceView');
+        const pageNodes = (bodyMountEl || document).querySelectorAll('.mou-a4-page-node');
+        if (container && pageNodes.length > 0) {
+            const containerRect = container.getBoundingClientRect();
+            const midY = containerRect.top + containerRect.height / 3;
+            for (let i = 0; i < pageNodes.length; i++) {
+                const rect = pageNodes[i].getBoundingClientRect();
+                if (rect.top <= midY && rect.bottom >= midY) {
+                    return i + 1;
+                }
+            }
+        }
+        return 1;
+    }
+
+    function syncHeaderFooterUiSettings() {
+        const chkDiff = document.getElementById('chkDifferentFirstPage');
+        if (chkDiff) chkDiff.checked = Boolean(state.differentFirstPage);
+
+        const selectVariant = document.getElementById('selectHeaderFooterVariant');
+        if (selectVariant) {
+            selectVariant.disabled = !state.differentFirstPage;
+            selectVariant.value = state.editingFirstPageVariant ? 'first' : 'default';
+        }
+
+        const btnLinkPrev = document.getElementById('btnToggleLinkToPrevious');
+        if (btnLinkPrev) {
+            const isFirst = (state.activePageNum || 1) <= 1;
+            btnLinkPrev.disabled = isFirst;
+            btnLinkPrev.classList.toggle('opacity-50', isFirst);
+            btnLinkPrev.classList.toggle('cursor-not-allowed', isFirst);
+            const isLinked = !state.differentFirstPage;
+            btnLinkPrev.classList.toggle('bg-blue-50', !isFirst && isLinked);
+            btnLinkPrev.classList.toggle('border-blue-300', !isFirst && isLinked);
+            btnLinkPrev.classList.toggle('text-blue-700', !isFirst && isLinked);
+            btnLinkPrev.title = isFirst
+                ? 'Halaman pertama tidak memiliki tautan sebelumnya'
+                : (isLinked ? 'Tautan Aktif: Footer mengikuti halaman sebelumnya' : 'Tautan Terputus: Footer berbeda');
+        }
+
+        const chkParaf = document.getElementById('chkShowParafBox');
+        if (chkParaf) chkParaf.checked = state.showParafBox !== false;
+
+        const chkPageNum = document.getElementById('chkShowPageNumber');
+        if (chkPageNum) chkPageNum.checked = state.showPageNumber !== false;
+
+        const inpHeaderDist = document.getElementById('inputRibbonHeaderDist');
+        if (inpHeaderDist && document.activeElement !== inpHeaderDist) {
+            inpHeaderDist.value = state.headerDistanceMm || 12.0;
+        }
+
+        const inpFooterDist = document.getElementById('inputRibbonFooterDist');
+        if (inpFooterDist && document.activeElement !== inpFooterDist) {
+            inpFooterDist.value = state.footerDistanceMm || 10.0;
+        }
+    }
+
+    function setActiveZone(zone, targetPageNum = null) {
+        if (!targetPageNum) {
+            targetPageNum = getCurrentlyVisiblePageNum();
+        }
         if (state.activeZone === zone && state.activePageNum === targetPageNum) return;
+
+        // Preserve current scroll position of workspace viewport so switching zones never bounces to top
+        const workspaceViewport = document.getElementById('mouEditorWorkspaceView');
+        const savedScrollTop = workspaceViewport ? workspaceViewport.scrollTop : null;
+
         saveActiveHeaderFooterToStore();
         const prevZone = state.activeZone;
         state.activeZone = zone;
@@ -3715,9 +4160,11 @@ export function initMouWordProcessor(config) {
             hfStaging.appendChild(footerWrapper);
         }
 
+        const pageDoms = (bodyMountEl || document).querySelectorAll('.mou-a4-page-node');
+        const totalPages = pageDoms.length || 1;
+        const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
+
         if (zone === 'header' && headerWrapper) {
-            const pageDoms = document.querySelectorAll('.mou-a4-page-node');
-            const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const headerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-header') : null;
             if (headerSlot) {
                 headerSlot.removeAttribute('contenteditable');
@@ -3730,13 +4177,11 @@ export function initMouWordProcessor(config) {
             headerEditor?.setEditable(true);
             setTimeout(() => {
                 headerEditor?.commands.focus('end');
-            }, 40);
+            }, 30);
             bodyEditor?.setEditable(false);
             footerEditor?.setEditable(false);
             switchRibbonTab('headerfooter');
         } else if (zone === 'footer' && footerWrapper) {
-            const pageDoms = document.querySelectorAll('.mou-a4-page-node');
-            const targetPageDom = pageDoms[targetPageNum - 1] || pageDoms[0];
             const footerSlot = targetPageDom ? targetPageDom.querySelector('.mou-a4-page-footer') : null;
             if (footerSlot) {
                 footerSlot.removeAttribute('contenteditable');
@@ -3745,11 +4190,15 @@ export function initMouWordProcessor(config) {
                 footerWrapper.classList.remove('hidden');
                 footerWrapper.classList.add('mou-zone-active');
             }
+            const previewText = document.getElementById('mouFooterPageNumberPreviewText');
+            if (previewText) {
+                previewText.textContent = renderPageNumberString(state.pageNumberFormat, targetPageNum, totalPages);
+            }
             loadHeaderFooterVariantIntoEditors();
             footerEditor?.setEditable(true);
             setTimeout(() => {
                 footerEditor?.commands.focus('end');
-            }, 40);
+            }, 30);
             bodyEditor?.setEditable(false);
             headerEditor?.setEditable(false);
             switchRibbonTab('headerfooter');
@@ -3763,7 +4212,6 @@ export function initMouWordProcessor(config) {
                 el.setAttribute('contenteditable', 'false');
             });
 
-            refreshAllPageViews();
             if (prevZone === 'header' || prevZone === 'footer') {
                 const activeTabBtn = document.querySelector('[data-ribbon-tab].active');
                 if (activeTabBtn && activeTabBtn.getAttribute('data-ribbon-tab') === 'headerfooter') {
@@ -3772,6 +4220,17 @@ export function initMouWordProcessor(config) {
                 bodyEditor?.commands.focus();
                 scheduleReflow(true);
             }
+        }
+
+        // Synchronize all pages so inactive slots show clean static preview and active page shows editor
+        refreshAllPageViews();
+        syncHeaderFooterUiSettings();
+
+        // Restore viewport scroll position immediately so no jumping occurs
+        if (workspaceViewport && savedScrollTop !== null) {
+            requestAnimationFrame(() => {
+                workspaceViewport.scrollTop = savedScrollTop;
+            });
         }
 
         // Synchronize all Header Logos Interactive Stages across all pages
@@ -3889,12 +4348,37 @@ export function initMouWordProcessor(config) {
             }
         }
 
-        // Escape: exit header/footer edit mode or deselect asset
+        // Escape: exit header/footer edit mode, close open modals/dropdowns, or deselect asset
         if (e.key === 'Escape' || e.keyCode === 27) {
-            if (state.activeZone === 'header' || state.activeZone === 'footer') {
+            let handled = false;
+            // 1. Close open modals or dropdowns
+            const pageNumModal = document.getElementById('mouPageNumberFormatModal');
+            if (pageNumModal && !pageNumModal.classList.contains('hidden')) {
                 e.preventDefault();
-                setActiveZone('body');
-                return;
+                api.closePageNumberFormatModal();
+                handled = true;
+            }
+            const assetModal = document.getElementById('mouAssetLibraryModal');
+            if (assetModal && !assetModal.classList.contains('hidden')) {
+                e.preventDefault();
+                assetModal.classList.add('hidden');
+                handled = true;
+            }
+            const previewModal = document.getElementById('mouA4PreviewModal');
+            if (previewModal && !previewModal.classList.contains('hidden')) {
+                e.preventDefault();
+                document.getElementById('btnModalClosePreview')?.click();
+                handled = true;
+            }
+            const dropdownPageNum = document.getElementById('dropdownPageNumberOptions');
+            if (dropdownPageNum && !dropdownPageNum.classList.contains('hidden')) {
+                dropdownPageNum.classList.add('hidden');
+                handled = true;
+            }
+            const bordersDropdown = document.getElementById('wordBordersFloatingDropdown');
+            if (bordersDropdown && !bordersDropdown.classList.contains('hidden')) {
+                bordersDropdown.classList.add('hidden');
+                handled = true;
             }
             if (window._mouActiveSelectedAsset) {
                 e.preventDefault();
@@ -3904,6 +4388,14 @@ export function initMouWordProcessor(config) {
                     if (o) o.style.display = 'none';
                 });
                 window._mouActiveSelectedAsset = null;
+                handled = true;
+            }
+            if (handled) return;
+
+            // 2. If in header or footer editing mode, exit back to body
+            if (state.activeZone === 'header' || state.activeZone === 'footer') {
+                e.preventDefault();
+                setActiveZone('body');
                 return;
             }
         }
@@ -3954,52 +4446,161 @@ export function initMouWordProcessor(config) {
         }
 
         // Ctrl + S -> Save Template Document
-        if (isCtrl && (e.key === 's' || e.key === 'S')) {
+        if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
             e.preventDefault();
             e.stopPropagation();
             api.saveDocument();
             return;
         }
 
+        // Ctrl + P -> Open Print / A4 Preview Modal
+        if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const btnPreview = document.getElementById('btnOpenA4ModalFromInline') || document.getElementById('btnPreviewA4Modal');
+            if (btnPreview) {
+                btnPreview.click();
+            } else {
+                window.print();
+            }
+            return;
+        }
+
+        // Ctrl + F -> Find in document
+        if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+            e.preventDefault();
+            e.stopPropagation();
+            switchRibbonTab('home');
+            const inp = document.getElementById('ribbonFindInput');
+            if (inp) {
+                inp.focus();
+                inp.select();
+            }
+            return;
+        }
+
+        // Ctrl + H -> Find & Replace in document
+        if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'h' || e.key === 'H')) {
+            e.preventDefault();
+            e.stopPropagation();
+            switchRibbonTab('home');
+            const inp = document.getElementById('ribbonReplaceInput') || document.getElementById('ribbonFindInput');
+            if (inp) {
+                inp.focus();
+                inp.select();
+            }
+            return;
+        }
+
+        // Ctrl + Enter -> Insert Page Break (Word standard)
+        if (isCtrl && !e.shiftKey && !e.altKey && e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            api.insertPageBreak();
+            return;
+        }
+
         if (!isTextInput) {
+            // Ctrl + A -> Select All in currently active editor
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'a' || e.key === 'A')) {
+                const ed = getActiveEditor();
+                if (ed && typeof ed.commands.selectAll === 'function') {
+                    e.preventDefault();
+                    ed.commands.selectAll();
+                    return;
+                }
+            }
+
+            // Headings & Normal: Ctrl + Alt + 1, 2, 3, 0
+            if (isCtrl && e.altKey) {
+                if (e.key === '1') {
+                    e.preventDefault();
+                    api.setBlockStyle('h1');
+                    return;
+                }
+                if (e.key === '2') {
+                    e.preventDefault();
+                    api.setBlockStyle('h2');
+                    return;
+                }
+                if (e.key === '3') {
+                    e.preventDefault();
+                    api.setBlockStyle('h3');
+                    return;
+                }
+                if (e.key === '0') {
+                    e.preventDefault();
+                    api.setBlockStyle('p');
+                    return;
+                }
+            }
+
+            // Bullet list: Ctrl + Shift + L
+            if (isCtrl && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+                e.preventDefault();
+                api.toggleBulletList();
+                return;
+            }
+
+            // Numbered list: Ctrl + Shift + N or Ctrl + Shift + 7
+            if (isCtrl && e.shiftKey && (e.key === 'n' || e.key === 'N' || e.key === '7' || e.key === '&')) {
+                e.preventDefault();
+                api.setOrderedListType('1');
+                return;
+            }
+
+            // Subscript: Ctrl + =
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === '=' || e.code === 'Equal')) {
+                e.preventDefault();
+                api.toggleSubscript();
+                return;
+            }
+
+            // Superscript: Ctrl + Shift + = or Ctrl + +
+            if (isCtrl && ((e.shiftKey && (e.key === '=' || e.key === '+')) || e.key === '+')) {
+                e.preventDefault();
+                api.toggleSuperscript();
+                return;
+            }
+
             // Ctrl + B -> Bold
-            if (isCtrl && (e.key === 'b' || e.key === 'B')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
                 e.preventDefault();
                 api.toggleBold();
                 return;
             }
             // Ctrl + I -> Italic
-            if (isCtrl && (e.key === 'i' || e.key === 'I')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'i' || e.key === 'I')) {
                 e.preventDefault();
                 api.toggleItalic();
                 return;
             }
             // Ctrl + U -> Underline
-            if (isCtrl && (e.key === 'u' || e.key === 'U')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'u' || e.key === 'U')) {
                 e.preventDefault();
                 api.toggleUnderline();
                 return;
             }
             // Ctrl + E -> Center Align
-            if (isCtrl && (e.key === 'e' || e.key === 'E')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
                 e.preventDefault();
                 api.setTextAlign('center');
                 return;
             }
             // Ctrl + L -> Left Align
-            if (isCtrl && (e.key === 'l' || e.key === 'L')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'l' || e.key === 'L')) {
                 e.preventDefault();
                 api.setTextAlign('left');
                 return;
             }
             // Ctrl + R -> Right Align
-            if (isCtrl && (e.key === 'r' || e.key === 'R')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
                 e.preventDefault();
                 api.setTextAlign('right');
                 return;
             }
             // Ctrl + J -> Justify Align
-            if (isCtrl && (e.key === 'j' || e.key === 'J')) {
+            if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'j' || e.key === 'J')) {
                 e.preventDefault();
                 api.setTextAlign('justify');
                 return;
@@ -4014,8 +4615,8 @@ export function initMouWordProcessor(config) {
                 }
                 e.preventDefault();
                 e.stopPropagation();
-                if (e.shiftKey) api.redo();
-                else api.undo();
+                if (e.shiftKey) handleUnifiedRedo();
+                else handleUnifiedUndo();
                 return;
             }
             if (isCtrl && (e.key === 'y' || e.key === 'Y')) {
@@ -4027,7 +4628,7 @@ export function initMouWordProcessor(config) {
                 }
                 e.preventDefault();
                 e.stopPropagation();
-                api.redo();
+                handleUnifiedRedo();
                 return;
             }
 
@@ -4038,12 +4639,30 @@ export function initMouWordProcessor(config) {
                 return;
             }
 
-            // Delete or Backspace for selected asset
+            // Delete or Backspace for selected asset or table
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (window._mouActiveSelectedAsset) {
                     e.preventDefault();
                     api.deleteSelectedAsset();
                     return;
+                }
+                const ed = getActiveEditor();
+                if (ed && isTableFullySelected(ed.state)) {
+                    e.preventDefault();
+                    deleteCurrentTable(ed);
+                    return;
+                }
+            }
+            if (e.key === 'Delete' && e.shiftKey) {
+                const ed = getActiveEditor();
+                if (ed) {
+                    for (let d = ed.state.selection.$from.depth; d >= 0; d--) {
+                        if (ed.state.selection.$from.node(d).type.name === 'table') {
+                            e.preventDefault();
+                            deleteCurrentTable(ed);
+                            return;
+                        }
+                    }
                 }
             }
         }
@@ -5116,8 +5735,8 @@ export function initMouWordProcessor(config) {
      * Safely delete strictly the active table at cursor depth.
      * Guaranteed to never affect or delete any other table in the document.
      */
-    function deleteCurrentTable() {
-        const editor = getActiveEditor();
+    function deleteCurrentTable(targetEditor = null) {
+        const editor = targetEditor || getActiveEditor();
         if (!editor) return;
         const { state: edState } = editor;
         const { selection } = edState;
@@ -5143,6 +5762,10 @@ export function initMouWordProcessor(config) {
                 editor.view.dispatch(tr);
                 scheduleSyncAndPagination();
                 scheduleReflow(true);
+                editor.commands.focus();
+                if (editor === headerEditor || editor === footerEditor) {
+                    saveActiveHeaderFooterToStore();
+                }
             }
             return;
         }
@@ -5177,7 +5800,12 @@ export function initMouWordProcessor(config) {
         editor.view.dispatch(tr);
         scheduleSyncAndPagination();
         scheduleReflow(true);
+        editor.commands.focus();
+        if (editor === headerEditor || editor === footerEditor) {
+            saveActiveHeaderFooterToStore();
+        }
     }
+    window._mouDeleteCurrentTable = (ed) => deleteCurrentTable(ed);
 
     /**
      * Reflow visual page breaks and layout guides across sheets.
@@ -6133,7 +6761,18 @@ export function initMouWordProcessor(config) {
                 const bodyTopGapMm = Math.max(2, state.marginTopMm - state.headerDistanceMm);
                 headerEl.style.marginBottom = `${bodyTopGapMm}mm`;
 
-                if (!headerWrapper || !headerEl.contains(headerWrapper)) {
+                if (state.activeZone === 'header' && pageNum === state.activePageNum) {
+                    if (headerWrapper && !headerEl.contains(headerWrapper)) {
+                        headerEl.innerHTML = '';
+                        headerEl.appendChild(headerWrapper);
+                    }
+                    headerWrapper?.classList.remove('hidden');
+                    headerWrapper?.classList.add('mou-zone-active');
+                } else {
+                    if (headerWrapper && headerEl.contains(headerWrapper)) {
+                        const hfStaging = document.getElementById('mouHfStagingContainer');
+                        if (hfStaging) hfStaging.appendChild(headerWrapper);
+                    }
                     if (isMou && showLogos) {
                         if (headerEl.innerHTML !== (headerHtml || '')) {
                             headerEl.innerHTML = headerHtml || '';
@@ -6153,23 +6792,41 @@ export function initMouWordProcessor(config) {
 
             const footerEl = pageDom.querySelector('.mou-a4-page-footer');
             const footerWrapper = document.getElementById('mouFooterZoneWrapper');
-            if (footerEl && (!footerWrapper || !footerEl.contains(footerWrapper))) {
-                const pageNumberHtml = state.showPageNumber
-                    ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">${renderPageNumberString(state.pageNumberFormat, pageNum, totalPages)}</div>`
-                    : '';
-                const targetFooter = `
-                    <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
-                        <div class="mou-footer-paraf-area flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'}">
-                            ${footerHtml}
-                        </div>
-                        ${pageNumberHtml}
-                    </div>
-                `;
-                if (footerEl.innerHTML !== targetFooter) {
-                    footerEl.innerHTML = targetFooter;
-                }
+            if (footerEl) {
                 const bodyBtmGapMm = Math.max(2, state.marginBottomMm - state.footerDistanceMm);
                 footerEl.style.marginTop = `${bodyBtmGapMm}mm`;
+
+                if (state.activeZone === 'footer' && pageNum === state.activePageNum) {
+                    if (footerWrapper && !footerEl.contains(footerWrapper)) {
+                        footerEl.innerHTML = '';
+                        footerEl.appendChild(footerWrapper);
+                    }
+                    footerWrapper?.classList.remove('hidden');
+                    footerWrapper?.classList.add('mou-zone-active');
+                    const previewText = document.getElementById('mouFooterPageNumberPreviewText');
+                    if (previewText) {
+                        previewText.textContent = renderPageNumberString(state.pageNumberFormat, pageNum, totalPages);
+                    }
+                } else {
+                    if (footerWrapper && footerEl.contains(footerWrapper)) {
+                        const hfStaging = document.getElementById('mouHfStagingContainer');
+                        if (hfStaging) hfStaging.appendChild(footerWrapper);
+                    }
+                    const pageNumberHtml = state.showPageNumber
+                        ? `<div class="font-serif text-[9pt] text-black pb-0.5 shrink-0 select-none text-right whitespace-nowrap">${renderPageNumberString(state.pageNumberFormat, pageNum, totalPages)}</div>`
+                        : '';
+                    const targetFooter = `
+                        <div class="mou-footer-content-row flex items-end justify-between gap-4 w-full">
+                            <div class="mou-footer-paraf-area flex-1 min-w-0" style="visibility: ${state.showParafBox ? 'visible' : 'hidden'}">
+                                ${footerHtml}
+                            </div>
+                            ${pageNumberHtml}
+                        </div>
+                    `;
+                    if (footerEl.innerHTML !== targetFooter) {
+                        footerEl.innerHTML = targetFooter;
+                    }
+                }
             }
 
             const contentDom = pageDom.querySelector('.mou-page-body-content');
@@ -6669,21 +7326,21 @@ export function initMouWordProcessor(config) {
         // 3. Undo / Redo ribbon button states
         const undoBtn = document.getElementById('btnRibbonUndo');
         if (undoBtn) {
-            const ed = getActiveEditor() || bodyEditor;
-            const canEdUndo = typeof ed.can === 'function' && ed.can().undo();
-            const canBodyUndo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function') ? bodyEditor.can().undo() : false;
+            const bodyDepth = bodyEditor ? undoDepth(bodyEditor.state) : 0;
+            const headerDepth = headerEditor ? undoDepth(headerEditor.state) : 0;
+            const footerDepth = footerEditor ? undoDepth(footerEditor.state) : 0;
             const canConfigUndo = assetHistoryIndex > 0;
-            const canUndo = canEdUndo || canBodyUndo || canConfigUndo;
+            const canUndo = (bodyDepth > 0) || (headerDepth > 0) || (footerDepth > 0) || canConfigUndo;
             undoBtn.classList.toggle('opacity-40', !canUndo);
             undoBtn.classList.toggle('cursor-not-allowed', !canUndo);
         }
         const redoBtn = document.getElementById('btnRibbonRedo');
         if (redoBtn) {
-            const ed = getActiveEditor() || bodyEditor;
-            const canEdRedo = typeof ed.can === 'function' && ed.can().redo();
-            const canBodyRedo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function') ? bodyEditor.can().redo() : false;
+            const bodyRedo = bodyEditor ? redoDepth(bodyEditor.state) : 0;
+            const headerRedo = headerEditor ? redoDepth(headerEditor.state) : 0;
+            const footerRedo = footerEditor ? redoDepth(footerEditor.state) : 0;
             const canConfigRedo = assetHistoryIndex < assetHistory.length - 1;
-            const canRedo = canEdRedo || canBodyRedo || canConfigRedo;
+            const canRedo = (bodyRedo > 0) || (headerRedo > 0) || (footerRedo > 0) || canConfigRedo;
             redoBtn.classList.toggle('opacity-40', !canRedo);
             redoBtn.classList.toggle('cursor-not-allowed', !canRedo);
         }
@@ -7336,7 +7993,7 @@ export function initMouWordProcessor(config) {
             state.footerHtmlStore = normalizeLegacyHtmlForTiptap(pCfg.footer_html || defaultParafHtml || '<p></p>');
             state.firstPageHeaderHtmlStore = normalizeLegacyHtmlForTiptap(pCfg.first_page_header_html || '<p></p>');
             state.firstPageFooterHtmlStore = normalizeLegacyHtmlForTiptap(pCfg.first_page_footer_html || defaultParafHtml || '<p></p>');
-            loadHeaderFooterVariantIntoEditors();
+            loadHeaderFooterVariantIntoEditors(true);
 
             if (tplData.media_assets) {
                 const cLogo = tplData.media_assets.company_logo || tplData.media_assets.company_logo_url || '/images/mou/seven-inc-logo.png';
@@ -7388,11 +8045,50 @@ export function initMouWordProcessor(config) {
                 scheduleSyncAndPagination();
             }
         },
+        toggleDifferentFirstPage(enabled) {
+            const val = enabled !== undefined ? Boolean(enabled) : !state.differentFirstPage;
+            state.differentFirstPage = val;
+            pushAssetHistory('Different First Page');
+            if (!state.differentFirstPage) {
+                state.firstPageFooterHtmlStore = state.footerHtmlStore;
+                state.firstPageHeaderHtmlStore = state.headerHtmlStore;
+                state.editingFirstPageVariant = false;
+            }
+            loadHeaderFooterVariantIntoEditors(true);
+            refreshAllPageViews();
+            syncHeaderFooterUiSettings();
+            syncAllToHiddenInputs();
+            return state.differentFirstPage;
+        },
         setHeaderFooterVariant(useFirstPage) {
             saveActiveHeaderFooterToStore();
             state.editingFirstPageVariant = Boolean(useFirstPage);
-            loadHeaderFooterVariantIntoEditors();
-            setActiveZone(state.activeZone === 'body' ? 'header' : state.activeZone);
+            const targetPage = state.editingFirstPageVariant ? 1 : Math.max(2, getCurrentlyVisiblePageNum());
+            loadHeaderFooterVariantIntoEditors(true);
+            setActiveZone(state.activeZone === 'body' ? 'header' : state.activeZone, targetPage);
+            syncHeaderFooterUiSettings();
+        },
+        setHeaderDistance(mm) {
+            const val = parseFloat(mm);
+            if (!isNaN(val) && val >= 2 && val <= 50) {
+                state.headerDistanceMm = val;
+                applyPageLayoutToCanvas();
+                refreshAllPageViews();
+                scheduleReflow(true);
+                syncAllToHiddenInputs();
+                syncHeaderFooterUiSettings();
+            }
+        },
+        setFooterDistance(mm) {
+            const val = parseFloat(mm);
+            if (!isNaN(val) && val >= 2 && val <= 50) {
+                state.footerDistanceMm = val;
+                applyPageLayoutToCanvas();
+                refreshAllPageViews();
+                scheduleReflow(true);
+                syncAllToHiddenInputs();
+                syncHeaderFooterUiSettings();
+            }
         },
         setPaperSize(sizeVal) {
             const clean = String(sizeVal || 'A4').toUpperCase();
@@ -7419,62 +8115,8 @@ export function initMouWordProcessor(config) {
 
         focusActiveEditor,
         // Formatting commands on active editor with unified Asset & Document History
-        undo: () => {
-            const lastConfigTime = (assetHistoryIndex > 0 && assetHistory[assetHistoryIndex])
-                ? assetHistory[assetHistoryIndex].timestamp
-                : 0;
-            const ed = getActiveEditor() || bodyEditor;
-            const canEdUndo = ed && typeof ed.can === 'function' && ed.can().undo();
-            const canBodyUndo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function')
-                ? bodyEditor.can().undo()
-                : false;
-
-            if (lastConfigTime > 0 && (lastConfigTime >= lastEditorDocChangeTimestamp || (!canEdUndo && !canBodyUndo))) {
-                if (undoAssetHistory()) return;
-            }
-            if (canEdUndo) {
-                ed.commands.undo();
-                ed.commands.focus();
-                return;
-            }
-            if (canBodyUndo) {
-                setActiveZone('body');
-                bodyEditor.commands.undo();
-                bodyEditor.commands.focus();
-                return;
-            }
-            if (lastConfigTime > 0) {
-                undoAssetHistory();
-            }
-        },
-        redo: () => {
-            const nextConfigTime = (assetHistoryIndex < assetHistory.length - 1 && assetHistory[assetHistoryIndex + 1])
-                ? assetHistory[assetHistoryIndex + 1].timestamp
-                : 0;
-            const ed = getActiveEditor() || bodyEditor;
-            const canEdRedo = ed && typeof ed.can === 'function' && ed.can().redo();
-            const canBodyRedo = (ed !== bodyEditor && bodyEditor && typeof bodyEditor.can === 'function')
-                ? bodyEditor.can().redo()
-                : false;
-
-            if (nextConfigTime > 0 && (nextConfigTime >= lastEditorDocChangeTimestamp || (!canEdRedo && !canBodyRedo))) {
-                if (redoAssetHistory()) return;
-            }
-            if (canEdRedo) {
-                ed.commands.redo();
-                ed.commands.focus();
-                return;
-            }
-            if (canBodyRedo) {
-                setActiveZone('body');
-                bodyEditor.commands.redo();
-                bodyEditor.commands.focus();
-                return;
-            }
-            if (nextConfigTime > 0) {
-                redoAssetHistory();
-            }
-        },
+        undo: () => handleUnifiedUndo(),
+        redo: () => handleUnifiedRedo(),
         setPageNumberFormat(formatStr) {
             if (!formatStr) return;
             const sanitized = sanitizePageNumberFormat(formatStr);
@@ -7535,18 +8177,9 @@ export function initMouWordProcessor(config) {
         },
         toggleLinkToPrevious() {
             if (state.activePageNum <= 1) return false;
-            state.differentFirstPage = !state.differentFirstPage;
-            pushAssetHistory('Different First Page');
-            const chkDiff = document.getElementById('chkDifferentFirstPage');
-            if (chkDiff) chkDiff.checked = state.differentFirstPage;
-            if (!state.differentFirstPage) {
-                state.firstPageFooterHtmlStore = state.footerHtmlStore;
-                state.firstPageHeaderHtmlStore = state.headerHtmlStore;
-            }
-            loadHeaderFooterVariantIntoEditors();
-            refreshAllPageViews();
-            syncAllToHiddenInputs();
-            return state.differentFirstPage;
+            // Toggling Link To Previous on page 2+ links or unlinks from page 1 (diff first page)
+            const newDiff = !state.differentFirstPage;
+            return api.toggleDifferentFirstPage(newDiff);
         },
         setWatermarkOpacity(opacity) {
             const num = parseFloat(opacity);

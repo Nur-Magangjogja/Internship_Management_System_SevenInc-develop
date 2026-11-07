@@ -173,15 +173,32 @@ class ContactMatchingService
 
     /**
      * Query antrean review pembimbing (HR / Admin Review Queue).
-     * Sumber: internship_registrations yang memiliki input pembimbing riil (bukan placeholder)
-     * dan belum memiliki link kontak terhubung.
+     * Mendukung tab/mode:
+     * - 'needs_review' (default): registrasi yang memiliki input pembimbing riil dari pendaftar dan belum terhubung.
+     * - 'empty': registrasi yang data pembimbingnya masih kosong / belum ada sehingga Admin/HR bisa menambahkannya.
+     * - 'all': seluruh registrasi yang belum memiliki link kontak terhubung.
      */
-    public static function getReviewQueueQuery(): Builder
+    public static function getReviewQueueQuery(?string $tab = 'needs_review'): Builder
     {
-        return InternshipRegistration::query()
+        $query = InternshipRegistration::query()
             ->with(['institution', 'user', 'division'])
-            ->whereDoesntHave('contactLinks')
-            ->where(function (Builder $q) {
+            ->whereDoesntHave('contactLinks');
+
+        if ($tab === 'empty') {
+            $query->where(function (Builder $q) {
+                $q->where(function ($sub) {
+                    $sub->whereNull('supervisor_name')
+                        ->orWhereIn(DB::raw('LOWER(TRIM(supervisor_name))'), self::PLACEHOLDERS);
+                })->where(function ($sub) {
+                    $sub->whereNull('supervisor_contact')
+                        ->orWhereIn(DB::raw('LOWER(TRIM(supervisor_contact))'), self::PLACEHOLDERS);
+                });
+            });
+        } elseif ($tab === 'all') {
+            // Tampilkan semua pendaftaran yang belum memiliki kontak pembimbing tertaut
+        } else {
+            // Default: 'needs_review' (ada input masukan dari pendaftar yang butuh kurasi/verifikasi)
+            $query->where(function (Builder $q) {
                 $q->where(function ($sub) {
                     $sub->whereNotNull('supervisor_name')
                         ->whereNotIn(DB::raw('LOWER(TRIM(supervisor_name))'), self::PLACEHOLDERS);
@@ -189,8 +206,44 @@ class ContactMatchingService
                     $sub->whereNotNull('supervisor_contact')
                         ->whereNotIn(DB::raw('LOWER(TRIM(supervisor_contact))'), self::PLACEHOLDERS);
                 });
-            })
-            ->latest('id');
+            });
+        }
+
+        return $query->latest('id');
+    }
+
+    /**
+     * Hitung total antrean review per kategori tab.
+     */
+    public static function getReviewQueueCounts(): array
+    {
+        $base = InternshipRegistration::query()->whereDoesntHave('contactLinks');
+
+        $needsReview = (clone $base)->where(function (Builder $q) {
+            $q->where(function ($sub) {
+                $sub->whereNotNull('supervisor_name')
+                    ->whereNotIn(DB::raw('LOWER(TRIM(supervisor_name))'), self::PLACEHOLDERS);
+            })->orWhere(function ($sub) {
+                $sub->whereNotNull('supervisor_contact')
+                    ->whereNotIn(DB::raw('LOWER(TRIM(supervisor_contact))'), self::PLACEHOLDERS);
+            });
+        })->count();
+
+        $empty = (clone $base)->where(function (Builder $q) {
+            $q->where(function ($sub) {
+                $sub->whereNull('supervisor_name')
+                    ->orWhereIn(DB::raw('LOWER(TRIM(supervisor_name))'), self::PLACEHOLDERS);
+            })->where(function ($sub) {
+                $sub->whereNull('supervisor_contact')
+                    ->orWhereIn(DB::raw('LOWER(TRIM(supervisor_contact))'), self::PLACEHOLDERS);
+            });
+        })->count();
+
+        return [
+            'needs_review' => $needsReview,
+            'empty'        => $empty,
+            'all'          => $needsReview + $empty,
+        ];
     }
 
     /**
@@ -244,6 +297,18 @@ class ContactMatchingService
 
         $year = $link->relation_year ?? (int) date('Y');
         self::ensureFollowUpCycleForContact($contact, $year);
+
+        // Jika pendaftar belum memiliki data pembimbing atau masih placeholder, sinkronkan dari kontak kanonikal
+        $synced = [];
+        if (self::isPlaceholder($registration->supervisor_name)) {
+            $synced['supervisor_name'] = $contact->name;
+        }
+        if (self::isPlaceholder($registration->supervisor_contact) && !empty($contact->phone)) {
+            $synced['supervisor_contact'] = $contact->phone;
+        }
+        if (!empty($synced)) {
+            $registration->update($synced);
+        }
 
         return $link;
     }
@@ -303,6 +368,18 @@ class ContactMatchingService
 
         $year = $link->relation_year ?? (int) date('Y');
         self::ensureFollowUpCycleForContact($contact, $year);
+
+        // Jika pendaftar belum memiliki data pembimbing atau masih placeholder, sinkronkan dari kontak kanonikal
+        $synced = [];
+        if (self::isPlaceholder($registration->supervisor_name)) {
+            $synced['supervisor_name'] = $contact->name;
+        }
+        if (self::isPlaceholder($registration->supervisor_contact) && !empty($contact->phone)) {
+            $synced['supervisor_contact'] = $contact->phone;
+        }
+        if (!empty($synced)) {
+            $registration->update($synced);
+        }
 
         return $link;
     }

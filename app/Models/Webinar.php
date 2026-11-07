@@ -88,6 +88,66 @@ class Webinar extends Model
         ];
     }
 
+    /**
+     * Normalisasi brand string ke kode (misal "Seven Inc" -> "SI", "MJ" -> "MJ").
+     */
+    public static function normalizeBrandCode(?string $brand): ?string
+    {
+        if (!$brand) {
+            return null;
+        }
+
+        $brandMap = self::brandList();
+
+        if (isset($brandMap[strtoupper($brand)])) {
+            return strtoupper($brand);
+        }
+
+        foreach ($brandMap as $code => $label) {
+            if (strcasecmp($label, $brand) === 0) {
+                return $code;
+            }
+        }
+
+        return $brand;
+    }
+
+    /**
+     * Cek apakah webinar diizinkan untuk brand tertentu.
+     */
+    public function isAllowedForBrand(?string $brandCode): bool
+    {
+        if (is_null($this->allowed_brands)) {
+            return true;
+        }
+
+        if ($brandCode && in_array($brandCode, $this->allowed_brands, true)) {
+            return true;
+        }
+
+        if (!$brandCode) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Scope untuk webinar yang belum selesai (akan datang).
+     */
+    public function scopeUpcoming($query)
+    {
+        return $query->where('event_date', '>', now());
+    }
+
+    /**
+     * Cek apakah webinar sudah selesai.
+     */
+    public function isFinished(): bool
+    {
+        return $this->event_date ? $this->event_date->isPast() : false;
+    }
+
     /** Admin yang membuat webinar */
     public function creator(): BelongsTo
     {

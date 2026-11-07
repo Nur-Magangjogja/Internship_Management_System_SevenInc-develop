@@ -132,10 +132,18 @@ class AppServiceProvider extends ServiceProvider
 
                 // ── Notifikasi webinar baru ──
                 // Hanya tampilkan kalau sudah submit form (bukan draft)
+                $newWebinarCount = 0;
                 if ($registration && !$registration->is_draft) {
-                    $newWebinarCount = Webinar::whereDoesntHave('attendances', fn($q) => $q->where('user_id', $user->id))
-                        ->where('created_at', '>=', now()->subDays(7))
-                        ->count();
+                    $internBrandRaw = $registration->brandRel ? $registration->brandRel->code : ($registration->brand ?? null);
+                    $internBrand = Webinar::normalizeBrandCode($internBrandRaw);
+
+                    // Hanya hitung webinar yang belum selesai (akan datang), belum diikuti user, dan sesuai brand
+                    $newWebinars = Webinar::upcoming()
+                        ->whereDoesntHave('attendances', fn($q) => $q->where('user_id', $user->id))
+                        ->get()
+                        ->filter(fn($w) => $w->isAllowedForBrand($internBrand));
+
+                    $newWebinarCount = $newWebinars->count();
 
                     if ($newWebinarCount > 0) {
                         $notifications->push([
@@ -184,7 +192,7 @@ class AppServiceProvider extends ServiceProvider
             $view->with([
                 'notifications'          => $notifications,
                 'notificationCount'      => $notifications->count(),
-                'notificationWebinarCount' => $notifications->filter(fn($n) => str_contains($n['url'] ?? '', 'webinar'))->count(),
+                'notificationWebinarCount' => ($newWebinarCount ?? 0) + ($rejectedCount ?? 0),
                 'hasNewDocuments'        => $hasNewDocuments,
             ]);
         });

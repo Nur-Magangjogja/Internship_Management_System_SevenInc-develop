@@ -376,9 +376,9 @@ class MouTemplate extends Model
             <td colwidth="147" data-cell-width="50%" style="width: 50%; border: 1px solid #000000; padding: 2pt 6pt; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>{$safeFirst}</strong></p></td>
             <td colwidth="147" data-cell-width="50%" style="width: 50%; border: 1px solid #000000; padding: 2pt 6pt; text-align: center; font-weight: bold;"><p style="text-align: center; margin: 0;"><strong>{$safeSecond}</strong></p></td>
         </tr>
-        <tr data-row-height="18pt" style="height: 18pt;">
-            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 18pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
-            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 18pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+        <tr data-row-height="40pt" style="height: 40pt;">
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 40pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
+            <td colwidth="147" data-cell-width="50%" style="width: 50%; height: 40pt; border: 1px solid #000000; padding: 2pt 6pt; text-align: center;"><p style="text-align: center; margin: 0;"></p></td>
         </tr>
     </tbody>
 </table>
