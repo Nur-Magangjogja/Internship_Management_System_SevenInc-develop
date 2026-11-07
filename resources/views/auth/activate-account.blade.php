@@ -110,6 +110,5 @@ function togglePasswords() {
   });
 }
 </script>
-
 </body>
 </html>

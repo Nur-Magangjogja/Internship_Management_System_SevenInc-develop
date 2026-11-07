@@ -187,17 +187,30 @@
                 @endif
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">
-                        Nomor MOU Seven Inc (Pihak Kedua) <span class="text-rose-500">*</span>
-                    </label>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-slate-700">
+                            Nomor MOU Brand / Perusahaan (Pihak Kedua) <span class="text-rose-500">*</span>
+                        </label>
+                        <button
+                            type="button"
+                            id="btnResetMouNumber"
+                            onclick="resetMouNumberToBrandFormat()"
+                            class="text-[11px] text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                            title="Gunakan format nomor otomatis sesuai brand terpilih"
+                        >
+                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
+                            Gunakan Format Brand
+                        </button>
+                    </div>
                     <input
                         type="text"
                         name="company_mou_number"
+                        id="companyMouNumberInput"
                         value="{{ old('company_mou_number', $suggestedNumber) }}"
                         required
                         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono focus:border-blue-500 focus:outline-none"
                     >
-                    <p class="text-[11px] text-slate-400 mt-1">Harus unik dan terdaftar di buku penomoran surat keluar Seven Inc.</p>
+                    <p class="text-[11px] text-slate-400 mt-1">Otomatis mengikuti brand terpilih atau dapat diedit manual sesuai buku penomoran surat keluar.</p>
                 </div>
 
                 <div>
@@ -397,12 +410,14 @@
             @php
                 $tplDefaults = $currentTemplate ? $currentTemplate->getCompanyDefaultValues() : \App\Models\MouTemplate::getDefaultCompanyValues();
                 $brandsCollection = $brands ?? \App\Models\Brand::orderBy('name')->get();
-                $brandsMap = $brandsCollection->mapWithKeys(function ($b) {
+                $mouServiceInstance = app(\App\Services\MouService::class);
+                $brandsMap = $brandsCollection->mapWithKeys(function ($b) use ($mouServiceInstance) {
                     return [
                         $b->id => [
                             'id' => $b->id,
                             'code' => $b->code,
                             'name' => $b->name,
+                            'suggested_number' => $mouServiceInstance->generateSuggestedMouNumber($b),
                             'logo_url' => $b->logo_url ?: '/images/mou/seven-inc-logo.png',
                             'company_address' => $b->company_address,
                             'signatory_name' => $b->signatory_name,
@@ -712,8 +727,35 @@
 <script>
 const mouTemplatesDefaultsMap = JSON.parse(document.getElementById('mouTemplatesDefaultsMapJson')?.textContent || '{}');
 const brandsMap = JSON.parse(document.getElementById('brandsMapJson')?.textContent || '{}');
+const initialSuggestedNumber = @json($suggestedNumber);
+let isMouNumberManuallyEdited = {{ old('company_mou_number') && old('company_mou_number') !== $suggestedNumber ? 'true' : 'false' }};
+
+document.addEventListener('DOMContentLoaded', function () {
+    const mouNumInput = document.getElementById('companyMouNumberInput') || document.querySelector('input[name="company_mou_number"]');
+    if (mouNumInput) {
+        mouNumInput.addEventListener('input', function () {
+            isMouNumberManuallyEdited = true;
+        });
+    }
+});
+
+function resetMouNumberToBrandFormat() {
+    const brandSelect = document.getElementById('brandSelect');
+    const brandId = brandSelect ? brandSelect.value : '';
+    const mouNumInput = document.getElementById('companyMouNumberInput') || document.querySelector('input[name="company_mou_number"]');
+    if (!mouNumInput) return;
+
+    if (brandId && brandsMap[brandId]?.suggested_number) {
+        mouNumInput.value = brandsMap[brandId].suggested_number;
+    } else {
+        mouNumInput.value = initialSuggestedNumber;
+    }
+    isMouNumberManuallyEdited = false;
+}
 
 function handleBrandSelectionChange(brandId) {
+    const mouNumInput = document.getElementById('companyMouNumberInput') || document.querySelector('input[name="company_mou_number"]');
+
     if (!brandId || !brandsMap[brandId]) {
         // Reset kembali ke template default aktif saat ini
         const tplSelect = document.getElementById('mouTemplateSelect');
@@ -724,6 +766,10 @@ function handleBrandSelectionChange(brandId) {
         if (compLogoInput) compLogoInput.value = '/images/mou/seven-inc-logo.png';
         const previewImg = document.getElementById('companyLogoPreviewImg');
         if (previewImg) previewImg.src = '/images/mou/seven-inc-logo.png';
+
+        if (mouNumInput && !isMouNumberManuallyEdited) {
+            mouNumInput.value = initialSuggestedNumber;
+        }
         return;
     }
 
@@ -762,6 +808,11 @@ function handleBrandSelectionChange(brandId) {
     if (brand.signatory_email) {
         const emailInput = document.querySelector('input[name="second_party_email"]');
         if (emailInput) emailInput.value = brand.signatory_email;
+    }
+
+    // 4. Nomor Surat Perjanjian Brand otomatis bila belum diedit manual oleh user
+    if (mouNumInput && !isMouNumberManuallyEdited && brand.suggested_number) {
+        mouNumInput.value = brand.suggested_number;
     }
 }
 

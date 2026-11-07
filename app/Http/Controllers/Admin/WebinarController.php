@@ -84,6 +84,18 @@ class WebinarController extends Controller
             }
         }
 
+        // Pencegahan pembuatan ganda jika terjadi double-click atau request bersamaan
+        $existing = Webinar::where('title', $validated['title'])
+            ->where('event_date', $validated['event_date'])
+            ->where('brand_id', $validated['brand_id'])
+            ->where('created_at', '>=', now()->subSeconds(10))
+            ->first();
+
+        if ($existing) {
+            return redirect()->route('admin.webinars.index')
+                ->with('success', '✅ Webinar berhasil dibuat.');
+        }
+
         Webinar::create($validated);
 
         return redirect()->route('admin.webinars.index')

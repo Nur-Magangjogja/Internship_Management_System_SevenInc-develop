@@ -99,6 +99,16 @@
                 </a>
             </div>
 
+            <!-- Tombol Batal -->
+            <a
+                href="{{ $backUrl }}"
+                id="btnCancelTemplateEdit"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition"
+                title="Batalkan perubahan dan kembali ke Katalog Dokumen"
+            >
+                Batal
+            </a>
+
             <!-- Save Changes Button -->
             <button
                 type="button"
@@ -138,7 +148,7 @@
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Informasi Template &amp; Catatan Revisi</span>
-                <span class="text-[11px] text-slate-400">Pengaturan ini akan tersimpan otomatis bersama revisi naskah dokumen</span>
+                <span class="text-[11px] text-slate-400">Pengaturan dan naskah dokumen hanya akan disimpan saat Anda menekan tombol Simpan Revisi.</span>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5">
@@ -220,7 +230,7 @@
 </div>
 
 <!-- Live Browser Preview Modal -->
-<div id="modalLiveBrowserPreview" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+<div id="modalLiveBrowserPreview" class="fixed inset-0 z-[9999] hidden bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
             <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -254,6 +264,34 @@
     const iconNormal = document.getElementById('iconSaveNormal');
     const spinner = document.getElementById('spinnerSaving');
     const labelSave = document.getElementById('labelSaveBtn');
+    let isDirty = false;
+    let isSaving = false;
+
+    // Track dirty state on form inputs or editor transactions
+    form?.addEventListener('input', () => { isDirty = true; });
+    form?.addEventListener('change', () => { isDirty = true; });
+    window.addEventListener('mou-editor-transaction', () => { isDirty = true; });
+
+    const btnCancel = document.getElementById('btnCancelTemplateEdit');
+    const backLink = document.querySelector('a[title="Kembali ke Katalog Dokumen"]');
+    const confirmDiscard = (e) => {
+        if (isDirty) {
+            const ok = confirm('Ada perubahan yang belum disimpan pada template ini.\n\nApakah Anda yakin ingin membatalkan dan membuang seluruh perubahan?');
+            if (!ok) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    };
+    btnCancel?.addEventListener('click', confirmDiscard);
+    backLink?.addEventListener('click', confirmDiscard);
+
+    window.addEventListener('beforeunload', (e) => {
+        if (isDirty && !isSaving) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
 
     function showAlert(msg, type = 'success') {
         if (!alertBox) return;
@@ -284,6 +322,7 @@
         }
 
         saveBtn.disabled = true;
+        isSaving = true;
         iconNormal?.classList.add('hidden');
         spinner?.classList.remove('hidden');
         labelSave.textContent = 'Menyimpan...';
@@ -321,6 +360,7 @@
 
             const data = await res.json();
             if (res.ok && data.success) {
+                isDirty = false;
                 showAlert(data.message || 'Template berhasil disimpan.', 'success');
 
                 if (data.version) {

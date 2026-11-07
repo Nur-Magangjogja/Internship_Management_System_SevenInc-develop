@@ -708,5 +708,45 @@ class MouLifecycleTest extends TestCase
         $showRes->assertSee('Brand Unggulan Seven Inc');
         $showRes->assertSee('Brand: ' . $brand->name);
     }
+
+    public function test_suggested_mou_number_is_brand_specific_and_default_template_has_no_institution_number_line()
+    {
+        $mouService = app(\App\Services\MouService::class);
+
+        $brandSi = \App\Models\Brand::firstOrCreate(
+            ['code' => 'SI'],
+            ['name' => 'SEVEN INC']
+        );
+
+        $brandMj = \App\Models\Brand::firstOrCreate(
+            ['code' => 'MJ'],
+            ['name' => 'Magang Jogja']
+        );
+
+        // 1. Verifikasi nomor rekomendasi dinamis berdasar brand
+        $numberSi = $mouService->generateSuggestedMouNumber($brandSi);
+        $numberMj = $mouService->generateSuggestedMouNumber($brandMj);
+
+        $this->assertStringContainsString('/SEVEN/', $numberSi);
+        $this->assertStringContainsString('/MJ/', $numberMj);
+
+        // 2. Verifikasi template naskah default HANYA memuat satu baris nomor brand
+        $defaultHtml = \App\Models\MouTemplate::getDefaultTemplateContent();
+        $this->assertStringNotContainsString('NOMOR: [institution_mou_number]', $defaultHtml);
+        $this->assertStringContainsString('NOMOR: [company_mou_number]', $defaultHtml);
+
+        // 3. Verifikasi placeholder mail merge institusi tetap dipertahankan
+        $placeholders = \App\Models\MouTemplate::getDefaultPlaceholders();
+        $this->assertArrayHasKey('institution_mou_number', $placeholders);
+
+        // 4. Periksa halaman create memuat tombol format brand dan suggested_number di JSON brand map
+        $res = $this->actingAs($this->admin)->get(route('admin.mous.create', [
+            'institution_id' => $this->institution->id,
+        ]));
+        $res->assertStatus(200);
+        $resHtml = $res->getContent();
+        $this->assertStringContainsString('Gunakan Format Brand', $resHtml);
+        $this->assertStringContainsString('suggested_number', $resHtml);
+    }
 }
 

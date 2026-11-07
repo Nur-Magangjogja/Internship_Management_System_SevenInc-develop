@@ -352,6 +352,76 @@ class BrandController extends Controller
         return back()->with('success', 'Brand diarsipkan tanpa menghapus riwayat data.');
     }
 
+    public function toggle(Brand $brand, \App\Services\BrandReadinessService $readiness)
+    {
+        if ($brand->is_default) {
+            return back()->with('error', 'Brand default sistem tidak dapat dinonaktifkan.');
+        }
+
+        if ($brand->lifecycle_status === Brand::STATUS_ACTIVE) {
+            $brand->lifecycle_status = Brand::STATUS_SUSPENDED;
+            $brand->save();
+
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json([
+                    'ok' => true,
+                    'status' => Brand::STATUS_SUSPENDED,
+                    'message' => "Brand \"{$brand->name}\" berhasil dinonaktifkan.",
+                ]);
+            }
+
+            return back()->with('success', "Brand \"{$brand->name}\" berhasil dinonaktifkan.");
+        }
+
+        if ($brand->lifecycle_status === Brand::STATUS_SUSPENDED) {
+            $result = $readiness->assess($brand);
+            if (!$result['ready']) {
+                return back()->with('error', "Brand \"{$brand->name}\" belum dapat diaktifkan kembali: " . implode(' ', $result['blockers']));
+            }
+
+            $brand->lifecycle_status = Brand::STATUS_ACTIVE;
+            $brand->save();
+
+            if (request()->wantsJson() || request()->ajax()) {
+                return response()->json([
+                    'ok' => true,
+                    'status' => Brand::STATUS_ACTIVE,
+                    'message' => "Brand \"{$brand->name}\" berhasil diaktifkan kembali.",
+                ]);
+            }
+
+            return back()->with('success', "Penangguhan brand dicabut. Brand \"{$brand->name}\" kembali aktif.");
+        }
+
+        if ($brand->lifecycle_status === Brand::STATUS_READY) {
+            return $this->activate($brand, $readiness);
+        }
+
+        // Untuk status draft atau configuration_pending:
+        $result = $readiness->assess($brand);
+        if (!$result['ready']) {
+            if (!in_array($brand->lifecycle_status, [Brand::STATUS_ACTIVE, Brand::STATUS_SUSPENDED], true)) {
+                $brand->lifecycle_status = Brand::STATUS_CONFIGURATION_PENDING;
+                $brand->save();
+            }
+
+            return back()->with('error', "Brand \"{$brand->name}\" belum dapat diaktifkan: " . implode(' ', $result['blockers']));
+        }
+
+        $brand->lifecycle_status = Brand::STATUS_ACTIVE;
+        $brand->save();
+
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json([
+                'ok' => true,
+                'status' => Brand::STATUS_ACTIVE,
+                'message' => "Brand \"{$brand->name}\" berhasil diaktifkan.",
+            ]);
+        }
+
+        return back()->with('success', "Brand \"{$brand->name}\" berhasil diaktifkan.");
+    }
+
     public function destroy(Brand $brand)
     {
         try {

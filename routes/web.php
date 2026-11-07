@@ -341,6 +341,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
     Route::post('brands/{brand}/suspend', [\App\Http\Controllers\Admin\BrandController::class, 'suspend'])->name('brands.suspend');
     Route::post('brands/{brand}/unsuspend', [\App\Http\Controllers\Admin\BrandController::class, 'unsuspend'])->name('brands.unsuspend');
     Route::post('brands/{brand}/archive', [\App\Http\Controllers\Admin\BrandController::class, 'archive'])->name('brands.archive');
+    Route::post('brands/{brand}/toggle', [\App\Http\Controllers\Admin\BrandController::class, 'toggle'])->name('brands.toggle');
     Route::resource('brands', \App\Http\Controllers\Admin\BrandController::class);
 
     // Pengaturan Form — Divisi & Field Builder

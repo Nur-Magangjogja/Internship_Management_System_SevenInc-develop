@@ -444,7 +444,7 @@
                         </p>
                     </div>
 
-                    <form method="POST" action="{{ route($routePrefix . '.attempts.store', $cycle) }}" class="space-y-4" onsubmit="this.querySelector('button[type=submit]').disabled=true;">
+                    <form method="POST" action="{{ route($routePrefix . '.attempts.store', $cycle) }}" class="space-y-4">
                         @csrf
 
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -550,6 +550,7 @@
                         <div class="flex items-center justify-end pt-3 border-t border-slate-100">
                             <button
                                 type="submit"
+                                data-loading-text="Menyimpan Percobaan..."
                                 class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                             >
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

@@ -2681,6 +2681,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('confirmYes').addEventListener('click', async () => {
         if (!deleteId) return;
+        const confirmYesBtn = document.getElementById('confirmYes');
+        if (confirmYesBtn.disabled) return;
+
         const passwordInput = document.getElementById('delete_admin_password');
         const adminPassword = (passwordInput?.value || '').trim();
         if (!adminPassword) {
@@ -2688,6 +2691,11 @@ document.addEventListener('DOMContentLoaded', () => {
             passwordInput?.focus();
             return;
         }
+
+        const origHtml = confirmYesBtn.innerHTML;
+        confirmYesBtn.disabled = true;
+        confirmYesBtn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+        confirmYesBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Memindahkan...';
 
         const url = `${ADMIN_INTERNS_BASE}/${deleteId}`;
         try {
@@ -2708,6 +2716,9 @@ document.addEventListener('DOMContentLoaded', () => {
             pushToast('Gagal memindahkan ke arsip: ' + err.message, 'error');
         } finally {
             deleteId = null;
+            confirmYesBtn.disabled = false;
+            confirmYesBtn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            confirmYesBtn.innerHTML = origHtml;
         }
     });
 
@@ -2730,6 +2741,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('restoreYes')?.addEventListener('click', async () => {
         if (!restoreId) return;
+        const restoreYesBtn = document.getElementById('restoreYes');
+        if (restoreYesBtn.disabled) return;
+
         const passwordInput = document.getElementById('restore_admin_password');
         const adminPassword = (passwordInput?.value || '').trim();
         if (!adminPassword) {
@@ -2737,6 +2751,11 @@ document.addEventListener('DOMContentLoaded', () => {
             passwordInput?.focus();
             return;
         }
+
+        const origHtml = restoreYesBtn.innerHTML;
+        restoreYesBtn.disabled = true;
+        restoreYesBtn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+        restoreYesBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5 text-xs"></i> Memulihkan...';
 
         const url = `${ADMIN_INTERNS_BASE}/${restoreId}/restore`;
         try {
@@ -2756,6 +2775,9 @@ document.addEventListener('DOMContentLoaded', () => {
             pushToast('Gagal memulihkan data: ' + err.message, 'error');
         } finally {
             restoreId = null;
+            restoreYesBtn.disabled = false;
+            restoreYesBtn.classList.remove('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            restoreYesBtn.innerHTML = origHtml;
         }
     });
 

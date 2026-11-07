@@ -838,11 +838,18 @@
             const activeHeaderHtml = (differentFirstPage && index === 1) ? firstPageHeaderHtml : headerHtml;
             const activeFooterHtml = (differentFirstPage && index === 1 && firstPageFooterHtml !== '') ? firstPageFooterHtml : footerHtml;
 
+            const isFirstPage = (index === 1);
+            const hasHeaderText = activeHeaderHtml && activeHeaderHtml.trim() !== '' && activeHeaderHtml.trim() !== '<p></p>';
             let header = null;
-            if (activeHeaderHtml && activeHeaderHtml.trim() !== '' && activeHeaderHtml.trim() !== '<p></p>') {
+            if (hasHeaderText || (isFirstPage && showHeaderLogos)) {
                 header = document.createElement('div');
                 header.className = 'mou-a4-page-header mou-doc-canvas';
-                header.innerHTML = activeHeaderHtml;
+                header.style.minHeight = (isFirstPage && showHeaderLogos) ? '28mm' : '14mm';
+                header.style.maxHeight = '35mm';
+                header.style.marginBottom = '2mm';
+                if (hasHeaderText) {
+                    header.innerHTML = activeHeaderHtml;
+                }
                 page.appendChild(header);
             }
 

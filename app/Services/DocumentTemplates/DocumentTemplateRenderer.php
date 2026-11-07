@@ -63,7 +63,7 @@ class DocumentTemplateRenderer
         $sanitizedHtml = static::sanitizeHtml($resolvedHtml);
         $pageConfig = array_merge(DocumentTemplate::getDefaultPageConfig($template->type), $template->page_config ?? []);
 
-        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name, $isForPdf);
+        return static::wrapLetterDocumentHtml($sanitizedHtml, $pageConfig, $template->name, $isForPdf, $data);
     }
 
     /**
@@ -174,6 +174,21 @@ class DocumentTemplateRenderer
         $dompdf = $pdf->getDomPDF();
         $dompdf->render();
 
+        $showPageNum = (bool) ($template->page_config['show_page_number'] ?? ($template->page_config['show_page_numbers'] ?? false));
+        if (!$isCanvas && $showPageNum) {
+            $canvas        = $dompdf->getCanvas();
+            $fontMetrics   = $dompdf->getFontMetrics();
+            $font          = $fontMetrics->getFont('Times-Roman', 'normal');
+            $pageWidth     = $canvas->get_width();
+            $pageHeight    = $canvas->get_height();
+            $marginRightPt = ((float) ($template->page_config['margin_right_mm'] ?? 20.0)) * 2.83465;
+
+            $x = max(40.0, $pageWidth - $marginRightPt - 88.0);
+            $y = $pageHeight - 52.0;
+
+            $canvas->page_text($x, $y, 'Halaman {PAGE_NUM} dari {PAGE_COUNT}', $font, 9, [0, 0, 0]);
+        }
+
         return $dompdf->output();
     }
 
@@ -230,6 +245,12 @@ class DocumentTemplateRenderer
                 if (preg_match('/src="([^"]+)"/i', $src, $m)) {
                     $src = $m[1];
                 }
+
+                // Jika URL gambar kosong (misal logo belum diunggah), lewati render elemen agar tidak memunculkan kotak gambar rusak
+                if (empty(trim((string) $src))) {
+                    continue;
+                }
+
                 $src = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
                 
                 // Prioritaskan width_percent hasil kustomisasi visual studio, fallback ke width_px, lalu default 16.5% (~140px)
@@ -364,7 +385,7 @@ class DocumentTemplateRenderer
     /**
      * Wrapper HTML untuk Dokumen Surat A4.
      */
-    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen', bool $isForPdf = false): string
+    public static function wrapLetterDocumentHtml(string $bodyHtml, array $pageConfig, string $title = 'Dokumen', bool $isForPdf = false, array $data = []): string
     {
         $mTop = (float) ($pageConfig['margin_top_mm'] ?? 20.0);
         $mBtm = (float) ($pageConfig['margin_bottom_mm'] ?? 20.0);
@@ -385,27 +406,43 @@ class DocumentTemplateRenderer
         }
         $footerBlock = '';
         if ($footerHtml !== '') {
+            $footerHtml = preg_replace('/\[nomor_halaman\]|\[page_number\]|\{\{nomor_halaman\}\}|\{\{page_number\}\}|\{PAGE\}/i', '1', $footerHtml);
+            $footerHtml = preg_replace('/\[total_halaman\]|\[total_pages\]|\{\{total_halaman\}\}|\{\{total_pages\}\}|\{NUMPAGES\}/i', '1', $footerHtml);
+            $footerHtml = preg_replace('/\[halaman_dari_total\]|\{\{halaman_dari_total\}\}/i', 'Halaman 1 dari 1', $footerHtml);
             $footerBlock = '<div class="letter-running-footer" style="position: ' . ($isForPdf ? 'fixed' : 'relative') . '; bottom: ' . ($isForPdf ? '-' . max(2, $mBtm - 2) . 'mm' : '0') . '; left: 0; right: 0; overflow: hidden; margin-top: 6mm;">' . $footerHtml . '</div>';
         }
 
-        // Watermark support (Logo perusahaan tepat di tengah kertas, tidak menggeser teks)
-        $showWatermark = (bool) ($pageConfig['show_watermark'] ?? true);
+        // Watermark support (Terpisah dari logo header, khusus untuk latar belakang)
+        $showWatermark = (bool) ($pageConfig['show_watermark'] ?? false);
         $watermarkBlock = '';
         if ($showWatermark) {
-            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
-            $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
-            $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
-            $posStyle = $isForPdf 
-                ? 'position: fixed; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: -1000; pointer-events: none;'
-                : 'position: absolute; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: 1; pointer-events: none;';
-            $watermarkBlock = '<div class="letter-watermark-center" style="' . $posStyle . '"><img src="' . htmlspecialchars($compLogoBase64, ENT_QUOTES, 'UTF-8') . '" style="width: 300px; height: auto; opacity: ' . $wmOpacity . '; margin: 0 auto; display: inline-block;" alt="Watermark"/></div>';
+            $brandWatermark = !empty($data['asset.brand.watermark']) ? $data['asset.brand.watermark'] : null;
+            $wmPath = $brandWatermark ?: ($pageConfig['watermark_image_url'] ?? ($pageConfig['watermark_url'] ?? null));
+
+            // Aturan brand: Jika brand bukan Seven Inc dan belum memiliki watermark khusus, JANGAN fallback ke Seven Inc (biarkan kosong)
+            $brandSlug = strtolower(trim((string) ($data['brand_slug'] ?? ($data['brand_code'] ?? ($data['brand_name'] ?? 'seven inc')))));
+            $isSevenInc = str_contains($brandSlug, 'seven');
+
+            if (!$wmPath && $isSevenInc) {
+                $wmPath = '/images/mou/default-watermark.png';
+            }
+
+            if ($wmPath) {
+                $wmBase64 = static::resolveImageToBase64($wmPath) ?? $wmPath;
+                $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
+                $posStyle = $isForPdf 
+                    ? 'position: fixed; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: -1000; pointer-events: none;'
+                    : 'position: absolute; top: 32%; left: 0; right: 0; width: 100%; text-align: center; z-index: 1; pointer-events: none;';
+                $watermarkBlock = '<div class="letter-watermark-center" style="' . $posStyle . '"><img src="' . htmlspecialchars($wmBase64, ENT_QUOTES, 'UTF-8') . '" style="width: 300px; height: auto; opacity: ' . $wmOpacity . '; margin: 0 auto; display: inline-block;" alt="Watermark"/></div>';
+            }
         }
 
-        // Header single logo (1 logo perusahaan di kiri saja untuk LOA/surat resmi)
+        // Header single logo (1 logo perusahaan/brand di kiri saja untuk LOA/surat resmi)
         $showHeaderLogos = (bool) ($pageConfig['show_header_logos'] ?? false);
         $headerLogoBlock = '';
         if ($showHeaderLogos && empty($headerHtml)) {
-            $compLogoPath = $pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png');
+            $brandLogo = !empty($data['asset.brand.logo']) ? $data['asset.brand.logo'] : (!empty($data['asset.company.logo']) ? $data['asset.company.logo'] : null);
+            $compLogoPath = $brandLogo ?: ($pageConfig['company_logo'] ?? ($pageConfig['company_logo_url'] ?? '/images/mou/seven-inc-logo.png'));
             $compLogoBase64 = static::resolveImageToBase64($compLogoPath) ?? $compLogoPath;
             $posLogoStyle = $isForPdf
                 ? 'position: fixed; top: -' . max(2, $mTop - 2) . 'mm; left: 0; height: ' . max(4, $mTop - 4) . 'mm; overflow: hidden;'

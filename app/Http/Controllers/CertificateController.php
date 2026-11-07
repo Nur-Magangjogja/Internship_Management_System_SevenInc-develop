@@ -351,9 +351,9 @@ class CertificateController extends Controller
                 'perusahaan.nama'        => $brand?->name ?? ($certificate->company_name ?: 'Seven Inc'),
                 'perusahaan.pimpinan'    => $brand?->signatory_name ?? ($certificate->signatory_name ?: 'Rekario Danny Sanjaya, S.Kom.'),
                 'perusahaan.jabatan'     => $brand?->signatory_position ?? ($certificate->signatory_position ?: 'Penyelenggara'),
-                'asset.company.logo'     => $brand?->logo ? ('/storage/' . ltrim($brand->logo, '/')) : '/images/mou/seven-inc-logo.png',
-                'asset.signature'        => $brand?->signature ? ('/storage/' . ltrim($brand->signature, '/')) : '/images/mou/signature-sample.png',
-                'asset.stamp'            => $brand?->stamp ? ('/storage/' . ltrim($brand->stamp, '/')) : '/images/mou/stamp-sample.png',
+                'asset.company.logo'     => $brand?->logo ? ('/storage/' . ltrim($brand->logo, '/')) : null,
+                'asset.signature'        => $brand?->signature ? ('/storage/' . ltrim($brand->signature, '/')) : null,
+                'asset.stamp'            => $brand?->stamp ? ('/storage/' . ltrim($brand->stamp, '/')) : null,
                 'asset.background'       => $bgPath,
                 'force_brand_background' => true,
             ];

@@ -174,6 +174,9 @@ class MailMergePlaceholderContract
             $resolved = preg_replace($pattern, $safeVal, $resolved);
         }
 
+        // Bersihkan tag <img> yang kosong (src="") agar slot gambar tanda tangan/stempel menjadi ruang bersih tanpa broken image
+        $resolved = preg_replace('/<img\b[^>]*?\bsrc=["\']\s*["\'][^>]*?\/?>/i', '', $resolved);
+
         return $resolved;
     }
 

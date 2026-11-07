@@ -15,7 +15,7 @@
                 </svg>
             </a>
             <div class="min-w-0">
-                <h1 class="text-base font-bold text-slate-800">Buat Template Dokumen &amp; Sertifikat Baru</h1>
+                <h1 class="text-base font-bold text-slate-800">Buat Template Dokumen & Sertifikat Baru</h1>
                 <p class="text-[11px] text-slate-400 mt-0.5">Pilih jenis dokumen resmi dan tentukan draf awal untuk dipersonalisasi di editor</p>
             </div>
         </div>

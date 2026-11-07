@@ -252,6 +252,8 @@
       method="POST"
       enctype="multipart/form-data"
       class="space-y-5"
+      data-no-prevent-double-submit="true"
+      data-no-loading="true"
       data-current-year="{{ $activeSchema?->year ?? $queryDateYear ?? ($effectiveStartDate ? (int) substr($effectiveStartDate, 0, 4) : now()->year) }}"
       data-has-snapshot="{{ ($reg && $reg->formSnapshot) ? '1' : '0' }}"
       data-snapshot-year="{{ $reg?->formSnapshot?->schema?->year ?? '' }}">
@@ -1061,7 +1063,7 @@
     </form>
 
     {{-- Form terpisah untuk menghapus attachment (di luar form-daftar untuk mencegah nested forms) --}}
-    <form id="form-delete-attachment" method="POST" style="display:none;">
+    <form id="form-delete-attachment" method="POST" data-no-prevent-double-submit="true" data-no-loading="true" style="display:none;">
       @csrf
       @method('DELETE')
     </form>
@@ -1230,6 +1232,18 @@
         setTimeout(function() {
           submitBtn.disabled = true;
         }, 20);
+
+        // Safety timeout: jika dalam 15 detik halaman belum berpindah (misal kendala jaringan/timeout), pulihkan tombol
+        setTimeout(function() {
+          if (form.dataset.submitting === 'true') {
+            form.dataset.submitting = 'false';
+            if (submitBtn && submitBtn.dataset.originalContent) {
+              submitBtn.innerHTML = submitBtn.dataset.originalContent;
+              submitBtn.disabled = false;
+              submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+          }
+        }, 15000);
       }
     });
 

@@ -57,8 +57,8 @@ class InternController extends Controller
         $signatoryName = $brandData->signatory_name ?? 'Ari Setia Husbana';
         $signatoryPosition = $brandData->signatory_position ?? 'HRD';
 
-        $logoData = $docService->resolveBase64Image($brandData?->logo, 'images/logos/logo_seveninc.png');
-        $stampData = $docService->resolveBase64Image($brandData?->signature, 'images/signature/ttd_arisetiahusbana.png');
+        $logoData = $docService->resolveBase64Image($brandData?->logo, '');
+        $stampData = $docService->resolveBase64Image($brandData?->signature, '');
         $rows = $docService->buildRows([$intern]);
 
         return view('user.loa', [
@@ -1380,10 +1380,10 @@ class InternController extends Controller
                 [
                     'skl_number' => $sklNumber,
                     'company_name' => $companyName,
-                    'company_logo_path' => $brandData?->logo ?? 'images/logos/logo_seveninc.png',
+                    'company_logo_path' => $brandData?->logo,
                     'signatory_name' => $signatoryName,
                     'signatory_position' => $signatoryTitle,
-                    'signature_image_path' => $brandData?->signature ?? 'images/signature/ttd_arisetiahusbana.png',
+                    'signature_image_path' => $brandData?->signature,
                 ]
             );
             if ($sklDoc) {

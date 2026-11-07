@@ -80,6 +80,7 @@ class InternDocumentIssuanceTest extends TestCase
             'company_address'    => 'Jl. Raya Janti No. 59, Yogyakarta',
             'signatory_name'     => 'Rekario Danny Sanjaya, S.Kom.',
             'signatory_position' => 'Pimpinan',
+            'logo'               => '/images/mou/seven-inc-logo.png',
         ]);
         $this->brand->save();
 

@@ -119,7 +119,7 @@
           </p>
 
           <!-- Form LOA -->
-          <form id="loa-form" action="{{ route('user.loa.generate') }}" method="POST" class="space-y-4">
+          <form id="loa-form" action="{{ route('user.loa.generate') }}" method="POST" data-no-loading="true" class="space-y-4">
             @csrf
             <input type="hidden" name="intern_id" value="{{ $reg->id }}">
 

@@ -54,10 +54,14 @@ class UniversalGenerationWizardTest extends TestCase
             'is_active'          => true,
             'signatory_name'     => 'Rekario Danny Sanjaya, S.Kom.',
             'signatory_position' => 'Direktur Utama',
+            'company_address'    => 'Jl. Janti No. 59, Yogyakarta',
+            'logo'               => '/images/mou/seven-inc-logo.png',
         ]);
         $this->brand->update([
             'signatory_name'     => 'Rekario Danny Sanjaya, S.Kom.',
             'signatory_position' => 'Direktur Utama',
+            'company_address'    => 'Jl. Janti No. 59, Yogyakarta',
+            'logo'               => '/images/mou/seven-inc-logo.png',
         ]);
 
         $this->division = Division::firstOrCreate(['name' => 'IT & Software Engineering'], [
@@ -127,10 +131,12 @@ class UniversalGenerationWizardTest extends TestCase
     protected function tearDown(): void
     {
         if (isset($this->internAccepted)) {
+            \App\Models\RegistrationAttachment::where('internship_registration_id', $this->internAccepted->id)->delete();
             GeneratedDocument::where('internship_registration_id', $this->internAccepted->id)->forceDelete();
             $this->internAccepted->forceDelete();
         }
         if (isset($this->internCompleted)) {
+            \App\Models\RegistrationAttachment::where('internship_registration_id', $this->internCompleted->id)->delete();
             GeneratedDocument::where('internship_registration_id', $this->internCompleted->id)->forceDelete();
             $this->internCompleted->forceDelete();
         }

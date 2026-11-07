@@ -38,7 +38,7 @@
     <div class="mt-4">
       @if($doc['available'] && $key === 'loa')
         {{-- LOA butuh POST dengan intern_id --}}
-        <form action="{{ route('user.loa.generate') }}" method="POST">
+        <form action="{{ route('user.loa.generate') }}" method="POST" data-no-loading="true">
           @csrf
           <input type="hidden" name="intern_id" value="{{ $doc['intern_id'] ?? '' }}">
           <button type="submit"

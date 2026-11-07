@@ -703,21 +703,14 @@ class InternAssessmentController extends Controller
 
         $logoSrc = $resolveImg(
             $brandModel?->logo,
-            $assessment->company_logo_path,
-            'images/mou/seven-inc-logo.png',
-            'images/logos/logo_seveninc.png'
+            $assessment->company_logo_path
         );
         $sigSrc = $resolveImg(
             $brandModel?->signature,
-            $assessment->signature_image_path,
-            'images/mou/signature-sample.png',
-            'images/signature/ttd_arisetiahusbana.png',
-            'images/signatures/ttd.png'
+            $assessment->signature_image_path
         );
         $stampSrc = $resolveImg(
-            $brandModel?->stamp,
-            'images/mou/stamp-sample.png',
-            'images/stamps/stamp.png'
+            $brandModel?->stamp
         );
 
         return view('admin.interns.pdf_assessment', [
@@ -859,21 +852,14 @@ class InternAssessmentController extends Controller
 
         $logoSrc = $resolveImg(
             $brandModel?->logo,
-            $assessment->company_logo_path,
-            'images/mou/seven-inc-logo.png',
-            'images/logos/logo_seveninc.png'
+            $assessment->company_logo_path
         );
         $sigSrc = $resolveImg(
             $brandModel?->signature,
-            $assessment->signature_image_path,
-            'images/mou/signature-sample.png',
-            'images/signature/ttd_arisetiahusbana.png',
-            'images/signatures/ttd.png'
+            $assessment->signature_image_path
         );
         $stampSrc = $resolveImg(
-            $brandModel?->stamp,
-            'images/mou/stamp-sample.png',
-            'images/stamps/stamp.png'
+            $brandModel?->stamp
         );
 
         $assessmentSlug = Str::slug($assessment->intern->fullname ?? 'assessment', '-');

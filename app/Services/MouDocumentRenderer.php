@@ -37,7 +37,7 @@ class MouDocumentRenderer
         'data-colwidth', 'data-cell-width', 'data-cell-padding',
         'data-border-style', 'data-border-width', 'data-border-color', 'data-bg-color',
         'data-textbox', 'data-color',
-        'data-logo-slot', 'data-snapshot-version', 'data-pagination-artifact',
+        'data-logo-slot', 'data-snapshot-version', 'data-pagination-artifact', 'data-list-type',
         'data-asset-id', 'data-asset-code',
     ];
 
@@ -858,6 +858,35 @@ class MouDocumentRenderer
     }
 
     /**
+     * Render tag media (tanda tangan / stempel) yang terpercaya.
+     */
+    public static function renderTrustedMediaTag(?string $mediaPath, string $alt, string $className = 'mou-media-img', string $inlineStyle = '', bool $embedBase64 = false): string
+    {
+        if (empty($mediaPath) || $mediaPath === 'none') {
+            return '';
+        }
+
+        if (!static::isValidImageSource($mediaPath)) {
+            return '';
+        }
+
+        $finalSrc = $mediaPath;
+        if ($embedBase64 && !str_starts_with($mediaPath, 'data:image/')) {
+            $base64 = static::convertLocalPathToBase64($mediaPath);
+            if ($base64) {
+                $finalSrc = $base64;
+            }
+        }
+
+        $safeAlt = e($alt);
+        $safeSrc = e($finalSrc);
+        $safeClass = e($className);
+        $safeStyle = e($inlineStyle);
+
+        return '<img src="' . $safeSrc . '" alt="' . $safeAlt . '" class="' . $safeClass . '" style="' . $safeStyle . '">';
+    }
+
+    /**
      * Ubah seluruh tag <img src="/images/mou/..."> atau <img src="/storage/mou-assets/..."> di dalam HTML menjadi data:image/...;base64.
      */
     public static function embedLocalImagesAsBase64(string $html): string
@@ -1033,13 +1062,82 @@ class MouDocumentRenderer
             );
         }
 
-        // 1. Ganti token gambar terlebih dahulu
+        // 1. Ganti token gambar, logo, tanda tangan, dan stempel terlebih dahulu
+        $signaturePath = $merged['signature']
+            ?? ($merged['asset.signature']
+            ?? ($merged['company_signature']
+            ?? ($merged['tanda_tangan']
+            ?? ($merged['asset.brand.tanda_tangan']
+            ?? ($mediaAssets['signature'] ?? null)))));
+
+        $stampPath = $merged['stamp']
+            ?? ($merged['asset.stamp']
+            ?? ($merged['company_stamp']
+            ?? ($merged['stempel']
+            ?? ($merged['asset.brand.stempel']
+            ?? ($mediaAssets['stamp'] ?? null)))));
+
+        $signatureHtml = $signaturePath ? static::renderTrustedMediaTag(
+            $signaturePath,
+            'Tanda Tangan',
+            'mou-signature-img',
+            'height: 60px; max-width: 140px; object-fit: contain; display: inline-block; vertical-align: middle;',
+            $forPublishedSnapshot
+        ) : '';
+
+        $stampHtml = $stampPath ? static::renderTrustedMediaTag(
+            $stampPath,
+            'Stempel Resmi',
+            'mou-stamp-img',
+            'height: 60px; max-width: 140px; object-fit: contain; display: inline-block; vertical-align: middle;',
+            $forPublishedSnapshot
+        ) : '';
+
         $imageTokens = [
-            'company_logo'           => $companyLogoHtml,
-            'institution_logo'       => $institutionLogoHtml,
-            'asset.company.logo'     => $companyLogoHtml,
-            'asset.institution.logo' => $institutionLogoHtml,
+            'company_logo'             => $companyLogoHtml,
+            'institution_logo'         => $institutionLogoHtml,
+            'asset.company.logo'       => $companyLogoHtml,
+            'asset.institution.logo'   => $institutionLogoHtml,
+            'signature'                => $signatureHtml,
+            'tanda_tangan'             => $signatureHtml,
+            'company_signature'        => $signatureHtml,
+            'asset.signature'          => $signatureHtml,
+            'asset.brand.tanda_tangan' => $signatureHtml,
+            'asset.company.signature'  => $signatureHtml,
+            'stamp'                    => $stampHtml,
+            'stempel'                  => $stampHtml,
+            'company_stamp'            => $stampHtml,
+            'asset.stamp'              => $stampHtml,
+            'asset.brand.stempel'      => $stampHtml,
+            'asset.company.stamp'      => $stampHtml,
+            'institution_signature'    => $signatureHtml,
+            'institution_stamp'        => $stampHtml,
         ];
+
+        if ($signaturePath) {
+            $rendered = preg_replace(
+                '/(src=["\'])\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\s*\}\}(["\'])/i',
+                '$1' . e($signaturePath) . '$2',
+                $rendered
+            );
+            $rendered = preg_replace(
+                '/(src=["\'])\[(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\](["\'])/i',
+                '$1' . e($signaturePath) . '$2',
+                $rendered
+            );
+        }
+        if ($stampPath) {
+            $rendered = preg_replace(
+                '/(src=["\'])\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\s*\}\}(["\'])/i',
+                '$1' . e($stampPath) . '$2',
+                $rendered
+            );
+            $rendered = preg_replace(
+                '/(src=["\'])\[(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\](["\'])/i',
+                '$1' . e($stampPath) . '$2',
+                $rendered
+            );
+        }
 
         foreach ($imageTokens as $token => $imgTag) {
             $rendered = str_replace([
@@ -1110,6 +1208,9 @@ class MouDocumentRenderer
         // 3. Normalisasi tabel korespondensi agar proporsional, rapat, dan rapi
         $rendered = static::normalizeCorrespondenceTablesHtml($rendered);
 
+        // Bersihkan tag <img> yang kosong (src="") agar slot tanda tangan/stempel null tidak menghasilkan broken image
+        $rendered = preg_replace('/<img\b[^>]*?\bsrc=["\']\s*["\'][^>]*?\/?>/i', '', $rendered);
+
         // 4. Jika untuk snapshot terbit (Published MOU) atau PDF, konversi semua gambar lokal di dalam naskah ke Base64
         if ($forPublishedSnapshot) {
             $rendered = static::embedLocalImagesAsBase64($rendered);
@@ -1128,13 +1229,39 @@ class MouDocumentRenderer
 
                 $watermarkHeaderHtml = '<div class="mou-watermark-layer" data-watermark-layer="true">';
                 if ($showHeaderLogos) {
+                    $hlCfg = $pageConfig['header_logos_config'] ?? [];
+                    $iW = (int) ($hlCfg['institution']['width'] ?? 66);
+                    $iH = (int) ($hlCfg['institution']['height'] ?? 66);
+                    $iRot = (int) ($hlCfg['institution']['rotation'] ?? 0);
+                    $iTop = (float) ($hlCfg['institution']['topOffsetMm'] ?? 0);
+                    $iLeft = (float) ($hlCfg['institution']['leftOffsetMm'] ?? 0);
+
+                    $cW = (int) ($hlCfg['company']['width'] ?? 66);
+                    $cH = (int) ($hlCfg['company']['height'] ?? 66);
+                    $cRot = (int) ($hlCfg['company']['rotation'] ?? 0);
+                    $cTop = (float) ($hlCfg['company']['topOffsetMm'] ?? 0);
+                    $cRight = (float) ($hlCfg['company']['rightOffsetMm'] ?? 0);
+
+                    $instStyle = "width: {$iW}px; height: {$iH}px; top: {$iTop}mm; left: {$iLeft}mm; transform: rotate({$iRot}deg);";
+                    $compStyle = "width: {$cW}px; height: {$cH}px; top: {$cTop}mm; right: {$cRight}mm; transform: rotate({$cRot}deg);";
+
                     $watermarkHeaderHtml .= '<div class="mou-watermark-fixed-header">'
-                        . '<img src="' . e($instSrc) . '" width="66" height="66" class="mou-watermark-logo-left" alt="Logo Institusi" />'
-                        . '<img src="' . e($compSrc) . '" width="66" height="66" class="mou-watermark-logo-right" alt="Logo Seven Inc" />'
+                        . '<img src="' . e($instSrc) . '" width="' . $iW . '" height="' . $iH . '" style="' . $instStyle . '" class="mou-watermark-logo-left" alt="Logo Institusi" />'
+                        . '<img src="' . e($compSrc) . '" width="' . $cW . '" height="' . $cH . '" style="' . $compStyle . '" class="mou-watermark-logo-right" alt="Logo Seven Inc" />'
                         . '</div>';
                 }
                 if ($showWatermark) {
-                    $watermarkHeaderHtml .= '<img src="' . e($compSrc) . '" class="mou-watermark-center" alt="Watermark" />';
+                    $wmPath = $pageConfig['watermark_image_url'] ?? ($mediaAssets['watermark_url'] ?? null);
+                    $brandSlug = strtolower(trim((string) ($merged['brand_slug'] ?? ($merged['brand_code'] ?? ($merged['brand_name'] ?? 'seven inc')))));
+                    $isSevenInc = str_contains($brandSlug, 'seven');
+                    if (!$wmPath && $isSevenInc) {
+                        $wmPath = '/images/mou/default-watermark.png';
+                    }
+                    if ($wmPath) {
+                        $wmSrc = !str_starts_with($wmPath, 'data:') ? (static::convertLocalPathToBase64($wmPath) ?? $wmPath) : $wmPath;
+                        $wmOpacity = (float) ($pageConfig['watermark_opacity'] ?? 0.05);
+                        $watermarkHeaderHtml .= '<img src="' . e($wmSrc) . '" class="mou-watermark-center" style="opacity: ' . $wmOpacity . ';" alt="Watermark" />';
+                    }
                 }
                 $watermarkHeaderHtml .= '</div>';
             }
@@ -1187,14 +1314,71 @@ class MouDocumentRenderer
         $institutionLogoPath = $merged['institution_logo_path']
             ?? ($mediaAssets['institution_logo'] ?? '/images/mou/institution-logo-placeholder.png');
 
+        $signaturePath = $merged['signature']
+            ?? ($merged['asset.signature']
+            ?? ($merged['company_signature']
+            ?? ($merged['tanda_tangan']
+            ?? ($merged['asset.brand.tanda_tangan']
+            ?? ($mediaAssets['signature'] ?? null)))));
+
+        $stampPath = $merged['stamp']
+            ?? ($merged['asset.stamp']
+            ?? ($merged['company_stamp']
+            ?? ($merged['stempel']
+            ?? ($merged['asset.brand.stempel']
+            ?? ($mediaAssets['stamp'] ?? null)))));
+
+        $signatureHtml = $signaturePath ? static::renderTrustedMediaTag(
+            $signaturePath,
+            'Tanda Tangan',
+            'mou-signature-img',
+            'height: 40px; max-width: 100px; object-fit: contain; display: inline-block; vertical-align: middle;',
+            $forPublishedSnapshot
+        ) : '';
+
+        $stampHtml = $stampPath ? static::renderTrustedMediaTag(
+            $stampPath,
+            'Stempel Resmi',
+            'mou-stamp-img',
+            'height: 40px; max-width: 100px; object-fit: contain; display: inline-block; vertical-align: middle;',
+            $forPublishedSnapshot
+        ) : '';
+
         $imageTokens = [
-            'company_logo'           => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
-            'institution_logo'       => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
-            'asset.company.logo'     => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
-            'asset.institution.logo' => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
+            'company_logo'             => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
+            'institution_logo'         => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
+            'asset.company.logo'       => static::renderTrustedLogoTag($companyLogoPath, (string) ($merged['company_name'] ?? 'SEVEN INC'), 48, $forPublishedSnapshot),
+            'asset.institution.logo'   => static::renderTrustedLogoTag($institutionLogoPath, (string) ($merged['institution_name'] ?? 'Institusi Mitra'), 48, $forPublishedSnapshot),
+            'signature'                => $signatureHtml,
+            'tanda_tangan'             => $signatureHtml,
+            'company_signature'        => $signatureHtml,
+            'asset.signature'          => $signatureHtml,
+            'asset.brand.tanda_tangan' => $signatureHtml,
+            'stamp'                    => $stampHtml,
+            'stempel'                  => $stampHtml,
+            'company_stamp'            => $stampHtml,
+            'asset.stamp'              => $stampHtml,
+            'asset.brand.stempel'      => $stampHtml,
+            'institution_signature'    => $signatureHtml,
+            'institution_stamp'        => $stampHtml,
         ];
 
         $rendered = $sanitized;
+
+        if ($signaturePath) {
+            $rendered = preg_replace(
+                '/(src=["\'])\{\{\s*(?:asset\.(?:brand\.)?tanda_tangan|asset\.signature|company_signature|signature|tanda_tangan)\s*\}\}(["\'])/i',
+                '$1' . e($signaturePath) . '$2',
+                $rendered
+            );
+        }
+        if ($stampPath) {
+            $rendered = preg_replace(
+                '/(src=["\'])\{\{\s*(?:asset\.(?:brand\.)?stempel|asset\.stamp|company_stamp|stamp|stempel)\s*\}\}(["\'])/i',
+                '$1' . e($stampPath) . '$2',
+                $rendered
+            );
+        }
         foreach ($imageTokens as $token => $imgTag) {
             $rendered = str_replace(['[' . $token . ']', '{{' . $token . '}}', '{{ ' . $token . ' }}'], $imgTag, $rendered);
         }
@@ -1392,21 +1576,24 @@ class MouDocumentRenderer
     list-style-type: square !important;
 }
 .mou-doc-canvas ol, .mou-document ol {
-    list-style-type: decimal !important;
+    list-style-type: decimal;
     padding-left: 24pt !important;
     margin-top: 0 !important;
     margin-bottom: 6pt !important;
 }
-.mou-doc-canvas ol[type="a"], .mou-document ol[type="a"] {
+ol.mou-list-decimal, ol[data-list-type="1"], ol[type="1"], .mou-doc-canvas ol.mou-list-decimal, .mou-document ol.mou-list-decimal {
+    list-style-type: decimal !important;
+}
+ol.mou-list-lower-alpha, ol[data-list-type="a"], .mou-doc-canvas ol.mou-list-lower-alpha, .mou-document ol.mou-list-lower-alpha {
     list-style-type: lower-alpha !important;
 }
-.mou-doc-canvas ol[type="A"], .mou-document ol[type="A"] {
+ol.mou-list-upper-alpha, ol[data-list-type="A"], .mou-doc-canvas ol.mou-list-upper-alpha, .mou-document ol.mou-list-upper-alpha {
     list-style-type: upper-alpha !important;
 }
-.mou-doc-canvas ol[type="i"], .mou-document ol[type="i"] {
+ol.mou-list-lower-roman, ol[data-list-type="i"], .mou-doc-canvas ol.mou-list-lower-roman, .mou-document ol.mou-list-lower-roman {
     list-style-type: lower-roman !important;
 }
-.mou-doc-canvas ol[type="I"], .mou-document ol[type="I"] {
+ol.mou-list-upper-roman, ol[data-list-type="I"], .mou-doc-canvas ol.mou-list-upper-roman, .mou-document ol.mou-list-upper-roman {
     list-style-type: upper-roman !important;
 }
 .mou-doc-canvas li, .mou-document li {
@@ -1414,8 +1601,8 @@ class MouDocumentRenderer
     margin-bottom: 2pt !important;
 }
 .mou-doc-canvas li > p, .mou-document li > p {
-    display: inline !important;
-    margin-bottom: 0 !important;
+    display: block !important;
+    margin: 0 !important;
 }
 .mou-doc-canvas td p, .mou-document td p,
 .mou-doc-canvas th p, .mou-document th p,
@@ -1578,6 +1765,7 @@ class MouDocumentRenderer
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    border: 1px solid #000000;
     margin-top: 4pt;
     margin-bottom: 6pt;
 }
@@ -1589,6 +1777,14 @@ class MouDocumentRenderer
     border: 1px solid #000000;
     padding: 2.5pt 5pt;
     vertical-align: top;
+}
+.mou-table-bordered td:last-child,
+.mou-table-bordered th:last-child,
+.mou-correspondence-table td:last-child,
+.mou-correspondence-table th:last-child,
+.mou-paraf-table td:last-child,
+.mou-paraf-table th:last-child {
+    border-right: 1px solid #000000 !important;
 }
 .mou-pasal {
     margin-top: 10pt;
@@ -1700,9 +1896,10 @@ CSS;
             return $html;
         }
 
-        // 1. Jika ada dua tabel korespondensi berurutan (PIHAK KESATU & PIHAK KEDUA), satukan baris-barisnya ke tabel pertama
+        // 1. Jika ada dua tabel korespondensi bordered berurutan (PIHAK KESATU & PIHAK KEDUA) tanpa teks perantara, satukan.
+        // Jika tabel bertipe borderless (sesuai standar draft Word resmi), jangan digabung agar judul paragraf a & b tetap terjaga.
         $html = preg_replace_callback(
-            '/(<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>)\s*(<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>)/i',
+            '/(<table[^>]*class="[^"]*mou-correspondence-table[^"]*mou-table-bordered[^"]*"[^>]*>[\s\S]*?<\/table>)\s*(<table[^>]*class="[^"]*mou-correspondence-table[^"]*mou-table-bordered[^"]*"[^>]*>[\s\S]*?<\/table>)/i',
             function ($matches) {
                 $t1 = $matches[1];
                 $t2 = $matches[2];
@@ -1713,7 +1910,7 @@ CSS;
                 $rows1 = $tb1[1] ?? '';
                 $rows2 = $tb2[1] ?? '';
 
-                return '<table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;">' .
+                return '<table class="mou-table-bordered mou-correspondence-table" data-table-style="bordered" data-table-width="100%" style="width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #000000; margin-top: 4pt; margin-bottom: 6pt;">' .
                        '<tbody>' . $rows1 . $rows2 . '</tbody>' .
                        '</table>';
             },
@@ -1723,42 +1920,57 @@ CSS;
         // 2. Normalisasi setiap tabel korespondensi: colgroup proporsional dan style sel per baris
         return preg_replace_callback('/<table[^>]*class="[^"]*mou-correspondence-table[^"]*"[^>]*>[\s\S]*?<\/table>/is', function ($matches) {
             $tableHtml = $matches[0];
+            $isBorderless = stripos($tableHtml, 'mou-table-borderless') !== false || stripos($tableHtml, 'data-table-style="borderless"') !== false;
 
-            // Pasang colgroup proporsional 22%, 4%, 74%
-            $newColgroup = '<colgroup><col style="width: 22%;"><col style="width: 4%;"><col style="width: 74%;"></colgroup>';
+            // Pasang colgroup proporsional 20%, 3%, 77% (atau 22%, 4%, 74% untuk bordered)
+            $newColgroup = $isBorderless
+                ? '<colgroup><col style="width: 20%;"><col style="width: 3%;"><col style="width: 77%;"></colgroup>'
+                : '<colgroup><col style="width: 22%;"><col style="width: 4%;"><col style="width: 74%;"></colgroup>';
+
             if (preg_match('/<colgroup>[\s\S]*?<\/colgroup>/is', $tableHtml)) {
                 $tableHtml = preg_replace('/<colgroup>[\s\S]*?<\/colgroup>/is', $newColgroup, $tableHtml);
             } else {
                 $tableHtml = preg_replace('/(<table[^>]*>)/i', '$1' . $newColgroup, $tableHtml);
             }
 
-            // Atur style tabel agar table-layout: fixed dan margin rapat
-            $tableHtml = preg_replace_callback('/<table\b([^>]*)>/i', function ($tm) {
+            // Atur style tabel agar table-layout: fixed dan border sesuai gaya
+            $tableBorderStyle = $isBorderless ? 'border: none;' : 'border: 1px solid #000000;';
+            $tableMargin = $isBorderless ? 'margin-top: 2pt; margin-bottom: 6pt;' : 'margin-top: 4pt; margin-bottom: 6pt;';
+            $tableHtml = preg_replace_callback('/<table\b([^>]*)>/i', function ($tm) use ($tableBorderStyle, $tableMargin) {
                 $attrs = $tm[1];
+                $newStyle = "width: 100%; border-collapse: collapse; table-layout: fixed; {$tableBorderStyle} {$tableMargin}";
                 if (preg_match('/style="([^"]*)"/i', $attrs, $sm)) {
-                    $newStyle = 'width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;';
                     $attrs = str_replace($sm[0], 'style="' . $newStyle . '"', $attrs);
                 } else {
-                    $attrs .= ' style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; margin-bottom: 6pt;"';
+                    $attrs .= ' style="' . $newStyle . '"';
                 }
                 return '<table' . $attrs . '>';
             }, $tableHtml);
 
             // Format baris: header (colspan=3) dan 3 kolom data
-            $tableHtml = preg_replace_callback('/<tr[^>]*>([\s\S]*?)<\/tr>/is', function ($rowMatches) {
+            $cellBorderStyle = $isBorderless ? 'border: none;' : 'border: 1px solid #000000;';
+            $cellRightBorder = $isBorderless ? '' : 'border-right: 1px solid #000000;';
+
+            $tableHtml = preg_replace_callback('/<tr[^>]*>([\s\S]*?)<\/tr>/is', function ($rowMatches) use ($cellBorderStyle, $cellRightBorder, $isBorderless) {
                 $rowContent = $rowMatches[1];
                 if (preg_match_all('/<td\b([^>]*)>([\s\S]*?)<\/td>/is', $rowContent, $tdMatches)) {
                     if (count($tdMatches[0]) === 1 && stripos($tdMatches[1][0], 'colspan') !== false) {
-                        return '<tr style="page-break-inside: avoid; break-inside: avoid;"><td colspan="3" style="border: 1px solid #000000; padding: 2.5pt 6pt; font-weight: bold; background-color: #f8fafc;">' . $tdMatches[2][0] . '</td></tr>';
+                        $bg = $isBorderless ? '' : 'background-color: #f8fafc;';
+                        return '<tr style="page-break-inside: avoid; break-inside: avoid;"><td colspan="3" style="' . $cellBorderStyle . ' ' . $cellRightBorder . ' padding: 2.5pt 6pt; font-weight: bold; ' . $bg . '">' . $tdMatches[2][0] . '</td></tr>';
                     }
                     if (count($tdMatches[0]) === 3) {
                         $c0 = trim($tdMatches[2][0]);
                         $c1 = trim($tdMatches[2][1]);
                         $c2 = trim($tdMatches[2][2]);
 
-                        $td0 = '<td style="width: 22%; border: 1px solid #000000; padding: 2pt 5pt 2pt 14pt; vertical-align: top;">' . $c0 . '</td>';
-                        $td1 = '<td style="width: 4%; border: 1px solid #000000; padding: 2pt 2pt; text-align: center; vertical-align: top;">' . $c1 . '</td>';
-                        $td2 = '<td style="width: 74%; border: 1px solid #000000; padding: 2pt 5pt; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">' . $c2 . '</td>';
+                        $padLeft = $isBorderless ? '24pt' : '14pt';
+                        $w0 = $isBorderless ? '20%' : '22%';
+                        $w1 = $isBorderless ? '3%' : '4%';
+                        $w2 = $isBorderless ? '77%' : '74%';
+
+                        $td0 = '<td style="width: ' . $w0 . '; ' . $cellBorderStyle . ' padding: 1.5pt 4pt 1.5pt ' . $padLeft . '; vertical-align: top;">' . $c0 . '</td>';
+                        $td1 = '<td style="width: ' . $w1 . '; ' . $cellBorderStyle . ' padding: 1.5pt 2pt; text-align: center; vertical-align: top;">' . $c1 . '</td>';
+                        $td2 = '<td style="width: ' . $w2 . '; ' . $cellBorderStyle . ' ' . $cellRightBorder . ' padding: 1.5pt 4pt; vertical-align: top; word-break: break-word; overflow-wrap: break-word;">' . $c2 . '</td>';
 
                         return '<tr style="page-break-inside: avoid; break-inside: avoid;">' . $td0 . $td1 . $td2 . '</tr>';
                     }
@@ -1818,26 +2030,27 @@ CSS;
         }, $htmlWithBase64);
 
         // Normalisasi tabel komparisi pihak (4 kolom: nomor, nama penandatangan, titik dua, dan jabatan/deskripsi)
-        // agar proporsi lebar persen (3%, 33%, 2%, 62%) diterapkan secara presisi di DomPDF dan tidak berjarak jauh.
+        // agar proporsi lebar persen diterapkan secara presisi di DomPDF dan nomor tidak terputus dua baris.
         $htmlWithBase64 = preg_replace_callback('/<table[^>]*class="[^"]*mou-table-borderless[^"]*"[^>]*>.*?<\/table>/is', function ($matches) {
             $tableHtml = $matches[0];
             if (preg_match('/<td[^>]*>\s*(?:<p[^>]*>)?\s*1\.\s*(?:<\/p>)?\s*<\/td>/iu', $tableHtml)) {
+                $compColgroup = '<colgroup><col style="width: 5%;"><col style="width: 34%;"><col style="width: 3%;"><col style="width: 58%;"></colgroup>';
                 // Ganti atau sisipkan colgroup proporsional
                 if (preg_match('/<colgroup>.*?<\/colgroup>/is', $tableHtml)) {
-                    $tableHtml = preg_replace('/<colgroup>.*?<\/colgroup>/is', '<colgroup><col style="width: 3%;"><col style="width: 33%;"><col style="width: 2%;"><col style="width: 62%;"></colgroup>', $tableHtml);
+                    $tableHtml = preg_replace('/<colgroup>.*?<\/colgroup>/is', $compColgroup, $tableHtml);
                 } else {
-                    $tableHtml = preg_replace('/(<table[^>]*>)/i', '$1<colgroup><col style="width: 3%;"><col style="width: 33%;"><col style="width: 2%;"><col style="width: 62%;"></colgroup>', $tableHtml);
+                    $tableHtml = preg_replace('/(<table[^>]*>)/i', '$1' . $compColgroup, $tableHtml);
                 }
 
-                // Format setiap baris menjadi 4 kolom yang proporsional dan rapat
+                // Format setiap baris menjadi 4 kolom yang proporsional dan tidak memotong kata secara kasar
                 $tableHtml = preg_replace_callback('/<tr[^>]*>(.*?)<\/tr>/is', function ($rowMatches) {
                     $rowContent = $rowMatches[1];
                     if (preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/is', $rowContent, $tdMatches)) {
                         if (count($tdMatches[0]) === 4) {
-                            $newTd0 = '<td style="width: 3%; vertical-align: top; padding-right: 0;">' . $tdMatches[2][0] . '</td>';
-                            $newTd1 = '<td style="width: 33%; vertical-align: top; padding-left: 2pt; word-break: break-all; word-wrap: break-word;">' . $tdMatches[2][1] . '</td>';
-                            $newTd2 = '<td style="width: 2%; vertical-align: top; text-align: center; padding-left: 0; padding-right: 0;">' . $tdMatches[2][2] . '</td>';
-                            $newTd3 = '<td style="width: 62%; vertical-align: top; text-align: justify; word-break: break-all; word-wrap: break-word;">' . $tdMatches[2][3] . '</td>';
+                            $newTd0 = '<td style="width: 5%; vertical-align: top; white-space: nowrap; padding-right: 2pt;">' . $tdMatches[2][0] . '</td>';
+                            $newTd1 = '<td style="width: 34%; vertical-align: top; padding-left: 2pt; word-break: normal; overflow-wrap: break-word;">' . $tdMatches[2][1] . '</td>';
+                            $newTd2 = '<td style="width: 3%; vertical-align: top; text-align: center; padding-left: 0; padding-right: 0;">' . $tdMatches[2][2] . '</td>';
+                            $newTd3 = '<td style="width: 58%; vertical-align: top; text-align: justify; word-break: normal; overflow-wrap: break-word;">' . $tdMatches[2][3] . '</td>';
                             return '<tr>' . $newTd0 . $newTd1 . $newTd2 . $newTd3 . '</tr>';
                         }
                     }
@@ -1919,10 +2132,17 @@ CSS;
             $marginRightPt = ((float) ($config['margin_right_mm'] ?? 25.4)) * 2.83465;
 
             // Posisi kanan bawah sejajar dengan batas margin kanan dan baris Kotak Paraf
-            $x = max(40.0, $pageWidth - $marginRightPt - 78.0);
-            $y = $pageHeight - 36.0;
+            $x = max(40.0, $pageWidth - $marginRightPt - 88.0);
+            $y = $pageHeight - 52.0;
 
-            $canvas->page_text($x, $y, 'Halaman {PAGE_NUM} dari {PAGE_COUNT}', $font, 9, [0, 0, 0]);
+            $format = (string) ($config['page_number_format'] ?? 'Halaman [nomor_halaman] dari [total_halaman]');
+            $dompdfFormat = str_replace(
+                ['[nomor_halaman]', '[page_number]', '{PAGE}', '{PAGE_NUM}', '[total_halaman]', '[total_pages]', '{TOTAL}', '{PAGE_COUNT}'],
+                ['{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_NUM}', '{PAGE_COUNT}', '{PAGE_COUNT}', '{PAGE_COUNT}', '{PAGE_COUNT}'],
+                $format
+            );
+
+            $canvas->page_text($x, $y, $dompdfFormat, $font, 9, [0, 0, 0]);
         }
 
         return $dompdf->output();
