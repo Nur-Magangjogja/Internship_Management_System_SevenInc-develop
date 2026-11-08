@@ -18,6 +18,8 @@ class FormSchema extends Model
     protected $table = 'form_schemas';
 
     protected $fillable = [
+        'brand_id',
+        'source_schema_id',
         'version_code',
         'year',
         'title',
@@ -31,6 +33,8 @@ class FormSchema extends Model
     ];
 
     protected $casts = [
+        'brand_id'          => 'integer',
+        'source_schema_id'  => 'integer',
         'year'              => 'integer',
         'grace_period_days' => 'integer',
         'is_active'         => 'boolean',
@@ -44,10 +48,10 @@ class FormSchema extends Model
 
             if ($originalStatus === self::STATUS_PUBLISHED) {
                 // Skema published hanya boleh beralih status ke archived (misalnya saat versi baru terbit) dengan is_active = false
-                // Mutasi seluruh metadata historis (version_code, year, title, schema_hash, grace_period_days, published_at, published_by, created_by)
+                // Mutasi seluruh metadata historis (version_code, year, title, schema_hash, grace_period_days, published_at, published_by, created_by, brand_id, source_schema_id)
                 // atau pengembalian status ke draft secara langsung dilarang keras (S17.18G.5 Wave 2A Fix 3).
                 $immutablePublishedAttributes = [
-                    'version_code', 'year', 'title', 'schema_hash',
+                    'brand_id', 'source_schema_id', 'version_code', 'year', 'title', 'schema_hash',
                     'grace_period_days', 'published_at', 'published_by', 'created_by'
                 ];
 
@@ -59,7 +63,7 @@ class FormSchema extends Model
             if ($originalStatus === self::STATUS_ARCHIVED) {
                 // Skema archived adalah rekaman historis permanen; dilarang keras mengubah atribut kebijakan apapun!
                 $immutableArchivedAttributes = [
-                    'status', 'is_active', 'version_code', 'year', 'title',
+                    'brand_id', 'source_schema_id', 'status', 'is_active', 'version_code', 'year', 'title',
                     'schema_hash', 'grace_period_days', 'published_at', 'published_by', 'created_by'
                 ];
 
@@ -101,9 +105,32 @@ class FormSchema extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    public function sourceTemplate(): BelongsTo
+    {
+        return $this->belongsTo(FormSchema::class, 'source_schema_id');
+    }
+
     public function scopeActivePublished($query)
     {
         return $query->where('status', self::STATUS_PUBLISHED)->where('is_active', true);
+    }
+
+    public function scopeForBrand($query, ?int $brandId)
+    {
+        if ($brandId !== null) {
+            return $query->where('brand_id', $brandId);
+        }
+        return $query->whereNull('brand_id');
+    }
+
+    public function scopeGlobal($query)
+    {
+        return $query->whereNull('brand_id');
     }
 
     public function scopeDrafts($query)

@@ -35,6 +35,8 @@ class HistoricalImportBatch extends Model
         'total_rows_skipped',
         'total_rows_failed',
         'target_year',
+        'brand_id',
+        'spreadsheet_connection_id',
         'column_mapping_config',
         'status',
         'committed_at',
@@ -63,6 +65,16 @@ class HistoricalImportBatch extends Model
     public function rows(): HasMany
     {
         return $this->hasMany(HistoricalImportRow::class, 'batch_id')->orderBy('row_index');
+    }
+
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    public function spreadsheetConnection(): BelongsTo
+    {
+        return $this->belongsTo(SpreadsheetConnection::class, 'spreadsheet_connection_id');
     }
 
     public function createdByUser(): BelongsTo

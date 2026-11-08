@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Brand;
 use App\Models\FormField;
 use App\Models\FormSchema;
+use App\Models\FormSubmitSetting;
+use App\Models\SpreadsheetConnection;
 use App\Services\FormBuilderService;
 use DomainException;
 use Illuminate\Http\Request;
@@ -105,16 +108,34 @@ class FormFieldController extends Controller
         $nextYear    = $currentYear + 1;
         $year        = $this->resolveYear($request);
 
-        $currentDraft    = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
-        $activePublished = FormSchema::where('year', $year)->activePublished()->first();
+        // Resolusi Brand & Universal Spreadsheet Connection
+        $brands = Brand::orderBy('name')->get();
+        $brandId = $request->input('brand_id');
+        $effectiveBrand = null;
 
-        // Ambil field dari draf aktif dikelompokkan ke 4 grup
+        if ($brandId === 'global') {
+            $effectiveBrand = null;
+        } elseif ($brandId !== null && $brandId !== '') {
+            $effectiveBrand = $brands->firstWhere('id', (int) $brandId);
+        } elseif ($request->attributes->has('current_brand')) {
+            $effectiveBrand = $request->attributes->get('current_brand');
+        } elseif (session()->has('registration_brand_id')) {
+            $effectiveBrand = $brands->firstWhere('id', (int) session('registration_brand_id'));
+        } else {
+            $effectiveBrand = $brands->firstWhere('is_default', true) ?? $brands->first();
+        }
+
+        $currentDraft    = $this->formBuilderService->getOrCreateDraft($year, auth()->user(), $effectiveBrand?->id);
+        $activePublished = $this->formBuilderService->resolveEffectivePublishedSchema($effectiveBrand?->id, $year);
+
+        // Ambil field dari draf aktif dikelompokkan ke 5 grup
         $allActiveDraftFields = $currentDraft->fields()->notArchived()->get();
         $groupedFields = [
             FormField::GROUP_DATA_DIRI          => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_DATA_DIRI)->values(),
             FormField::GROUP_PILIHAN_DURASI     => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_PILIHAN_DURASI)->values(),
             FormField::GROUP_BERKAS             => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_BERKAS)->values(),
             FormField::GROUP_INFORMASI_TAMBAHAN => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+            FormField::GROUP_FINALISASI_SUBMIT  => $allActiveDraftFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_FINALISASI_SUBMIT)->values(),
         ];
         $mainFields     = $allActiveDraftFields->filter(fn($f) => $f->resolved_group !== FormField::GROUP_INFORMASI_TAMBAHAN)->values();
         $extraFields    = $groupedFields[FormField::GROUP_INFORMASI_TAMBAHAN];
@@ -124,9 +145,39 @@ class FormFieldController extends Controller
         $groups    = FormField::groups();
         $divisions = $this->getActiveDivisions();
 
+        $brandConnection = null;
+        $mappedColumnsCount = 0;
+        $tabProfilesCount = 0;
+
+        if ($effectiveBrand) {
+            $brandConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $effectiveBrand->id)
+                ->with(['tabProfiles', 'schemaVersions.columnMappings'])
+                ->first();
+
+            if (!$brandConnection) {
+                $brandConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                    ->whereNull('brand_id')
+                    ->with(['tabProfiles', 'schemaVersions.columnMappings'])
+                    ->first();
+            }
+
+            if ($brandConnection) {
+                $activeSchema = $brandConnection->schemaVersions()->where('is_active', true)->first();
+                if ($activeSchema) {
+                    $mappedColumnsCount = $activeSchema->columnMappings()->count();
+                }
+                $tabProfilesCount = $brandConnection->tabProfiles()->count();
+            }
+        }
+
+        $submitSettings = FormSubmitSetting::forYear($year, $effectiveBrand?->id);
+
         return view('admin.form_settings.form_fields', compact(
             'groupedFields', 'mainFields', 'extraFields', 'archivedFields', 'types', 'groups',
-            'currentDraft', 'activePublished', 'year', 'currentYear', 'nextYear', 'divisions'
+            'currentDraft', 'activePublished', 'year', 'currentYear', 'nextYear', 'divisions',
+            'brands', 'effectiveBrand', 'brandConnection', 'mappedColumnsCount', 'tabProfilesCount',
+            'submitSettings'
         ));
     }
 
@@ -144,19 +195,22 @@ class FormFieldController extends Controller
         }
 
         $year = $this->resolveYear($request);
+        $brandId = $request->input('brand_id');
+        $effectiveBrandId = ($brandId && $brandId !== 'global') ? (int) $brandId : null;
+
         $validated = $request->validate([
             'field_type'       => 'required|in:' . implode(',', array_keys(FormField::supportedTypes())),
             'label'            => 'required|string|max:255',
             'placeholder'      => 'nullable|string|max:255',
             'helper_text'      => 'nullable|string|max:500',
             'is_required'      => 'nullable|boolean',
-            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,main',
+            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,finalisasi_submit,main',
             'column_span'      => 'nullable|integer|in:1,2',
             'options'          => 'nullable|string', // JSON string dari textarea
             'validation_rules' => 'nullable',
         ]);
 
-        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user(), $effectiveBrandId);
 
         // Buat field_key unik dari label
         $baseKey = 'custom_' . Str::slug($validated['label'], '_');
@@ -218,7 +272,12 @@ class FormFieldController extends Controller
             return response()->json(['ok' => true, 'message' => 'Field berhasil ditambahkan ke draft.', 'field' => $field]);
         }
 
-        return redirect()->route('admin.form-settings.fields', ['year' => $year])
+        $redirectParams = ['year' => $year];
+        if ($effectiveBrandId !== null) {
+            $redirectParams['brand_id'] = $effectiveBrandId;
+        }
+
+        return redirect()->route('admin.form-settings.fields', $redirectParams)
             ->with('success', "Pertanyaan \"{$validated['label']}\" berhasil ditambahkan ke draf (masih bersifat sementara & dapat dihapus sebelum dipublikasikan).");
     }
 
@@ -237,7 +296,7 @@ class FormFieldController extends Controller
             'column_span'      => 'nullable|integer|in:1,2',
             'options'          => 'nullable|string',
             'field_type'       => 'nullable|in:' . implode(',', array_keys(FormField::supportedTypes())),
-            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,main',
+            'group_name'       => 'nullable|in:,data_diri_edukasi,pilihan_durasi,berkas_portofolio,informasi_tambahan,finalisasi_submit,main',
             'validation_rules' => 'nullable',
         ]);
 
@@ -328,7 +387,9 @@ class FormFieldController extends Controller
         }
 
         $year = $this->resolveYear($request);
-        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
+        $brandId = $request->input('brand_id');
+        $effectiveBrandId = ($brandId && $brandId !== 'global') ? (int) $brandId : null;
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user(), $effectiveBrandId);
 
         try {
             $published = $this->formBuilderService->publishVersion($currentDraft, auth()->user());
@@ -336,7 +397,11 @@ class FormFieldController extends Controller
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
             }
-            return redirect()->route('admin.form-settings.fields', ['year' => $year])
+            $redirectParams = ['year' => $year];
+            if ($effectiveBrandId !== null) {
+                $redirectParams['brand_id'] = $effectiveBrandId;
+            }
+            return redirect()->route('admin.form-settings.fields', $redirectParams)
                 ->with('error', "Gagal mempublikasikan versi formulir: {$e->getMessage()}");
         }
 
@@ -362,7 +427,11 @@ class FormFieldController extends Controller
         }
 
         $flashType = $remoteSyncStatus === 'verified' ? 'success' : 'warning';
-        return redirect()->route('admin.form-settings.fields', ['year' => $year])
+        $redirectParams = ['year' => $year];
+        if ($effectiveBrandId !== null) {
+            $redirectParams['brand_id'] = $effectiveBrandId;
+        }
+        return redirect()->route('admin.form-settings.fields', $redirectParams)
             ->with($flashType, "Versi {$published->version_code} berhasil dipublikasikan di database. Status sinkronisasi Spreadsheet: {$remoteSyncStatus} ({$remoteSyncMessage}).");
     }
 
@@ -379,16 +448,51 @@ class FormFieldController extends Controller
 
         $currentYear = (int) now()->year;
         $nextYear    = $currentYear + 1;
+        $brandId     = $request->input('brand_id');
+        $effectiveBrandId = ($brandId && $brandId !== 'global') ? (int) $brandId : null;
 
         try {
-            $this->formBuilderService->syncDraftFromPreviousYear($nextYear, auth()->user());
+            $this->formBuilderService->syncDraftFromPreviousYear($nextYear, auth()->user(), $effectiveBrandId);
         } catch (\Throwable $e) {
-            return redirect()->route('admin.form-settings.fields', ['year' => $nextYear])
+            $redirectParams = ['year' => $nextYear];
+            if ($effectiveBrandId !== null) {
+                $redirectParams['brand_id'] = $effectiveBrandId;
+            }
+            return redirect()->route('admin.form-settings.fields', $redirectParams)
                 ->with('error', "Gagal menyalin struktur form: {$e->getMessage()}");
         }
 
-        return redirect()->route('admin.form-settings.fields', ['year' => $nextYear])
+        $redirectParams = ['year' => $nextYear];
+        if ($effectiveBrandId !== null) {
+            $redirectParams['brand_id'] = $effectiveBrandId;
+        }
+        return redirect()->route('admin.form-settings.fields', $redirectParams)
             ->with('success', "Struktur pertanyaan Form Tahun {$nextYear} berhasil disamakan dengan Form Tahun {$currentYear}.");
+    }
+
+    /**
+     * POST /admin/form-settings/fields/fork-global
+     * Salin template baseline global menjadi Draf Skema Khusus Brand.
+     */
+    public function forkGlobalTemplate(Request $request)
+    {
+        if (!$this->isSchemaReady()) {
+            return redirect()->route('admin.form-settings.fields')->with('error', 'Layanan Pengaturan Formulir belum siap.');
+        }
+
+        $year = $this->resolveYear($request);
+        $brandId = (int) $request->input('brand_id');
+        if (!$brandId) {
+            return back()->with('error', 'Brand ID wajib dipilih untuk menyalin dari template global.');
+        }
+
+        try {
+            $draft = $this->formBuilderService->forkGlobalTemplateToBrandDraft($year, $brandId, auth()->user());
+            return redirect()->route('admin.form-settings.fields', ['year' => $year, 'brand_id' => $brandId])
+                ->with('success', "Template Baseline Global berhasil disalin menjadi Draf Skema Khusus ({$draft->version_code}).");
+        } catch (\Throwable $e) {
+            return back()->with('error', "Gagal menyalin template global: {$e->getMessage()}");
+        }
     }
 
     /**
@@ -643,7 +747,9 @@ class FormFieldController extends Controller
         }
 
         $year = $this->resolveYear($request);
-        $currentDraft = $this->formBuilderService->ensureYearFormInitialized($year, auth()->user());
+        $brandId = $request->input('brand_id');
+        $effectiveBrandId = ($brandId && $brandId !== 'global') ? (int) $brandId : null;
+        $currentDraft = $this->formBuilderService->getOrCreateDraft($year, auth()->user(), $effectiveBrandId);
         $allFields = $currentDraft->fields()->active()->get();
 
         $groupedFields = [
@@ -651,19 +757,72 @@ class FormFieldController extends Controller
             'pilihan_durasi'     => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_PILIHAN_DURASI)->values(),
             'berkas_portofolio'  => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_BERKAS)->values(),
             'informasi_tambahan' => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+            'finalisasi_submit'  => $allFields->filter(fn($f) => $f->resolved_group === FormField::GROUP_FINALISASI_SUBMIT)->values(),
         ];
         $mainFields  = $allFields->filter(fn($f) => $f->resolved_group !== FormField::GROUP_INFORMASI_TAMBAHAN)->values();
         $extraFields = $groupedFields['informasi_tambahan'];
         $divisions   = $this->getActiveDivisions();
+        $brandId     = $request->input('brand_id');
+        $submitSettings = FormSubmitSetting::forYear($year, $brandId ? (int) $brandId : null);
 
         return response()->json([
-            'ok'             => true,
-            'grouped_fields' => $groupedFields,
-            'main_fields'    => $mainFields,
-            'extra_fields'   => $extraFields,
-            'divisions'      => $divisions,
-            'draft_version'  => $currentDraft->version_code,
-            'year'           => $year,
+            'ok'              => true,
+            'grouped_fields'  => $groupedFields,
+            'main_fields'     => $mainFields,
+            'extra_fields'    => $extraFields,
+            'divisions'       => $divisions,
+            'submit_settings' => $submitSettings,
+            'draft_version'   => $currentDraft->version_code,
+            'year'            => $year,
         ]);
+    }
+
+    /**
+     * POST /admin/form-settings/fields/submit-settings
+     * Simpan pengaturan khusus area No 5 Submit.
+     */
+    public function saveSubmitSettings(Request $request)
+    {
+        $validated = $request->validate([
+            'year'               => 'required|integer',
+            'brand_id'           => 'nullable|integer',
+            'section_title'      => 'required|string|max:255',
+            'section_subtitle'   => 'nullable|string|max:255',
+            'show_notice_box'    => 'nullable|boolean',
+            'notice_title'       => 'nullable|string|max:100',
+            'notice_text'        => 'nullable|string|max:2000',
+            'admin_wa_number'    => 'nullable|string|max:50',
+            'admin_wa_message'   => 'nullable|string|max:255',
+            'submit_button_text' => 'required|string|max:100',
+            'save_draft_enabled' => 'nullable|boolean',
+        ]);
+
+        $year = (int) $validated['year'];
+        $brandId = !empty($validated['brand_id']) ? (int) $validated['brand_id'] : null;
+
+        $setting = FormSubmitSetting::updateOrCreate(
+            ['year' => $year, 'brand_id' => $brandId],
+            [
+                'section_title'      => trim($validated['section_title']),
+                'section_subtitle'   => isset($validated['section_subtitle']) ? trim($validated['section_subtitle']) : '',
+                'show_notice_box'    => $request->boolean('show_notice_box'),
+                'notice_title'       => !empty($validated['notice_title']) ? trim($validated['notice_title']) : 'Perhatian:',
+                'notice_text'        => $validated['notice_text'] ?? '',
+                'admin_wa_number'    => $validated['admin_wa_number'] ?? '',
+                'admin_wa_message'   => $validated['admin_wa_message'] ?? '',
+                'submit_button_text' => trim($validated['submit_button_text']),
+                'save_draft_enabled' => $request->boolean('save_draft_enabled'),
+            ]
+        );
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok'       => true,
+                'message'  => 'Pengaturan Area Submit berhasil disimpan.',
+                'settings' => $setting,
+            ]);
+        }
+
+        return back()->with('success', 'Pengaturan Area Submit berhasil disimpan.');
     }
 }

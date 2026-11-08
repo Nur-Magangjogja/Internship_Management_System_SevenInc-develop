@@ -22,6 +22,7 @@ class SheetMappingProposalItem extends Model
         'proposal_id',
         'discovered_column_id',
         'column_identity',
+        'column_fingerprint',
         'col_letter',
         'physical_index',
         'observed_label',

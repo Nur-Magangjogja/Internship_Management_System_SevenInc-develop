@@ -112,38 +112,138 @@ class FormBuilderService
     }
 
     /**
-     * Dapatkan atau buat draf skema formulir kerja untuk tahun tertentu.
+     * Dapatkan atau buat draf skema formulir kerja untuk tahun tertentu dan brand tertentu (atau Global baseline jika brandId null).
      */
-    public function getOrCreateDraft(int $year = 2026, ?User $creator = null): FormSchema
+    public function getOrCreateDraft(int $year = 2026, ?User $creator = null, ?int $brandId = null): FormSchema
     {
-        $existingDraft = FormSchema::where('year', $year)
-            ->where('status', FormSchema::STATUS_DRAFT)
-            ->first();
+        $draftQuery = FormSchema::where('year', $year)
+            ->where('status', FormSchema::STATUS_DRAFT);
+
+        if ($brandId !== null) {
+            $draftQuery->where('brand_id', $brandId);
+        } else {
+            $draftQuery->whereNull('brand_id');
+        }
+
+        $existingDraft = $draftQuery->first();
 
         if ($existingDraft) {
             return $existingDraft;
         }
 
-        // Jika belum ada draf, cek apakah ada versi published aktif
-        $activePublished = FormSchema::where('year', $year)
+        // Jika belum ada draf, cek apakah ada versi published aktif pada scope yang sama
+        $publishedQuery = FormSchema::where('year', $year)
             ->where('status', FormSchema::STATUS_PUBLISHED)
             ->where('is_active', true)
-            ->with('fields')
-            ->first();
+            ->with('fields');
+
+        if ($brandId !== null) {
+            $publishedQuery->where('brand_id', $brandId);
+        } else {
+            $publishedQuery->whereNull('brand_id');
+        }
+
+        $activePublished = $publishedQuery->first();
 
         if ($activePublished) {
             return $this->clonePublishedToDraft($activePublished, $creator);
         }
 
-        // Jika sama sekali belum ada skema, buat draf pertama
+        // Jika brand_id disediakan dan belum ada draft/published untuk brand ini, fork dari Global Baseline
+        if ($brandId !== null) {
+            return $this->forkGlobalTemplateToBrandDraft($year, $brandId, $creator);
+        }
+
+        // Jika sama sekali belum ada skema global, buat draf pertama global
         return FormSchema::create([
             'version_code' => "v{$year}.1-draft",
             'year'         => $year,
+            'brand_id'     => null,
             'title'        => "Formulir Pendaftaran Magang {$year}",
             'status'       => FormSchema::STATUS_DRAFT,
             'is_active'    => false,
             'created_by'   => $creator?->id,
         ]);
+    }
+
+    /**
+     * Fork/klon template baseline global (brand_id = null) menjadi Brand Draft baru untuk brand tertentu.
+     */
+    public function forkGlobalTemplateToBrandDraft(int $year, int $brandId, ?User $creator = null): FormSchema
+    {
+        // 1. Ambil published global aktif untuk tahun tersebut
+        $globalBaseline = FormSchema::whereNull('brand_id')
+            ->where('year', $year)
+            ->where('status', FormSchema::STATUS_PUBLISHED)
+            ->where('is_active', true)
+            ->with('fields')
+            ->first();
+
+        // 2. Jika belum ada published global, coba cari global draft atau inisialisasi baseline global
+        if (!$globalBaseline) {
+            $globalBaseline = FormSchema::whereNull('brand_id')
+                ->where('year', $year)
+                ->with('fields')
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        if (!$globalBaseline) {
+            $globalBaseline = $this->ensureYearFormInitialized($year, $creator, forceInTests: true, brandId: null);
+        }
+
+        $brand = \App\Models\Brand::find($brandId);
+        $brandCode = $brand ? strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $brand->code ?? $brand->name ?? (string)$brandId)) : "B{$brandId}";
+        $versionCode = "v{$year}.1-{$brandCode}-draft";
+
+        return DB::transaction(function () use ($year, $brandId, $creator, $globalBaseline, $brand, $versionCode) {
+            $draft = FormSchema::create([
+                'version_code'     => $versionCode,
+                'year'             => $year,
+                'brand_id'         => $brandId,
+                'source_schema_id' => $globalBaseline?->id,
+                'title'            => ($brand ? $brand->name . ' - ' : '') . "Formulir Pendaftaran Magang {$year}",
+                'status'           => FormSchema::STATUS_DRAFT,
+                'is_active'        => false,
+                'created_by'       => $creator?->id,
+            ]);
+
+            if ($globalBaseline && $globalBaseline->fields()->where('is_archived', false)->count() > 0) {
+                $this->copyFieldsFromSchemaToDraft($globalBaseline, $draft);
+            } else {
+                $this->seedDefaultFieldsIntoDraft($draft);
+            }
+
+            return $draft;
+        });
+    }
+
+    /**
+     * Resolusi skema formulir aktif untuk pendaftaran:
+     * 1. Jika brand_id disediakan, utamakan skema published aktif milik brand tersebut.
+     * 2. Jika tidak ada skema khusus brand, fallback ke skema baseline global (brand_id = null).
+     */
+    public function resolveEffectivePublishedSchema(?int $brandId, int $year): ?FormSchema
+    {
+        if ($brandId !== null) {
+            $brandSchema = FormSchema::where('brand_id', $brandId)
+                ->where('year', $year)
+                ->where('status', FormSchema::STATUS_PUBLISHED)
+                ->where('is_active', true)
+                ->with('fields')
+                ->first();
+
+            if ($brandSchema) {
+                return $brandSchema;
+            }
+        }
+
+        return FormSchema::whereNull('brand_id')
+            ->where('year', $year)
+            ->where('status', FormSchema::STATUS_PUBLISHED)
+            ->where('is_active', true)
+            ->with('fields')
+            ->first();
     }
 
     /**
@@ -153,40 +253,50 @@ class FormBuilderService
      *   dan menerbitkan versi dasar pertama jika belum pernah diterbitkan sama sekali.
      * - Untuk Tahun Depan ($year > tahun sekarang): otomatis menyalin struktur dari formulir Tahun Ini agar mirip dan siap diedit.
      */
-    public function ensureYearFormInitialized(int $year, ?User $creator = null, bool $forceInTests = false): FormSchema
+    public function ensureYearFormInitialized(int $year, ?User $creator = null, bool $forceInTests = false, ?int $brandId = null): FormSchema
     {
         if (app()->runningUnitTests() && !$forceInTests) {
-            return $this->getOrCreateDraft($year, $creator);
+            return $this->getOrCreateDraft($year, $creator, $brandId);
         }
 
         $currentYear = (int) now()->year;
 
         // Jika menginisialisasi tahun depan, pastikan tahun berjalan sudah terinisialisasi lebih dulu
         if ($year > $currentYear) {
-            $this->initializeSingleYearSchema($currentYear, $creator);
+            $this->initializeSingleYearSchema($currentYear, $creator, $brandId);
         }
 
-        return $this->initializeSingleYearSchema($year, $creator);
+        return $this->initializeSingleYearSchema($year, $creator, $brandId);
     }
 
-    protected function initializeSingleYearSchema(int $year, ?User $creator = null): FormSchema
+    protected function initializeSingleYearSchema(int $year, ?User $creator = null, ?int $brandId = null): FormSchema
     {
         $currentYear = (int) now()->year;
-        $draft = $this->getOrCreateDraft($year, $creator);
+        $draft = $this->getOrCreateDraft($year, $creator, $brandId);
 
         // 1. Jika draf masih kosong (0 field), isi dari skema tahun sebelumnya atau dari field default
         if ($draft->fields()->withTrashed()->count() === 0) {
-            $previousYearSchema = FormSchema::where('year', $year - 1)
+            $prevQuery = FormSchema::where('year', $year - 1)
                 ->where('status', FormSchema::STATUS_PUBLISHED)
                 ->where('is_active', true)
-                ->with('fields')
-                ->first();
+                ->with('fields');
+
+            if ($brandId !== null) {
+                $prevQuery->where('brand_id', $brandId);
+            } else {
+                $prevQuery->whereNull('brand_id');
+            }
+
+            $previousYearSchema = $prevQuery->first();
 
             if (!$previousYearSchema || $previousYearSchema->fields->isEmpty()) {
-                $previousYearSchema = FormSchema::where('year', $year - 1)
-                    ->with('fields')
-                    ->orderByDesc('id')
-                    ->first();
+                $fallbackPrevQuery = FormSchema::where('year', $year - 1)->with('fields')->orderByDesc('id');
+                if ($brandId !== null) {
+                    $fallbackPrevQuery->where('brand_id', $brandId);
+                } else {
+                    $fallbackPrevQuery->whereNull('brand_id');
+                }
+                $previousYearSchema = $fallbackPrevQuery->first();
             }
 
             if ($previousYearSchema && $previousYearSchema->fields()->where('is_archived', false)->count() > 0) {
@@ -200,16 +310,26 @@ class FormBuilderService
 
             if ($year > $currentYear) {
                 // Untuk form Tahun Depan yang belum pernah dipublikasikan, sinkronkan field baru yang sudah dipublikasikan di Tahun Ini
-                $hasYearPublished = FormSchema::where('year', $year)
-                    ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED])
-                    ->exists();
+                $hasYearPublishedQuery = FormSchema::where('year', $year)
+                    ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED]);
+                if ($brandId !== null) {
+                    $hasYearPublishedQuery->where('brand_id', $brandId);
+                } else {
+                    $hasYearPublishedQuery->whereNull('brand_id');
+                }
+                $hasYearPublished = $hasYearPublishedQuery->exists();
 
                 if (!$hasYearPublished) {
-                    $currentPublished = FormSchema::where('year', $currentYear)
+                    $curPublishedQuery = FormSchema::where('year', $currentYear)
                         ->where('status', FormSchema::STATUS_PUBLISHED)
                         ->where('is_active', true)
-                        ->with('fields')
-                        ->first();
+                        ->with('fields');
+                    if ($brandId !== null) {
+                        $curPublishedQuery->where('brand_id', $brandId);
+                    } else {
+                        $curPublishedQuery->whereNull('brand_id');
+                    }
+                    $currentPublished = $curPublishedQuery->first();
 
                     if ($currentPublished) {
                         foreach ($currentPublished->fields()->where('is_archived', false)->get() as $srcField) {
@@ -243,22 +363,32 @@ class FormBuilderService
         // dan belum ada versi yang terbit sama sekali, publikasikan baseline awal secara otomatis
         // sehingga form langsung aktif dan field bawaan terkunci dari penghapusan.
         if ($year <= $currentYear) {
-            $activePublished = FormSchema::where('year', $year)
+            $activePublishedQuery = FormSchema::where('year', $year)
                 ->where('status', FormSchema::STATUS_PUBLISHED)
-                ->where('is_active', true)
-                ->first();
+                ->where('is_active', true);
+            if ($brandId !== null) {
+                $activePublishedQuery->where('brand_id', $brandId);
+            } else {
+                $activePublishedQuery->whereNull('brand_id');
+            }
+            $activePublished = $activePublishedQuery->first();
 
             if ($activePublished) {
                 $this->backfillMissingDefaultFields($activePublished);
             }
 
-            $hasAnyPublishedForYear = FormSchema::where('year', $year)
-                ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED])
-                ->exists();
+            $hasAnyPublishedQuery = FormSchema::where('year', $year)
+                ->whereIn('status', [FormSchema::STATUS_PUBLISHED, FormSchema::STATUS_ARCHIVED]);
+            if ($brandId !== null) {
+                $hasAnyPublishedQuery->where('brand_id', $brandId);
+            } else {
+                $hasAnyPublishedQuery->whereNull('brand_id');
+            }
+            $hasAnyPublishedForYear = $hasAnyPublishedQuery->exists();
 
             if (!$hasAnyPublishedForYear && $draft->fields()->count() > 0) {
                 $this->publishVersion($draft, $creator);
-                $draft = $this->getOrCreateDraft($year, $creator);
+                $draft = $this->getOrCreateDraft($year, $creator, $brandId);
             } else {
                 $this->syncDraftToActivePublished($draft);
             }
@@ -268,7 +398,7 @@ class FormBuilderService
     }
 
     /**
-     * Sinkronkan perubahan pada skema draf ke skema published aktif pada tahun yang sama.
+     * Sinkronkan perubahan pada skema draf ke skema published aktif pada tahun dan brand yang sama.
      * Memastikan perubahan pengaturan form langsung tercermin pada form pendaftaran pemagang dan halaman admin pemagang.
      */
     public function syncDraftToActivePublished(FormSchema $draft, bool $forceInTests = false): void
@@ -277,10 +407,17 @@ class FormBuilderService
             return;
         }
 
-        $activePublished = FormSchema::where('year', $draft->year)
+        $activePubQuery = FormSchema::where('year', $draft->year)
             ->where('status', FormSchema::STATUS_PUBLISHED)
-            ->where('is_active', true)
-            ->first();
+            ->where('is_active', true);
+
+        if ($draft->brand_id !== null) {
+            $activePubQuery->where('brand_id', $draft->brand_id);
+        } else {
+            $activePubQuery->whereNull('brand_id');
+        }
+
+        $activePublished = $activePubQuery->first();
 
         if (!$activePublished || $activePublished->id === $draft->id) {
             return;
@@ -521,15 +658,17 @@ class FormBuilderService
             $nextVersionCode = $this->generateNextDraftVersionCode($published);
 
             $draft = FormSchema::create([
-                'version_code' => $nextVersionCode,
-                'year'         => $published->year,
-                'title'        => $published->title,
-                'status'       => FormSchema::STATUS_DRAFT,
-                'schema_hash'  => null,
-                'is_active'    => false,
-                'published_at' => null,
-                'published_by' => null,
-                'created_by'   => $creator?->id,
+                'version_code'     => $nextVersionCode,
+                'year'             => $published->year,
+                'brand_id'         => $published->brand_id,
+                'source_schema_id' => $published->source_schema_id ?? ($published->brand_id ? $published->id : null),
+                'title'            => $published->title,
+                'status'           => FormSchema::STATUS_DRAFT,
+                'schema_hash'      => null,
+                'is_active'        => false,
+                'published_at'     => null,
+                'published_by'     => null,
+                'created_by'       => $creator?->id,
             ]);
 
             // Klon semua field aktif yang belum diarsipkan
@@ -925,11 +1064,18 @@ class FormBuilderService
             // Kunci versi kode definitif (hilangkan suffix -draft)
             $publishedVersionCode = preg_replace('/-draft$/', '', $lockedDraft->version_code);
 
-            // Arsipkan versi published aktif sebelumnya melalui Eloquent model update
-            $previousPublishedSchemas = FormSchema::where('year', $lockedDraft->year)
+            // Arsipkan versi published aktif sebelumnya pada scope yang sama (brand yang sama atau global baseline)
+            $prevPubQuery = FormSchema::where('year', $lockedDraft->year)
                 ->where('status', FormSchema::STATUS_PUBLISHED)
-                ->where('is_active', true)
-                ->get();
+                ->where('is_active', true);
+
+            if ($lockedDraft->brand_id !== null) {
+                $prevPubQuery->where('brand_id', $lockedDraft->brand_id);
+            } else {
+                $prevPubQuery->whereNull('brand_id');
+            }
+
+            $previousPublishedSchemas = $prevPubQuery->get();
 
             foreach ($previousPublishedSchemas as $prevSchema) {
                 $prevSchema->update([
@@ -986,7 +1132,15 @@ class FormBuilderService
             $this->clonePublishedToDraft($lockedDraft, $publisher);
 
             // P1.2: Catat IntegrationOutboxEvent secara atomik dalam transaksi publikasi lokal
-            $regConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+            $regConnectionQuery = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION);
+            if ($lockedDraft->brand_id !== null) {
+                $regConnection = (clone $regConnectionQuery)->where('brand_id', $lockedDraft->brand_id)->first()
+                    ?? (clone $regConnectionQuery)->whereNull('brand_id')->first();
+            } else {
+                $regConnection = (clone $regConnectionQuery)->whereNull('brand_id')->first()
+                    ?? $regConnectionQuery->first();
+            }
+
             $idempotencyKey = 'publish_sync_' . $lockedDraft->id . '_' . $publishedVersionCode . '_' . substr($schemaHash, 0, 16);
 
             $isConfigured = $regConnection && $regConnection->is_enabled && !empty($regConnection->spreadsheet_id);
@@ -1475,6 +1629,7 @@ class FormBuilderService
         $snapshotPayload = [
             'version_code' => $schema->version_code,
             'year'         => $schema->year,
+            'brand_id'     => $schema->brand_id,
             'title'        => $schema->title,
             'frozen_at'    => now()->toIso8601String(),
             'fields'       => $activeFields->map(fn($f) => [
@@ -1638,10 +1793,17 @@ class FormBuilderService
     protected function generateNextDraftVersionCode(FormSchema $published): string
     {
         $current = $published->version_code;
-        if (preg_match('/v(\d+)\.(\d+)/', $current, $m)) {
+        if (preg_match('/v(\d+)\.(\d+)(?:-([A-Za-z0-9_-]+))?/', $current, $m)) {
             $major = (int) $m[1];
             $minor = (int) $m[2] + 1;
-            return "v{$major}.{$minor}-draft";
+            $suffix = !empty($m[3]) ? "-{$m[3]}" : '';
+            return "v{$major}.{$minor}{$suffix}-draft";
+        }
+
+        if ($published->brand_id) {
+            $brand = \App\Models\Brand::find($published->brand_id);
+            $brandCode = $brand ? strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $brand->code ?? $brand->name ?? (string)$published->brand_id)) : "B{$published->brand_id}";
+            return "v{$published->year}.2-{$brandCode}-draft";
         }
 
         return "v{$published->year}.2-draft";

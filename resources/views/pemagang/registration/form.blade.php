@@ -1005,17 +1005,111 @@
         <div class="flex items-center gap-2 pb-1">
           <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">5</span>
           <div>
-            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Finalisasi & Submit</h3>
-            <p class="text-xs text-gray-500">Tinjau ketentuan program magang dan kirim formulir pendaftaran Anda.</p>
+            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider">{{ $submitSettings->section_title ?? 'Finalisasi & Submit' }}</h3>
+            <p class="text-xs text-gray-500">{{ $submitSettings->section_subtitle ?? 'Tinjau ketentuan program magang dan kirim formulir pendaftaran Anda.' }}</p>
           </div>
         </div>
 
-        {{-- Info unpaid --}}
-        @if(!$registration || $registration->is_draft || $registration->internship_status === 'waiting')
+        {{-- Info unpaid / ketentuan --}}
+        @if(($submitSettings->show_notice_box ?? true) && (!$registration || $registration->is_draft || $registration->internship_status === 'waiting'))
         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-          <strong>Perhatian:</strong> Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
-          Setelah submit, konfirmasi ke WA Admin <strong>0895 2900 2944</strong> dengan pesan
-          <em>"SAYA SUDAH ISI FORM"</em>.
+          <strong>{{ $submitSettings->notice_title ?? 'Perhatian:' }}</strong> {{ $submitSettings->notice_text ?? 'Program magang ini bersifat unpaid / tidak bergaji.' }}
+          @if(!empty($submitSettings->admin_wa_number))
+            Setelah submit, konfirmasi ke WA Admin <strong>{{ $submitSettings->admin_wa_number }}</strong>
+            @if(!empty($submitSettings->admin_wa_message))
+              dengan pesan <em>"{{ $submitSettings->admin_wa_message }}"</em>
+            @endif.
+          @endif
+        </div>
+        @endif
+
+        {{-- Pertanyaan / Checklist Tambahan di Section 5 (Submit) --}}
+        @php
+            $submitFields = collect($groupedFields[\App\Models\FormField::GROUP_FINALISASI_SUBMIT] ?? $groupedFields['finalisasi_submit'] ?? []);
+        @endphp
+        @if($submitFields->isNotEmpty())
+        <div class="space-y-4 pt-1 pb-2">
+            @foreach($submitFields as $field)
+                @php
+                    $val = $old($field->field_key);
+                    $hasOptText = (bool) preg_match('/\(opsional\)/i', (string) $field->label);
+                    $req = $field->is_required
+                        ? '<span class="text-red-500">*</span>'
+                        : (!$hasOptText ? '<span class="text-xs text-gray-400 font-normal font-sans ml-1">(Opsional)</span>' : '');
+                @endphp
+                <div class="rounded-lg border border-gray-200 bg-white p-3.5 sm:p-4 shadow-2xs">
+                    @if($field->field_type === 'checkbox')
+                        @php
+                            $options = $field->options ?? [];
+                        @endphp
+                        @if(!empty($options))
+                            <label class="{{ $label }} mb-2 font-semibold text-gray-800">
+                                {!! e($field->label) !!} {!! $req !!}
+                            </label>
+                            <div class="space-y-2">
+                                @foreach($options as $opt)
+                                    @php
+                                        $checked = is_array($val) ? in_array($opt['value'], $val) : ($val == $opt['value']);
+                                    @endphp
+                                    <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                                        <input type="checkbox" name="{{ $field->field_key }}[]" value="{{ $opt['value'] }}"
+                                            class="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                            {{ $checked ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
+                                        <span>{{ $opt['label'] }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        @else
+                            {{-- Single standalone agreement checkbox --}}
+                            <label class="flex items-start gap-2.5 text-sm text-gray-800 font-medium cursor-pointer">
+                                <input type="checkbox" name="{{ $field->field_key }}" value="1"
+                                    class="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    {{ $val ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
+                                <span>{!! e($field->label) !!} {!! $req !!}</span>
+                            </label>
+                        @endif
+                    @elseif($field->field_type === 'textarea')
+                        <label class="{{ $label }} mb-1 font-semibold text-gray-800">
+                            {!! e($field->label) !!} {!! $req !!}
+                        </label>
+                        <textarea name="{{ $field->field_key }}" rows="3" placeholder="{{ $field->placeholder }}"
+                            class="{{ $input }} resize-none" {{ $field->is_required ? 'required' : '' }}>{{ $val }}</textarea>
+                    @elseif($field->field_type === 'select')
+                        <label class="{{ $label }} mb-1 font-semibold text-gray-800">
+                            {!! e($field->label) !!} {!! $req !!}
+                        </label>
+                        <select name="{{ $field->field_key }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
+                            <option value="">{{ $field->placeholder ?: '-- Pilih --' }}</option>
+                            @foreach($field->options ?? [] as $opt)
+                                <option value="{{ $opt['value'] }}" {{ $val == $opt['value'] ? 'selected' : '' }}>{{ $opt['label'] }}</option>
+                            @endforeach
+                        </select>
+                    @elseif($field->field_type === 'radio')
+                        <label class="{{ $label }} mb-2 font-semibold text-gray-800">
+                            {!! e($field->label) !!} {!! $req !!}
+                        </label>
+                        <div class="flex flex-wrap gap-4">
+                            @foreach($field->options ?? [] as $opt)
+                                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                    <input type="radio" name="{{ $field->field_key }}" value="{{ $opt['value'] }}"
+                                        class="{{ $radio }}" {{ $val == $opt['value'] ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
+                                    <span>{{ $opt['label'] }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    @else
+                        <label class="{{ $label }} mb-1 font-semibold text-gray-800">
+                            {!! e($field->label) !!} {!! $req !!}
+                        </label>
+                        <input type="{{ $field->field_type }}" name="{{ $field->field_key }}" value="{{ $val }}"
+                            placeholder="{{ $field->placeholder }}" class="{{ $input }}" {{ $field->is_required ? 'required' : '' }}>
+                    @endif
+
+                    @if($field->helper_text)
+                        <p class="mt-1 text-xs text-gray-400">{{ $field->helper_text }}</p>
+                    @endif
+                </div>
+            @endforeach
         </div>
         @endif
 
@@ -1027,8 +1121,9 @@
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:opacity-95 transition cursor-pointer"
               style="background-color:#1a5c38;">
               <i class="fas fa-paper-plane text-xs"></i>
-              Kirim Pendaftaran
+              {{ $submitSettings->submit_button_text ?? 'Kirim Pendaftaran' }}
             </button>
+            @if($submitSettings->save_draft_enabled ?? true)
             <button type="button" id="btn-save-local"
               class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition cursor-pointer"
               title="Simpan data identitas dasar secara lokal di browser ini">
@@ -1044,6 +1139,7 @@
             <p class="text-[11px] text-gray-500 mt-2 w-full leading-relaxed">
               <i class="fas fa-shield-alt text-emerald-600"></i> <strong>Privasi Penyimpanan Lokal:</strong> Fitur "Simpan di Browser" bersifat opsional dan menyimpan data identitas dasar secara teks biasa (tidak terenkripsi) di perangkat ini khusus untuk akun Anda. Berkas lampiran dan jawaban formulir tidak pernah disimpan di penyimpanan browser. <strong>Peringatan Perangkat Bersama:</strong> Jika Anda menggunakan komputer publik atau bersama, harap gunakan tombol "Hapus Draft Browser" sebelum meninggalkan perangkat untuk menjaga privasi akun Anda.
             </p>
+            @endif
           @else
             {{-- Sudah submit → hanya bisa update data --}}
             <button type="submit" id="btn-submit-registration"

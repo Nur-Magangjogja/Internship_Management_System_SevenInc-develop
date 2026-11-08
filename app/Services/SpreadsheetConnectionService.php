@@ -369,6 +369,28 @@ class SpreadsheetConnectionService
                     $connection->brand_id = !empty($data['brand_id']) ? (int) $data['brand_id'] : null;
                 }
 
+                if (array_key_exists('is_yearly_cloning_enabled', $data)) {
+                    $connection->is_yearly_cloning_enabled = (bool) $data['is_yearly_cloning_enabled'];
+                }
+
+                if (array_key_exists('tab_creation_mode', $data)) {
+                    $connection->tab_creation_mode = $data['tab_creation_mode'];
+                }
+
+                if (array_key_exists('yearly_tab_template_name', $data)) {
+                    $connection->yearly_tab_template_name = $data['yearly_tab_template_name'] ? trim((string) $data['yearly_tab_template_name']) : 'TEMPLATE_TAHUN';
+                }
+
+                if (array_key_exists('allow_custom_tab_naming', $data)) {
+                    $connection->allow_custom_tab_naming = (bool) $data['allow_custom_tab_naming'];
+                }
+
+                if (array_key_exists('default_integrated_status', $data)) {
+                    $connection->default_integrated_status = in_array($data['default_integrated_status'], ['waiting', 'pending', 'accepted', 'active'], true)
+                        ? $data['default_integrated_status']
+                        : 'waiting';
+                }
+
                 $connection->display_name = $data['display_name'] ?? $connection->display_name;
                 $connection->spreadsheet_url = $spreadsheetUrl;
                 $connection->spreadsheet_id = $spreadsheetId;

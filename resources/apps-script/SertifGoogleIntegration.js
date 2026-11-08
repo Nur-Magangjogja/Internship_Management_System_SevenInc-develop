@@ -553,6 +553,12 @@ function doPost(e) {
       case "attach_row_sync_id":
         return handleAttachRowSyncIdAction(payload);
 
+      case "duplicate_or_create_tab":
+        return handleDuplicateOrCreateTabAction(payload);
+
+      case "append_system_header_ids":
+        return handleAppendSystemHeaderIdsAction(payload);
+
       default:
         return createJsonResponse({
           success: false,
@@ -3781,10 +3787,18 @@ function deriveHeaderRowForSheet(sheetName, connectionKey, explicitHeaderRow) {
   }
   var cleanName = (sheetName || "").toString().trim();
   // Strictly 4-digit year tabs (e.g. 2026, 2025) and TEMPLATE_TAHUN have header on row 12.
-  // Other tabs (Petunjuk, Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
   if (/^\d{4}$/.test(cleanName) || cleanName === "TEMPLATE_TAHUN") {
     return 12;
   }
+  // Form Pendaftaran Magang / Jogja tabs: header is on row 10
+  if (/form\s*pendaftaran/i.test(cleanName)) {
+    return 10;
+  }
+  // Form Responses tabs (e.g. Form Responses 1 / AreaKerja): header is on row 7 or row 1
+  if (/form\s*responses/i.test(cleanName)) {
+    return 7;
+  }
+  // Other tabs (Petunjuk, Follow-Up, Sidecars, Custom_Fields, etc.) have header on row 1.
   return 1;
 }
 
@@ -4116,14 +4130,19 @@ function handleReadRowsPageAction(payload) {
 
     var pageSize = parseInt(payload.page_size, 10);
     if (isNaN(pageSize) || pageSize < 1) pageSize = 20;
-    if (pageSize > 100) pageSize = 100; // STRICT UPPER BOUND 100
+    if (pageSize > 500) pageSize = 500; // UPPER BOUND 500
 
-    var totalDataRows = Math.max(0, lastRow - headerRow);
+    var dataStartRow = (payload.data_start_row !== undefined && payload.data_start_row !== null && !isNaN(parseInt(payload.data_start_row, 10)) && parseInt(payload.data_start_row, 10) > headerRow)
+      ? parseInt(payload.data_start_row, 10)
+      : (headerRow + 1);
+
+    var totalDataRows = Math.max(0, lastRow - dataStartRow + 1);
     if (totalDataRows === 0 || lastCol < 1) {
       return createJsonResponse({
         success: true,
         tab_name: tabName,
         header_row: headerRow,
+        data_start_row: dataStartRow,
         page: page,
         page_size: pageSize,
         total_rows: 0,
@@ -4140,6 +4159,7 @@ function handleReadRowsPageAction(payload) {
         success: true,
         tab_name: tabName,
         header_row: headerRow,
+        data_start_row: dataStartRow,
         page: page,
         page_size: pageSize,
         total_rows: totalDataRows,
@@ -4165,10 +4185,13 @@ function handleReadRowsPageAction(payload) {
 
     var startOffset = (page - 1) * pageSize;
     var rowsToFetch = Math.min(pageSize, totalDataRows - startOffset);
-    var startSheetRow = headerRow + 1 + startOffset;
+    var startSheetRow = dataStartRow + startOffset;
 
+    var fetchColors = payload.fetch_colors !== false;
     var dataRange = sheet.getRange(startSheetRow, 1, rowsToFetch, lastCol);
     var dataValues = dataRange.getValues();
+    var dataDisplayValues = (typeof dataRange.getDisplayValues === "function") ? dataRange.getDisplayValues() : null;
+    var dataBackgrounds = fetchColors ? dataRange.getBackgrounds() : null;
 
     var rows = [];
     var maskPii = payload.mask_pii !== false;
@@ -4179,13 +4202,41 @@ function handleReadRowsPageAction(payload) {
         _row_number: currentRowNumber
       };
 
+      var rowBg = "#ffffff";
+      if (dataBackgrounds && dataBackgrounds[r]) {
+        for (var bgCol = 0; bgCol < dataBackgrounds[r].length; bgCol++) {
+          var bgVal = String(dataBackgrounds[r][bgCol] || "").toLowerCase();
+          if (bgVal && bgVal !== "#ffffff" && bgVal !== "white" && bgVal !== "") {
+            rowBg = bgVal;
+            break;
+          }
+        }
+      }
+
+      var isDivider = false;
+      var nonEmptyCount = 0;
+      var dividerText = "";
+
       for (var colIdx = 0; colIdx < headerMap.length; colIdx++) {
         var hName = headerMap[colIdx].header_name;
         var cellRaw = dataValues[r][colIdx];
+        var cellDisplay = (dataDisplayValues && dataDisplayValues[r]) ? String(dataDisplayValues[r][colIdx] || "").trim() : "";
+
+        // Preserve leading zero on phone numbers or identifier codes
+        if (cellDisplay && cellDisplay.startsWith("0") && cellDisplay.length >= 6 && typeof cellRaw === "number") {
+          cellRaw = cellDisplay;
+        }
+
         if (cellRaw instanceof Date) {
           cellRaw = cellRaw.toISOString().split("T")[0];
         } else if (cellRaw === null || cellRaw === undefined) {
           cellRaw = "";
+        }
+
+        var cellStr = String(cellRaw || "").trim();
+        if (cellStr !== "") {
+          nonEmptyCount++;
+          if (!dividerText) dividerText = cellStr;
         }
 
         if (maskPii && typeof cellRaw === "string" && cellRaw !== "") {
@@ -4194,6 +4245,16 @@ function handleReadRowsPageAction(payload) {
           rowObj[hName] = cellRaw;
         }
       }
+
+      if (nonEmptyCount === 1 && dividerText.length >= 2) {
+        if (/calon|terima|aktif|lolos|lulus|selesai|tolak|keluar|batch|gelombang|periode|divisi|pendaftar|pemagang/i.test(dividerText)) {
+          isDivider = true;
+        }
+      }
+
+      rowObj._row_background = rowBg;
+      rowObj._is_divider = isDivider;
+      rowObj._divider_text = isDivider ? dividerText : "";
 
       rows.push(rowObj);
     }
@@ -4869,6 +4930,283 @@ function createJsonResponse(obj, statusCode) {
   };
 }
 
+/**
+ * Duplikasi tab template atau buat tab baru untuk tahunan / batch baru
+ */
+function handleDuplicateOrCreateTabAction(payload) {
+  try {
+    var ssRes = resolveSpreadsheetWithAllowlist(payload);
+    if (!ssRes.success) {
+      return createJsonResponse(ssRes, 400);
+    }
+    var spreadsheet = ssRes.spreadsheet;
+    var sourceTabName = (payload.source_tab_name || "TEMPLATE_TAHUN").toString().trim();
+    var newTabName = (payload.new_tab_name || "").toString().trim();
+
+    if (!newTabName) {
+      return createJsonResponse({ success: false, error_code: "INVALID_TAB_NAME", message: "Nama tab baru wajib diisi." }, 400);
+    }
+
+    var existingTab = spreadsheet.getSheetByName(newTabName);
+    if (existingTab) {
+      return createJsonResponse({
+        success: true,
+        already_exists: true,
+        tab_name: newTabName,
+        sheet_id: existingTab.getSheetId(),
+        message: "Tab '" + newTabName + "' sudah tersedia di Spreadsheet."
+      }, 200);
+    }
+
+    var sourceTab = spreadsheet.getSheetByName(sourceTabName);
+    var newSheet;
+    if (sourceTab) {
+      newSheet = sourceTab.copyTo(spreadsheet);
+      newSheet.setName(newTabName);
+      var defaultHeaderRow = deriveCanonicalHeaderRow(sourceTabName);
+      var lastRow = newSheet.getLastRow();
+      if (lastRow > defaultHeaderRow) {
+        var maxCol = newSheet.getLastColumn() || 1;
+        newSheet.getRange(defaultHeaderRow + 1, 1, lastRow - defaultHeaderRow, maxCol).clearContent();
+      }
+    } else {
+      newSheet = spreadsheet.insertSheet(newTabName);
+    }
+
+    return createJsonResponse({
+      success: true,
+      tab_name: newTabName,
+      sheet_id: newSheet.getSheetId(),
+      message: "Tab '" + newTabName + "' berhasil dibuat di Spreadsheet."
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "DUPLICATE_TAB_ERROR",
+      message: "Gagal membuat/menduplikasi tab: " + err.toString()
+    }, 500);
+  }
+}
+
+/**
+ * ============================================================================
+ * LIVE EVENT O(1) TARGETED ROW PUSH (Bebas Lag & Nol Scanning Riwayat Lama)
+ * ============================================================================
+ * Handler untuk installable trigger onEdit(e) di Google Sheets.
+ * Mengakses koordinat baris langsung secara O(1) tanpa menyusuri seluruh isi sheet.
+ */
+function handleLiveRowEdit(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  var sheetName = sheet.getName();
+
+  // Abaikan tab sistem / sidecar / template
+  if (/TEMPLATE|LOG|SYSTEM|SIDECAR/i.test(sheetName)) return;
+
+  var editedRow = e.range.getRow();
+  var headerRow = deriveHeaderRowForSheet(sheet, sheetName);
+  var dataStartRow = headerRow + 1;
+
+  if (editedRow < dataStartRow) return;
+
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+
+  var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  var rowValues = sheet.getRange(editedRow, 1, 1, lastCol).getValues()[0];
+
+  // Cari kolom SERTIF_SYNC_ID, Nama, dan Kontak
+  var syncIdCol = -1;
+  var regIdCol = -1;
+  var syncStatusCol = -1;
+  var lastSyncCol = -1;
+  var hasName = false;
+  var hasContact = false;
+  var rowData = {};
+
+  for (var c = 0; c < headers.length; c++) {
+    var h = String(headers[c] || "").trim();
+    var val = rowValues[c];
+    if (!h) continue;
+    rowData[h] = val;
+
+    var hLow = h.toLowerCase();
+    if (hLow === "sertif_sync_id") syncIdCol = c + 1;
+    else if (hLow === "sertif_registration_id") regIdCol = c + 1;
+    else if (hLow === "sertif_sync_status") syncStatusCol = c + 1;
+    else if (hLow === "sertif_last_sync_at") lastSyncCol = c + 1;
+
+    if ((hLow.indexOf("nama") !== -1 || hLow === "nama lengkap") && val && String(val).trim()) hasName = true;
+    if ((hLow.indexOf("email") !== -1 || hLow.indexOf("hp") !== -1 || hLow.indexOf("wa") !== -1) && val && String(val).trim()) hasContact = true;
+  }
+
+  // Jika kolom SERTIF_SYNC_ID sudah terisi, abaikan seketika (O(1) exit, nol request)
+  if (syncIdCol > 0 && rowValues[syncIdCol - 1] && String(rowValues[syncIdCol - 1]).trim()) {
+    return;
+  }
+
+  // Hanya kirim jika identitas minimal sudah terisi (Nama dan Kontak)
+  if (!hasName || !hasContact) return;
+
+  // Ambil URL Webhook SertIF dan Shared Secret dari Script Properties
+  var scriptProps = PropertiesService.getScriptProperties();
+  var sertifWebhookUrl = scriptProps.getProperty("SERTIF_WEBHOOK_URL");
+  var sharedSecret = scriptProps.getProperty("SHARED_SECRET") || scriptProps.getProperty("SHARED_API_KEY");
+
+  if (!sertifWebhookUrl) return;
+
+  var spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  var payload = {
+    spreadsheet_id: spreadsheetId,
+    tab_name: sheetName,
+    rows: [
+      {
+        row_index: editedRow,
+        data: rowData
+      }
+    ]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(sertifWebhookUrl, {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        "X-Shared-Secret": sharedSecret || ""
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var resCode = response.getResponseCode();
+    if (resCode >= 200 && resCode < 300) {
+      var resJson = JSON.parse(response.getContentText());
+      if (resJson.success && resJson.processed && resJson.processed.length > 0) {
+        var p = resJson.processed[0];
+        if (syncIdCol > 0) sheet.getRange(editedRow, syncIdCol).setValue(p.sync_id);
+        if (regIdCol > 0) sheet.getRange(editedRow, regIdCol).setValue(p.registration_id);
+        if (syncStatusCol > 0) sheet.getRange(editedRow, syncStatusCol).setValue("SYNCED");
+        if (lastSyncCol > 0) sheet.getRange(editedRow, lastSyncCol).setValue(new Date().toISOString());
+      }
+    }
+  } catch (err) {
+    // Fail silently in background to avoid disrupting spreadsheet operator
+    console.error("Live push failed: " + err.toString());
+  }
+}
+
+/**
+ * Aksi: append_system_header_ids
+ * Menambahkan 5 kolom sistem identitas SertIF (KET, SERTIF_SYNC_ID, SERTIF_REGISTRATION_ID, SERTIF_SYNC_STATUS, SERTIF_LAST_SYNC_AT)
+ * pada baris header tab jika belum ada.
+ */
+function handleAppendSystemHeaderIdsAction(payload) {
+  try {
+    var resolved = resolveSpreadsheetWithAllowlist(payload);
+    if (resolved.error) {
+      return createJsonResponse({
+        success: false,
+        error_code: resolved.code || "SPREADSHEET_NOT_FOUND",
+        is_retryable: false,
+        message: resolved.error
+      }, resolved.code === "SPREADSHEET_NOT_ALLOWLISTED" ? 403 : 404);
+    }
+
+    if (isLegacySource(resolved.spreadsheetId)) {
+      return createJsonResponse({
+        success: false,
+        error_code: "LEGACY_SOURCE_READONLY",
+        is_retryable: false,
+        message: "Spreadsheet target terdaftar sebagai arsip historis lama (LEGACY_SOURCES) yang bersifat BACA-SAJA."
+      }, 403);
+    }
+
+    var ss = resolved.spreadsheet;
+    var tabName = (payload.tab_name || "").toString().trim();
+    if (!tabName) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NAME_REQUIRED",
+        is_retryable: false,
+        message: "Parameter 'tab_name' wajib diisi."
+      }, 400);
+    }
+
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) {
+      return createJsonResponse({
+        success: false,
+        error_code: "TAB_NOT_FOUND",
+        is_retryable: false,
+        message: "Tab '" + tabName + "' tidak ditemukan."
+      }, 404);
+    }
+
+    var connectionKey = (payload.connection_key || "registration").toString().trim();
+    var headerRow = deriveHeaderRowForSheet(tabName, connectionKey, payload.header_row);
+    var lastCol = sheet.getLastColumn();
+
+    var existingHeaders = [];
+    if (lastCol > 0 && sheet.getLastRow() >= headerRow) {
+      existingHeaders = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+    }
+
+    var systemColsToAppend = [];
+    var requiredCols = [
+      "KET",
+      "SERTIF_SYNC_ID",
+      "SERTIF_REGISTRATION_ID",
+      "SERTIF_SYNC_STATUS",
+      "SERTIF_LAST_SYNC_AT"
+    ];
+
+    for (var i = 0; i < requiredCols.length; i++) {
+      var req = requiredCols[i];
+      var found = false;
+      for (var c = 0; c < existingHeaders.length; c++) {
+        var cleanH = (existingHeaders[c] || "").toString().trim().toUpperCase();
+        if (cleanH === req) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        systemColsToAppend.push(req);
+      }
+    }
+
+    if (systemColsToAppend.length > 0) {
+      var startWriteCol = lastCol + 1;
+      var rangeToSet = sheet.getRange(headerRow, startWriteCol, 1, systemColsToAppend.length);
+      rangeToSet.setValues([systemColsToAppend]);
+      rangeToSet.setFontWeight("bold");
+      rangeToSet.setBackground("#f1f5f9");
+      SpreadsheetApp.flush();
+    }
+
+    // Refresh last headers
+    var newLastCol = sheet.getLastColumn();
+    var updatedHeaders = sheet.getRange(headerRow, 1, 1, newLastCol).getValues()[0];
+
+    return createJsonResponse({
+      success: true,
+      action: "append_system_header_ids",
+      tab_name: tabName,
+      header_row: headerRow,
+      appended_columns: systemColsToAppend,
+      total_columns: newLastCol,
+      headers: updatedHeaders
+    }, 200);
+  } catch (err) {
+    return createJsonResponse({
+      success: false,
+      error_code: "APPEND_HEADER_IDS_FAILED",
+      is_retryable: false,
+      message: "Gagal menambahkan kolom header ID: " + err.toString()
+    }, 500);
+  }
+}
+
 // Node.js test environment interoperability export
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
@@ -4903,6 +5241,9 @@ if (typeof module !== "undefined" && module.exports) {
     computeDeterministicSchemaHash: computeDeterministicSchemaHash,
     handleInspectTargetAction: handleInspectTargetAction,
     handleActivateAuthorizedTargetAction: handleActivateAuthorizedTargetAction,
-    handleAttachRowSyncIdAction: handleAttachRowSyncIdAction
+    handleAttachRowSyncIdAction: handleAttachRowSyncIdAction,
+    handleDuplicateOrCreateTabAction: handleDuplicateOrCreateTabAction,
+    handleAppendSystemHeaderIdsAction: handleAppendSystemHeaderIdsAction,
+    handleLiveRowEdit: handleLiveRowEdit
   };
 }

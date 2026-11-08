@@ -129,6 +129,37 @@ class AcceptedInternAnalyticsServiceTest extends TestCase
             AcceptedInternAnalyticsService::SOURCE_INTEGRATED,
             $this->service->resolveSourceCategory($regReconciled)
         );
+
+        // 5. Pemberian ID / Terintegrasi via is_integrated flag
+        $regGivenId = new InternshipRegistration([
+            'is_outsider'   => false,
+            'is_integrated' => true,
+        ]);
+        $this->assertSame(
+            AcceptedInternAnalyticsService::SOURCE_INTEGRATED,
+            $this->service->resolveSourceCategory($regGivenId)
+        );
+
+        // 6. Terintegrasi via registration_type
+        $regTypeIntegrated = new InternshipRegistration([
+            'is_outsider'       => false,
+            'registration_type' => 'integrated',
+        ]);
+        $this->assertSame(
+            AcceptedInternAnalyticsService::SOURCE_INTEGRATED,
+            $this->service->resolveSourceCategory($regTypeIntegrated)
+        );
+
+        // 7. Pendaftaran web mandiri SERTIF tetap SOURCE_DIRECT meskipun ada aktivitas sinkronisasi
+        $regWebDirect = new InternshipRegistration([
+            'is_outsider'             => false,
+            'registration_type'       => 'web',
+            'registration_provenance' => 'direct_web',
+        ]);
+        $this->assertSame(
+            AcceptedInternAnalyticsService::SOURCE_DIRECT,
+            $this->service->resolveSourceCategory($regWebDirect)
+        );
     }
 
     /**
@@ -154,6 +185,14 @@ class AcceptedInternAnalyticsServiceTest extends TestCase
         // Alumni Terintegrasi (completed)
         $reg5 = new InternshipRegistration(['is_outsider' => true, 'internship_status' => 'completed']);
         $this->assertSame('Alumni Terintegrasi', $reg5->provenance_label);
+
+        // Terintegrasi karena pemberian ID (is_integrated = true meskipun bukan outsider)
+        $regGivenIdAccepted = new InternshipRegistration([
+            'is_outsider'       => false,
+            'is_integrated'     => true,
+            'internship_status' => 'accepted',
+        ]);
+        $this->assertSame('Pemagang Terintegrasi', $regGivenIdAccepted->provenance_label);
     }
 
     /**

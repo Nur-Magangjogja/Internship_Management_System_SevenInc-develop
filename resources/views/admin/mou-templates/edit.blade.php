@@ -338,8 +338,10 @@
 </div>
 
 <script type="application/json" id="templateBrandsMapJson">{!! json_encode($brandsMap ?? []) !!}</script>
+<script type="application/json" id="defaultCompanyValuesJson">{!! json_encode(\App\Models\MouTemplate::getDefaultCompanyValues()) !!}</script>
 <script>
 const templateBrandsMap = JSON.parse(document.getElementById('templateBrandsMapJson')?.textContent || '{}');
+const defaultCompanyValues = JSON.parse(document.getElementById('defaultCompanyValuesJson')?.textContent || '{}');
 let isTemplateMouNumberManuallyEdited = {{ old('company_mou_number') && old('company_mou_number') !== ($compDefs['company_mou_number'] ?? '') ? 'true' : 'false' }};
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -359,15 +361,61 @@ function resetTemplateMouNumberToBrand() {
 
     if (brandId && templateBrandsMap[brandId]?.suggested_number) {
         numInput.value = templateBrandsMap[brandId].suggested_number;
+    } else {
+        numInput.value = defaultCompanyValues.company_mou_number || '';
     }
     isTemplateMouNumberManuallyEdited = false;
 }
 
 function handleTemplateBrandSelectionChange(brandId) {
     if (!brandId || !templateBrandsMap[brandId]) {
+        // Reset kembali ke identitas baku dasar perusahaan (SEVEN INC / Kustom tanpa brand khusus)
+        const defaultLogo = defaultCompanyValues.company_logo || '/images/mou/seven-inc-logo.png';
         const logoInput = document.getElementById('companyLogoPathInput') || document.querySelector('input[name="company_logo"]');
-        if (logoInput) logoInput.value = '/images/mou/seven-inc-logo.png';
-        window.MouWordProcessor?.setCompanyLogo?.('/images/mou/seven-inc-logo.png');
+        if (logoInput) logoInput.value = defaultLogo;
+        window.MouWordProcessor?.setCompanyLogo?.(defaultLogo);
+
+        const nameInput = document.getElementById('company_name');
+        if (nameInput) nameInput.value = defaultCompanyValues.company_name || 'SEVEN INC';
+
+        const sigInput = document.getElementById('company_signatory_name');
+        if (sigInput) sigInput.value = defaultCompanyValues.company_signatory_name || 'Rekario Danny Sanjaya, S.Kom.';
+
+        const titleInput = document.getElementById('company_signatory_title');
+        if (titleInput) titleInput.value = defaultCompanyValues.company_signatory_title || 'Pimpinan';
+
+        const emailInput = document.getElementById('company_email');
+        if (emailInput) emailInput.value = defaultCompanyValues.company_email || 'magangjogjadotcom@gmail.com';
+
+        const addrInput = document.getElementById('company_address');
+        if (addrInput) addrInput.value = defaultCompanyValues.company_address || 'Jl. Janti Gg. Arjuna No.59, Karangjambe, Banguntapan, Bantul, Yogyakarta 55198';
+
+        const phoneInput = document.getElementById('company_phone');
+        if (phoneInput) phoneInput.value = defaultCompanyValues.company_phone || '089529002944';
+
+        const faxInput = document.getElementById('company_fax');
+        if (faxInput) faxInput.value = defaultCompanyValues.company_fax || '-';
+
+        const unitInput = document.getElementById('company_correspondence_unit');
+        if (unitInput) unitInput.value = defaultCompanyValues.company_correspondence_unit || 'CEO';
+
+        const placeInput = document.getElementById('agreement_place');
+        if (placeInput) placeInput.value = defaultCompanyValues.company_city || defaultCompanyValues.agreement_place || 'Yogyakarta';
+
+        const durInput = document.getElementById('agreement_duration');
+        if (durInput) durInput.value = defaultCompanyValues.duration_years || defaultCompanyValues.agreement_duration || '5 (lima) tahun';
+
+        const numInput = document.getElementById('company_mou_number');
+        if (numInput) {
+            numInput.value = defaultCompanyValues.company_mou_number || '';
+            isTemplateMouNumberManuallyEdited = false;
+        }
+
+        if (window.MouWordProcessor) {
+            window.MouWordProcessor.state.mediaAssets = window.MouWordProcessor.state.mediaAssets || {};
+            window.MouWordProcessor.state.mediaAssets.company_logo = defaultLogo;
+            window.MouWordProcessor.refreshAllPageViews?.();
+        }
         return;
     }
 

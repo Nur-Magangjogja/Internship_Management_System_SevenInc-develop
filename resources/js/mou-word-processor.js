@@ -24,7 +24,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import { undoDepth, redoDepth } from '@tiptap/pm/history';
 import { importDocxFile, exportProseMirrorJsonToDocx, downloadDocxBlob } from './mou-docx-engine.js';
 
@@ -68,17 +68,29 @@ function buildStyleString(pairs) {
  * and attaches a bottom-right corner handle for whole-table width resizing.
  */
 class WordTableView extends TableView {
-    constructor(node, defaultCellMinWidth, editor) {
-        super(node, defaultCellMinWidth);
-        this.editor = editor;
+    constructor(node, defaultCellMinWidth, view, HTMLAttributes = {}, getPos = null, editor = null) {
+        super(node, defaultCellMinWidth, view, HTMLAttributes);
+        this.view = view;
+        this.getPos = typeof getPos === 'function' ? getPos : () => {
+            if (this.view && this.dom) {
+                try {
+                    return this.view.posAtDOM(this.dom, 0);
+                } catch (_) {}
+            }
+            return null;
+        };
+        this.editor = editor || (view && view.editor) || null;
         this.applyCustomTableAttributes(node);
         this.setupTableResizeHandle();
+        this.setupTableMoveHandle();
     }
 
     update(node) {
         const ok = super.update(node);
         if (ok) {
             this.applyCustomTableAttributes(node);
+            this.setupTableResizeHandle();
+            this.setupTableMoveHandle();
         }
         return ok;
     }
@@ -101,7 +113,14 @@ class WordTableView extends TableView {
         if (attrs.class) {
             this.table.className = attrs.class;
         }
-        if (attrs.class && (attrs.class.includes('mou-table-bordered') || attrs.class.includes('mou-correspondence-table') || attrs.class.includes('mou-paraf-table'))) {
+        const isBorderlessTable = (attrs.class && attrs.class.includes('mou-table-borderless'))
+            || attrs.tableStyle === 'borderless'
+            || attrs['data-table-style'] === 'borderless';
+
+        if (isBorderlessTable) {
+            this.table.style.border = 'none';
+            this.table.style.borderCollapse = 'collapse';
+        } else if (attrs.class && (attrs.class.includes('mou-table-bordered') || attrs.class.includes('mou-correspondence-table') || attrs.class.includes('mou-paraf-table'))) {
             this.table.style.border = '1px solid #000000';
             this.table.style.borderCollapse = 'collapse';
         }
@@ -192,6 +211,70 @@ class WordTableView extends TableView {
         const handle = document.createElement('div');
         handle.className = 'mou-table-width-handle no-print';
         handle.title = 'Tarik untuk mengubah lebar tabel keseluruhan';
+        this.dom.appendChild(handle);
+    }
+
+    setupTableMoveHandle() {
+        if (!this.dom) return;
+        this.dom.style.position = 'relative';
+        if (this.dom.querySelector('.mou-table-move-handle')) return;
+        const handle = document.createElement('div');
+        handle.className = 'mou-table-move-handle no-print';
+        handle.setAttribute('draggable', 'true');
+        handle.setAttribute('contenteditable', 'false');
+        handle.title = 'Tarik untuk memindahkan posisi tabel antar paragraf / halaman (atau klik untuk memilih tabel)';
+        handle.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="5 9 2 12 5 15"></polyline>
+            <polyline points="9 5 12 2 15 5"></polyline>
+            <polyline points="15 19 12 22 9 19"></polyline>
+            <polyline points="19 9 22 12 19 15"></polyline>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="12" y1="2" x2="12" y2="22"></line>
+        </svg>`;
+
+        handle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const view = this.view || (typeof window._mouGetActiveEditor === 'function' ? window._mouGetActiveEditor()?.view : null);
+            if (!view) return;
+            const pos = typeof this.getPos === 'function' ? this.getPos() : null;
+            if (typeof pos === 'number' && pos >= 0) {
+                try {
+                    const tr = view.state.tr;
+                    tr.setSelection(NodeSelection.create(tr.doc, pos));
+                    view.dispatch(tr);
+                    view.focus();
+                } catch (_) {}
+            }
+        });
+
+        handle.addEventListener('dragstart', (e) => {
+            const view = this.view || (typeof window._mouGetActiveEditor === 'function' ? window._mouGetActiveEditor()?.view : null);
+            const pos = typeof this.getPos === 'function' ? this.getPos() : null;
+            if (typeof pos !== 'number' || pos < 0) {
+                e.preventDefault();
+                return;
+            }
+            window._mouDraggingTableInfo = {
+                pos: pos,
+                node: this.node,
+                tableWrapper: this.dom,
+                view: view,
+            };
+            this.dom.classList.add('is-table-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'mou-table-drag');
+            e.stopPropagation();
+        });
+
+        handle.addEventListener('dragend', () => {
+            if (this.dom) this.dom.classList.remove('is-table-dragging');
+            window._mouDraggingTableInfo = null;
+            if (typeof window._mouRemoveTableDropIndicator === 'function') {
+                window._mouRemoveTableDropIndicator();
+            }
+        });
+
         this.dom.appendChild(handle);
     }
 }
@@ -501,6 +584,138 @@ function isTableFullySelected(state) {
 }
 
 /**
+ * Check if the cursor is at the very beginning of the table (row 0, col 0, offset 0)
+ */
+function isAtStartOfTable(selection) {
+    if (!selection || !selection.empty) return false;
+    const { $from } = selection;
+    if ($from.parentOffset !== 0) return false;
+
+    let tableDepth = -1;
+    for (let d = $from.depth; d >= 0; d--) {
+        if ($from.node(d).type.name === 'table') {
+            tableDepth = d;
+            break;
+        }
+    }
+    if (tableDepth === -1) return false;
+
+    // Check row is 0
+    if ($from.index(tableDepth) !== 0) return false;
+
+    // Check col is 0
+    if ($from.index(tableDepth + 1) !== 0) return false;
+
+    // Check block inside cell is the first block
+    if ($from.index(tableDepth + 2) !== 0) return false;
+
+    return true;
+}
+
+/**
+ * Handle Backspace at the beginning of a table:
+ * If an empty paragraph precedes the table in the same page or preceding page, delete it so the table pulls up.
+ * If the preceding block has text, move the cursor to the end of that block.
+ */
+function handleTableStartBackspace(editor) {
+    if (!editor || !editor.view) return false;
+    const { state, view } = editor;
+    const { selection } = state;
+    if (!isAtStartOfTable(selection)) return false;
+
+    const { $from } = selection;
+    let tableDepth = -1;
+    for (let d = $from.depth; d >= 0; d--) {
+        if ($from.node(d).type.name === 'table') {
+            tableDepth = d;
+            break;
+        }
+    }
+    if (tableDepth === -1) return false;
+
+    const parentContainer = $from.node(tableDepth - 1);
+    const tableIndexInParent = $from.index(tableDepth - 1);
+
+    // Case 1: Preceding sibling exists within the same parent container (same mouPage)
+    if (tableIndexInParent > 0) {
+        const prevSibling = parentContainer.child(tableIndexInParent - 1);
+        const prevSiblingPos = $from.posAtIndex(tableIndexInParent - 1, tableDepth - 1);
+
+        // If preceding sibling is an empty paragraph, delete it and pull the table up!
+        if (prevSibling.type.name === 'paragraph' && prevSibling.textContent.trim() === '') {
+            const tr = state.tr;
+            tr.delete(prevSiblingPos, prevSiblingPos + prevSibling.nodeSize);
+            view.dispatch(tr);
+            if (typeof window._mouTriggerReflowAfterDocChange === 'function') {
+                window._mouTriggerReflowAfterDocChange();
+            }
+            return true;
+        }
+
+        // If preceding sibling has content, move cursor to the end of that sibling
+        const prevSiblingEnd = prevSiblingPos + prevSibling.nodeSize - 1;
+        const tr = state.tr;
+        try {
+            const resolved = tr.doc.resolve(prevSiblingEnd);
+            const nearSel = Selection.near(resolved, -1);
+            if (nearSel) {
+                tr.setSelection(nearSel);
+                view.dispatch(tr);
+                return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    // Case 2: Table is the first child of the parent container (tableIndexInParent === 0)
+    // Check if parent container is a mouPage and there is a preceding page
+    if (parentContainer && parentContainer.type && parentContainer.type.name === 'mouPage') {
+        const pageIndex = $from.index(0); // Index of current page in doc
+        if (pageIndex > 0) {
+            const prevPageNode = state.doc.child(pageIndex - 1);
+            if (prevPageNode && prevPageNode.childCount > 0) {
+                const lastChild = prevPageNode.child(prevPageNode.childCount - 1);
+
+                let prevPagePos = 0;
+                for (let i = 0; i < pageIndex - 1; i++) {
+                    prevPagePos += state.doc.child(i).nodeSize;
+                }
+                let lastChildPos = prevPagePos + 1;
+                for (let c = 0; c < prevPageNode.childCount - 1; c++) {
+                    lastChildPos += prevPageNode.child(c).nodeSize;
+                }
+
+                // If last child on previous page is an empty paragraph, delete it so underflow pulls the table!
+                if (lastChild.type.name === 'paragraph' && lastChild.textContent.trim() === '') {
+                    const tr = state.tr;
+                    tr.delete(lastChildPos, lastChildPos + lastChild.nodeSize);
+                    view.dispatch(tr);
+                    if (typeof window._mouTriggerReflowAfterDocChange === 'function') {
+                        window._mouTriggerReflowAfterDocChange();
+                    }
+                    return true;
+                }
+
+                // If last child on previous page has content, move cursor to the end of it
+                const lastChildEnd = lastChildPos + lastChild.nodeSize - 1;
+                const tr = state.tr;
+                try {
+                    const resolved = tr.doc.resolve(lastChildEnd);
+                    const nearSel = Selection.near(resolved, -1);
+                    if (nearSel) {
+                        tr.setSelection(nearSel);
+                        view.dispatch(tr);
+                        return true;
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Extended Table supporting tableWidth, tableAlign, and class preservation.
  */
 const WordTable = Table.extend({
@@ -510,6 +725,12 @@ const WordTable = Table.extend({
             resizable: false, // Disables raw unconstrained PM col-resizer; we use interactive Word-style column resizer below!
             View: WordTableView,
             cellMinWidth: 14,
+        };
+    },
+    addNodeView() {
+        return ({ node, view, HTMLAttributes, getPos, editor }) => {
+            const mergedAttributes = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes);
+            return new WordTableView(node, this.options.cellMinWidth, view, mergedAttributes, getPos, editor || this.editor);
         };
     },
     addKeyboardShortcuts() {
@@ -530,6 +751,9 @@ const WordTable = Table.extend({
                 }
                 if (sel && typeof sel.isColSelection === 'function' && sel.isColSelection()) {
                     return editor.commands.deleteColumn();
+                }
+                if (handleTableStartBackspace(editor)) {
+                    return true;
                 }
                 return false;
             },
@@ -1770,12 +1994,22 @@ function normalizeLegacyHtmlForTiptap(rawHtml) {
             }
         });
 
+        const isTableBorderless = table.classList.contains('mou-table-borderless')
+            || table.getAttribute('data-table-style') === 'borderless'
+            || table.getAttribute('data-table-style') === 'none';
+
+        if (isTableBorderless) {
+            table.style.border = 'none';
+        }
+
         table.querySelectorAll('td, th').forEach(cell => {
             if (!cell.style.padding) {
                 cell.style.padding = '5pt 7pt';
             }
             if (!cell.style.border) {
-                cell.style.border = '1px solid #000000';
+                cell.style.border = isTableBorderless ? 'none' : '1px solid #000000';
+            } else if (isTableBorderless && (cell.style.border === '1px solid #000000' || cell.style.border === '1px solid rgb(0, 0, 0)')) {
+                cell.style.border = 'none';
             }
         });
     });
@@ -1917,6 +2151,14 @@ function synchronizeSerializedHtml(rawHtml) {
     if (!root) return rawHtml;
 
     root.querySelectorAll('table').forEach(table => {
+        const isTableBorderless = table.classList.contains('mou-table-borderless')
+            || table.getAttribute('data-table-style') === 'borderless'
+            || table.getAttribute('data-table-style') === 'none';
+
+        if (isTableBorderless) {
+            table.style.border = 'none';
+        }
+
         const tWidth = table.getAttribute('data-table-width') || table.style.width || '100%';
         table.setAttribute('data-table-width', tWidth);
         table.style.width = tWidth;
@@ -1981,6 +2223,15 @@ function synchronizeSerializedHtml(rawHtml) {
                         }
                     }
                 }
+                if (isTableBorderless) {
+                    if (cell.style.border === '1px solid #000000' || cell.style.border === '1px solid rgb(0, 0, 0)') {
+                        cell.style.border = 'none';
+                    }
+                    if (cell.style.borderRight === '1px solid #000000' || cell.style.borderRight === '1px solid rgb(0, 0, 0)') {
+                        cell.style.borderRight = 'none';
+                    }
+                }
+
                 colCursor += colspan;
             });
         });
@@ -2011,7 +2262,7 @@ function synchronizeSerializedHtml(rawHtml) {
     });
 
     // Strip temporary pagination artifacts
-    root.querySelectorAll('[data-pagination-artifact="true"], .mou-a4-page-header, .mou-a4-page-footer, .mou-table-width-handle, .no-print').forEach(el => el.remove());
+    root.querySelectorAll('[data-pagination-artifact="true"], .mou-a4-page-header, .mou-a4-page-footer, .mou-table-width-handle, .mou-table-move-handle, .no-print').forEach(el => el.remove());
 
     // Unwrap page containers so output is pure canonical HTML (preserving explicit user page breaks)
     root.querySelectorAll('.mou-a4-paper-sheet, .mou-a4-page-node, [data-mou-page], .mou-page-body-content').forEach(wrap => {
@@ -3718,6 +3969,147 @@ export function initMouWordProcessor(config) {
         return false;
     }
 
+    function removeTableDropIndicator() {
+        const indicator = document.getElementById('mouTableDropIndicator');
+        if (indicator && indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+        }
+        window._mouDropTarget = null;
+    }
+
+    function updateTableDropIndicator(view, clientX, clientY) {
+        if (!window._mouDraggingTableInfo) return;
+        const rawEl = document.elementFromPoint(clientX, clientY);
+        if (!rawEl) return;
+
+        const pageBody = rawEl.closest('.mou-page-body-content') || (view.dom && view.dom.contains(rawEl) ? view.dom : null);
+        if (!pageBody) {
+            removeTableDropIndicator();
+            return;
+        }
+
+        let targetBlock = rawEl;
+        while (targetBlock && targetBlock.parentElement && targetBlock.parentElement !== pageBody) {
+            targetBlock = targetBlock.parentElement;
+        }
+
+        if (!targetBlock || targetBlock === pageBody || targetBlock.id === 'mouTableDropIndicator') {
+            return;
+        }
+
+        if (window._mouDraggingTableInfo.tableWrapper && (window._mouDraggingTableInfo.tableWrapper === targetBlock || window._mouDraggingTableInfo.tableWrapper.contains(targetBlock))) {
+            removeTableDropIndicator();
+            return;
+        }
+
+        const rect = targetBlock.getBoundingClientRect();
+        const midY = rect.top + (rect.height / 2);
+        const insertBefore = clientY < midY;
+
+        let indicator = document.getElementById('mouTableDropIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'mouTableDropIndicator';
+            indicator.className = 'mou-table-drop-indicator no-print';
+        }
+
+        if (insertBefore) {
+            if (targetBlock.previousElementSibling !== indicator) {
+                targetBlock.parentNode.insertBefore(indicator, targetBlock);
+            }
+        } else {
+            if (targetBlock.nextElementSibling !== indicator) {
+                targetBlock.parentNode.insertBefore(indicator, targetBlock.nextSibling);
+            }
+        }
+
+        window._mouDropTarget = {
+            targetBlock,
+            insertBefore,
+            pageBody,
+        };
+    }
+
+    function executeTableDrop(view, clientX, clientY, dragInfo) {
+        if (!dragInfo || typeof dragInfo.pos !== 'number') return false;
+        const dropTarget = window._mouDropTarget;
+        if (!dropTarget || !dropTarget.targetBlock) return false;
+
+        const { targetBlock, insertBefore } = dropTarget;
+        const oldTablePos = dragInfo.pos;
+
+        let targetPos = null;
+        try {
+            targetPos = view.posAtDOM(targetBlock, 0);
+        } catch (_) {}
+
+        if (typeof targetPos !== 'number' || targetPos < 0) {
+            return false;
+        }
+
+        const doc = view.state.doc;
+        const $pos = doc.resolve(targetPos);
+
+        let blockDepth = -1;
+        for (let d = $pos.depth; d >= 0; d--) {
+            const parentNode = $pos.node(d);
+            if (parentNode.type.name === 'mouPage' || (parentNode.type.name === 'doc' && d === 0)) {
+                blockDepth = d + 1;
+                break;
+            }
+        }
+
+        if (blockDepth < 0 || blockDepth > $pos.depth) {
+            blockDepth = Math.min(1, $pos.depth);
+        }
+
+        let insertPos = insertBefore ? $pos.before(blockDepth) : $pos.after(blockDepth);
+
+        let actualTablePos = oldTablePos;
+        let oldNode = doc.nodeAt(actualTablePos);
+        if (!oldNode || oldNode.type.name !== 'table') {
+            if (dragInfo.tableWrapper) {
+                try {
+                    actualTablePos = view.posAtDOM(dragInfo.tableWrapper, 0);
+                    oldNode = doc.nodeAt(actualTablePos);
+                } catch (_) {}
+            }
+        }
+
+        if (!oldNode || oldNode.type.name !== 'table') {
+            console.warn('[WordProcessor] Dragged table node not found at pos', oldTablePos);
+            return false;
+        }
+
+        const tableSize = oldNode.nodeSize;
+
+        // If target position is the table itself, abort
+        if (insertPos >= actualTablePos && insertPos <= actualTablePos + tableSize) {
+            return false;
+        }
+
+        const tr = view.state.tr;
+        tr.delete(actualTablePos, actualTablePos + tableSize);
+        const mappedInsertPos = tr.mapping.map(insertPos);
+        tr.insert(mappedInsertPos, oldNode);
+
+        try {
+            const resolved = tr.doc.resolve(mappedInsertPos + 1);
+            const nearSel = Selection.near(resolved, 1);
+            if (nearSel) tr.setSelection(nearSel);
+        } catch (_) {}
+
+        view.dispatch(tr);
+        view.focus();
+
+        reflowPassCount = 0;
+        oscillationCounter = 0;
+        lastSplitAction = null;
+        scheduleReflow(true);
+        refreshAllPageViews();
+        return true;
+    }
+
     function createSharedEditorProps(targetEditorGetter) {
         return {
             handleKeyDown(view, event) {
@@ -3749,8 +4141,92 @@ export function initMouWordProcessor(config) {
                         ed?.commands.deleteColumn();
                         return true;
                     }
+
+                    // Key handling for empty paragraphs adjacent to tables:
+                    if (sel && sel.empty) {
+                        const { $from } = sel;
+                        if ($from.parent && $from.parent.type && $from.parent.type.name === 'paragraph') {
+                            const pNode = $from.parent;
+                            const pDepth = $from.depth;
+                            const parentBlock = $from.node(pDepth - 1);
+                            const pIndex = $from.index(pDepth - 1);
+
+                            // Delete key at the end of an empty paragraph immediately before a table:
+                            if (event.key === 'Delete' && pNode.content.size === 0 && $from.parentOffset === 0) {
+                                if (pIndex + 1 < parentBlock.childCount && parentBlock.child(pIndex + 1).type.name === 'table') {
+                                    event.preventDefault();
+                                    const tr = view.state.tr;
+                                    const pStart = $from.before(pDepth);
+                                    tr.delete(pStart, pStart + pNode.nodeSize);
+                                    try {
+                                        const newTablePos = tr.mapping.map(pStart);
+                                        const resolved = tr.doc.resolve(newTablePos + 1);
+                                        const nearSel = Selection.near(resolved, 1);
+                                        if (nearSel) tr.setSelection(nearSel);
+                                    } catch (_) {}
+                                    view.dispatch(tr);
+                                    if (typeof window._mouTriggerReflowAfterDocChange === 'function') {
+                                        window._mouTriggerReflowAfterDocChange();
+                                    }
+                                    return true;
+                                }
+                            }
+
+                            // Backspace key at the start of an empty paragraph immediately after a table:
+                            if (event.key === 'Backspace' && pNode.content.size === 0 && $from.parentOffset === 0) {
+                                if (pIndex > 0 && parentBlock.child(pIndex - 1).type.name === 'table') {
+                                    event.preventDefault();
+                                    const tr = view.state.tr;
+                                    const pStart = $from.before(pDepth);
+                                    tr.delete(pStart, pStart + pNode.nodeSize);
+                                    try {
+                                        const tableEndPos = tr.mapping.map(pStart) - 1;
+                                        const resolved = tr.doc.resolve(tableEndPos);
+                                        const nearSel = Selection.near(resolved, -1);
+                                        if (nearSel) tr.setSelection(nearSel);
+                                    } catch (_) {}
+                                    view.dispatch(tr);
+                                    if (typeof window._mouTriggerReflowAfterDocChange === 'function') {
+                                        window._mouTriggerReflowAfterDocChange();
+                                    }
+                                    return true;
+                                }
+                            }
+                        }
+                    }
                 }
                 return false;
+            },
+            handleDOMEvents: {
+                dragover(view, event) {
+                    if (window._mouDraggingTableInfo) {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        updateTableDropIndicator(view, event.clientX, event.clientY);
+                        return true;
+                    }
+                    return false;
+                },
+                dragleave(view, event) {
+                    if (window._mouDraggingTableInfo) {
+                        if (!view.dom.contains(event.relatedTarget)) {
+                            removeTableDropIndicator();
+                        }
+                    }
+                    return false;
+                },
+                drop(view, event) {
+                    if (window._mouDraggingTableInfo) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const dragInfo = window._mouDraggingTableInfo;
+                        window._mouDraggingTableInfo = null;
+                        const handled = executeTableDrop(view, event.clientX, event.clientY, dragInfo);
+                        removeTableDropIndicator();
+                        return handled;
+                    }
+                    return false;
+                },
             },
         };
     }
@@ -3841,13 +4317,23 @@ export function initMouWordProcessor(config) {
         updateAllMountedLogoBoxes: () => updateAllMountedLogoBoxes(),
     };
 
-    // Global Keymap Handlers for Tiptap / ProseMirror to handle unified Undo/Redo
+    // Global Keymap Handlers for Tiptap / ProseMirror to handle unified Undo/Redo & Table Ops
     window._mouGlobalUndoHandler = () => {
         return handleUnifiedUndo();
     };
 
     window._mouGlobalRedoHandler = () => {
         return handleUnifiedRedo();
+    };
+
+    window._mouGetActiveEditor = () => getActiveEditor();
+    window._mouRemoveTableDropIndicator = removeTableDropIndicator;
+    window._mouTriggerReflowAfterDocChange = () => {
+        reflowPassCount = 0;
+        oscillationCounter = 0;
+        lastSplitAction = null;
+        scheduleReflow(true);
+        refreshAllPageViews();
     };
 
     // Instantiate Paginated Body Editor with safe fallback from JSON to HTML if schema validation fails
@@ -3879,6 +4365,8 @@ export function initMouWordProcessor(config) {
                     scheduleSyncAndPagination();
                     if (!transaction.getMeta(reflowPluginKey)) {
                         reflowPassCount = 0;
+                        oscillationCounter = 0;
+                        lastSplitAction = null;
                         scheduleReflow(false);
                     }
                 }
@@ -3913,6 +4401,8 @@ export function initMouWordProcessor(config) {
                     scheduleSyncAndPagination();
                     if (!transaction.getMeta(reflowPluginKey)) {
                         reflowPassCount = 0;
+                        oscillationCounter = 0;
+                        lastSplitAction = null;
                         scheduleReflow(false);
                     }
                 }
@@ -7016,8 +7506,15 @@ export function initMouWordProcessor(config) {
             }
 
             // UNDERFLOW:
-            const availableSpace = usableHeight - contentDom.scrollHeight;
-            if (availableSpace > 20 && pIdx < pageCount - 1) {
+            let contentBottomPx = 0;
+            if (contentDom.children.length > 0) {
+                const lastEl = contentDom.children[contentDom.children.length - 1];
+                const lastElRect = lastEl.getBoundingClientRect();
+                contentBottomPx = (lastElRect.bottom - contentDomRect.top) / scale;
+            }
+            const measuredHeight = Math.max(contentDom.scrollHeight, contentBottomPx);
+            const availableSpace = usableHeight - measuredHeight;
+            if (availableSpace > 14 && pIdx < pageCount - 1) {
                 const nextPageNode = doc.child(pIdx + 1);
                 const nextPageDom = pageDoms[pIdx + 1];
                 const nextContentDom = nextPageDom ? nextPageDom.querySelector('.mou-page-body-content') : null;
@@ -7034,7 +7531,8 @@ export function initMouWordProcessor(config) {
                     const isExplicitBreak = firstNextEl.classList.contains('mou-page-break') || firstNextEl.getAttribute('data-page-break') === 'true';
 
                     if (!isExplicitBreak) {
-                        const firstNextH = firstNextEl.offsetHeight + 6;
+                        const isTable = firstNextEl.classList.contains('tableWrapper') || firstNextEl.tagName === 'TABLE';
+                        const firstNextH = firstNextEl.offsetHeight + (isTable ? 4 : 6);
                         if (firstNextH <= availableSpace) {
                             splitAction = {
                                 type: 'underflow',
@@ -7839,6 +8337,16 @@ export function initMouWordProcessor(config) {
                 bodyEl.className = 'mou-preview-sheet-body mou-doc-canvas';
                 const cleanBodyHtml = synchronizeSerializedHtml(rawPageBodyHtml);
                 bodyEl.innerHTML = replaceLivePreviewPlaceholders(cleanBodyHtml);
+
+                // Pastikan tabel borderless di dalam lembar pratinjau bersih dari border atau garis kanan
+                bodyEl.querySelectorAll('table.mou-table-borderless, table[data-table-style="borderless"], table[data-table-style="none"]').forEach(bt => {
+                    bt.style.border = 'none';
+                    bt.querySelectorAll('td, th').forEach(c => {
+                        c.style.border = 'none';
+                        c.style.borderRight = 'none';
+                    });
+                });
+
                 sheet.appendChild(bodyEl);
 
                 // Footer (Kotak Paraf di kiri, Penomoran Halaman di kanan)

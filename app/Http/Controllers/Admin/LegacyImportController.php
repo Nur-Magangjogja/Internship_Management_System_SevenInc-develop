@@ -20,12 +20,38 @@ class LegacyImportController extends Controller
     /**
      * Tampilkan halaman awal wizard impor data historis.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $recentBatches = HistoricalImportBatch::latest('id')->take(10)->get();
-        $registrationConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $brands = \App\Models\Brand::orderBy('name')->get();
 
-        return view('admin.legacy-import.index', compact('recentBatches', 'registrationConnection'));
+        $effectiveBrand = null;
+        if ($request->filled('brand_id')) {
+            $effectiveBrand = $brands->firstWhere('id', (int) $request->input('brand_id'));
+        } elseif ($request->attributes->has('current_brand')) {
+            $effectiveBrand = $request->attributes->get('current_brand');
+        } elseif ($request->hasSession() && $request->session()->has('registration_brand_id')) {
+            $effectiveBrand = $brands->firstWhere('id', (int) $request->session()->get('registration_brand_id'));
+        }
+
+        if (!$effectiveBrand) {
+            $effectiveBrand = \App\Models\Brand::getDefaultBrand() ?: $brands->first();
+        }
+
+        $brandConnection = null;
+        if ($effectiveBrand) {
+            $brandConnection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $effectiveBrand->id)
+                ->first();
+        }
+
+        $registrationConnection = $brandConnection ?: SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+
+        $recentBatches = HistoricalImportBatch::with(['brand', 'spreadsheetConnection'])
+            ->latest('id')
+            ->take(10)
+            ->get();
+
+        return view('admin.legacy-import.index', compact('recentBatches', 'registrationConnection', 'brands', 'effectiveBrand', 'brandConnection'));
     }
 
     /**
@@ -76,10 +102,12 @@ class LegacyImportController extends Controller
         $request->validate([
             'spreadsheet_input' => 'required|string',
             'tab_name'          => 'nullable|string',
+            'brand_id'          => 'nullable|integer|exists:brands,id',
         ]);
 
         $rawInput = trim($request->input('spreadsheet_input'));
         $tabName = $request->input('tab_name') ? trim($request->input('tab_name')) : null;
+        $brandId = $request->filled('brand_id') ? (int) $request->input('brand_id') : null;
 
         // Ekstrak ID jika admin memasukkan tautan Google Sheets lengkap
         $spreadsheetId = $rawInput;
@@ -87,8 +115,15 @@ class LegacyImportController extends Controller
             $spreadsheetId = $matches[1];
         }
 
+        $connection = null;
+        if ($brandId) {
+            $connection = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $brandId)
+                ->first();
+        }
+
         try {
-            $analysis = $this->pipelineService->analyzeGoogleSheet($spreadsheetId, $tabName);
+            $analysis = $this->pipelineService->analyzeGoogleSheet($spreadsheetId, $tabName, $connection, $brandId);
 
             return response()->json(array_merge([
                 'success'        => true,
@@ -109,24 +144,28 @@ class LegacyImportController extends Controller
     public function stage(Request $request)
     {
         $request->validate([
-            'source_type'           => 'required|in:xlsx,csv,google_sheets_readonly',
-            'column_mapping_config' => 'required|array',
-            'default_status'        => 'nullable|string|in:waiting,accepted,active,completed,exited,rejected',
-            'start_date_filter'     => 'nullable|date',
-            'end_date_filter'       => 'nullable|date',
+            'source_type'               => 'required|in:xlsx,csv,google_sheets_readonly',
+            'column_mapping_config'     => 'required|array',
+            'default_status'            => 'nullable|string|in:waiting,accepted,active,completed,exited,rejected',
+            'start_date_filter'         => 'nullable|date',
+            'end_date_filter'           => 'nullable|date',
+            'brand_id'                  => 'nullable|integer|exists:brands,id',
+            'spreadsheet_connection_id' => 'nullable|integer|exists:spreadsheet_connections,id',
             // Validasi bersyarat untuk berkas fisik
-            'temp_path'             => 'required_if:source_type,xlsx,csv|nullable|string',
-            'source_filename'       => 'required_if:source_type,xlsx,csv|nullable|string',
-            'sheet_index'           => 'nullable|integer',
+            'temp_path'                 => 'required_if:source_type,xlsx,csv|nullable|string',
+            'source_filename'           => 'required_if:source_type,xlsx,csv|nullable|string',
+            'sheet_index'               => 'nullable|integer',
             // Validasi bersyarat untuk Google Sheets
-            'spreadsheet_id'        => 'required_if:source_type,google_sheets_readonly|nullable|string',
-            'tab_name'              => 'required_if:source_type,google_sheets_readonly|nullable|string',
+            'spreadsheet_id'            => 'required_if:source_type,google_sheets_readonly|nullable|string',
+            'tab_name'                  => 'required_if:source_type,google_sheets_readonly|nullable|string',
         ]);
 
         $sourceType = $request->input('source_type');
         $defaultStatus = $request->input('default_status', InternshipRegistration::STATUS_WAITING);
         $startDateFilter = $request->input('start_date_filter');
         $endDateFilter = $request->input('end_date_filter');
+        $brandId = $request->filled('brand_id') ? (int) $request->input('brand_id') : null;
+        $connectionId = $request->filled('spreadsheet_connection_id') ? (int) $request->input('spreadsheet_connection_id') : null;
 
         try {
             if ($sourceType === HistoricalImportBatch::SOURCE_GOOGLE_SHEETS) {
@@ -137,7 +176,9 @@ class LegacyImportController extends Controller
                     defaultStatus: $defaultStatus,
                     startDateFilter: $startDateFilter,
                     endDateFilter: $endDateFilter,
-                    userId: Auth::id()
+                    userId: Auth::id(),
+                    brandId: $brandId,
+                    spreadsheetConnectionId: $connectionId
                 );
             } else {
                 $fullPath = storage_path('app/' . $request->input('temp_path'));
@@ -157,7 +198,9 @@ class LegacyImportController extends Controller
                     sheetIndex: (int) $request->input('sheet_index', 0),
                     userId: Auth::id(),
                     startDateFilter: $startDateFilter,
-                    endDateFilter: $endDateFilter
+                    endDateFilter: $endDateFilter,
+                    brandId: $brandId,
+                    spreadsheetConnectionId: $connectionId
                 );
 
                 // Hapus berkas upload sementara setelah sukses dimuat ke staging
@@ -182,6 +225,7 @@ class LegacyImportController extends Controller
      */
     public function showBatch(HistoricalImportBatch $batch)
     {
+        $batch->load(['brand', 'spreadsheetConnection']);
         $rows = $batch->rows()->paginate(25);
         $stats = [
             'total'     => $batch->rows()->count(),

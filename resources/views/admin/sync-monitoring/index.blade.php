@@ -15,16 +15,16 @@
                 Pemantauan operasional terpadu status antrean Google Spreadsheet utama, ekstensi sidecar, dan berkas lampiran Google Drive.
             </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 shrink-0">
             <a
                 href="{{ route('admin.spreadsheet-connections.index') }}"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                class="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 active:scale-[0.98] whitespace-nowrap shrink-0"
             >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4 text-slate-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect width="18" height="18" x="3" y="3" rx="2"/>
                     <path d="M3 9h18M3 15h18M9 3v18"/>
                 </svg>
-                Kelola Koneksi
+                <span>Kelola Koneksi</span>
             </a>
         </div>
     </div>

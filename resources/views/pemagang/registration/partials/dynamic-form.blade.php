@@ -443,6 +443,7 @@
         ->merge($gPilihan->pluck('field_key'))
         ->merge($gBerkas->pluck('field_key'))
         ->merge($gInfo->pluck('field_key'))
+        ->merge(collect($groupedFields['finalisasi_submit'] ?? [])->pluck('field_key'))
         ->all();
     $unrenderedCustomFields = !empty($customFields)
         ? $customFields->reject(fn($cf) => in_array($cf->field_key, $renderedGroupKeys, true))->values()

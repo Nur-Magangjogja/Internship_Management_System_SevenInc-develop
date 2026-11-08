@@ -23,3 +23,7 @@ Route::prefix('v1/external')->middleware('absen.api.auth')->group(function () {
     Route::post('/register-from-absen', [\App\Http\Controllers\Api\AbsenSyncController::class, 'registerFromAbsen']);
 });
 
+Route::prefix('v1/spreadsheet')->group(function () {
+    Route::post('/push-unsynced', [\App\Http\Controllers\Api\SpreadsheetWebhookController::class, 'pushUnsynced']);
+});
+

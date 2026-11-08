@@ -272,6 +272,19 @@ class InternApiController extends Controller
             } elseif (is_numeric($brandInput)) {
                 $q->where('brand_id', (int) $brandInput);
             }
+        } elseif ($req->attributes->has('current_brand')) {
+            $hostBrand = $req->attributes->get('current_brand');
+            if ($hostBrand && !$hostBrand->is_default) {
+                $hosts = array_filter([$hostBrand->registration_host, $hostBrand->primary_domain]);
+                $q->where(function ($bq) use ($hostBrand, $hosts) {
+                    $bq->where('brand_id', $hostBrand->id);
+                    if (!empty($hosts)) {
+                        foreach ($hosts as $host) {
+                            $bq->orWhere('registration_host', 'like', "%{$host}%");
+                        }
+                    }
+                });
+            }
         }
 
         // ========== GLOBAL SEARCH (semua kolom) ==========
@@ -574,17 +587,24 @@ class InternApiController extends Controller
                 }
             }
 
+            $customAnswersList = [];
             if ($r->relationLoaded('customAnswers')) {
                 foreach ($r->customAnswers as $ca) {
                     if (isset($attMap[$ca->field_key])) {
                         continue;
                     }
+                    $customAnswersList[] = [
+                        'key'   => $ca->field_key,
+                        'label' => $ca->answer_label ?: $ca->registry?->label ?: ucwords(str_replace('_', ' ', str_replace('field_', '', $ca->field_key))),
+                        'value' => $ca->answer_value,
+                    ];
                     if (!empty($rowObj[$ca->field_key]) && ($ca->answer_value === null || $ca->answer_value === '')) {
                         continue;
                     }
                     $rowObj[$ca->field_key] = $ca->answer_value;
                 }
             }
+            $rowObj['custom_answers_list'] = $customAnswersList;
 
             return $rowObj;
         }, $list);
@@ -660,10 +680,11 @@ class InternApiController extends Controller
                 $targetYear = ($req->filled('year') && (int) $req->get('year') >= 2020)
                     ? (int) $req->get('year')
                     : (int) now()->year;
+                $targetBrandId = $req->filled('brand_id') ? (int) $req->get('brand_id') : null;
                 if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
-                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear, null, false, $targetBrandId);
                 }
-                $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                $activeSchema = app(\App\Services\FormBuilderService::class)->resolveEffectivePublishedSchema($targetBrandId, $targetYear)
                     ?: \App\Models\FormSchema::activePublished()->first()
                     ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
 

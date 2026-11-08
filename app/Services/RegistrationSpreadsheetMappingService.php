@@ -169,6 +169,15 @@ class RegistrationSpreadsheetMappingService
             ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
             ->first();
 
+        // Fallback jika brand memilih tidak clone per tahun: gunakan schema aktif berkelanjutan koneksi tersebut
+        if (!$schemaVersion && !$connection->is_yearly_cloning_enabled) {
+            $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+                ->where('is_active', true)
+                ->latest('id')
+                ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
+                ->first();
+        }
+
         // Jika tidak ada versi yang aktif, gunakan versi terbaru untuk tahun tersebut (historis)
         if (!$schemaVersion) {
             $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
@@ -433,6 +442,12 @@ class RegistrationSpreadsheetMappingService
         if (!$schemaVersion) {
             $year = $createdAt->format('Y');
             throw new DomainException("Schema Spreadsheet untuk tahun {$year} belum dikonfigurasi.");
+        }
+
+        $regYear = (int) $createdAt->format('Y');
+        $conn = $schemaVersion->spreadsheetConnection;
+        if ($conn && $conn->is_yearly_cloning_enabled && $schemaVersion->year && (int) $schemaVersion->year !== $regYear) {
+            \Illuminate\Support\Facades\Log::warning("PERINGATAN_ISOLASI_TAHUN: Registrasi #{$registration->id} (Tahun: {$regYear}) diarahkan ke skema tab tahun {$schemaVersion->year} pada koneksi {$conn->display_name}.");
         }
 
         $mappings = $schemaVersion->columnMappings()->where('mapping_status', 'active')->orderBy('column_order', 'asc')->get();

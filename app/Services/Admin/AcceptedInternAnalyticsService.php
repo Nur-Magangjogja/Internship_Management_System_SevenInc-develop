@@ -406,6 +406,12 @@ class AcceptedInternAnalyticsService
         if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'is_outsider')) {
             $columns[] = 'is_outsider';
         }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'is_integrated')) {
+            $columns[] = 'is_integrated';
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'registration_type')) {
+            $columns[] = 'registration_type';
+        }
         if (\Illuminate\Support\Facades\Schema::hasColumn('internship_registrations', 'registration_provenance')) {
             $columns[] = 'registration_provenance';
         }
@@ -468,13 +474,20 @@ class AcceptedInternAnalyticsService
     /**
      * Klasifikasikan sumber pendaftaran:
      * - 'direct'     : Pendaftaran Langsung SERTIF (regular web)
-     * - 'integrated' : Data Terintegrasi (outsider / historical import / spreadsheet)
+     * - 'integrated' : Data Terintegrasi (outsider / historical import / spreadsheet / pemberian ID dari sheet)
      */
     public function resolveSourceCategory(InternshipRegistration $reg): string
     {
+        // 1. Data yang secara eksplisit berasal dari pendaftaran form web mandiri SertIF
+        if ($reg->registration_type === 'web' || $reg->registration_provenance === 'direct_web' || $reg->registration_provenance === 'regular_web') {
+            return self::SOURCE_DIRECT;
+        }
+
+        // 2. Data terintegrasi (impor, spreadsheet, atau akun yang dibuat dari pemberian ID sheet)
         $isIntegrated = (!empty($reg->is_outsider))
-            || ($reg->registration_provenance === 'historical_import')
-            || ($reg->registration_provenance === 'reconciled_sheet');
+            || (!empty($reg->is_integrated))
+            || ($reg->registration_type === 'integrated')
+            || in_array($reg->registration_provenance, ['historical_import', 'reconciled_sheet', 'integrated_external', 'manual_reconciliation'], true);
 
         return $isIntegrated ? self::SOURCE_INTEGRATED : self::SOURCE_DIRECT;
     }

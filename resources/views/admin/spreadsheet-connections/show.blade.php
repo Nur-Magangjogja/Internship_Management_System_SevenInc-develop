@@ -124,827 +124,612 @@
         @endif
     </div>
 
+
     <!-- Read-Only Universal Spreadsheet Scanner Card (Fase 1) -->
-    <div class="mb-8 rounded-xl border border-blue-200 bg-white p-6 shadow-sm" id="scanner-section">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
+    <!-- Workspace Integrasi & Filterisasi Spreadsheet Universal (Upgrade Universal) -->
+    <div class="mb-8 rounded-xl border border-teal-200 bg-white shadow-sm overflow-hidden" id="workspace-section">
+        <!-- Top Workspace Bar -->
+        <div class="p-6 bg-gradient-to-r from-teal-50/60 via-white to-sky-50/40 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
                 <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-blue-100 text-blue-800 border border-blue-200">
-                        Fase 1: Read-Only Discovery
+                    <span class="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-teal-100 text-teal-800 border border-teal-200">
+                        Universal Spreadsheet Identity Workspace
                     </span>
-                    <h2 class="text-lg font-bold text-slate-800">Inspeksi Universal Spreadsheet</h2>
+                    <h2 class="text-lg font-bold text-slate-800">Workspace Integrasi &amp; Rekonsiliasi Universal</h2>
                 </div>
                 <p class="text-xs text-slate-500 mt-1">
-                    Pemindaian otomatis seluruh tab, header (Baris 12 / Baris 1), inferensi tipe data, sampel tersensor (PII Masked), dan draft proposal mapping.
+                    Eksplorasi tab, kenali struktur kolom bebas tanpa formula baku, atur status via palet warna atau kolom status, dan sinkronkan data pemagang secara terkontrol.
                 </p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <button
                     type="button"
                     id="btn-fetch-tabs"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold transition"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 text-xs font-semibold shadow-xs transition"
                 >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-                    </svg>
+                    <i class="fas fa-sync-alt text-xs"></i>
                     Pindai Daftar Tab
                 </button>
+                <button
+                    type="button"
+                    id="btn-open-composite-modal"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 text-xs font-semibold shadow-xs transition"
+                    title="Uji coba parser pemisah data kolom gabungan"
+                >
+                    <i class="fas fa-columns text-xs"></i>
+                    Uji Parser Kolom
+                </button>
+                @if($connection->is_yearly_cloning_enabled)
+                    <button
+                        type="button"
+                        id="btn-open-duplicate-modal"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 text-xs font-semibold shadow-xs transition"
+                        title="Duplikasi tab template untuk tahun/batch baru"
+                    >
+                        <i class="fas fa-clone text-xs"></i>
+                        Buat / Clone Tab
+                    </button>
+                @else
+                    <button
+                        type="button"
+                        disabled
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-200 text-slate-400 text-xs font-semibold cursor-not-allowed shadow-none"
+                        title="Mode kloning tab tahunan dinonaktifkan untuk brand ini."
+                    >
+                        <i class="fas fa-clone text-xs"></i>
+                        Buat / Clone Tab (Nonaktif)
+                    </button>
+                @endif
             </div>
         </div>
 
         <!-- Guardrail Notice -->
-        <div class="mb-5 rounded-lg bg-slate-50 border border-slate-200 p-3.5 text-xs text-slate-600 flex items-start gap-2.5">
-            <svg class="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
+        <div class="px-6 py-3 bg-teal-50/40 border-b border-teal-100 text-xs text-teal-900 flex items-start gap-2.5">
+            <i class="fas fa-user-shield text-teal-600 mt-0.5 text-sm shrink-0"></i>
             <div>
-                <strong class="text-slate-800">Jaminan Keamanan Read-Only:</strong>
-                Endpoint scanner ini menggunakan otentikasi signed HMAC-SHA256, strictly allowlist-checked, dan tidak pernah melakukan mutasi/penulisan ke spreadsheet. Form Builder tetap menjadi pemegang otoritas tunggal struktur pendaftaran.
+                <strong class="text-teal-950">Mekanisme Terkendali (Semi-Otomatis &amp; Universal):</strong>
+                Alur integrasi 2 langkah:
+                <strong>Langkah 1:</strong> Identifikasi kolom, cek kesiapan kolom Header ID (Write-Ready) &amp; petakan form brand.
+                &bull;
+                <strong>Langkah 2:</strong> Pindai baris data, tetapkan status pemagang (via warna latar sel, kolom status, atau partisi rentang), jalankan simulasi audit pra-tulis (Dry-Run), dan masukkan data ke SertIF.
             </div>
         </div>
 
-        <!-- Scanner Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mb-5 items-end">
-            <div class="md:col-span-4">
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Tab Spreadsheet</label>
-                <select id="scanner-tab-select" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none">
-                    <option value="">-- Tekan 'Pindai Daftar Tab' terlebih dahulu --</option>
-                </select>
-            </div>
-            <div class="md:col-span-2">
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Baris Header (Opsional)</label>
-                <input
-                    type="number"
-                    id="scanner-header-row"
-                    placeholder="Auto (12/1)"
-                    min="1"
-                    max="100"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
-                />
-            </div>
-            <div class="md:col-span-6 flex flex-wrap items-center gap-2">
-                <button
-                    type="button"
-                    id="btn-inspect-schema"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
-                    disabled
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
-                        <polyline points="10 9 9 9 8 9"/>
-                    </svg>
-                    Inspeksi Schema & Header
-                </button>
-                <button
-                    type="button"
-                    id="btn-preview-rows"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-800 text-xs font-semibold shadow-sm transition disabled:opacity-50"
-                    disabled
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="8" y1="6" x2="21" y2="6"/>
-                        <line x1="8" y1="12" x2="21" y2="12"/>
-                        <line x1="8" y1="18" x2="21" y2="18"/>
-                        <line x1="3" y1="6" x2="3.01" y2="6"/>
-                        <line x1="3" y1="12" x2="3.01" y2="12"/>
-                        <line x1="3" y1="18" x2="3.01" y2="18"/>
-                    </svg>
-                    Pratinjau Baris (Page 1)
-                </button>
-                <button
-                    type="button"
-                    id="btn-draft-mapping"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
-                    disabled
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-                    </svg>
-                    Draft Usulan Pemetaan
-                </button>
-                <button
-                    type="button"
-                    id="btn-scan-inbound"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
-                    disabled
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Pindai Inbound Staging (Fase 4)
-                </button>
-            </div>
-        </div>
-
-        <!-- Loading State Indicator -->
-        <div id="scanner-loading" class="hidden py-8 text-center text-slate-500 text-xs">
-            <svg class="animate-spin h-6 w-6 text-blue-600 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span id="scanner-loading-text">Sedang memproses inspeksi read-only...</span>
-        </div>
-
-        <!-- Dynamic Results Container -->
-        <div id="scanner-results" class="hidden space-y-4">
-            <!-- Header Summary Bar -->
-            <div id="scanner-summary-bar" class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-                <div class="flex items-center gap-3">
-                    <span id="stat-tab-badge" class="font-bold text-slate-800 font-mono"></span>
-                    <span id="stat-header-row-badge" class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold"></span>
-                    <span id="stat-col-count-badge" class="px-2 py-0.5 rounded bg-slate-200 text-slate-700"></span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-slate-400 font-mono text-[11px]">Schema Hash:</span>
-                    <span id="stat-schema-hash" class="font-mono text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-700 truncate max-w-xs" title=""></span>
-                </div>
-            </div>
-
-            <!-- Content Container -->
-            <div id="scanner-content" class="overflow-x-auto rounded-lg border border-slate-200">
-                <!-- Dynamically populated via JS -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Fase 2: Explicit Tab Profiles & Stable Mapping Lifecycle Card -->
-    <div class="mb-8 rounded-xl border border-indigo-200 bg-white p-6 shadow-sm" id="fase2-lifecycle-section">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
-            <div>
-                <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
-                        Fase 2: Stable Mapping & Lifecycle
+        <!-- 2-Column Responsive Workspace Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 min-h-[600px]">
+            <!-- LEFT PANEL: Source Navigation Panel (#ws-source-panel) -->
+            <div class="lg:col-span-3 border-r border-slate-200 bg-slate-50/60 p-4 space-y-3" id="ws-source-panel">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <i class="fas fa-layer-group text-teal-600"></i>
+                        Daftar Tab Sumber
                     </span>
-                    <h2 class="text-lg font-bold text-slate-800">Profil Header Tab & Usulan Pemetaan Interaktif</h2>
+                    <span id="ws-tabs-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">0 Tab</span>
                 </div>
-                <p class="text-xs text-slate-500 mt-1">
-                    Konfigurasi posisi header berbasis sheet_id numerik stabil, seleksi interaktif pemetaan kolom, perlindungan field historis, schema diff non-destruktif, dan decoupled remote sync.
-                </p>
-            </div>
-            <div class="flex items-center gap-2">
-                <button
-                    type="button"
-                    onclick="openTabProfileModal()"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition"
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                    Atur Profil Tab (Eksplisit)
-                </button>
-                <button
-                    type="button"
-                    id="btn-create-proposal-from-active"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-sm transition"
-                >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-                    </svg>
-                    Buat Snapshot & Usulan Pemetaan
-                </button>
-            </div>
-        </div>
 
-        <!-- 1. Explicit Tab Profiles Table -->
-        <div class="mb-6">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2 flex items-center gap-2">
-                <span>Daftar Profil Tab Tersimpan (Stabil Berdasarkan sheet_id)</span>
-                <span class="text-[10px] font-normal text-slate-400 font-mono">(Kebal terhadap rename nama tab)</span>
-            </h3>
-            <div class="overflow-x-auto rounded-lg border border-slate-200">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                        <tr>
-                            <th class="px-4 py-2.5">Sheet ID (Numerik)</th>
-                            <th class="px-4 py-2.5">Nama Tab Terdaftar</th>
-                            <th class="px-4 py-2.5 text-center">Baris Header</th>
-                            <th class="px-4 py-2.5 text-center">Baris Mulai Data</th>
-                            <th class="px-4 py-2.5 text-center">Status</th>
-                            <th class="px-4 py-2.5 text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @forelse ($tabProfiles as $profile)
-                            <tr class="hover:bg-slate-50/70 transition">
-                                <td class="px-4 py-2 font-mono font-semibold text-slate-700">{{ $profile->sheet_id }}</td>
-                                <td class="px-4 py-2 font-medium text-slate-800">
-                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
-                                        [{{ $profile->tab_name }}]
-                                    </span>
-                                </td>
-                                <td class="px-4 py-2 text-center font-mono font-bold text-blue-700">Baris {{ $profile->header_row }}</td>
-                                <td class="px-4 py-2 text-center font-mono text-slate-600">Baris {{ $profile->data_start_row }}</td>
-                                <td class="px-4 py-2 text-center">
-                                    @if ($profile->is_active)
-                                        <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Aktif</span>
-                                    @else
-                                        <span class="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-500">Nonaktif</span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-2 text-right">
-                                    <button
-                                        type="button"
-                                        onclick="editTabProfile({{ $profile->sheet_id }}, '{{ addslashes($profile->tab_name) }}', {{ $profile->header_row }}, {{ $profile->data_start_row }})"
-                                        class="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px]"
-                                    >
-                                        Edit
-                                    </button>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="px-4 py-4 text-center text-slate-400 italic">
-                                    Belum ada profil tab eksplisit. Sistem menggunakan deteksi default (Tab tahun/TEMPLATE_TAHUN = Baris 12/13, tab non-tahunan/Petunjuk = Baris 1/2).
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
+                <!-- Tab Search Input -->
+                <div class="relative">
+                    <input
+                        type="text"
+                        id="ws-tab-search"
+                        placeholder="Cari tab sheet..."
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-teal-500 focus:outline-none"
+                    />
+                </div>
 
-        <!-- 2. Interactive Mapping Proposals & Decisions -->
-        @if ($recentProposals->isNotEmpty())
-            @php
-                $activeProposal = $recentProposals->first();
-                $hasCollision = $activeProposal->items->contains('has_collision', true);
-            @endphp
-            <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-5 mb-6" id="proposal-card-container">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3 mb-4">
-                    <div>
+                <!-- Tabs Category Filter Pills -->
+                <div class="flex items-center gap-1 text-[11px]" id="ws-tab-category-filter">
+                    <button type="button" class="px-2 py-0.5 rounded font-semibold bg-slate-800 text-white" data-category="all">Semua</button>
+                    <button type="button" class="px-2 py-0.5 rounded font-semibold bg-white text-slate-600 border border-slate-200 hover:bg-slate-100" data-category="reg">Pendaftaran</button>
+                    <button type="button" class="px-2 py-0.5 rounded font-semibold bg-white text-slate-600 border border-slate-200 hover:bg-slate-100" data-category="other">Lainnya</button>
+                </div>
+
+                <!-- Sidebar Tab Items List -->
+                <div id="ws-sidebar-tabs-list" class="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
+                    <div class="py-8 text-center text-xs text-slate-400 italic">
+                        <i class="fas fa-spinner fa-spin text-teal-600 text-lg mb-1 block"></i>
+                        Memuat daftar tab...
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                    <i class="fas fa-info-circle text-teal-600 mr-1"></i> Klik kartu tab di atas untuk memilih tab secara cepat.
+                </div>
+            </div>
+
+            <!-- RIGHT PANEL: Steps 1 & 2 Execution Area -->
+            <div class="lg:col-span-9 p-5 space-y-6 bg-white overflow-y-auto">
+                <!-- LANGKAH 1: Struktur Kolom Spreadsheet & Injeksi Header ID Sistem -->
+                <div class="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-4" id="card-step-columns">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-sky-100 pb-3">
                         <div class="flex items-center gap-2">
-                            <span class="font-bold text-slate-800 text-sm">Usulan Pemetaan Aktif: Tab [{{ $activeProposal->snapshot->tab_name ?? 'Tab' }}]</span>
-                            <span class="font-mono text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">
-                                UUID: {{ substr($activeProposal->public_uuid, 0, 8) }}...
+                            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600 text-white">
+                                Langkah 1
                             </span>
-                            @php
-                                $statusBadge = match($activeProposal->status) {
-                                    'draft' => 'bg-amber-100 text-amber-800 border-amber-200',
-                                    'approved_to_draft' => 'bg-blue-100 text-blue-800 border-blue-200',
-                                    'applied' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                                    'conflict' => 'bg-rose-100 text-rose-800 border-rose-200',
-                                    default => 'bg-slate-100 text-slate-600 border-slate-200',
-                                };
-                            @endphp
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold border {{ $statusBadge }}">
-                                {{ strtoupper($activeProposal->status) }}
-                            </span>
+                            <h3 class="text-sm font-bold text-slate-800">
+                                Identifikasi Kolom, Header ID Sistem &amp; Penyesuaian Form Brand
+                            </h3>
                         </div>
-                        <p class="text-xs text-slate-500 mt-0.5">
-                            Target Formulir: <strong>Tahun {{ $activeProposal->year ?? '2026' }}</strong> &bull; Total Kolom Terusul: <strong>{{ $activeProposal->items->count() }}</strong>
-                        </p>
+                        <span class="text-[11px] text-slate-500">
+                            Memastikan kolom Header ID Sistem SertIF tersedia dan menyesuaikan form brand.
+                        </span>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onclick="previewDiffAjax({{ $activeProposal->id }})"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 border border-indigo-200 text-xs font-semibold shadow-sm transition"
-                        >
-                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <line x1="12" y1="8" x2="12" y2="12"/>
-                                <line x1="12" y1="16" x2="12.01" y2="16"/>
-                            </svg>
-                            Pratinjau Dampak (Schema Diff)
-                        </button>
-                        <button
-                            type="button"
-                            onclick="applyProposalAjax({{ $activeProposal->id }})"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold shadow-sm transition"
-                        >
-                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            Terapkan ke Draf (Apply to Draft)
-                        </button>
+
+                    <!-- Controls: Tab select, Header row input, Button Inspect -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-3 items-end">
+                        <div class="md:col-span-4">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Tab Spreadsheet</label>
+                            <select id="scanner-tab-select" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-sky-500 focus:outline-none">
+                                <option value="">-- Sedang memuat daftar tab... --</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Baris Header (Kolom)</label>
+                            <input
+                                type="number"
+                                id="ws-header-row"
+                                value="10"
+                                min="1"
+                                max="1000"
+                                placeholder="misal: 10"
+                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-sky-500 focus:outline-none font-mono"
+                                title="Nomor baris tempat nama kolom diletakkan di spreadsheet (misal: 10)"
+                            />
+                        </div>
+                        <div class="md:col-span-5 flex items-center gap-2">
+                            <button
+                                type="button"
+                                id="btn-inspect-columns"
+                                class="w-full inline-flex justify-center items-center gap-2 px-3 py-2 rounded-lg bg-sky-700 text-white hover:bg-sky-800 text-xs font-semibold shadow-sm transition"
+                            >
+                                <i class="fas fa-columns text-xs"></i>
+                                Pindai Struktur Kolom Spreadsheet
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Loading State for Columns -->
+                    <div id="ws-col-loading" class="hidden py-4 text-center text-slate-500 text-xs">
+                        <i class="fas fa-spinner fa-spin text-xl text-sky-600 mb-1"></i>
+                        <p id="ws-col-loading-text">Sedang memindai kolom dan mengecek Header ID...</p>
+                    </div>
+
+                    <!-- Result Card for Columns & Header ID -->
+                    <div id="ws-col-result" class="hidden space-y-3.5 pt-2">
+                        <!-- Header ID Alert Banner -->
+                        <div id="ws-header-id-alert" class="p-3 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+
+                        <!-- Counts & Info summary -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-slate-800">Total: <span id="ws-total-cols" class="text-sky-700">0</span> Kolom</span>
+                                <span>&bull;</span>
+                                <span class="text-emerald-700 font-semibold"><span id="ws-count-standard">0</span> Standar Identitas</span>
+                                <span>&bull;</span>
+                                <span class="text-purple-700 font-semibold"><span id="ws-count-custom">0</span> Pertanyaan Khusus Brand</span>
+                                <span>&bull;</span>
+                                <span class="text-slate-600 font-semibold"><span id="ws-count-system">0</span> Kolom Sistem SertIF</span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 italic">
+                                Tab: <strong id="ws-inspected-tab" class="font-mono text-slate-700">-</strong> | Baris Header: <strong id="ws-inspected-header-row" class="font-mono text-slate-700">-</strong>
+                            </div>
+                        </div>
+
+                        <!-- Detected Columns Table -->
+                        <div class="overflow-x-auto rounded-lg border border-slate-200 max-h-60 overflow-y-auto bg-white">
+                            <table class="w-full text-left text-xs min-w-[600px]">
+                                <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold text-[11px]">
+                                    <tr>
+                                        <th class="px-3 py-2 w-16 text-center">Kolom</th>
+                                        <th class="px-3 py-2">Nama Kolom (Header Spreadsheet)</th>
+                                        <th class="px-3 py-2 w-44">Kategori Kolom</th>
+                                        <th class="px-3 py-2 w-36">Tipe Input Form</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ws-col-tbody" class="divide-y divide-slate-100">
+                                    <!-- Populated dynamically via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Action Footer: Save & Apply to Brand Form -->
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+                            <p class="text-[11px] text-slate-500">
+                                Klik tombol di samping untuk menerapkan susunan kolom ini ke formulir pendaftaran dan edit data pemagang khusus brand ini.
+                            </p>
+                            <button
+                                type="button"
+                                id="btn-save-brand-columns"
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition shrink-0"
+                            >
+                                <i class="fas fa-check-circle text-xs"></i>
+                                Simpan &amp; Terapkan ke Form Brand Ini
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                @if ($hasCollision)
-                    <div class="mb-4 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800 flex items-start gap-2.5">
-                        <svg class="h-4 w-4 text-rose-600 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
-                            <line x1="12" y1="8" x2="12" y2="12"/>
-                            <line x1="12" y1="16" x2="12.01" y2="16"/>
-                        </svg>
-                        <div>
-                            <strong>Peringatan Tabrakan Header (Collision Detected):</strong>
-                            Ditemukan header kembar/duplikat pada tab ini. Sistem sengaja tidak melakukan automatch untuk mencegah data tertukar secara keliru. Tentukan target pemetaan secara eksplisit di bawah ini.
+                <!-- LANGKAH 2: Pindai Baris Data, Filter Warna & Ingestion ke SertIF -->
+                <div class="rounded-xl border border-teal-200 bg-white p-4 space-y-4" id="card-step-rows">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-teal-600 text-white">
+                                Langkah 2
+                            </span>
+                            <h3 class="text-sm font-bold text-slate-800">
+                                Pindai Baris Data, Filter Palet Warna &amp; Masukkan ke SertIF
+                            </h3>
+                        </div>
+                        <span class="text-[11px] text-slate-500">
+                            Status awal netral (NULL) &bull; Konfigurasi Sumber Status &bull; Simulasi Pra-Tulis &bull; Ingestion Aman
+                        </span>
+                    </div>
+
+                    <!-- Controls: Start row, End row, Status Source Type, Button Scan -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-3 items-end">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Baris Awal Data</label>
+                            <input
+                                type="number"
+                                id="ws-start-row"
+                                value="11"
+                                min="1"
+                                max="1000"
+                                placeholder="misal: 11"
+                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none font-mono"
+                                title="Nomor baris tempat data pemagang pertama mulai diisi (misal: 11)"
+                            />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Baris Akhir (Opsional)</label>
+                            <input
+                                type="number"
+                                id="ws-end-row"
+                                min="1"
+                                max="5000"
+                                placeholder="misal: 150"
+                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none font-mono"
+                                title="Batasi sampai baris tertentu jika ingin memproses sebagian data (misal: 150)"
+                            />
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Sumber Status Pemagang</label>
+                            <select id="ws-status-source-type" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                                <option value="color" selected>Warna Latar Sel (Row Background Color)</option>
+                                <option value="column">Nilai Kolom Tertentu (Column Value)</option>
+                                <option value="range">Partisi Rentang Baris (Manual Range Partition)</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-4 flex items-center">
+                            <button
+                                type="button"
+                                id="btn-scan-workspace"
+                                class="w-full inline-flex justify-center items-center gap-2 px-3 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                            >
+                                <i class="fas fa-palette text-xs"></i>
+                                Pindai Data &amp; Status Spreadsheet
+                            </button>
                         </div>
                     </div>
-                @endif
+                    <!-- Preset & Fast Range Navigation Helper -->
+                    <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="font-bold text-slate-600 flex items-center gap-1">
+                                <i class="fas fa-bolt text-teal-600"></i> Blok Cepat:
+                            </span>
+                            <button type="button" class="btn-range-preset px-2.5 py-1 rounded bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold border border-teal-300 transition" data-range="100">+100 Baris (Sangat Cepat)</button>
+                            <button type="button" class="btn-range-preset px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition" data-range="200">+200 Baris</button>
+                            <button type="button" class="btn-range-preset px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition" data-range="300">+300 Baris</button>
+                            <button type="button" class="btn-range-preset px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition" data-range="500">+500 Baris (Maksimal)</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="btn-prev-block" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-[11px] shadow-2xs transition" title="Kembali ke blok baris sebelumnya">
+                                <i class="fas fa-arrow-left text-[10px]"></i>
+                                <span>&laquo; 100 Baris Sebelumnya</span>
+                            </button>
+                            <button type="button" id="btn-next-block" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-semibold text-[11px] shadow-2xs transition" title="Lanjut ke blok 100 baris berikutnya">
+                                <span>100 Baris Berikutnya &raquo;</span>
+                                <i class="fas fa-arrow-right text-[10px]"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-2 rounded-lg bg-teal-50/70 border border-teal-100 text-[11px] text-teal-900 flex items-center gap-2">
+                        <i class="fas fa-info-circle text-teal-600 shrink-0"></i>
+                        <span>
+                            <strong>Rekomendasi untuk 5.000+ Baris:</strong> Pindai 100 baris pertama untuk mendeteksi palet warna/kolom status (memuat dalam &lt;1 detik). Setelah aturan status terpetakan, klik tombol <strong>"⚡ Terapkan Status &amp; Sinkronkan Semua Tanpa ID"</strong> di bawah untuk memproses seluruh baris otomatis tanpa membuka ribuan baris di tabel.
+                        </span>
+                    </div>
 
-                <!-- Decision Table -->
-                <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                            <tr>
-                                <th class="px-3 py-2.5 w-14 text-center">Kolom</th>
-                                <th class="px-3 py-2.5">Header di Spreadsheet</th>
-                                <th class="px-3 py-2.5 w-44">Keputusan Aksi</th>
-                                <th class="px-3 py-2.5">Target Field Form Builder</th>
-                                <th class="px-3 py-2.5 text-center">Keyakinan</th>
-                                <th class="px-3 py-2.5 text-right w-36">Aksi & Keamanan</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 font-sans">
-                            @foreach ($activeProposal->items as $item)
-                                <tr class="hover:bg-slate-50/70 transition {{ $item->has_collision ? 'bg-rose-50/30' : '' }}" id="proposal-row-{{ $item->id }}">
-                                    <td class="px-3 py-2 text-center font-mono font-bold text-indigo-700 bg-slate-50/40">
-                                        {{ $item->col_letter }}
-                                        <div class="text-[9px] text-slate-400 font-normal">#{{ $item->physical_index }}</div>
-                                    </td>
-                                    <td class="px-3 py-2 font-medium text-slate-800">
-                                        <span class="font-mono bg-slate-50 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
-                                            {{ $item->observed_label }}
-                                        </span>
-                                        @if ($item->has_collision)
-                                            <span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-200" title="{{ $item->collision_detail }}">
-                                                DUPLIKAT
-                                            </span>
-                                        @endif
-                                    </td>
-                                    <td class="px-3 py-2">
-                                        <select
-                                            id="action-select-{{ $item->id }}"
-                                            onchange="onActionChange({{ $item->id }})"
-                                            class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                                            {{ $item->action === 'system_protected' ? 'disabled' : '' }}
-                                        >
-                                            <option value="link_existing" {{ $item->action === 'link_existing' ? 'selected' : '' }}>Hubungkan ke Field Ada</option>
-                                            <option value="create_draft_field" {{ $item->action === 'create_draft_field' ? 'selected' : '' }}>Buat Field Draf Baru</option>
-                                            <option value="external_only" {{ $item->action === 'external_only' ? 'selected' : '' }}>Eksternal Saja (Simpan di Sheet)</option>
-                                            <option value="ignore" {{ $item->action === 'ignore' ? 'selected' : '' }}>Abaikan Kolom Ini</option>
-                                            @if ($item->action === 'system_protected')
-                                                <option value="system_protected" selected>Dilindungi Sistem</option>
-                                            @endif
-                                        </select>
-                                    </td>
-                                    <td class="px-3 py-2">
-                                        <div id="field-config-link-{{ $item->id }}" class="{{ $item->action === 'link_existing' ? '' : 'hidden' }}">
-                                            <select
-                                                id="field-key-select-{{ $item->id }}"
-                                                class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
-                                            >
-                                                <option value="">-- Pilih Field Form Builder --</option>
-                                                @foreach ($formFields as $ff)
-                                                    <option value="{{ $ff->field_key }}" {{ $item->field_key === $ff->field_key ? 'selected' : '' }}>
-                                                        {{ $ff->label ?? $ff->field_label }} ({{ $ff->field_key }}) [{{ $ff->field_type }}]
-                                                    </option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                        <div id="field-config-create-{{ $item->id }}" class="{{ $item->action === 'create_draft_field' ? '' : 'hidden' }} flex items-center gap-2">
-                                            <input
-                                                type="text"
-                                                id="suggested-label-{{ $item->id }}"
-                                                value="{{ $item->suggested_label ?? $item->observed_label }}"
-                                                placeholder="Label Field Baru"
-                                                class="w-2/3 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                                            />
-                                            <select
-                                                id="suggested-type-{{ $item->id }}"
-                                                class="w-1/3 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
-                                            >
-                                                @foreach (['text', 'number', 'email', 'phone', 'date', 'select', 'file', 'textarea'] as $ft)
-                                                    <option value="{{ $ft }}" {{ ($item->suggested_field_type ?? 'text') === $ft ? 'selected' : '' }}>{{ $ft }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                        <div id="field-config-none-{{ $item->id }}" class="{{ in_array($item->action, ['external_only', 'ignore', 'system_protected']) ? '' : 'hidden' }} text-slate-400 italic text-[11px]">
-                                            @if ($item->action === 'system_protected')
-                                                <span class="text-purple-700 font-mono font-medium">Field Identitas Sistem (Terkunci)</span>
-                                            @elseif ($item->action === 'external_only')
-                                                <span>Tidak masuk formulir pemagang, tetap dibaca/disimpan dari spreadsheet</span>
-                                            @else
-                                                <span>Kolom ini diabaikan dari form & sinkronisasi</span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td class="px-3 py-2 text-center">
-                                        @php
-                                            $cBadge = match($item->confidence_level) {
-                                                'EXACT' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                                                'HIGH' => 'bg-blue-100 text-blue-800 border-blue-200',
-                                                'MEDIUM' => 'bg-amber-100 text-amber-800 border-amber-200',
-                                                default => 'bg-slate-100 text-slate-600 border-slate-200',
-                                            };
-                                        @endphp
-                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold border {{ $cBadge }}">
-                                            {{ $item->confidence_level }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-right">
-                                        @if ($item->action !== 'system_protected')
-                                            <div class="flex items-center justify-end gap-1.5">
-                                                <button
-                                                    type="button"
-                                                    onclick="saveProposalItemAjax({{ $activeProposal->id }}, {{ $item->id }})"
-                                                    id="btn-save-item-{{ $item->id }}"
-                                                    class="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] border border-indigo-200 transition"
-                                                    title="Simpan keputusan pemetaan"
-                                                >
-                                                    Simpan
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onclick="openColumnDeletionModal('{{ $item->col_letter }}', '{{ addslashes($item->observed_label) }}', '{{ addslashes($activeProposal->snapshot->tab_name ?? 'Tab') }}', '{{ $activeProposal->snapshot->schema_hash ?? '' }}', {{ $activeProposal->snapshot->sheet_id ?? 0 }})"
-                                                    class="px-2 py-1 rounded bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-semibold text-[11px] border border-slate-200 hover:border-rose-300 transition"
-                                                    title="Verifikasi keamanan & hapus kolom kosong"
-                                                >
-                                                    Hapus Kosong
-                                                </button>
-                                            </div>
-                                        @else
-                                            <span class="text-purple-600 font-mono text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">Sistem</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @endif
+                    <!-- Column status selector (Conditional if status source is column) -->
+                    <div id="ws-status-col-wrapper" class="hidden p-3 rounded-lg bg-sky-50 border border-sky-200 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-columns text-sky-600"></i>
+                            <span class="font-medium text-sky-900">Pilih kolom spreadsheet yang berisi teks status magang (misal: KET, STATUS, dsb):</span>
+                        </div>
+                        <div class="w-full sm:w-64">
+                            <select id="ws-status-col-select" class="w-full rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-none">
+                                <option value="">-- Pilih Kolom Status --</option>
+                            </select>
+                        </div>
+                    </div>
 
-        <!-- 3. Integration Outbox Events (Decoupled Publish & Remote Sync Status F2-14, F2-15) -->
-        <div>
-            <div class="flex items-center justify-between mb-2">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
-                    <span>Log Antrean Sinkronisasi Outbox (Decoupled DB Publish vs Remote Sync)</span>
-                </h3>
-                <span class="text-[11px] text-slate-500">
-                    DB Publish berhasil seketika &bull; Remote sync diproses terpisah secara aman
-                </span>
-            </div>
-            <div class="overflow-x-auto rounded-lg border border-slate-200">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                        <tr>
-                            <th class="px-4 py-2.5">Event Tipe</th>
-                            <th class="px-4 py-2.5">Idempotency Key</th>
-                            <th class="px-4 py-2.5 text-center">Percobaan</th>
-                            <th class="px-4 py-2.5 text-center">Status Remote</th>
-                            <th class="px-4 py-2.5">Waktu Dibuat</th>
-                        </tr>
-                    </thead>
-                    <tbody id="outbox-events-tbody" class="divide-y divide-slate-100">
-                        @include('admin.spreadsheet-connections.partials.outbox-events', ['outboxEvents' => $outboxEvents])
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+                    <!-- Loading State Indicator -->
+                    <div id="ws-loading" class="hidden py-8 text-center text-slate-500 text-xs">
+                        <i class="fas fa-spinner fa-spin text-2xl text-teal-600 mb-2"></i>
+                        <p id="ws-loading-text">Sedang memindai data dan warna background spreadsheet...</p>
+                    </div>
 
-    <!-- Card: Controlled Inbound Row Staging & Change Reconciliation (Fase 4) -->
-    <div class="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
-            <div>
-                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <span class="p-1 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                    </span>
-                    Perubahan Inbound & Rekonsiliasi Staging (Fase 4)
-                </h3>
-                <p class="text-xs text-slate-500 mt-0.5">
-                    Perubahan data dari Google Spreadsheet ditampung di staging terlebih dahulu. Database lokal tetap menjadi sumber kebenaran data administratif.
-                </p>
-            </div>
-            <div class="flex items-center gap-2">
-                <button
-                    type="button"
-                    onclick="window.location.reload()"
-                    class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 transition"
-                >
-                    Refresh Staging
-                </button>
-            </div>
-        </div>
+                    <!-- Interactive Rule & Filter Builder (Muncul Pasca Scan) -->
+                    <div id="ws-rules-card" class="hidden mb-6 p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fas fa-filter text-teal-600"></i>
+                                Aturan Pemetaan Status &amp; Pengurutan Data
+                            </h3>
+                            <span class="text-[11px] text-slate-500">Atur pemetaan warna atau partisi baris lalu klik 'Terapkan Aturan'</span>
+                        </div>
 
-        @php
-            $stagedInboundChanges = \App\Models\SheetInboundChangeStaging::where('spreadsheet_connection_id', $connection->id)
-                ->with(['registration', 'reviewer'])
-                ->orderBy('created_at', 'desc')
-                ->limit(20)
-                ->get();
-        @endphp
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
-                <thead>
-                    <tr class="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold text-[11px]">
-                        <th class="px-3 py-2.5">Waktu / Tab</th>
-                        <th class="px-3 py-2.5">Sync ID & Pendaftar</th>
-                        <th class="px-3 py-2.5">Header & Klasifikasi</th>
-                        <th class="px-3 py-2.5">Nilai Remote vs DB</th>
-                        <th class="px-3 py-2.5">Status Konflik</th>
-                        <th class="px-3 py-2.5">Status Staging</th>
-                        <th class="px-3 py-2.5 text-center">Aksi Admin</th>
-                    </tr>
-                </thead>
-                <tbody id="inbound-staging-tbody" class="divide-y divide-slate-100 text-slate-700">
-                    @forelse($stagedInboundChanges as $stg)
-                        <tr class="hover:bg-slate-50/70 transition" id="staging-row-{{ $stg->id }}">
-                            <td class="px-3 py-2.5">
-                                <span class="font-medium text-slate-800">{{ $stg->tab_name }}</span>
-                                <div class="text-[10px] text-slate-400 font-mono">{{ $stg->created_at?->format('d M H:i') }}</div>
-                            </td>
-                            <td class="px-3 py-2.5">
-                                <span class="font-mono text-[11px] font-semibold text-slate-800">{{ $stg->sync_id }}</span>
-                                <div class="text-[11px] text-slate-600 truncate max-w-[150px]">{{ $stg->registration?->fullname ?? '-' }}</div>
-                            </td>
-                            <td class="px-3 py-2.5">
-                                <span class="font-medium text-slate-800">{{ $stg->header_name }}</span>
-                                <div>
-                                    @php
-                                        $clsBadge = match($stg->field_classification) {
-                                            'system_protected'   => 'bg-rose-50 text-rose-700 border-rose-200',
-                                            'core_administrative' => 'bg-amber-50 text-amber-700 border-amber-200',
-                                            'custom_answer'      => 'bg-blue-50 text-blue-700 border-blue-200',
-                                            default              => 'bg-slate-100 text-slate-600 border-slate-200',
-                                        };
-                                    @endphp
-                                    <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border {{ $clsBadge }}">
-                                        {{ str_replace('_', ' ', ucfirst($stg->field_classification)) }}
-                                    </span>
+                        <!-- Grid: Color Palette Mapping & Sorting -->
+                        <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+                            <!-- Color Palette Mapping -->
+                            <div class="md:col-span-6 space-y-2">
+                                <label class="block text-xs font-semibold text-slate-700">
+                                    1. Pemetaan Warna Baris (Palet Terdeteksi):
+                                </label>
+                                <div id="ws-palette-container" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                    <!-- Populated dynamically via JS -->
+                                    <p class="text-xs text-slate-400 italic">Pindai sheet untuk membaca palet warna.</p>
                                 </div>
-                            </td>
-                            <td class="px-3 py-2.5 text-[11px]">
-                                @php
-                                    $maskedRemote = app(\App\Services\SpreadsheetInboundSyncService::class)->maskPiiValue($stg->header_name, (string)$stg->normalized_remote_value);
-                                    $maskedDb = app(\App\Services\SpreadsheetInboundSyncService::class)->maskPiiValue($stg->header_name, (string)$stg->current_db_value);
-                                @endphp
-                                <div class="text-emerald-700 font-medium">Sheet: <span class="font-mono">{{ $maskedRemote ?: '(kosong)' }}</span></div>
-                                <div class="text-slate-500">DB: <span class="font-mono">{{ $maskedDb ?: '(kosong)' }}</span></div>
-                            </td>
-                            <td class="px-3 py-2.5">
-                                @php
-                                    $cnfBadge = match($stg->conflict_status) {
-                                        'clean_inbound' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                        'conflict_divergent' => 'bg-amber-50 text-amber-700 border-amber-200',
-                                        'conflict_core_field_requires_approval' => 'bg-purple-50 text-purple-700 border-purple-200',
-                                        'rejected_protected_field' => 'bg-rose-50 text-rose-700 border-rose-200',
-                                        'conflict_duplicate_row_id' => 'bg-rose-50 text-rose-700 border-rose-200',
-                                        default => 'bg-slate-100 text-slate-600 border-slate-200',
-                                    };
-                                @endphp
-                                <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold border {{ $cnfBadge }}">
-                                    {{ str_replace('_', ' ', ucfirst($stg->conflict_status)) }}
-                                </span>
-                            </td>
-                            <td class="px-3 py-2.5">
-                                @php
-                                    $stgBadge = match($stg->staging_status) {
-                                        'applied'  => 'bg-emerald-100 text-emerald-800 font-semibold',
-                                        'approved' => 'bg-blue-100 text-blue-800 font-semibold',
-                                        'rejected' => 'bg-slate-200 text-slate-600',
-                                        default    => 'bg-amber-100 text-amber-800 font-semibold',
-                                    };
-                                @endphp
-                                <span class="inline-block px-2 py-0.5 rounded text-[10px] {{ $stgBadge }}">
-                                    {{ ucfirst($stg->staging_status) }}
-                                </span>
-                            </td>
-                            <td class="px-3 py-2.5 text-center">
-                                @if($stg->staging_status === 'staged')
-                                    @if($stg->isProtected())
-                                        <span class="text-[10px] text-rose-600 font-semibold">Tolak Mutlak</span>
-                                    @else
-                                        <div class="flex items-center justify-center gap-1.5">
-                                            <button
-                                                type="button"
-                                                onclick="approveInboundStaging({{ $stg->id }})"
-                                                class="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition"
-                                            >
-                                                Setujui
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onclick="rejectInboundStaging({{ $stg->id }})"
-                                                class="px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-semibold transition"
-                                            >
-                                                Tolak
-                                            </button>
-                                        </div>
-                                    @endif
-                                @else
-                                    <span class="text-[10px] text-slate-400">Selesai</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="7" class="px-4 py-6 text-center text-slate-400 italic">
-                                Belum ada perubahan inbound yang tertampung di staging. Tekan tombol 'Pindai Inbound Staging' di atas untuk memindai tab Spreadsheet.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
+                            </div>
 
-    <!-- Modal: Explicit Tab Profile Editor -->
-    <div id="modal-tab-profile" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                <h3 class="text-sm font-bold text-slate-800" id="modal-profile-title">Atur Profil Header Tab Eksplisit</h3>
-                <button type="button" onclick="closeTabProfileModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
-            </div>
-            <form id="form-tab-profile" onsubmit="submitTabProfile(event)">
-                <div class="space-y-3 text-xs">
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Sheet ID Google (Numerik Stabil)</label>
-                        <input
-                            type="number"
-                            id="input-sheet-id"
-                            required
-                            placeholder="Contoh: 0, 123456789"
-                            class="w-full rounded border border-slate-300 p-2 text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
-                        />
-                        <span class="text-[10px] text-slate-400 mt-0.5 block">Diperoleh dari parameter gid=... di URL Google Sheets atau pindaian tab.</span>
+                            <!-- Range Partitioning & Sorting Controls -->
+                            <div class="md:col-span-6 space-y-4">
+                                <!-- Partisi Rentang Baris -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <label class="block text-xs font-semibold text-slate-700">
+                                            2. Partisi Rentang Baris Manual:
+                                        </label>
+                                        <button type="button" id="btn-add-range-rule" class="text-[11px] font-semibold text-teal-700 hover:text-teal-900">
+                                            + Tambah Rentang
+                                        </button>
+                                    </div>
+                                    <div id="ws-ranges-container" class="space-y-2 max-h-36 overflow-y-auto pr-1">
+                                        <!-- Dynamic range rows -->
+                                    </div>
+                                </div>
+
+                                <!-- Sorting Controls -->
+                                <div class="pt-2 border-t border-slate-200">
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                        3. Pengurutan Data (Bukan Timestamp Saja):
+                                    </label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <select id="ws-sort-by" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                                                <option value="_row_number">Nomor Baris Asli (Sheet)</option>
+                                                <option value="display_name">Nama Lengkap Pemagang</option>
+                                                <option value="display_contact">Kontak / Email</option>
+                                                <option value="status">Status Magang</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <select id="ws-sort-dir" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                                                <option value="asc">Menaik (A-Z / 1-9)</option>
+                                                <option value="desc">Menurun (Z-A / 9-1)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Apply Rules Button -->
+                        <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                id="btn-apply-workspace-rules"
+                                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900 text-xs font-semibold shadow-sm transition"
+                            >
+                                <i class="fas fa-check-double text-xs"></i>
+                                Terapkan Aturan &amp; Urutkan Pratinjau
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Nama Tab Spreadsheet</label>
+
+                    <!-- Table Pratinjau Terpadu -->
+                    <div id="ws-table-card" class="hidden space-y-3">
+                        <!-- Filter Pills & Search Bar -->
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                            <div class="flex flex-wrap items-center gap-1.5" id="ws-status-filter-pills">
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-800 text-white" data-filter="all">
+                                    Semua (<span id="count-all">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300" data-filter="unassigned">
+                                    <i class="fas fa-question-circle text-[10px]"></i> Belum Ditentukan (<span id="count-unassigned">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="accepted">
+                                    Diterima (<span id="count-accepted">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="active">
+                                    Aktif (<span id="count-active">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="waiting">
+                                    Calon (<span id="count-waiting">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="completed">
+                                    Selesai (<span id="count-completed">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="rejected">
+                                    Ditolak (<span id="count-rejected">0</span>)
+                                </button>
+                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="exited">
+                                    Dikeluarkan (<span id="count-exited">0</span>)
+                                </button>
+                            </div>
+                            <div class="w-full sm:w-64">
+                                <input
+                                    type="text"
+                                    id="ws-search-input"
+                                    placeholder="Cari nama / kontak pemagang..."
+                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Table Container -->
+                        <div class="overflow-x-auto rounded-lg border border-slate-200 max-h-[500px] overflow-y-auto">
+                            <table class="w-full text-left text-xs min-w-[700px]">
+                                <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-xs">
+                                    <tr>
+                                        <th class="px-3 py-2.5 w-10 text-center">
+                                            <input type="checkbox" id="ws-check-all" class="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4" />
+                                        </th>
+                                        <th class="px-3 py-2.5 w-24">Baris Sheet</th>
+                                        <th class="px-3 py-2.5">Nama Pemagang</th>
+                                        <th class="px-3 py-2.5">Email / Kontak</th>
+                                        <th class="px-3 py-2.5 w-44">Status Magang</th>
+                                        <th class="px-3 py-2.5 w-32">Status Integrasi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ws-table-tbody" class="divide-y divide-slate-100 bg-white">
+                                    <!-- Populated via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Sticky Action Bar / Batch Summary -->
+                        <div id="ws-action-bar" class="p-4 rounded-xl border border-teal-200 bg-teal-50/90 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs">
+                            <div>
+                                <div class="text-xs font-bold text-teal-950 flex items-center gap-2">
+                                    <i class="fas fa-check-circle text-teal-600"></i>
+                                    <span>Terpilih: <strong id="ws-selected-count" class="text-teal-700 text-sm">0</strong> baris data</span>
+                                </div>
+                                <p class="text-[11px] text-teal-800 mt-0.5" id="ws-selected-breakdown">
+                                    Belum ada baris yang dipilih. Centang baris untuk dimasukkan ke SertIF.
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    id="btn-select-all-filtered"
+                                    class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition"
+                                >
+                                    Pilih Semua Ditampilkan
+                                </button>
+                                <button
+                                    type="button"
+                                    id="btn-dry-run-reconcile"
+                                    class="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-xs font-bold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                    disabled
+                                    title="Lakukan audit simulasi pra-tulis tanpa mengubah database atau remote spreadsheet"
+                                >
+                                    <i class="fas fa-flask text-xs"></i>
+                                    Simulasi Pra-Tulis (Dry-Run)
+                                </button>
+                                <button
+                                    type="button"
+                                    id="btn-bulk-sync-without-id"
+                                    class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5"
+                                    title="Sinkronkan seluruh baris tanpa ID yang cocok dengan aturan status secara massal"
+                                >
+                                    <i class="fas fa-bolt text-xs"></i>
+                                    ⚡ Terapkan Status &amp; Sinkronkan Semua Tanpa ID
+                                </button>
+                                <button
+                                    type="button"
+                                    id="btn-execute-batch"
+                                    class="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                    disabled
+                                >
+                                    <i class="fas fa-cloud-upload-alt text-xs"></i>
+                                    Masukkan Data Terpilih ke SertIF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL UNIVERSAL SEARCH ENGINE (Pencarian Cepat Proyeksi Lokal) -->
+                <div class="rounded-xl border border-indigo-200 bg-indigo-50/20 p-4 space-y-4" id="card-search-engine">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-indigo-100 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-600 text-white">
+                                Pencarian Cepat
+                            </span>
+                            <h3 class="text-sm font-bold text-slate-800">
+                                Mesin Penelusuran Cepat (Database Projection)
+                            </h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="global-search-count-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                                0 Ditemukan
+                            </span>
+                            <button
+                                type="button"
+                                id="btn-trigger-indexing"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition"
+                                title="Indeks data tab terpilih ke database lokal agar pencarian instan (< 30ms)"
+                            >
+                                <svg id="icon-indexing" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                                </svg>
+                                <span>⚡ Indeks Tab Ini</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Indexing Progress Bar -->
+                    <div id="index-progress-box" class="hidden p-3 rounded-lg bg-white border border-indigo-200 text-xs space-y-1.5 shadow-2xs">
+                        <div class="flex items-center justify-between text-indigo-900 font-semibold">
+                            <span id="index-progress-label">Mengindeks data...</span>
+                            <span id="index-progress-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                            <div id="index-progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400">
+                            <span id="index-progress-count">Memulai...</span>
+                            <span>Aman &bull; Background Worker</span>
+                        </div>
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="relative">
                         <input
                             type="text"
-                            id="input-tab-name"
-                            required
-                            placeholder="Contoh: 2026, Pendaftaran 2026"
-                            class="w-full rounded border border-slate-300 p-2 text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
+                            id="global-search-input"
+                            placeholder="Ketik nama pemagang, email, no HP, atau sync ID untuk mencari instan (< 30ms)..."
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
                         />
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block font-semibold text-slate-700 mb-1">Baris Header</label>
-                            <input
-                                type="number"
-                                id="input-header-row"
-                                required
-                                min="1"
-                                max="100"
-                                value="1"
-                                class="w-full rounded border border-slate-300 p-2 text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label class="block font-semibold text-slate-700 mb-1">Baris Mulai Data</label>
-                            <input
-                                type="number"
-                                id="input-data-start-row"
-                                required
-                                min="2"
-                                max="200"
-                                value="2"
-                                class="w-full rounded border border-slate-300 p-2 text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
-                            />
+                        <div id="global-search-loading" class="hidden absolute right-3 top-2.5">
+                            <i class="fas fa-spinner fa-spin text-indigo-600 text-sm"></i>
                         </div>
                     </div>
-                </div>
-                <div class="mt-6 flex items-center justify-end gap-2">
-                    <button
-                        type="button"
-                        onclick="closeTabProfileModal()"
-                        class="px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
-                    >
-                        Batal
-                    </button>
-                    <button
-                        type="submit"
-                        class="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm"
-                    >
-                        Simpan Profil Tab
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- Modal: Schema Diff Preview (Non-Destructive) -->
-    <div id="modal-schema-diff" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-slate-200 max-h-[85vh] flex flex-col">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800">Pratinjau Dampak Perubahan Skema (Schema Diff)</h3>
-                    <p class="text-xs text-slate-500 mt-0.5">Analisis non-destruktif: tidak ada kolom yang dihapus dari Form Builder.</p>
-                </div>
-                <button type="button" onclick="closeSchemaDiffModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
-            </div>
-
-            <!-- Summary Badges -->
-            <div id="diff-summary-badges" class="flex flex-wrap gap-2 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                <!-- Dynamically populated -->
-            </div>
-
-            <!-- Diff Items List -->
-            <div id="diff-items-container" class="overflow-y-auto flex-1 space-y-2 pr-1 text-xs">
-                <!-- Dynamically populated -->
-            </div>
-
-            <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <div class="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    0 Kolom Dihapus (Non-Destructive Safety Guaranteed)
-                </div>
-                <button
-                    type="button"
-                    onclick="closeSchemaDiffModal()"
-                    class="px-4 py-1.5 rounded bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold"
-                >
-                    Tutup Pratinjau
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Safe Column Deletion Verification & Execution (Fase 3) -->
-    <div id="modal-safe-column-deletion" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 border border-slate-200 flex flex-col">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                <div class="flex items-center gap-2">
-                    <span class="p-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            <line x1="10" y1="11" x2="10" y2="17"/>
-                            <line x1="14" y1="11" x2="14" y2="17"/>
-                        </svg>
-                    </span>
-                    <div>
-                        <h3 class="text-sm font-bold text-slate-800">Verifikasi Kelayakan Penghapusan Header Kosong</h3>
-                        <p class="text-xs text-slate-500 mt-0.5">Uji keamanan multi-lapis: data, formula, snapshot, dan lifecycle.</p>
+                    <!-- Search Results Table -->
+                    <div class="overflow-x-auto rounded-lg border border-slate-200 max-h-56 overflow-y-auto bg-white">
+                        <table class="w-full text-left text-xs min-w-[600px]">
+                            <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold text-[11px]">
+                                <tr>
+                                    <th class="px-3 py-2 w-24">Baris Sheet</th>
+                                    <th class="px-3 py-2">Identitas Pemagang</th>
+                                    <th class="px-3 py-2">Kontak</th>
+                                    <th class="px-3 py-2 w-28">Skor Relevansi</th>
+                                    <th class="px-3 py-2 w-24">Sheet ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="global-search-results-tbody" class="divide-y divide-slate-100">
+                                <tr>
+                                    <td colspan="5" class="py-6 text-center text-xs text-slate-400 italic">
+                                        Ketik kata kunci di atas untuk mencari data pendaftar yang sudah terindeks.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-                <button type="button" onclick="closeColumnDeletionModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
-            </div>
-
-            <!-- Target Summary -->
-            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs mb-4">
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <span class="text-slate-500">Tab Target:</span>
-                        <strong id="del-modal-tab-name" class="text-slate-800 font-mono block"></strong>
-                    </div>
-                    <div>
-                        <span class="text-slate-500">Identitas Kolom:</span>
-                        <strong id="del-modal-col-identity" class="text-indigo-700 font-mono block"></strong>
-                    </div>
-                    <div>
-                        <span class="text-slate-500">Label Header Terbaca:</span>
-                        <strong id="del-modal-header-name" class="text-slate-800 block truncate"></strong>
-                    </div>
-                    <div>
-                        <span class="text-slate-500">Posisi Fisik:</span>
-                        <strong id="del-modal-col-pos" class="text-slate-800 font-mono block"></strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Evaluation Loading State -->
-            <div id="del-modal-loading" class="py-8 text-center text-xs text-slate-500">
-                <svg class="animate-spin h-6 w-6 text-indigo-600 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Sedang memindai seluruh baris data dan memeriksa 9 gate keamanan...</span>
-            </div>
-
-            <!-- Evaluation Result Container -->
-            <div id="del-modal-result" class="hidden space-y-3">
-                <div id="del-modal-status-badge" class="p-3 rounded-lg border text-xs"></div>
-                
-                <div class="border border-slate-200 rounded-lg p-3 bg-white max-h-48 overflow-y-auto text-xs space-y-1.5" id="del-modal-reasons-list">
-                    <!-- Populated dynamically -->
-                </div>
-
-                <div id="del-modal-action-box" class="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <button
-                        type="button"
-                        onclick="closeColumnDeletionModal()"
-                        class="px-3 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
-                    >
-                        Tutup
-                    </button>
-                    <button
-                        type="button"
-                        id="btn-confirm-delete-column"
-                        onclick="executeColumnDeletionAjax()"
-                        class="hidden px-4 py-1.5 rounded bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition"
-                    >
-                        Hapus Header Kosong Sekarang
-                    </button>
                 </div>
             </div>
         </div>
@@ -1244,1039 +1029,1305 @@
             </div>
         </div>
     </div>
+
+    <!-- Universal Spreadsheet Search Engine Card (Database-Native Hybrid Search) -->
+    <div class="mb-8 rounded-xl border border-teal-200 bg-white p-6 shadow-sm" id="universal-search-section">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-teal-100 text-teal-800 border border-teal-200 flex items-center gap-1">
+                        <i class="fas fa-bolt text-teal-600"></i> Universal Search Engine (Lokal Database)
+                    </span>
+                    <h2 class="text-lg font-bold text-slate-800">Pencarian Universal Spreadsheet</h2>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">
+                    Pencarian instan ribuan data pemagang dari Google Spreadsheet menggunakan proyeksi database lokal SertIF (&lt; 30 ms). Bebas dari batasan 100 baris dan tanpa panggilan/kuota ke Google Sheets saat mengetik.
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="search-index-freshness" class="text-[11px] text-slate-500 italic">
+                    <i class="fas fa-clock text-slate-400"></i> Indeks siap
+                </span>
+                <button
+                    type="button"
+                    id="btn-trigger-indexing"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold shadow-2xs transition"
+                >
+                    <i class="fas fa-sync-alt text-xs" id="icon-indexing"></i>
+                    Perbarui Indeks Tab
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Box (Hidden by default) -->
+        <div id="index-progress-box" class="hidden mb-4 p-3.5 rounded-lg bg-teal-50 border border-teal-200 text-xs">
+            <div class="flex items-center justify-between font-semibold text-teal-800 mb-1.5">
+                <span id="index-progress-label"><i class="fas fa-spinner fa-spin mr-1"></i> Sedang mengindeks data spreadsheet di latar belakang...</span>
+                <span id="index-progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-teal-200 rounded-full h-2 overflow-hidden">
+                <div id="index-progress-bar" class="bg-teal-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div class="flex items-center justify-between text-[11px] text-teal-600 mt-1" id="index-progress-subtext">
+                <span id="index-progress-count">Memproses batch...</span>
+                <span>Proses berjalan di background antrean database</span>
+            </div>
+        </div>
+
+        <!-- Search Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4 items-end">
+            <div class="md:col-span-6">
+                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    Cari Nama, Email, No. HP, atau ID Sistem (SERTIF_SYNC_ID)
+                </label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <i class="fas fa-search text-xs"></i>
+                    </span>
+                    <input
+                        type="text"
+                        id="global-search-input"
+                        placeholder="Ketik nama (contoh: Fauzi), no HP (contoh: 0812...), email, atau ID..."
+                        class="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-8 py-2 text-xs text-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                    />
+                    <button
+                        type="button"
+                        id="btn-clear-global-search"
+                        class="hidden absolute inset-y-0 right-0 items-center pr-2.5 text-slate-400 hover:text-slate-600 text-sm font-bold"
+                        title="Hapus pencarian"
+                    >
+                        &times;
+                    </button>
+                </div>
+            </div>
+
+            <div class="md:col-span-3">
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Filter Tab</label>
+                <select id="global-search-tab-filter" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                    <option value="">-- Semua Tab Terindeks --</option>
+                </select>
+            </div>
+
+            <div class="md:col-span-3">
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Status Identitas</label>
+                <select id="global-search-identity-filter" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                    <option value="">Semua Identitas</option>
+                    <option value="stable">Sudah Ber-ID (Stable)</option>
+                    <option value="provisional">Belum Ber-ID (Provisional)</option>
+                    <option value="ambiguous">Konflik / Ambigu</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Search Results Table Area -->
+        <div id="global-search-results-section" class="border border-slate-200 rounded-lg overflow-hidden">
+            <!-- Header bar with summary stats -->
+            <div class="flex items-center justify-between px-3.5 py-2 bg-slate-50 border-b border-slate-200 text-xs">
+                <div class="flex items-center gap-2">
+                    <span id="global-search-stats" class="font-semibold text-slate-700">Hasil Pencarian</span>
+                    <span id="global-search-speed" class="text-[11px] text-teal-600 font-mono bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 hidden"></span>
+                </div>
+                <div class="text-[11px] text-slate-400" id="global-search-tip">
+                    <i class="fas fa-info-circle"></i> Hasil pencarian langsung dari database lokal SertIF.
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table class="w-full text-left text-xs min-w-[700px]">
+                    <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                        <tr>
+                            <th class="px-3 py-2 w-24">Baris Sheet</th>
+                            <th class="px-3 py-2">Nama Pemagang</th>
+                            <th class="px-3 py-2">Email / Kontak</th>
+                            <th class="px-3 py-2">Asal Sekolah / Jurusan</th>
+                            <th class="px-3 py-2 w-32">Status Identitas</th>
+                            <th class="px-3 py-2 w-28 text-center">Status Integrasi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="global-search-results-body" class="divide-y divide-slate-100 bg-white">
+                        <tr>
+                            <td colspan="6" class="py-10 text-center text-xs text-slate-400 italic">
+                                <i class="fas fa-search text-slate-300 text-2xl mb-2 block"></i>
+                                Masukkan kata kunci pada input pencarian di atas untuk mencari pendaftar.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Pagination -->
+            <div class="flex items-center justify-between px-3.5 py-2 bg-slate-50 border-t border-slate-200 text-xs" id="global-search-pagination">
+                <span id="global-search-pagination-info" class="text-[11px] text-slate-500">Menampilkan 0 hasil</span>
+                <div class="flex items-center gap-1" id="global-search-page-btns">
+                    <!-- Dynamic page buttons -->
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // ----------------------------------------------------
+    // Endpoints & Configurations
+    // ----------------------------------------------------
     const urlTabs = @json(route('admin.spreadsheet-connections.tabs', $connection));
-    const urlInspect = @json(route('admin.spreadsheet-connections.inspect-schema', $connection));
-    const urlPreview = @json(route('admin.spreadsheet-connections.preview-rows', $connection));
-    const urlProposals = @json(route('admin.spreadsheet-connections.draft-mapping-proposals', $connection));
-
-    const btnFetchTabs = document.getElementById('btn-fetch-tabs');
-    const tabSelect = document.getElementById('scanner-tab-select');
-    const headerRowInput = document.getElementById('scanner-header-row');
-    const btnInspectSchema = document.getElementById('btn-inspect-schema');
-    const btnPreviewRows = document.getElementById('btn-preview-rows');
-    const btnDraftMapping = document.getElementById('btn-draft-mapping');
-    const btnScanInbound = document.getElementById('btn-scan-inbound');
-
-    const loadingEl = document.getElementById('scanner-loading');
-    const loadingText = document.getElementById('scanner-loading-text');
-    const resultsContainer = document.getElementById('scanner-results');
-    const contentEl = document.getElementById('scanner-content');
-    const statTabBadge = document.getElementById('stat-tab-badge');
-    const statHeaderRowBadge = document.getElementById('stat-header-row-badge');
-    const statColCountBadge = document.getElementById('stat-col-count-badge');
-    const statSchemaHash = document.getElementById('stat-schema-hash');
-
-    let currentPreviewPage = 1;
-
-    function showLoading(text) {
-        loadingText.textContent = text;
-        loadingEl.classList.remove('hidden');
-        resultsContainer.classList.add('hidden');
-    }
-
-    function hideLoading() {
-        loadingEl.classList.add('hidden');
-        resultsContainer.classList.remove('hidden');
-    }
-
-    function getSelectedTab() {
-        return tabSelect.value.trim();
-    }
-
-    function getHeaderRow() {
-        return headerRowInput.value.trim();
-    }
-
-    function getSelectedSheetId() {
-        const selected = tabSelect.options[tabSelect.selectedIndex];
-        if (selected && selected.dataset.sheetId !== undefined && selected.dataset.sheetId !== '') {
-            return parseInt(selected.dataset.sheetId);
-        }
-        return null;
-    }
-
-    // 1. Fetch Tabs List
-    btnFetchTabs.addEventListener('click', async function () {
-        showLoading('Mengambil daftar seluruh tab dari Google Spreadsheet...');
-        try {
-            const resp = await fetch(urlTabs);
-            const data = await resp.json();
-
-            if (!data.success) {
-                alert('Gagal mengambil daftar tab: ' + (data.message || 'Error tidak diketahui'));
-                loadingEl.classList.add('hidden');
-                return;
-            }
-
-            tabSelect.innerHTML = '';
-            if (!data.tabs || data.tabs.length === 0) {
-                tabSelect.innerHTML = '<option value="">(Tidak ada tab ditemukan)</option>';
-                btnInspectSchema.disabled = true;
-                btnPreviewRows.disabled = true;
-                btnDraftMapping.disabled = true;
-                if (btnScanInbound) btnScanInbound.disabled = true;
-                loadingEl.classList.add('hidden');
-                return;
-            }
-
-            data.tabs.forEach(tab => {
-                const opt = document.createElement('option');
-                opt.value = tab.name;
-                opt.dataset.sheetId = (tab.id !== undefined && tab.id !== null) ? tab.id : '';
-                opt.dataset.headerRow = tab.header_row || 1;
-                opt.dataset.dataStartRow = tab.data_start_row || (parseInt(tab.header_row || 1) + 1);
-                opt.textContent = `${tab.name} (${tab.last_row || tab.row_count} baris, default header: baris ${tab.header_row})`;
-                tabSelect.appendChild(opt);
-            });
-
-            // Set default header row from first tab
-            const firstOpt = tabSelect.options[0];
-            headerRowInput.value = firstOpt.dataset.headerRow;
-
-            btnInspectSchema.disabled = false;
-            btnPreviewRows.disabled = false;
-            btnDraftMapping.disabled = false;
-            if (btnScanInbound) btnScanInbound.disabled = false;
-
-            hideLoading();
-            resultsContainer.classList.add('hidden');
-        } catch (e) {
-            alert('Terjadi kesalahan jaringan saat memindai tab: ' + e.message);
-            loadingEl.classList.add('hidden');
-        }
-    });
-
-    tabSelect.addEventListener('change', function () {
-        const selected = tabSelect.options[tabSelect.selectedIndex];
-        if (selected && selected.dataset.headerRow) {
-            headerRowInput.value = selected.dataset.headerRow;
-        }
-    });
-
-    // 2. Inspect Schema
-    btnInspectSchema.addEventListener('click', async function () {
-        const tab = getSelectedTab();
-        if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
-
-        const headerRow = getHeaderRow();
-        const sheetId = getSelectedSheetId();
-        let query = `?tab_name=${encodeURIComponent(tab)}`;
-        if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
-        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
-
-        showLoading(`Menginspeksi schema tab '${tab}' (Baris ${headerRow || 'Auto'})...`);
-        try {
-            const resp = await fetch(urlInspect + query);
-            const data = await resp.json();
-
-            if (!data.success) {
-                alert('Gagal menginspeksi schema: ' + (data.message || 'Error'));
-                loadingEl.classList.add('hidden');
-                return;
-            }
-
-            statTabBadge.textContent = `Tab: [${data.tab_name}]`;
-            statHeaderRowBadge.textContent = `Header: Baris ${data.header_row}`;
-            statColCountBadge.textContent = `${data.columns_count} Kolom Ditemukan`;
-            statSchemaHash.textContent = data.schema_hash || '-';
-            statSchemaHash.title = data.schema_hash || '';
-
-            let html = `
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                        <tr>
-                            <th class="px-4 py-3 w-16 text-center">Kolom</th>
-                            <th class="px-4 py-3">Nama Header Spreadsheet</th>
-                            <th class="px-4 py-3 w-28 text-center">Tipe Inferensi</th>
-                            <th class="px-4 py-3 w-24 text-center">Formula?</th>
-                            <th class="px-4 py-3">Contoh Sampel Tersensor (PII Masked)</th>
-                            <th class="px-4 py-3 text-right w-28">Aksi Keamanan</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 font-sans">
-            `;
-
-            (data.columns || []).forEach(col => {
-                const samplesHtml = (col.samples || []).map(s =>
-                    `<span class="inline-block px-2 py-0.5 mr-1 mb-0.5 rounded bg-slate-100 border border-slate-200 font-mono text-[11px] text-slate-600">${escapeHtml(s)}</span>`
-                ).join('') || '<span class="text-slate-400 italic">(kosong)</span>';
-
-                const formulaBadge = col.has_formula
-                    ? '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800">Formula</span>'
-                    : '<span class="text-slate-400">-</span>';
-
-                html += `
-                    <tr class="hover:bg-slate-50/70 transition">
-                        <td class="px-4 py-2 text-center font-mono font-bold text-blue-700 bg-slate-50/50">
-                            ${escapeHtml(col.col_letter)} (${col.col_index})
-                        </td>
-                        <td class="px-4 py-2 font-medium text-slate-800">
-                            ${col.header_name ? escapeHtml(col.header_name) : '<span class="text-slate-400 italic">(Header Kosong)</span>'}
-                        </td>
-                        <td class="px-4 py-2 text-center">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 text-slate-700">
-                                ${escapeHtml(col.inferred_type)}
-                            </span>
-                        </td>
-                        <td class="px-4 py-2 text-center">${formulaBadge}</td>
-                        <td class="px-4 py-2">${samplesHtml}</td>
-                        <td class="px-4 py-2 text-right">
-                            <button
-                                type="button"
-                                onclick="openColumnDeletionModal('${escapeHtml(col.col_letter)}', '${escapeHtml(col.header_name || '')}', '${escapeHtml(data.tab_name)}', '${escapeHtml(data.schema_hash || '')}', ${data.sheet_id || 0})"
-                                class="px-2 py-1 rounded bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-semibold text-[10px] border border-slate-200 hover:border-rose-300 transition"
-                            >
-                                Cek Hapus
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table>`;
-            contentEl.innerHTML = html;
-
-            hideLoading();
-        } catch (e) {
-            alert('Kesalahan saat menginspeksi schema: ' + e.message);
-            loadingEl.classList.add('hidden');
-        }
-    });
-
-    // 3. Preview Rows
-    btnPreviewRows.addEventListener('click', function () {
-        currentPreviewPage = 1;
-        loadPreviewPage(1);
-    });
-
-    async function loadPreviewPage(page) {
-        const tab = getSelectedTab();
-        if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
-
-        const headerRow = getHeaderRow();
-        const sheetId = getSelectedSheetId();
-        let query = `?tab_name=${encodeURIComponent(tab)}&page=${page}&page_size=15`;
-        if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
-        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
-
-        showLoading(`Membaca baris data tab '${tab}' (Halaman ${page})...`);
-        try {
-            const resp = await fetch(urlPreview + query);
-            const data = await resp.json();
-
-            if (!data.success) {
-                alert('Gagal membaca baris: ' + (data.message || 'Error'));
-                loadingEl.classList.add('hidden');
-                return;
-            }
-
-            statTabBadge.textContent = `Tab: [${data.tab_name}]`;
-            statHeaderRowBadge.textContent = `Header: Baris ${data.header_row}`;
-            statColCountBadge.textContent = `${data.total_rows} Total Baris Data (Hal ${data.page} dari ${data.total_pages || 1})`;
-            statSchemaHash.textContent = 'Read-Only Data Preview';
-
-            if (!data.rows || data.rows.length === 0) {
-                contentEl.innerHTML = `<div class="p-8 text-center text-slate-400 italic">Tidak ada baris data di halaman ini.</div>`;
-                hideLoading();
-                return;
-            }
-
-            // Extract all headers from first row
-            const firstRow = data.rows[0];
-            const keys = Object.keys(firstRow);
-
-            let html = `
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs whitespace-nowrap">
-                        <thead class="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                            <tr>
-            `;
-
-            keys.forEach(k => {
-                html += `<th class="px-4 py-3">${escapeHtml(k)}</th>`;
-            });
-
-            html += `</tr></thead><tbody class="divide-y divide-slate-100 font-sans">`;
-
-            data.rows.forEach(r => {
-                html += `<tr class="hover:bg-slate-50/70 transition">`;
-                keys.forEach(k => {
-                    const val = r[k] !== null && r[k] !== undefined ? String(r[k]) : '';
-                    if (k === '_row_number') {
-                        html += `<td class="px-4 py-2 font-mono font-bold text-slate-500 bg-slate-50 text-center">#${escapeHtml(val)}</td>`;
-                    } else {
-                        html += `<td class="px-4 py-2 text-slate-700 font-mono text-[11px]">${escapeHtml(val) || '<span class="text-slate-300">-</span>'}</td>`;
-                    }
-                });
-                html += `</tr>`;
-            });
-
-            html += `</tbody></table></div>`;
-
-            // Pagination Controls Bar
-            html += `
-                <div class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
-                    <div class="text-slate-500">
-                        Menampilkan ${data.rows.length} baris (Halaman ${data.page} / ${data.total_pages || 1})
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button
-                            type="button"
-                            id="preview-prev-btn"
-                            class="px-2.5 py-1 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold disabled:opacity-40"
-                            ${data.page <= 1 ? 'disabled' : ''}
-                        >
-                            &larr; Sebelumnya
-                        </button>
-                        <button
-                            type="button"
-                            id="preview-next-btn"
-                            class="px-2.5 py-1 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold disabled:opacity-40"
-                            ${!data.has_more ? 'disabled' : ''}
-                        >
-                            Berikutnya &rarr;
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            contentEl.innerHTML = html;
-
-            const prevBtn = document.getElementById('preview-prev-btn');
-            const nextBtn = document.getElementById('preview-next-btn');
-
-            if (prevBtn) {
-                prevBtn.addEventListener('click', () => {
-                    if (data.page > 1) loadPreviewPage(data.page - 1);
-                });
-            }
-            if (nextBtn) {
-                nextBtn.addEventListener('click', () => {
-                    if (data.has_more) loadPreviewPage(data.page + 1);
-                });
-            }
-
-            hideLoading();
-        } catch (e) {
-            alert('Kesalahan saat memuat baris: ' + e.message);
-            loadingEl.classList.add('hidden');
-        }
-    }
-
-    // 4. Draft Mapping Proposals
-    btnDraftMapping.addEventListener('click', async function () {
-        const tab = getSelectedTab();
-        if (!tab) return alert('Silakan pilih tab terlebih dahulu.');
-
-        const headerRow = getHeaderRow();
-        const sheetId = getSelectedSheetId();
-        let query = `?tab_name=${encodeURIComponent(tab)}`;
-        if (headerRow) query += `&header_row=${encodeURIComponent(headerRow)}`;
-        if (sheetId !== null) query += `&sheet_id=${encodeURIComponent(sheetId)}`;
-
-        showLoading(`Menganalisis draft rekomendasi pemetaan kolom tab '${tab}' ke Form Builder...`);
-        try {
-            const resp = await fetch(urlProposals + query);
-            const data = await resp.json();
-
-            if (!data.success) {
-                alert('Gagal menyusun rekomendasi pemetaan: ' + (data.message || 'Error'));
-                loadingEl.classList.add('hidden');
-                return;
-            }
-
-            statTabBadge.textContent = `Tab: [${data.tab_name}]`;
-            statHeaderRowBadge.textContent = `Header: Baris ${data.header_row}`;
-            statColCountBadge.textContent = `${data.matched_count} Cocok / ${data.total_scanned} Total Kolom`;
-            statSchemaHash.textContent = data.schema_hash || '-';
-
-            let html = `
-                <div class="p-3 bg-indigo-50/60 border-b border-indigo-100 text-xs text-indigo-900 flex items-center justify-between">
-                    <div>
-                        <span class="font-bold">Analisis Rekomendasi Mapping:</span>
-                        Ditemukan <strong>${data.matched_count}</strong> kolom yang memiliki kandidat field Form Builder, dan <strong>${data.unmatched_count}</strong> kolom belum terpetakan.
-                    </div>
-                    <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold text-[11px]">Mode Analisis (Non-Destruktif)</span>
-                </div>
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                        <tr>
-                            <th class="px-4 py-3 w-16 text-center">Kolom</th>
-                            <th class="px-4 py-3">Header Terpindai di Spreadsheet</th>
-                            <th class="px-4 py-3">Usulan Field Form Builder</th>
-                            <th class="px-4 py-3 w-28 text-center">Tingkat Keyakinan</th>
-                            <th class="px-4 py-3">Rasionalisasi Pencocokan</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 font-sans">
-            `;
-
-            (data.proposals || []).forEach(p => {
-                let badgeClass = 'bg-slate-100 text-slate-600';
-                if (p.confidence_level === 'EXACT') badgeClass = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
-                else if (p.confidence_level === 'HIGH') badgeClass = 'bg-blue-100 text-blue-800 border border-blue-200';
-                else if (p.confidence_level === 'MEDIUM') badgeClass = 'bg-amber-100 text-amber-800 border border-amber-200';
-                else if (p.confidence_level === 'UNMATCHED') badgeClass = 'bg-rose-100 text-rose-800 border border-rose-200';
-
-                const fieldInfo = p.suggested_field_key ? `
-                    <div class="font-semibold text-slate-800">${escapeHtml(p.suggested_field_label || p.suggested_field_key)}</div>
-                    <div class="font-mono text-[10px] text-slate-500">
-                        key: ${escapeHtml(p.suggested_field_key)}
-                        <span class="ml-1 px-1 rounded bg-slate-100">${escapeHtml(p.suggested_field_type || 'text')}</span>
-                        ${p.is_system ? '<span class="ml-1 text-blue-600 font-semibold">(System)</span>' : ''}
-                    </div>
-                ` : `<span class="text-slate-400 italic">Belum ada field cocok</span>`;
-
-                html += `
-                    <tr class="hover:bg-slate-50/70 transition">
-                        <td class="px-4 py-2.5 text-center font-mono font-bold text-indigo-700 bg-slate-50/50">
-                            ${escapeHtml(p.col_letter)} (${p.col_index})
-                        </td>
-                        <td class="px-4 py-2.5 font-medium text-slate-800">
-                            ${p.scanned_header ? escapeHtml(p.scanned_header) : '<span class="text-slate-400 italic">(Header Kosong)</span>'}
-                        </td>
-                        <td class="px-4 py-2.5">${fieldInfo}</td>
-                        <td class="px-4 py-2.5 text-center">
-                            <span class="inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${badgeClass}">
-                                ${escapeHtml(p.confidence_level)}
-                            </span>
-                        </td>
-                        <td class="px-4 py-2.5 text-slate-600 text-[11px]">
-                            ${escapeHtml(p.match_reason)}
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table>`;
-            contentEl.innerHTML = html;
-
-            hideLoading();
-        } catch (e) {
-            alert('Kesalahan saat menyusun usulan mapping: ' + e.message);
-            loadingEl.classList.add('hidden');
-        }
-    });
-
-    function escapeHtml(text) {
-        if (!text) return '';
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, function (m) { return map[m]; });
-    }
-
-    // ==========================================
-    // Fase 2 JavaScript Functions
-    // ==========================================
-    const tabProfileSaveUrl = @json(route('admin.spreadsheet-connections.tab-profile.save', $connection));
-    const proposalsStoreUrl = @json(route('admin.spreadsheet-connections.proposals.store', $connection));
-    const diffUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.diff', [$connection, 999999]) !!}';
-    const applyUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.apply', [$connection, 999999]) !!}';
-    const itemUpdateUrlTemplate = '{!! route('admin.spreadsheet-connections.proposals.items.update', [$connection, 999999, 888888]) !!}';
+    const urlInspectColumns = @json(route('admin.spreadsheet-connections.inspect-columns', $connection));
+    const urlInjectHeaderIds = @json(route('admin.spreadsheet-connections.inject-header-ids', $connection));
+    const urlSaveBrandColumns = @json(route('admin.spreadsheet-connections.save-brand-columns', $connection));
+    const urlWorkspaceRows = @json(route('admin.spreadsheet-connections.workspace-rows', $connection));
+    const urlDryRunReconcile = @json(route('admin.spreadsheet-connections.dry-run-reconcile', $connection));
+    const urlBatchReconcile = @json(route('admin.spreadsheet-connections.batch-reconcile', $connection));
+    const urlTestCompositeParser = @json(route('admin.spreadsheet-connections.test-composite-parser', $connection));
+    const urlDuplicateTab = @json(route('admin.spreadsheet-connections.duplicate-tab', $connection));
+    const urlSearch = @json(route('admin.spreadsheet-connections.search', $connection));
+    const urlIndexTab = @json(route('admin.spreadsheet-connections.index-tab', $connection));
+    const urlIndexStatusBase = @json(url('/admin/spreadsheet-connections/' . $connection->id . '/index-status'));
     const csrfToken = '{{ csrf_token() }}';
 
-    // Tab Profile Modal
-    window.openTabProfileModal = function () {
-        const sheetId = getSelectedSheetId();
-        document.getElementById('input-sheet-id').value = (sheetId !== null) ? sheetId : '';
-        document.getElementById('input-tab-name').value = getSelectedTab() || '';
-        document.getElementById('input-header-row').value = getHeaderRow() || '1';
-        document.getElementById('input-data-start-row').value = (parseInt(getHeaderRow() || '1') + 1);
-        document.getElementById('modal-tab-profile').classList.remove('hidden');
-    };
+    // ----------------------------------------------------
+    // State Variables
+    // ----------------------------------------------------
+    let allDiscoveredTabs = @json($preloadedTabs ?? []);
+    const tabColumnCache = {};
+    let activeTabCategory = 'all';
+    let currentInspectedColumns = [];
+    let wsAllRows = [];
+    let wsSelectedIndices = new Set();
+    let wsColorPaletteMap = {};
+    let wsRangeRules = [];
+    let wsCurrentFilter = 'all';
+    let wsCurrentSourceFilter = 'all';
+    let activeIndexingPollTimer = null;
+    let globalSearchDebounceTimer = null;
 
-    window.closeTabProfileModal = function () {
-        document.getElementById('modal-tab-profile').classList.add('hidden');
-    };
+    // ----------------------------------------------------
+    // DOM Elements - Langkah 1 (Columns & Headers)
+    // ----------------------------------------------------
+    const tabSelect = document.getElementById('scanner-tab-select');
+    const headerRowInput = document.getElementById('ws-header-row');
+    const btnInspectColumns = document.getElementById('btn-inspect-columns');
+    const wsColLoading = document.getElementById('ws-col-loading');
+    const wsColLoadingText = document.getElementById('ws-col-loading-text');
+    const wsColResult = document.getElementById('ws-col-result');
+    const wsHeaderIdAlert = document.getElementById('ws-header-id-alert');
+    const wsTotalCols = document.getElementById('ws-total-cols');
+    const wsCountStandard = document.getElementById('ws-count-standard');
+    const wsCountCustom = document.getElementById('ws-count-custom');
+    const wsCountSystem = document.getElementById('ws-count-system');
+    const wsInspectedTab = document.getElementById('ws-inspected-tab');
+    const wsInspectedHeaderRow = document.getElementById('ws-inspected-header-row');
+    const wsColTbody = document.getElementById('ws-col-tbody');
+    const btnSaveBrandColumns = document.getElementById('btn-save-brand-columns');
 
-    window.editTabProfile = function (sheetId, tabName, headerRow, dataStartRow) {
-        document.getElementById('input-sheet-id').value = sheetId;
-        document.getElementById('input-tab-name').value = tabName;
-        document.getElementById('input-header-row').value = headerRow;
-        document.getElementById('input-data-start-row').value = dataStartRow;
-        document.getElementById('modal-tab-profile').classList.remove('hidden');
-    };
+    // Sidebar & Navigation
+    const wsSidebarTabsList = document.getElementById('ws-sidebar-tabs-list');
+    const wsTabsCountBadge = document.getElementById('ws-tabs-count-badge');
+    const wsTabSearch = document.getElementById('ws-tab-search');
+    const wsTabCategoryFilter = document.getElementById('ws-tab-category-filter');
+    const btnFetchTabs = document.getElementById('btn-fetch-tabs');
 
-    window.submitTabProfile = async function (e) {
-        e.preventDefault();
-        const payload = {
-            sheet_id: parseInt(document.getElementById('input-sheet-id').value),
-            tab_name: document.getElementById('input-tab-name').value.trim(),
-            header_row: parseInt(document.getElementById('input-header-row').value),
-            data_start_row: parseInt(document.getElementById('input-data-start-row').value)
-        };
+    // ----------------------------------------------------
+    // DOM Elements - Langkah 2 (Rows, Colors & Reconcile)
+    // ----------------------------------------------------
+    const wsStartRowInput = document.getElementById('ws-start-row');
+    const wsEndRowInput = document.getElementById('ws-end-row');
+    const wsStatusSourceType = document.getElementById('ws-status-source-type');
+    const wsStatusColWrapper = document.getElementById('ws-status-col-wrapper');
+    const wsStatusColSelect = document.getElementById('ws-status-col-select');
+    const btnScanWorkspace = document.getElementById('btn-scan-workspace');
+    const wsLoading = document.getElementById('ws-loading');
+    const wsLoadingText = document.getElementById('ws-loading-text');
+    const wsRulesCard = document.getElementById('ws-rules-card');
+    const wsPaletteContainer = document.getElementById('ws-palette-container');
+    const wsRangesContainer = document.getElementById('ws-ranges-container');
+    const btnAddRangeRule = document.getElementById('btn-add-range-rule');
+    const wsSortBy = document.getElementById('ws-sort-by');
+    const wsSortDir = document.getElementById('ws-sort-dir');
+    const btnApplyWorkspaceRules = document.getElementById('btn-apply-workspace-rules');
+    const wsTableCard = document.getElementById('ws-table-card');
+    const wsTableTbody = document.getElementById('ws-table-tbody');
+    const wsSearchInput = document.getElementById('ws-search-input');
+    const wsCheckAll = document.getElementById('ws-check-all');
+    const wsSelectedCount = document.getElementById('ws-selected-count');
+    const wsSelectedBreakdown = document.getElementById('ws-selected-breakdown');
+    const btnSelectAllFiltered = document.getElementById('btn-select-all-filtered');
+    const btnDryRunReconcile = document.getElementById('btn-dry-run-reconcile');
+    const btnExecuteBatch = document.getElementById('btn-execute-batch');
+    const btnBulkSyncWithoutId = document.getElementById('btn-bulk-sync-without-id');
+
+    // ----------------------------------------------------
+    // 1. POPULATE & FETCH TABS (Instant 0ms + Background Sync)
+    // ----------------------------------------------------
+    function populateTabsUi(autoSelectFirst = true) {
+        if (!tabSelect) return false;
+        tabSelect.innerHTML = '';
+
+        if (!allDiscoveredTabs || allDiscoveredTabs.length === 0) {
+            tabSelect.innerHTML = '<option value="">-- Tekan \'Pindai Daftar Tab\' terlebih dahulu --</option>';
+            if (wsTabsCountBadge) wsTabsCountBadge.textContent = '0 Tab';
+            if (wsSidebarTabsList) {
+                wsSidebarTabsList.innerHTML = '<div class="py-6 text-center text-xs text-slate-400 italic">Belum ada tab ditemukan.</div>';
+            }
+            return false;
+        }
+
+        const filterQuery = (wsTabSearch ? wsTabSearch.value : '').toLowerCase().trim();
+        const filteredTabs = allDiscoveredTabs.filter(tab => {
+            const nameLower = (tab.name || '').toLowerCase();
+            const matchesQuery = !filterQuery || nameLower.includes(filterQuery);
+            if (!matchesQuery) return false;
+            if (activeTabCategory === 'reg') {
+                return nameLower.includes('daftar') || nameLower.includes('form') || nameLower.includes('respon') || nameLower.includes('regist');
+            } else if (activeTabCategory === 'other') {
+                return !nameLower.includes('daftar') && !nameLower.includes('form') && !nameLower.includes('respon') && !nameLower.includes('regist');
+            }
+            return true;
+        });
+
+        if (wsTabsCountBadge) {
+            wsTabsCountBadge.textContent = `${allDiscoveredTabs.length} Tab`;
+        }
+
+        // Render Dropdown options
+        filteredTabs.forEach((tab, idx) => {
+            const opt = document.createElement('option');
+            opt.value = tab.name;
+            opt.textContent = `${tab.name} (${tab.row_count || 0} baris)`;
+            if (tab.header_row) opt.dataset.headerRow = tab.header_row;
+            if (tab.data_start_row) opt.dataset.dataStartRow = tab.data_start_row;
+            tabSelect.appendChild(opt);
+        });
+
+        // Render Sidebar Cards
+        if (wsSidebarTabsList) {
+            wsSidebarTabsList.innerHTML = '';
+            if (filteredTabs.length === 0) {
+                wsSidebarTabsList.innerHTML = '<div class="py-6 text-center text-xs text-slate-400 italic">Tidak ada tab yang sesuai filter.</div>';
+            } else {
+                filteredTabs.forEach((tab) => {
+                    const card = document.createElement('div');
+                    card.className = 'p-2.5 rounded-lg border border-slate-200 bg-white hover:border-teal-400 hover:bg-teal-50/40 cursor-pointer transition flex items-center justify-between text-xs group';
+                    card.innerHTML = `
+                        <div class="truncate mr-2">
+                            <div class="font-semibold text-slate-800 group-hover:text-teal-900 truncate">${escapeHtml(tab.name)}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">${tab.row_count || 0} baris &bull; Hdr: ${tab.header_row || 10}</div>
+                        </div>
+                        <i class="fas fa-chevron-right text-slate-300 group-hover:text-teal-600 text-xs"></i>
+                    `;
+                    card.addEventListener('click', () => {
+                        tabSelect.value = tab.name;
+                        if (headerRowInput && tab.header_row) {
+                            headerRowInput.value = tab.header_row;
+                        }
+                        if (wsStartRowInput && tab.data_start_row) {
+                            wsStartRowInput.value = tab.data_start_row;
+                        }
+                        // Visual active state
+                        wsSidebarTabsList.querySelectorAll('div').forEach(el => el.classList.remove('ring-2', 'ring-teal-500'));
+                        card.classList.add('ring-2', 'ring-teal-500');
+                    });
+                    wsSidebarTabsList.appendChild(card);
+                });
+            }
+        }
+
+        // Auto select first tab if appropriate
+        if (autoSelectFirst && tabSelect.options.length > 0) {
+            tabSelect.selectedIndex = 0;
+            const firstTab = filteredTabs[0];
+            if (firstTab) {
+                if (headerRowInput && firstTab.header_row) headerRowInput.value = firstTab.header_row;
+                if (wsStartRowInput && firstTab.data_start_row) wsStartRowInput.value = firstTab.data_start_row;
+            }
+        }
+        return true;
+    }
+
+    async function fetchTabsList(forceRefresh = false) {
+        if (!tabSelect) return;
+        
+        // If we already have tabs, don't show full blocking spinner, only a subtle sync icon
+        const isPreloaded = allDiscoveredTabs && allDiscoveredTabs.length > 0;
+        if (!isPreloaded) {
+            tabSelect.innerHTML = '<option value="">-- Sedang memuat daftar tab... --</option>';
+            if (wsSidebarTabsList) {
+                wsSidebarTabsList.innerHTML = '<div class="py-8 text-center text-xs text-slate-400 italic"><i class="fas fa-spinner fa-spin text-teal-600 text-lg mb-1 block"></i>Memuat daftar tab...</div>';
+            }
+        }
+
+        const iconFetch = btnFetchTabs ? btnFetchTabs.querySelector('i') : null;
+        if (iconFetch) iconFetch.classList.add('fa-spin');
 
         try {
-            const resp = await fetch(tabProfileSaveUrl, {
+            const url = forceRefresh ? `${urlTabs}?refresh=1` : urlTabs;
+            const res = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            if (data.success && Array.isArray(data.tabs)) {
+                allDiscoveredTabs = data.tabs;
+                populateTabsUi(false);
+            } else if (!isPreloaded) {
+                tabSelect.innerHTML = '<option value="">Gagal memuat tab spreadsheet</option>';
+            }
+        } catch (err) {
+            console.error('Fetch tabs error:', err);
+            if (!isPreloaded) {
+                tabSelect.innerHTML = '<option value="">Koneksi timeout / gagal memuat tab</option>';
+            }
+        } finally {
+            if (iconFetch) iconFetch.classList.remove('fa-spin');
+        }
+    }
+
+    // Tab Filter listeners
+    if (wsTabSearch) {
+        wsTabSearch.addEventListener('input', () => populateTabsUi(false));
+    }
+    if (wsTabCategoryFilter) {
+        wsTabCategoryFilter.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                wsTabCategoryFilter.querySelectorAll('button').forEach(b => {
+                    b.className = 'px-2 py-0.5 rounded font-semibold bg-white text-slate-600 border border-slate-200 hover:bg-slate-100';
+                });
+                btn.className = 'px-2 py-0.5 rounded font-semibold bg-slate-800 text-white';
+                activeTabCategory = btn.dataset.category;
+                populateTabsUi(false);
+            });
+        });
+    }
+    if (btnFetchTabs) {
+        btnFetchTabs.addEventListener('click', () => fetchTabsList(true));
+    }
+
+    // ----------------------------------------------------
+    // 2. LANGKAH 1: INSPEKSI STRUKTUR KOLOM & HEADER ID
+    // ----------------------------------------------------
+    function renderInspectedColumnsResult(data, tab, headerRow) {
+        currentInspectedColumns = data.columns || [];
+
+        // Populate status column select in Step 2 if user chooses column mode
+        if (wsStatusColSelect) {
+            wsStatusColSelect.innerHTML = '<option value="">-- Pilih Kolom Status --</option>';
+            currentInspectedColumns.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.header_name;
+                opt.textContent = `Kolom ${c.col_letter}: ${c.header_name}`;
+                if ((c.header_name || '').toLowerCase().includes('status') || (c.header_name || '').toLowerCase().includes('ket')) {
+                    opt.selected = true;
+                }
+                wsStatusColSelect.appendChild(opt);
+            });
+        }
+
+        if (wsInspectedTab) wsInspectedTab.textContent = tab;
+        if (wsInspectedHeaderRow) wsInspectedHeaderRow.textContent = headerRow;
+
+        const total = currentInspectedColumns.length;
+        const countStd = currentInspectedColumns.filter(c => c.category === 'standard').length;
+        const countCustom = currentInspectedColumns.filter(c => c.category === 'custom').length;
+        const countSys = currentInspectedColumns.filter(c => c.category === 'system').length;
+
+        if (wsTotalCols) wsTotalCols.textContent = total;
+        if (wsCountStandard) wsCountStandard.textContent = countStd;
+        if (wsCountCustom) wsCountCustom.textContent = countCustom;
+        if (wsCountSystem) wsCountSystem.textContent = countSys;
+
+        // Check if System Header IDs exist
+        const hasSyncId = currentInspectedColumns.some(c => (c.header_name || '').toUpperCase() === 'SERTIF_SYNC_ID');
+        const hasRegId = currentInspectedColumns.some(c => (c.header_name || '').toUpperCase() === 'SERTIF_REGISTRATION_ID');
+        const isWriteReady = hasSyncId && hasRegId;
+
+        if (wsHeaderIdAlert) {
+            if (isWriteReady) {
+                wsHeaderIdAlert.className = 'p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs';
+                wsHeaderIdAlert.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-check-circle text-emerald-600 text-base"></i>
+                        <div>
+                            <strong>Header ID Sistem Siap (Write-Ready):</strong>
+                            Kolom <code>SERTIF_SYNC_ID</code> dan <code>SERTIF_REGISTRATION_ID</code> sudah tersedia di Baris ${headerRow}. Sistem dapat menuliskan ID secara langsung.
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-bold uppercase text-[10px]">Siap Sinkronisasi</span>
+                `;
+            } else {
+                wsHeaderIdAlert.className = 'p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs';
+                wsHeaderIdAlert.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle text-amber-600 text-base"></i>
+                        <div>
+                            <strong>Kolom Header ID Sistem Belum Lengkap:</strong>
+                            Spreadsheet ini belum memiliki kolom <code>SERTIF_SYNC_ID</code> / <code>SERTIF_REGISTRATION_ID</code> di Baris ${headerRow}. Klik tombol di samping untuk menyuntikkan kolom otomatis tanpa merusak data pendaftar.
+                        </div>
+                    </div>
+                    <button type="button" id="btn-inject-header-ids" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 shrink-0">
+                        <i class="fas fa-syringe text-xs"></i>
+                        Suntikkan Header ID Sistem
+                    </button>
+                `;
+                const btnInject = document.getElementById('btn-inject-header-ids');
+                if (btnInject) {
+                    btnInject.addEventListener('click', () => injectHeaderIds(tab, headerRow));
+                }
+            }
+        }
+
+        // Render Table Body
+        if (wsColTbody) {
+            wsColTbody.innerHTML = '';
+            currentInspectedColumns.forEach((c) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 border-b border-slate-100';
+
+                let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+                let catLabel = 'Kustom';
+                if (c.category === 'standard') {
+                    badgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                    catLabel = 'Identitas Standar';
+                } else if (c.category === 'system') {
+                    badgeClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                    catLabel = 'ID Sistem SertIF';
+                }
+
+                tr.innerHTML = `
+                    <td class="px-3 py-2 text-center font-mono font-bold text-slate-700">${c.col_letter}</td>
+                    <td class="px-3 py-2 font-semibold text-slate-800">${escapeHtml(c.header_name)}</td>
+                    <td class="px-3 py-2">
+                        <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
+                            ${catLabel}
+                        </span>
+                    </td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-500">${c.inferred_type || 'text'}</td>
+                `;
+                wsColTbody.appendChild(tr);
+            });
+        }
+
+        if (wsColResult) wsColResult.classList.remove('hidden');
+    }
+
+    async function inspectColumns() {
+        const tab = tabSelect ? tabSelect.value : '';
+        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
+
+        if (!tab) {
+            alert('Pilih tab spreadsheet terlebih dahulu!');
+            return;
+        }
+
+        const cacheKey = `${tab}_${headerRow}`;
+        if (tabColumnCache[cacheKey]) {
+            renderInspectedColumnsResult(tabColumnCache[cacheKey], tab, headerRow);
+            return;
+        }
+
+        if (wsColLoading) wsColLoading.classList.remove('hidden');
+        if (wsColResult) wsColResult.classList.add('hidden');
+        if (btnInspectColumns) btnInspectColumns.disabled = true;
+
+        try {
+            const url = `${urlInspectColumns}?tab_name=${encodeURIComponent(tab)}&header_row=${headerRow}`;
+            const res = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                tabColumnCache[cacheKey] = data;
+                renderInspectedColumnsResult(data, tab, headerRow);
+            } else {
+                alert('Gagal mengidentifikasi kolom: ' + (data.message || 'Terjadi kesalahan'));
+            }
+        } catch (e) {
+            console.error('Inspect columns error:', e);
+            alert('Koneksi timeout saat membaca kolom spreadsheet.');
+        } finally {
+            if (wsColLoading) wsColLoading.classList.add('hidden');
+            if (btnInspectColumns) btnInspectColumns.disabled = false;
+        }
+    }
+
+    async function injectHeaderIds(tab, headerRow) {
+        if (!confirm(`Suntikkan kolom SERTIF_SYNC_ID dan SERTIF_REGISTRATION_ID ke baris ${headerRow} pada tab "${tab}"?`)) {
+            return;
+        }
+
+        const btnInject = document.getElementById('btn-inject-header-ids');
+        if (btnInject) btnInject.disabled = true;
+
+        try {
+            const res = await fetch(urlInjectHeaderIds, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ tab_name: tab, header_row: headerRow })
             });
-            const data = await resp.json();
-
-            if (resp.ok && data.success) {
-                alert(data.message || 'Profil tab berhasil disimpan.');
-                window.location.reload();
+            const data = await res.json();
+            if (data.success) {
+                alert('Kolom Header ID Sistem berhasil disuntikkan ke spreadsheet!');
+                delete tabColumnCache[`${tab}_${headerRow}`];
+                inspectColumns();
             } else {
-                alert('Gagal menyimpan profil tab: ' + (data.message || 'Kesalahan validasi'));
+                alert('Gagal menyuntikkan Header ID: ' + (data.message || 'Terjadi kesalahan'));
             }
         } catch (err) {
-            alert('Kesalahan jaringan: ' + err.message);
+            console.error('Inject Header error:', err);
+            alert('Terjadi kesalahan jaringan saat menyuntikkan Header ID.');
+        } finally {
+            if (btnInject) btnInject.disabled = false;
         }
-    };
+    }
 
-    // Create Proposal from Active Tab
-    const btnCreateProposal = document.getElementById('btn-create-proposal-from-active');
-    if (btnCreateProposal) {
-        btnCreateProposal.addEventListener('click', async function () {
-            const tabName = getSelectedTab() || prompt('Masukkan nama tab spreadsheet target (misal: 2026):', '2026');
-            if (!tabName) return;
+    async function saveBrandColumns() {
+        const tab = tabSelect ? tabSelect.value : '';
+        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
 
-            const headerRow = getHeaderRow() || null;
-            btnCreateProposal.disabled = true;
-            btnCreateProposal.innerHTML = 'Membuat usulan...';
+        if (!currentInspectedColumns || currentInspectedColumns.length === 0) {
+            alert('Lakukan inspeksi struktur kolom terlebih dahulu!');
+            return;
+        }
 
-            const sheetId = getSelectedSheetId();
+        if (btnSaveBrandColumns) btnSaveBrandColumns.disabled = true;
+
+        try {
+            const res = await fetch(urlSaveBrandColumns, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({
+                    tab_name: tab,
+                    header_row: headerRow,
+                    columns: currentInspectedColumns
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Struktur kolom berhasil disimpan dan diterapkan ke Formulir Pendaftaran Brand ini!');
+            } else {
+                alert('Gagal menyimpan formulir brand: ' + (data.message || 'Terjadi kesalahan'));
+            }
+        } catch (e) {
+            console.error('Save brand columns error:', e);
+            alert('Terjadi kesalahan jaringan saat menyimpan formulir.');
+        } finally {
+            if (btnSaveBrandColumns) btnSaveBrandColumns.disabled = false;
+        }
+    }
+
+    if (btnInspectColumns) btnInspectColumns.addEventListener('click', inspectColumns);
+    if (btnSaveBrandColumns) btnSaveBrandColumns.addEventListener('click', saveBrandColumns);
+
+    // ----------------------------------------------------
+    // 3. LANGKAH 2: PINDAI BARIS DATA, PALET WARNA & MASUKKAN SERTIF
+    // ----------------------------------------------------
+    // Status source type toggle
+    if (wsStatusSourceType) {
+        wsStatusSourceType.addEventListener('change', function () {
+            if (wsStatusColWrapper) {
+                if (this.value === 'column') {
+                    wsStatusColWrapper.classList.remove('hidden');
+                } else {
+                    wsStatusColWrapper.classList.add('hidden');
+                }
+            }
+        });
+    }
+
+    // Preset Jangkauan Baris Cepat (+100, +200, +300, +500)
+    document.querySelectorAll('.btn-range-preset').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const range = parseInt(this.dataset.range, 10);
+            const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
+            if (wsEndRowInput) {
+                wsEndRowInput.value = startVal + range - 1;
+            }
+            document.querySelectorAll('.btn-range-preset').forEach(b => {
+                b.className = 'btn-range-preset px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition';
+            });
+            this.className = 'btn-range-preset px-2.5 py-1 rounded bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold border border-teal-300 transition';
+        });
+    });
+
+    // Navigasi Blok « 100 Sebelumnya / 100 Berikutnya »
+    const btnPrevBlock = document.getElementById('btn-prev-block');
+    const btnNextBlock = document.getElementById('btn-next-block');
+
+    if (btnPrevBlock) {
+        btnPrevBlock.addEventListener('click', function () {
+            const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
+            const newStart = Math.max(11, startVal - 100);
+            if (wsStartRowInput) wsStartRowInput.value = newStart;
+            if (wsEndRowInput) wsEndRowInput.value = newStart + 99;
+            if (btnScanWorkspace) btnScanWorkspace.click();
+        });
+    }
+
+    if (btnNextBlock) {
+        btnNextBlock.addEventListener('click', function () {
+            const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
+            const newStart = startVal + 100;
+            if (wsStartRowInput) wsStartRowInput.value = newStart;
+            if (wsEndRowInput) wsEndRowInput.value = newStart + 99;
+            if (btnScanWorkspace) btnScanWorkspace.click();
+        });
+    }
+
+    async function scanWorkspaceRows() {
+        const tab = tabSelect ? tabSelect.value : '';
+        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
+        const startRow = wsStartRowInput ? parseInt(wsStartRowInput.value, 10) : 11;
+        const endRow = (wsEndRowInput && wsEndRowInput.value) ? parseInt(wsEndRowInput.value, 10) : null;
+        const statusSource = wsStatusSourceType ? wsStatusSourceType.value : 'color';
+        const fetchColors = (statusSource === 'color') ? 1 : 0;
+
+        if (!tab) {
+            alert('Pilih tab spreadsheet terlebih dahulu!');
+            return;
+        }
+
+        let pageSize = 100;
+        if (endRow && startRow) {
+            pageSize = Math.min(500, Math.max(10, endRow - startRow + 1));
+        }
+
+        if (wsLoading) wsLoading.classList.remove('hidden');
+        if (wsRulesCard) wsRulesCard.classList.add('hidden');
+        if (wsTableCard) wsTableCard.classList.add('hidden');
+        if (btnScanWorkspace) btnScanWorkspace.disabled = true;
+
+        try {
+            const url = `${urlWorkspaceRows}?tab_name=${encodeURIComponent(tab)}&start_row=${startRow}&header_row=${headerRow}&page_size=${pageSize}&fetch_colors=${fetchColors}`;
+            const res = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            if (data.success && Array.isArray(data.rows)) {
+                wsAllRows = data.rows;
+                wsSelectedIndices.clear();
+
+                // Build detected colors
+                buildPaletteMapFromRows(wsAllRows);
+                renderPaletteMapUi();
+
+                // Render Table
+                filterAndSortVisibleRows();
+
+                if (wsRulesCard) wsRulesCard.classList.remove('hidden');
+                if (wsTableCard) wsTableCard.classList.remove('hidden');
+            } else {
+                alert('Gagal memindai baris: ' + (data.message || 'Terjadi kesalahan sistem'));
+            }
+        } catch (err) {
+            console.error('Scan workspace error:', err);
+            alert('Timeout saat memindai data spreadsheet. Coba gunakan rentang 100 baris.');
+        } finally {
+            if (wsLoading) wsLoading.classList.add('hidden');
+            if (btnScanWorkspace) btnScanWorkspace.disabled = false;
+        }
+    }
+
+    function buildPaletteMapFromRows(rows) {
+        wsColorPaletteMap = {};
+        rows.forEach(r => {
+            const hex = (r.bg_color || '#ffffff').toUpperCase();
+            if (!wsColorPaletteMap[hex]) {
+                // Auto guess status based on common colors
+                let guessedStatus = 'unassigned';
+                if (hex === '#00FF00' || hex === '#D9EAD3' || hex === '#B6D7A8') guessedStatus = 'accepted';
+                else if (hex === '#FFFF00' || hex === '#FFF2CC' || hex === '#FFE599') guessedStatus = 'waiting';
+                else if (hex === '#FF0000' || hex === '#F4CCCC') guessedStatus = 'rejected';
+                else if (hex === '#00FFFF' || hex === '#C9DAF8') guessedStatus = 'active';
+
+                wsColorPaletteMap[hex] = {
+                    hex: hex,
+                    count: 0,
+                    status: guessedStatus
+                };
+            }
+            wsColorPaletteMap[hex].count++;
+        });
+    }
+
+    function renderPaletteMapUi() {
+        if (!wsPaletteContainer) return;
+        wsPaletteContainer.innerHTML = '';
+
+        const keys = Object.keys(wsColorPaletteMap);
+        if (keys.length === 0) {
+            wsPaletteContainer.innerHTML = '<p class="text-xs text-slate-400 italic">Tidak ada warna latar terdeteksi.</p>';
+            return;
+        }
+
+        keys.forEach(hex => {
+            const p = wsColorPaletteMap[hex];
+            const div = document.createElement('div');
+            div.className = 'flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-200 bg-white text-xs';
+            div.innerHTML = `
+                <div class="flex items-center gap-2 truncate">
+                    <span class="h-5 w-5 rounded border border-slate-300 shadow-2xs shrink-0" style="background-color: ${hex};"></span>
+                    <span class="font-mono text-slate-700 text-[11px]">${hex}</span>
+                    <span class="text-[10px] text-slate-400">(${p.count} baris)</span>
+                </div>
+                <select class="ws-palette-select rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none" data-hex="${hex}">
+                    <option value="unassigned" ${p.status === 'unassigned' ? 'selected' : ''}>-- Belum Ditentukan --</option>
+                    <option value="waiting" ${p.status === 'waiting' ? 'selected' : ''}>Calon (waiting)</option>
+                    <option value="accepted" ${p.status === 'accepted' ? 'selected' : ''}>Diterima (accepted)</option>
+                    <option value="active" ${p.status === 'active' ? 'selected' : ''}>Aktif (active)</option>
+                    <option value="completed" ${p.status === 'completed' ? 'selected' : ''}>Selesai (completed)</option>
+                    <option value="rejected" ${p.status === 'rejected' ? 'selected' : ''}>Ditolak (rejected)</option>
+                    <option value="exited" ${p.status === 'exited' ? 'selected' : ''}>Dikeluarkan (exited)</option>
+                </select>
+            `;
+            div.querySelector('.ws-palette-select').addEventListener('change', function () {
+                wsColorPaletteMap[hex].status = this.value;
+            });
+            wsPaletteContainer.appendChild(div);
+        });
+    }
+
+    function applyWorkspaceRules() {
+        // Apply color mapping to rows
+        wsAllRows.forEach(r => {
+            const hex = (r.bg_color || '#ffffff').toUpperCase();
+            if (wsColorPaletteMap[hex] && wsColorPaletteMap[hex].status !== 'unassigned') {
+                r.inferred_status = wsColorPaletteMap[hex].status;
+            }
+        });
+
+        // Apply column value mapping if chosen
+        const statusSource = wsStatusSourceType ? wsStatusSourceType.value : 'color';
+        if (statusSource === 'column' && wsStatusColSelect && wsStatusColSelect.value) {
+            const colKey = wsStatusColSelect.value;
+            wsAllRows.forEach(r => {
+                const val = ((r.raw_data && r.raw_data[colKey]) || '').toString().toLowerCase();
+                if (val.includes('terima') || val.includes('diterima') || val.includes('accept')) r.inferred_status = 'accepted';
+                else if (val.includes('calon') || val.includes('wait') || val.includes('pending')) r.inferred_status = 'waiting';
+                else if (val.includes('aktif') || val.includes('active')) r.inferred_status = 'active';
+                else if (val.includes('tolak') || val.includes('reject')) r.inferred_status = 'rejected';
+                else if (val.includes('selesai') || val.includes('graduat')) r.inferred_status = 'completed';
+            });
+        }
+
+        filterAndSortVisibleRows();
+    }
+
+    function filterAndSortVisibleRows() {
+        const query = (wsSearchInput ? wsSearchInput.value : '').toLowerCase().trim();
+
+        let filtered = wsAllRows.filter(r => {
+            // Text search
+            if (query) {
+                const name = (r.display_name || '').toLowerCase();
+                const contact = (r.display_contact || '').toLowerCase();
+                const rowNo = (r.row_number || '').toString();
+                if (!name.includes(query) && !contact.includes(query) && !rowNo.includes(query)) {
+                    return false;
+                }
+            }
+
+            // Status filter pill
+            const st = r.inferred_status || 'unassigned';
+            if (wsCurrentFilter !== 'all' && st !== wsCurrentFilter) {
+                return false;
+            }
+
+            // Source/ID filter pill
+            if (wsCurrentSourceFilter === 'no_id') {
+                if (r.external_sync_id) return false;
+            } else if (wsCurrentSourceFilter === 'synced') {
+                if (!r.external_sync_id) return false;
+            }
+
+            return true;
+        });
+
+        // Sorting
+        const sortBy = wsSortBy ? wsSortBy.value : '_row_number';
+        const sortDir = wsSortDir ? wsSortDir.value : 'asc';
+
+        filtered.sort((a, b) => {
+            let valA = a[sortBy] ?? (a.raw_data && a.raw_data[sortBy]) ?? '';
+            let valB = b[sortBy] ?? (b.raw_data && b.raw_data[sortBy]) ?? '';
+
+            if (sortBy === '_row_number' || sortBy === 'row_number') {
+                valA = parseInt(a.row_number, 10) || 0;
+                valB = parseInt(b.row_number, 10) || 0;
+            } else {
+                valA = valA.toString().toLowerCase();
+                valB = valB.toString().toLowerCase();
+            }
+
+            if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+            if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        renderWorkspaceTable(filtered);
+        updateFilterCounts();
+    }
+
+    function renderWorkspaceTable(rows) {
+        if (!wsTableTbody) return;
+        wsTableTbody.innerHTML = '';
+
+        if (rows.length === 0) {
+            wsTableTbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-8 text-center text-xs text-slate-400 italic">
+                        Tidak ada baris yang sesuai kriteria pencarian / filter.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        rows.forEach((r, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 border-b border-slate-100 transition';
+
+            const isChecked = wsSelectedIndices.has(r.row_number);
+            const hex = (r.bg_color || '#ffffff').toUpperCase();
+            const hasId = !!r.external_sync_id;
+
+            tr.innerHTML = `
+                <td class="px-3 py-2 text-center">
+                    <input type="checkbox" class="ws-row-check rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4" data-row="${r.row_number}" ${isChecked ? 'checked' : ''} />
+                </td>
+                <td class="px-3 py-2 font-mono text-xs text-slate-700 flex items-center gap-1.5">
+                    <span class="h-3 w-3 rounded-full border border-slate-300 shrink-0" style="background-color: ${hex};" title="Warna: ${hex}"></span>
+                    <span>#${r.row_number}</span>
+                </td>
+                <td class="px-3 py-2">
+                    <div class="font-bold text-slate-800 text-xs">${escapeHtml(r.display_name || '-')}</div>
+                    ${r.external_sync_id ? `<div class="font-mono text-[10px] text-teal-700 mt-0.5">${escapeHtml(r.external_sync_id)}</div>` : ''}
+                </td>
+                <td class="px-3 py-2 text-xs text-slate-600">${escapeHtml(r.display_contact || '-')}</td>
+                <td class="px-3 py-2">
+                    <select class="ws-row-status-select text-xs rounded border border-slate-300 bg-white px-2 py-1 text-slate-800 focus:outline-none" data-row="${r.row_number}">
+                        <option value="unassigned" ${(r.inferred_status || 'unassigned') === 'unassigned' ? 'selected' : ''}>-- Belum Ditentukan --</option>
+                        <option value="waiting" ${r.inferred_status === 'waiting' ? 'selected' : ''}>Calon (waiting)</option>
+                        <option value="accepted" ${r.inferred_status === 'accepted' ? 'selected' : ''}>Diterima (accepted)</option>
+                        <option value="active" ${r.inferred_status === 'active' ? 'selected' : ''}>Aktif (active)</option>
+                        <option value="completed" ${r.inferred_status === 'completed' ? 'selected' : ''}>Selesai (completed)</option>
+                        <option value="rejected" ${r.inferred_status === 'rejected' ? 'selected' : ''}>Ditolak (rejected)</option>
+                        <option value="exited" ${r.inferred_status === 'exited' ? 'selected' : ''}>Dikeluarkan (exited)</option>
+                    </select>
+                </td>
+                <td class="px-3 py-2">
+                    ${hasId
+                        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check text-[9px]"></i> Sudah Ber-ID</span>'
+                        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200"><i class="fas fa-plus text-[9px]"></i> Baris Baru</span>'
+                    }
+                </td>
+            `;
+
+            // Row checkbox listener
+            tr.querySelector('.ws-row-check').addEventListener('change', function () {
+                if (this.checked) wsSelectedIndices.add(r.row_number);
+                else wsSelectedIndices.delete(r.row_number);
+                updateSelectionStats();
+            });
+
+            // Status select listener
+            tr.querySelector('.ws-row-status-select').addEventListener('change', function () {
+                r.inferred_status = this.value;
+                updateFilterCounts();
+            });
+
+            wsTableTbody.appendChild(tr);
+        });
+
+        updateSelectionStats();
+    }
+
+    function updateSelectionStats() {
+        if (!wsSelectedCount || !wsSelectedBreakdown) return;
+        const count = wsSelectedIndices.size;
+        wsSelectedCount.textContent = count;
+
+        if (count === 0) {
+            wsSelectedBreakdown.textContent = 'Belum ada baris yang dipilih. Centang baris untuk dimasukkan ke SertIF.';
+            if (btnDryRunReconcile) btnDryRunReconcile.disabled = true;
+            if (btnExecuteBatch) btnExecuteBatch.disabled = true;
+        } else {
+            wsSelectedBreakdown.textContent = `${count} baris siap diproses (simulasi pra-tulis atau pendaftaran langsung).`;
+            if (btnDryRunReconcile) btnDryRunReconcile.disabled = false;
+            if (btnExecuteBatch) btnExecuteBatch.disabled = false;
+        }
+    }
+
+    function updateFilterCounts() {
+        const counts = { all: wsAllRows.length, unassigned: 0, accepted: 0, active: 0, waiting: 0, completed: 0, rejected: 0, exited: 0 };
+        wsAllRows.forEach(r => {
+            const st = r.inferred_status || 'unassigned';
+            if (counts[st] !== undefined) counts[st]++;
+            else counts.unassigned++;
+        });
+
+        for (const [k, v] of Object.entries(counts)) {
+            const el = document.getElementById(`count-${k}`);
+            if (el) el.textContent = v;
+        }
+    }
+
+    // Status filter buttons
+    const statusPills = document.getElementById('ws-status-filter-pills');
+    if (statusPills) {
+        statusPills.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function () {
+                statusPills.querySelectorAll('button').forEach(b => {
+                    b.className = 'px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200';
+                });
+                this.className = 'px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-800 text-white';
+                wsCurrentFilter = this.dataset.filter || 'all';
+                filterAndSortVisibleRows();
+            });
+        });
+    }
+
+    // Check All Checkbox
+    if (wsCheckAll) {
+        wsCheckAll.addEventListener('change', function () {
+            const checkboxes = wsTableTbody ? wsTableTbody.querySelectorAll('.ws-row-check') : [];
+            checkboxes.forEach(cb => {
+                cb.checked = wsCheckAll.checked;
+                const rowNo = parseInt(cb.dataset.row, 10);
+                if (wsCheckAll.checked) wsSelectedIndices.add(rowNo);
+                else wsSelectedIndices.delete(rowNo);
+            });
+            updateSelectionStats();
+        });
+    }
+
+    if (btnSelectAllFiltered) {
+        btnSelectAllFiltered.addEventListener('click', function () {
+            const checkboxes = wsTableTbody ? wsTableTbody.querySelectorAll('.ws-row-check') : [];
+            checkboxes.forEach(cb => {
+                cb.checked = true;
+                wsSelectedIndices.add(parseInt(cb.dataset.row, 10));
+            });
+            updateSelectionStats();
+        });
+    }
+
+    // Search and Sort listeners
+    if (wsSearchInput) wsSearchInput.addEventListener('input', filterAndSortVisibleRows);
+    if (btnApplyWorkspaceRules) btnApplyWorkspaceRules.addEventListener('click', applyWorkspaceRules);
+    if (btnScanWorkspace) btnScanWorkspace.addEventListener('click', scanWorkspaceRows);
+
+    // ----------------------------------------------------
+    // 4. PEMBERIAN ID & REKONSILIASI (Batch Reconcile & Dry Run)
+    // ----------------------------------------------------
+    async function executeReconcile(isDryRun = false) {
+        const tab = tabSelect ? tabSelect.value : '';
+        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
+
+        if (wsSelectedIndices.size === 0) {
+            alert('Pilih setidaknya 1 baris untuk direkonsiliasi!');
+            return;
+        }
+
+        const selectedRows = wsAllRows.filter(r => wsSelectedIndices.has(r.row_number));
+        const items = selectedRows.map(r => ({
+            row_index: r.row_number,
+            status: r.inferred_status || 'waiting',
+            row_data: r.raw_data || {},
+            expected_checksum: r.checksum || null,
+            registration_id: r.local_registration_id || null,
+        }));
+
+        const endpoint = isDryRun ? urlDryRunReconcile : urlBatchReconcile;
+        const btn = isDryRun ? btnDryRunReconcile : btnExecuteBatch;
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({
+                    tab_name: tab,
+                    header_row: headerRow,
+                    items: items
+                })
+            });
+            const data = await res.json();
+
+            if (isDryRun) {
+                if (data.success && data.report) {
+                    alert(`Simulasi Pra-Tulis Selesai!\nTotal Dievaluasi: ${data.report.total_evaluated}\nSiap Tulis: ${data.report.can_write_count}\nKonflik/Kendala: ${data.report.conflict_count || 0}`);
+                } else {
+                    alert('Simulasi gagal: ' + (data.message || 'Terjadi kesalahan'));
+                }
+            } else {
+                if (data.success) {
+                    alert(`Berhasil memasukkan ${data.reconciled_count || data.created_count || items.length} data pemagang ke SertIF!`);
+                    // Refresh data baris
+                    scanWorkspaceRows();
+                } else {
+                    alert('Gagal memasukkan data: ' + (data.message || 'Terjadi kesalahan'));
+                }
+            }
+        } catch (e) {
+            console.error('Reconcile error:', e);
+            alert('Terjadi kesalahan jaringan saat rekonsiliasi data.');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    if (btnDryRunReconcile) btnDryRunReconcile.addEventListener('click', () => executeReconcile(true));
+    if (btnExecuteBatch) btnExecuteBatch.addEventListener('click', () => executeReconcile(false));
+
+    // Mass Pemberian ID tanpa ID (Bulk Sync Without ID)
+    if (btnBulkSyncWithoutId) {
+        btnBulkSyncWithoutId.addEventListener('click', async function () {
+            const unassignedRows = wsAllRows.filter(r => !r.external_sync_id && r.inferred_status && r.inferred_status !== 'unassigned');
+            if (unassignedRows.length === 0) {
+                alert('Tidak ada baris tanpa ID yang memiliki status terpetakan. Pastikan aturan warna/status sudah diterapkan.');
+                return;
+            }
+
+            if (!confirm(`Terapkan status dan masukkan ${unassignedRows.length} baris tanpa ID ke database SertIF secara massal? Sistem akan membuat ID pendaftaran dan menuliskannya ke spreadsheet.`)) {
+                return;
+            }
+
+            btnBulkSyncWithoutId.disabled = true;
             try {
-                const resp = await fetch(proposalsStoreUrl, {
+                const tab = tabSelect ? tabSelect.value : '';
+                const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
+                const items = unassignedRows.map(r => ({
+                    row_index: r.row_number,
+                    status: r.inferred_status,
+                    row_data: r.raw_data || {},
+                    expected_checksum: r.checksum || null,
+                    registration_id: null,
+                }));
+
+                const res = await fetch(urlBatchReconcile, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken
                     },
-                    body: JSON.stringify({
-                        tab_name: tabName,
-                        sheet_id: sheetId,
-                        header_row: headerRow ? parseInt(headerRow) : null,
-                        year: tabName.match(/\d{4}/) ? parseInt(tabName.match(/\d{4}/)[0]) : 2026
-                    })
+                    body: JSON.stringify({ tab_name: tab, header_row: headerRow, items: items })
                 });
-                const data = await resp.json();
-
-                if (resp.ok && data.success) {
-                    alert(data.message || 'Usulan pemetaan berhasil dibuat!');
-                    window.location.reload();
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Pemberian ID & Sinkronisasi Massal Berhasil! ${data.reconciled_count || items.length} pemagang telah didaftarkan.`);
+                    scanWorkspaceRows();
                 } else {
-                    alert('Gagal membuat usulan pemetaan: ' + (data.message || 'Terjadi kesalahan'));
-                    btnCreateProposal.disabled = false;
-                    btnCreateProposal.innerHTML = 'Buat Snapshot & Usulan Pemetaan';
+                    alert('Gagal: ' + (data.message || 'Terjadi kesalahan'));
                 }
             } catch (err) {
-                alert('Kesalahan jaringan: ' + err.message);
-                btnCreateProposal.disabled = false;
-                btnCreateProposal.innerHTML = 'Buat Snapshot & Usulan Pemetaan';
+                console.error('Bulk sync error:', err);
+                alert('Terjadi kesalahan jaringan.');
+            } finally {
+                btnBulkSyncWithoutId.disabled = false;
             }
         });
     }
 
-    // Interactive Decision Table Actions
-    window.onActionChange = function (itemId) {
-        const action = document.getElementById(`action-select-${itemId}`).value;
-        const linkEl = document.getElementById(`field-config-link-${itemId}`);
-        const createEl = document.getElementById(`field-config-create-${itemId}`);
-        const noneEl = document.getElementById(`field-config-none-${itemId}`);
+    // ----------------------------------------------------
+    // 5. UNIVERSAL SEARCH ENGINE (Proyeksi Pencarian Cepat)
+    // ----------------------------------------------------
+    const globalSearchInput = document.getElementById('global-search-input');
+    const globalSearchResultsTbody = document.getElementById('global-search-results-tbody');
+    const globalSearchCountBadge = document.getElementById('global-search-count-badge');
+    const globalSearchLoading = document.getElementById('global-search-loading');
+    const btnTriggerIndexing = document.getElementById('btn-trigger-indexing');
+    const indexProgressBox = document.getElementById('index-progress-box');
+    const indexProgressBar = document.getElementById('index-progress-bar');
+    const indexProgressPercent = document.getElementById('index-progress-percent');
+    const indexProgressLabel = document.getElementById('index-progress-label');
+    const indexProgressCount = document.getElementById('index-progress-count');
 
-        if (action === 'link_existing') {
-            linkEl.classList.remove('hidden');
-            createEl.classList.add('hidden');
-            noneEl.classList.add('hidden');
-        } else if (action === 'create_draft_field') {
-            linkEl.classList.add('hidden');
-            createEl.classList.remove('hidden');
-            noneEl.classList.add('hidden');
-        } else {
-            linkEl.classList.add('hidden');
-            createEl.classList.add('hidden');
-            noneEl.classList.remove('hidden');
-        }
-    };
+    function executeGlobalSearch(page = 1) {
+        if (!globalSearchInput || !globalSearchResultsTbody) return;
+        const query = globalSearchInput.value.trim();
 
-    window.saveProposalItemAjax = async function (proposalId, itemId) {
-        const action = document.getElementById(`action-select-${itemId}`).value;
-        const fieldKey = document.getElementById(`field-key-select-${itemId}`) ? document.getElementById(`field-key-select-${itemId}`).value : null;
-        const suggestedLabel = document.getElementById(`suggested-label-${itemId}`) ? document.getElementById(`suggested-label-${itemId}`).value : null;
-        const suggestedType = document.getElementById(`suggested-type-${itemId}`) ? document.getElementById(`suggested-type-${itemId}`).value : 'text';
+        if (globalSearchLoading) globalSearchLoading.classList.remove('hidden');
 
-        const btn = document.getElementById(`btn-save-item-${itemId}`);
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = '...';
-        }
-
-        const url = itemUpdateUrlTemplate.replace('999999', proposalId).replace('888888', itemId);
-
-        try {
-            const resp = await fetch(url, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                body: JSON.stringify({
-                    action: action,
-                    field_key: action === 'link_existing' ? fieldKey : null,
-                    suggested_label: action === 'create_draft_field' ? suggestedLabel : null,
-                    suggested_field_type: action === 'create_draft_field' ? suggestedType : null
-                })
-            });
-            const data = await resp.json();
-
-            if (resp.ok && data.success) {
-                if (btn) {
-                    btn.textContent = 'Tersimpan';
-                    btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
-                    btn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
-                    setTimeout(() => {
-                        btn.disabled = false;
-                        btn.textContent = 'Simpan';
-                        btn.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
-                        btn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
-                    }, 2000);
-                }
-            } else {
-                alert('Gagal menyimpan pilihan: ' + (data.message || 'Kesalahan validasi'));
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = 'Simpan';
-                }
+        fetch(`${urlSearch}?q=${encodeURIComponent(query)}&page=${page}`, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (globalSearchLoading) globalSearchLoading.classList.add('hidden');
+            if (data.success) {
+                if (globalSearchCountBadge) globalSearchCountBadge.textContent = `${data.total} Ditemukan (${data.query_duration_ms}ms)`;
+                renderGlobalSearchResults(data.data || []);
             }
-        } catch (err) {
-            alert('Kesalahan jaringan: ' + err.message);
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'Simpan';
-            }
-        }
-    };
+        })
+        .catch(err => {
+            console.error('Search error:', err);
+            if (globalSearchLoading) globalSearchLoading.classList.add('hidden');
+        });
+    }
 
-    // Schema Diff Modal
-    window.previewDiffAjax = async function (proposalId) {
-        const url = diffUrlTemplate.replace('999999', proposalId);
-        const modal = document.getElementById('modal-schema-diff');
-        const badgesContainer = document.getElementById('diff-summary-badges');
-        const itemsContainer = document.getElementById('diff-items-container');
+    function renderGlobalSearchResults(items) {
+        if (!globalSearchResultsTbody) return;
+        globalSearchResultsTbody.innerHTML = '';
 
-        badgesContainer.innerHTML = '<span class="text-slate-500 italic">Menganalisis perbedaan skema...</span>';
-        itemsContainer.innerHTML = '';
-        modal.classList.remove('hidden');
-
-        try {
-            const resp = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-            const data = await resp.json();
-
-            if (resp.ok && data.success && data.diff) {
-                const diff = data.diff;
-                const summary = diff.summary || {};
-
-                badgesContainer.innerHTML = `
-                    <span class="px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        ADD: ${summary.add || 0}
-                    </span>
-                    <span class="px-2.5 py-1 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                        LINK: ${summary.link || 0}
-                    </span>
-                    <span class="px-2.5 py-1 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                        RENAME: ${summary.rename || 0}
-                    </span>
-                    <span class="px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                        ARCHIVE: ${summary.archive || 0}
-                    </span>
-                    <span class="px-2.5 py-1 rounded-full font-bold ${summary.conflict > 0 ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-slate-100 text-slate-700 border-slate-200'}">
-                        CONFLICT: ${summary.conflict || 0}
-                    </span>
-                    <span class="px-2.5 py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                        NOOP: ${summary.noop || 0}
-                    </span>
-                `;
-
-                let itemsHtml = '';
-                (diff.items || []).forEach(item => {
-                    let badgeColor = 'bg-slate-100 text-slate-700';
-                    if (item.action_type === 'ADD_COLUMN') badgeColor = 'bg-emerald-100 text-emerald-800';
-                    else if (item.action_type === 'LINK_EXISTING') badgeColor = 'bg-blue-100 text-blue-800';
-                    else if (item.action_type === 'RENAME_DISPLAY') badgeColor = 'bg-indigo-100 text-indigo-800';
-                    else if (item.action_type === 'ARCHIVE') badgeColor = 'bg-amber-100 text-amber-800';
-                    else if (item.action_type === 'CONFLICT') badgeColor = 'bg-rose-100 text-rose-800';
-
-                    itemsHtml += `
-                        <div class="p-2.5 rounded border border-slate-200 bg-white flex items-center justify-between gap-3">
-                            <div class="flex items-center gap-2">
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}">
-                                    ${escapeHtml(item.action_type)}
-                                </span>
-                                <span class="font-mono font-semibold text-slate-800">${escapeHtml(item.field_key)}</span>
-                            </div>
-                            <div class="text-right text-slate-600 text-[11px]">
-                                ${escapeHtml(item.reason || '')}
-                            </div>
-                        </div>
-                    `;
-                });
-
-                itemsContainer.innerHTML = itemsHtml || '<div class="text-slate-400 italic p-4 text-center">Tidak ada perubahan skema yang perlu dilakukan.</div>';
-            } else {
-                badgesContainer.innerHTML = `<span class="text-rose-600 font-semibold">${escapeHtml(data.message || 'Gagal menganalisis diff')}</span>`;
-            }
-        } catch (err) {
-            badgesContainer.innerHTML = `<span class="text-rose-600 font-semibold">Kesalahan jaringan: ${escapeHtml(err.message)}</span>`;
-        }
-    };
-
-    window.closeSchemaDiffModal = function () {
-        document.getElementById('modal-schema-diff').classList.add('hidden');
-    };
-
-    // Apply Proposal to Draft Form
-    window.applyProposalAjax = async function (proposalId) {
-        if (!confirm('Terapkan usulan pemetaan ini ke draf Form Builder? Perubahan bersifat non-destruktif dan akan tersimpan sebagai versi draf baru.')) {
+        if (items.length === 0) {
+            globalSearchResultsTbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-xs text-slate-400 italic">Tidak ada data pendaftar yang cocok.</td></tr>';
             return;
         }
 
-        const url = applyUrlTemplate.replace('999999', proposalId);
+        items.forEach(doc => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 border-b border-slate-100 text-xs';
+            tr.innerHTML = `
+                <td class="px-3 py-2 font-mono font-bold text-slate-700">Baris #${doc.source_row_number || '-'}</td>
+                <td class="px-3 py-2">
+                    <div class="font-bold text-slate-800">${escapeHtml(doc.normalized_name || '-')}</div>
+                    <div class="font-mono text-[10px] text-teal-700">${escapeHtml(doc.source_record_key || '-')}</div>
+                </td>
+                <td class="px-3 py-2 text-slate-600">
+                    <div>${escapeHtml(doc.normalized_email || '-')}</div>
+                    <div class="font-mono text-[11px] text-slate-500">${escapeHtml(doc.normalized_phone || '-')}</div>
+                </td>
+                <td class="px-3 py-2">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                        Skor: ${doc.search_score || 70}
+                    </span>
+                </td>
+                <td class="px-3 py-2 font-mono text-[11px] text-slate-500">${doc.sheet_id || '-'}</td>
+            `;
+            globalSearchResultsTbody.appendChild(tr);
+        });
+    }
 
-        try {
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                }
-            });
-            const data = await resp.json();
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('input', function () {
+            clearTimeout(globalSearchDebounceTimer);
+            globalSearchDebounceTimer = setTimeout(() => executeGlobalSearch(1), 300);
+        });
+    }
 
-            if (resp.ok && data.success) {
-                alert(data.message || 'Usulan pemetaan berhasil diaplikasikan ke draf!');
-                window.location.reload();
-            } else {
-                alert('Gagal mengaplikasikan usulan pemetaan: ' + (data.message || 'Terjadi konflik'));
-            }
-        } catch (err) {
-            alert('Kesalahan jaringan: ' + err.message);
-        }
-    };
-
-    // ==========================================
-    // Fase 3 JavaScript Functions (Header Safety)
-    // ==========================================
-    let activeDeletionCandidate = null;
-
-    window.openColumnDeletionModal = async function (colLetter, headerName, tabName, schemaHash, sheetId) {
-        activeDeletionCandidate = {
-            colLetter: colLetter,
-            headerName: headerName,
-            tabName: tabName,
-            schemaHash: schemaHash,
-            sheetId: sheetId || 0
-        };
-
-        document.getElementById('del-modal-tab-name').textContent = tabName;
-        document.getElementById('del-modal-col-identity').textContent = colLetter;
-        document.getElementById('del-modal-header-name').textContent = headerName || '(Header Kosong)';
-        document.getElementById('del-modal-col-pos').textContent = `Kolom ${colLetter}`;
-
-        document.getElementById('del-modal-loading').classList.remove('hidden');
-        document.getElementById('del-modal-result').classList.add('hidden');
-        document.getElementById('btn-confirm-delete-column').classList.add('hidden');
-
-        document.getElementById('modal-safe-column-deletion').classList.remove('hidden');
-
-        try {
-            const encodedIdentity = encodeURIComponent(headerName || colLetter);
-            const query = `?tab_name=${encodeURIComponent(tabName)}`;
-            const url = `{{ url('admin/spreadsheet-connections/' . $connection->id . '/tabs') }}/${activeDeletionCandidate.sheetId}/columns/${encodedIdentity}/deletion-eligibility${query}`;
-
-            const resp = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-            const data = await resp.json();
-
-            document.getElementById('del-modal-loading').classList.add('hidden');
-            document.getElementById('del-modal-result').classList.remove('hidden');
-
-            const statusBox = document.getElementById('del-modal-status-badge');
-            const reasonsList = document.getElementById('del-modal-reasons-list');
-            const confirmBtn = document.getElementById('btn-confirm-delete-column');
-
-            if (data.success && data.eligibility) {
-                const el = data.eligibility;
-                activeDeletionCandidate.currentSchemaHash = el.current_schema_hash;
-
-                if (el.eligible) {
-                    statusBox.className = 'p-3 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-200';
-                    statusBox.innerHTML = `<strong>KOLOM LAYAK DIHAPUS (ELIGIBLE):</strong> Kolom ini terbukti baru, belum pernah dipublikasikan, tidak memiliki jawaban/snapshot, dan seluruh baris remote 100% kosong (${el.inspected_rows_count} baris diperiksa).`;
-                    confirmBtn.classList.remove('hidden');
-                } else {
-                    statusBox.className = 'p-3 rounded-lg border bg-rose-50 text-rose-800 border-rose-200';
-                    statusBox.innerHTML = `<strong>PENGHAPUSAN DITOLAK (FAIL-CLOSED):</strong> Kolom ini tidak memenuhi syarat keselamatan data (${el.classification}).`;
-                    confirmBtn.classList.add('hidden');
-                }
-
-                reasonsList.innerHTML = (el.reasons || []).map(r => `<div class="flex items-start gap-1.5"><span class="text-slate-400 mt-0.5">&bull;</span><span>${escapeHtml(r)}</span></div>`).join('');
-            } else {
-                statusBox.className = 'p-3 rounded-lg border bg-rose-50 text-rose-800 border-rose-200';
-                statusBox.innerHTML = `<strong>ERROR:</strong> ${escapeHtml(data.message || 'Gagal mengevaluasi kelayakan kolom.')}`;
-                reasonsList.innerHTML = '';
-            }
-        } catch (err) {
-            document.getElementById('del-modal-loading').classList.add('hidden');
-            document.getElementById('del-modal-result').classList.remove('hidden');
-            document.getElementById('del-modal-status-badge').className = 'p-3 rounded-lg border bg-rose-50 text-rose-800 border-rose-200';
-            document.getElementById('del-modal-status-badge').textContent = 'Kesalahan jaringan: ' + err.message;
-        }
-    };
-
-    window.closeColumnDeletionModal = function () {
-        document.getElementById('modal-safe-column-deletion').classList.add('hidden');
-        activeDeletionCandidate = null;
-    };
-
-    window.executeColumnDeletionAjax = async function () {
-        if (!activeDeletionCandidate) return;
-
-        if (!confirm(`Yakin ingin menghapus kolom '${activeDeletionCandidate.headerName || activeDeletionCandidate.colLetter}' dari Spreadsheet?\n\nOperasi ini bersifat permanen pada kolom kosong tersebut.`)) {
-            return;
-        }
-
-        const confirmBtn = document.getElementById('btn-confirm-delete-column');
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Menghapus kolom...';
-
-        try {
-            const encodedIdentity = encodeURIComponent(activeDeletionCandidate.headerName || activeDeletionCandidate.colLetter);
-            const url = `{{ url('admin/spreadsheet-connections/' . $connection->id . '/tabs') }}/${activeDeletionCandidate.sheetId}/columns/${encodedIdentity}/delete-empty-column`;
-
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                body: JSON.stringify({
-                    tab_name: activeDeletionCandidate.tabName,
-                    expected_schema_hash: activeDeletionCandidate.currentSchemaHash || activeDeletionCandidate.schemaHash
-                })
-            });
-
-            const data = await resp.json();
-
-            if (resp.ok && data.success) {
-                alert(data.message || 'Kolom kosong berhasil dihapus.');
-                closeColumnDeletionModal();
-                window.location.reload();
-            } else {
-                alert('Gagal menghapus kolom: ' + (data.message || 'Error'));
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = 'Hapus Header Kosong Sekarang';
-            }
-        } catch (err) {
-            alert('Kesalahan jaringan: ' + err.message);
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Hapus Header Kosong Sekarang';
-        }
-    };
-
-    if (btnScanInbound) {
-        btnScanInbound.addEventListener('click', async function () {
-            const tab = getSelectedTab();
-            if (!tab) {
-                alert('Pilih tab terlebih dahulu.');
+    // Trigger Indexing Tab
+    if (btnTriggerIndexing) {
+        btnTriggerIndexing.addEventListener('click', async function () {
+            const activeTab = tabSelect ? tabSelect.value : '';
+            if (!activeTab) {
+                alert('Pilih tab yang ingin diindeks terlebih dahulu di Langkah 1.');
                 return;
             }
 
-            const opt = tabSelect.options[tabSelect.selectedIndex];
-            const sheetId = opt ? (opt.dataset.sheetId || 0) : 0;
+            if (!confirm(`Mulai proses pengindeksan cepat untuk tab "${activeTab}" ke database lokal?`)) return;
 
-            showLoading(`Sedang memindai perubahan inbound pada tab '${tab}'...`);
+            btnTriggerIndexing.disabled = true;
+            const icon = document.getElementById('icon-indexing');
+            if (icon) icon.classList.add('animate-spin');
 
             try {
-                const res = await fetch(`{{ url('admin/spreadsheet-connections/' . $connection->id . '/tabs') }}/${sheetId}/inbound-scan`, {
+                const res = await fetch(urlIndexTab, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        tab_name: tab,
-                        expected_schema_hash: (window.__currentInspectedHash || '')
-                    })
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify({ tab_name: activeTab })
                 });
-
                 const data = await res.json();
-                hideLoading();
 
-                if (data.success) {
-                    alert(`Pemindaian Inbound Selesai!\n\nBaris dipindai: ${data.scanned_rows_count}\nPerubahan ditampung: ${data.staged_changes_count}\nInbound bersih: ${data.clean_inbound_count}\nKonflik/Butuh Review: ${data.conflicts_count}\nField Terlindungi ditolak: ${data.protected_rejected_count}\nEcho dilewati: ${data.echo_skipped_count}`);
-                    window.location.reload();
-                } else {
-                    alert(`Gagal memindai inbound: ${data.message || 'Error'}`);
-                }
-            } catch (e) {
-                hideLoading();
-                alert(`Kesalahan jaringan: ${e.message}`);
-            }
-        });
-    }
-
-    window.approveInboundStaging = async function (stagingId) {
-        if (!confirm('Apakah Anda yakin ingin menyetujui dan menerapkan perubahan ini ke database?')) return;
-
-        try {
-            const res = await fetch(`{{ url('admin/spreadsheet-connections/' . $connection->id . '/inbound-staging') }}/${stagingId}/approve`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                }
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                alert(data.message || 'Perubahan berhasil diterapkan ke database.');
-                window.location.reload();
-            } else {
-                alert('Gagal menerapkan perubahan: ' + (data.message || 'Error'));
-            }
-        } catch (e) {
-            alert('Kesalahan jaringan: ' + e.message);
-        }
-    };
-
-    window.rejectInboundStaging = async function (stagingId) {
-        const reason = prompt('Masukkan alasan penolakan perubahan ini:', 'Ditolak oleh Admin.');
-        if (reason === null) return;
-
-        try {
-            const res = await fetch(`{{ url('admin/spreadsheet-connections/' . $connection->id . '/inbound-staging') }}/${stagingId}/reject`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ reason: reason })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                alert(data.message || 'Perubahan ditolak.');
-                window.location.reload();
-            } else {
-                alert('Gagal menolak perubahan: ' + (data.message || 'Error'));
-            }
-        } catch (e) {
-            alert('Kesalahan jaringan: ' + e.message);
-        }
-    };
-
-    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'superadmin'], true))
-    // ==========================================
-    // Live Monitoring Refresh (Read-Only, Hanya Halaman & Role Admin, Berhenti Saat Tab Tidak Aktif)
-    // ==========================================
-    const syncStatusUrl = @json(route('admin.spreadsheet-connections.sync-status', $connection));
-    let isPollingSync = false;
-
-    async function pollSyncMonitoringStatus(force = false) {
-        if (!force && (document.hidden || document.visibilityState === 'hidden')) {
-            return;
-        }
-        if (isPollingSync) return;
-        isPollingSync = true;
-
-        try {
-            const page = new URLSearchParams(window.location.search).get('page') || 1;
-            const resp = await fetch(`${syncStatusUrl}?page=${encodeURIComponent(page)}`, {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'same-origin'
-            });
-
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data.success) {
-                    if (data.stats) {
-                        const st = data.stats;
-                        const elTotal = document.getElementById('stat-total-rows');
-                        const elSynced = document.getElementById('stat-synced-rows');
-                        const elPending = document.getElementById('stat-pending-rows');
-                        const elRetrying = document.getElementById('stat-retrying-rows');
-                        const elFailed = document.getElementById('stat-failed-rows');
-                        const elPaused = document.getElementById('stat-paused-rows');
-
-                        if (elTotal) elTotal.textContent = Number(st.total || 0).toLocaleString();
-                        if (elSynced) elSynced.textContent = Number(st.synced || 0).toLocaleString();
-                        if (elPending) elPending.textContent = Number(st.pending || 0).toLocaleString();
-                        if (elRetrying) elRetrying.textContent = Number(st.retrying || 0).toLocaleString();
-                        if (elFailed) elFailed.textContent = Number(st.failed || 0).toLocaleString();
-                        if (elPaused) elPaused.textContent = Number(st.paused || 0).toLocaleString();
-                    }
-
-                    const rowsTbody = document.getElementById('sync-rows-tbody');
-                    if (rowsTbody && data.rows_html) {
-                        rowsTbody.innerHTML = data.rows_html;
-                    }
-
-                    const paginContainer = document.getElementById('sync-pagination-container');
-                    if (paginContainer && data.pagination_html !== undefined) {
-                        paginContainer.innerHTML = data.pagination_html;
-                    }
-
-                    const outboxTbody = document.getElementById('outbox-events-tbody');
-                    if (outboxTbody && data.outbox_html) {
-                        outboxTbody.innerHTML = data.outbox_html;
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Sync live refresh poll error:', e);
-        } finally {
-            isPollingSync = false;
-        }
-    }
-
-    // Interval monitoring read-only setiap 15 detik hanya saat halaman aktif
-    const syncPollInterval = setInterval(() => pollSyncMonitoringStatus(false), 15000);
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && document.visibilityState === 'visible') {
-            pollSyncMonitoringStatus(false);
-        }
-    });
-
-    const btnManualRefresh = document.getElementById('btn-manual-sync-refresh');
-    if (btnManualRefresh) {
-        btnManualRefresh.addEventListener('click', function () {
-            const icon = this.querySelector('svg');
-            if (icon) icon.classList.add('animate-spin');
-            pollSyncMonitoringStatus(true).finally(() => {
-                setTimeout(() => {
+                if (!data.success) {
+                    alert('Gagal memicu indexing: ' + (data.message || 'Terjadi kesalahan'));
                     if (icon) icon.classList.remove('animate-spin');
-                }, 500);
-            });
+                    btnTriggerIndexing.disabled = false;
+                    return;
+                }
+
+                if (indexProgressBox) indexProgressBox.classList.remove('hidden');
+                pollIndexingStatus(data.index_run_id, activeTab);
+            } catch (e) {
+                console.error('Indexing trigger error:', e);
+                alert('Terjadi kesalahan jaringan.');
+                if (icon) icon.classList.remove('animate-spin');
+                btnTriggerIndexing.disabled = false;
+            }
         });
     }
-    @endif
+
+    function pollIndexingStatus(runId, tabName) {
+        clearInterval(activeIndexingPollTimer);
+        activeIndexingPollTimer = setInterval(async () => {
+            try {
+                const resp = await fetch(`${urlIndexStatusBase}/${runId}/status`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    clearInterval(activeIndexingPollTimer);
+                    return;
+                }
+
+                const processed = data.processed_rows || 0;
+                const total = data.total_rows || 0;
+                const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 50;
+
+                if (indexProgressBar) indexProgressBar.style.width = `${percent}%`;
+                if (indexProgressPercent) indexProgressPercent.textContent = `${percent}%`;
+                if (indexProgressCount) {
+                    indexProgressCount.textContent = `Baris: ${processed} / ${total} (${data.indexed_rows} tersimpan)`;
+                }
+
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(activeIndexingPollTimer);
+                    const icon = document.getElementById('icon-indexing');
+                    if (icon) icon.classList.remove('animate-spin');
+                    if (btnTriggerIndexing) btnTriggerIndexing.disabled = false;
+
+                    if (data.status === 'completed') {
+                        if (indexProgressLabel) {
+                            indexProgressLabel.innerHTML = `<i class="fas fa-check-circle text-teal-600 mr-1"></i> Indexing tab selesai! Total ${data.indexed_rows} data terindeks.`;
+                        }
+                        if (indexProgressBar) indexProgressBar.style.width = '100%';
+                        setTimeout(() => { if (indexProgressBox) indexProgressBox.classList.add('hidden'); }, 3000);
+                        executeGlobalSearch(1);
+                    } else {
+                        alert('Proses indexing gagal: ' + (data.last_error || 'Terjadi kesalahan'));
+                        if (indexProgressBox) indexProgressBox.classList.add('hidden');
+                    }
+                }
+            } catch (err) {
+                console.error('Poll status error:', err);
+            }
+        }, 1500);
+    }
+
+    // ----------------------------------------------------
+    // 6. INITIAL RUN (Instant Render from Preloaded)
+    // ----------------------------------------------------
+    const hasPreloaded = populateTabsUi(true);
+    if (!hasPreloaded) {
+        fetchTabsList(false);
+    } else {
+        // Silent background fetch to check for newly added tabs
+        fetchTabsList(false);
+    }
+
+    // Auto-inspect first tab if configured
+    if (tabSelect && tabSelect.value) {
+        inspectColumns();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.toString().replace(/[&<>"']/g, m => map[m]);
+    }
 });
 </script>
 @endsection

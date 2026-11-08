@@ -487,7 +487,9 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         ?int $headerRow = null,
         int $page = 1,
         int $pageSize = 20,
-        bool $maskPii = true
+        bool $maskPii = true,
+        bool $fetchColors = true,
+        ?int $dataStartRow = null
     ): SpreadsheetTransportResponse {
         $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
 
@@ -500,7 +502,7 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         }
 
         $clampedPage = max(1, $page);
-        $clampedPageSize = min(100, max(1, $pageSize));
+        $clampedPageSize = min(200, max(1, $pageSize));
 
         $innerPayload = [
             'action'         => 'read_rows_page',
@@ -510,10 +512,15 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
             'page'           => $clampedPage,
             'page_size'      => $clampedPageSize,
             'mask_pii'       => $maskPii,
+            'fetch_colors'   => $fetchColors,
         ];
 
         if ($headerRow !== null) {
             $innerPayload['header_row'] = $headerRow;
+        }
+
+        if ($dataStartRow !== null) {
+            $innerPayload['data_start_row'] = $dataStartRow;
         }
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, 'READ_ROWS');
@@ -648,6 +655,64 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         ];
 
         return $this->dispatchSignedRequest($endpoint, $innerPayload, $syncId);
+    }
+
+    /**
+     * Duplicate an existing template tab or create a new tab for a new year/batch.
+     */
+    public function duplicateOrCreateTab(
+        SpreadsheetConnection $connection,
+        string $sourceTabName,
+        string $newTabName
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'          => 'duplicate_or_create_tab',
+            'connection_key'  => $connection->connection_key,
+            'spreadsheet_id'  => $connection->spreadsheet_id,
+            'source_tab_name' => $sourceTabName,
+            'new_tab_name'    => $newTabName,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, $newTabName);
+    }
+
+    /**
+     * Append system header ID columns (KET, SERTIF_SYNC_ID, etc.) if missing.
+     */
+    public function appendSystemHeaderIds(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
+    ): SpreadsheetTransportResponse {
+        $endpoint = $connection->apps_script_endpoint_url ?: $this->endpointUrl;
+
+        if (empty($endpoint) || empty($this->sharedSecret)) {
+            return SpreadsheetTransportResponse::failure(
+                errorMessage: 'Apps Script endpoint URL atau shared secret belum dikonfigurasi.',
+                errorCode: 'TRANSPORT_NOT_CONFIGURED',
+                isRetryable: false
+            );
+        }
+
+        $innerPayload = [
+            'action'         => 'append_system_header_ids',
+            'connection_key' => $connection->connection_key,
+            'spreadsheet_id' => $connection->spreadsheet_id,
+            'tab_name'       => $tabName,
+            'header_row'     => $headerRow,
+        ];
+
+        return $this->dispatchSignedRequest($endpoint, $innerPayload, 'APPEND_HEADERS');
     }
 
     /**

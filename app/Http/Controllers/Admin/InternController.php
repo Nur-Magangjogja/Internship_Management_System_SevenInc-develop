@@ -322,6 +322,11 @@ class InternController extends Controller
                     $bq->where('name', $brandInput)->orWhere('code', $brandInput);
                 });
             }
+        } elseif ($request->attributes->has('current_brand')) {
+            $currentHostBrand = $request->attributes->get('current_brand');
+            if ($currentHostBrand && !$currentHostBrand->is_default) {
+                $query->where('brand_id', $currentHostBrand->id);
+            }
         }
 
         // Jika ada pencarian, hanya ambil data tanpa pagination
@@ -352,23 +357,24 @@ class InternController extends Controller
             try {
                 if (\Illuminate\Support\Facades\Schema::hasTable('form_fields')) {
                     $targetYear = (int) now()->year;
+                    $targetBrandId = request()->filled('brand_id') ? (int) request('brand_id') : null;
                     if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
-                        app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                        app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear, null, false, $targetBrandId);
                     }
-                    $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                    $activeSchema = app(\App\Services\FormBuilderService::class)->resolveEffectivePublishedSchema($targetBrandId, $targetYear)
                         ?: \App\Models\FormSchema::activePublished()->first()
                         ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
 
                     if ($activeSchema) {
                         $formFields = $activeSchema->fields()
-                            ->active()
+                            ->where('is_archived', false)
                             ->orderBy('sort_order')
                             ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
                             ->unique('field_key')
                             ->values()
                             ->toArray();
                     } else {
-                        $formFields = \App\Models\FormField::active()
+                        $formFields = \App\Models\FormField::where('is_archived', false)
                             ->whereNull('form_schema_id')
                             ->orderBy('sort_order')
                             ->get(['id', 'field_key', 'label', 'field_type', 'group_name', 'options', 'column_span', 'is_required', 'is_system', 'helper_text', 'placeholder'])
@@ -1151,6 +1157,18 @@ class InternController extends Controller
                         }
                         \App\Models\RegistrationCustomAnswer::updateOrCreate(
                             ['registration_id' => $intern->id, 'field_key' => $ck],
+                            ['answer_value' => $cVal !== null ? (string)$cVal : null]
+                        );
+                    }
+                }
+
+                if ($request->has('custom_answers') && is_array($request->input('custom_answers'))) {
+                    foreach ($request->input('custom_answers') as $cKey => $cVal) {
+                        if (is_array($cVal)) {
+                            $cVal = implode(', ', array_filter($cVal));
+                        }
+                        \App\Models\RegistrationCustomAnswer::updateOrCreate(
+                            ['registration_id' => $intern->id, 'field_key' => $cKey],
                             ['answer_value' => $cVal !== null ? (string)$cVal : null]
                         );
                     }

@@ -453,6 +453,12 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
 
     public array $remoteHeaders = [];
 
+    public function setMockSheetData(string $tabName, array $rows): self
+    {
+        $this->remoteSheets[$tabName] = $rows;
+        return $this;
+    }
+
     public function setMockHeaders(string $tabName, array $headers): void
     {
         $this->remoteHeaders[$tabName] = $headers;
@@ -617,7 +623,9 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         ?int $headerRow = null,
         int $page = 1,
         int $pageSize = 20,
-        bool $maskPii = true
+        bool $maskPii = true,
+        bool $fetchColors = true,
+        ?int $dataStartRow = null
     ): SpreadsheetTransportResponse {
         $allowlistCheck = $this->checkAllowlist($connection);
         if ($allowlistCheck !== null) {
@@ -638,6 +646,7 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             'header_row' => $headerRow,
             'page' => $clampedPage,
             'page_size' => $clampedSize,
+            'fetch_colors' => $fetchColors,
         ];
 
         if ($this->forcedPreviewResponse !== null) {
@@ -661,8 +670,21 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         $mappedRows = [];
         foreach ($slice as $idx => $row) {
             $rowNum = $effectiveHeaderRow + 1 + $offset + $idx;
-            $rowWithNum = ['_row_number' => $rowNum];
+            $rowBg = $row['_row_background'] ?? '#ffffff';
+            $isDivider = !empty($row['_is_divider']);
+            $dividerText = $row['_divider_text'] ?? '';
+
+            $rowWithNum = [
+                '_row_number'     => $rowNum,
+                '_row_background' => $rowBg,
+                '_is_divider'     => $isDivider,
+                '_divider_text'   => $dividerText,
+            ];
+
             foreach ($row as $k => $v) {
+                if (in_array($k, ['_row_background', '_is_divider', '_divider_text', '_row_number'], true)) {
+                    continue;
+                }
                 $rowWithNum[$k] = $maskPii ? $this->mockMaskPii((string) $v) : (string) $v;
             }
             $mappedRows[] = $rowWithNum;
@@ -898,6 +920,169 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             'sync_id'   => $syncId,
             'message'   => 'Mock sync ID attached.',
         ]);
+    }
+
+    public function duplicateOrCreateTab(
+        SpreadsheetConnection $connection,
+        string $sourceTabName,
+        string $newTabName
+    ): SpreadsheetTransportResponse {
+        $this->callHistory[] = [
+            'method' => 'duplicateOrCreateTab',
+            'args'   => [
+                'sourceTabName' => $sourceTabName,
+                'newTabName'    => $newTabName,
+            ],
+        ];
+
+        if ($this->forcedResponse !== null) {
+            return $this->forcedResponse;
+        }
+
+        if (isset($this->remoteHeaders[$sourceTabName])) {
+            $this->remoteHeaders[$newTabName] = $this->remoteHeaders[$sourceTabName];
+        } else {
+            $this->remoteHeaders[$newTabName] = ['SERTIF_SYNC_ID', 'SERTIF_REGISTRATION_ID', 'FORM_SCHEMA_VERSION', 'SERTIF_LAST_SYNC_AT'];
+        }
+        $this->remoteSheets[$newTabName] = [];
+
+        return SpreadsheetTransportResponse::ok(context: [
+            'success'   => true,
+            'tab_name'  => $newTabName,
+            'sheet_id'  => 999901,
+            'message'   => "Tab '{$newTabName}' berhasil diduplikasi dari '{$sourceTabName}'.",
+        ]);
+    }
+
+    public function appendSystemHeaderIds(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
+    ): SpreadsheetTransportResponse {
+        $sec = $this->checkAllowlist($connection);
+        if ($sec) return $sec;
+
+        if (isset($this->forceException)) {
+            throw $this->forceException;
+        }
+
+        $appended = ['KET', 'SERTIF_SYNC_ID', 'SERTIF_REGISTRATION_ID', 'SERTIF_SYNC_STATUS', 'SERTIF_LAST_SYNC_AT'];
+        if (isset($this->remoteHeaders[$tabName])) {
+            foreach ($appended as $col) {
+                if (!in_array($col, $this->remoteHeaders[$tabName], true)) {
+                    $this->remoteHeaders[$tabName][] = $col;
+                }
+            }
+        } else {
+            $this->remoteHeaders[$tabName] = $appended;
+        }
+
+        return SpreadsheetTransportResponse::ok(context: [
+            'success'          => true,
+            'tab_name'         => $tabName,
+            'header_row'       => $headerRow ?: 10,
+            'appended_columns' => $appended,
+        ]);
+    }
+
+    public function loadJogjaFixture(): void
+    {
+        $this->mockTabs = [
+            ['id' => 101, 'name' => 'Form Pendaftaran Magang', 'index' => 0, 'row_count' => 150, 'column_count' => 42, 'header_row' => 10],
+            ['id' => 102, 'name' => 'PESERTA ANAK MAGANG', 'index' => 1, 'row_count' => 50, 'column_count' => 30, 'header_row' => 11],
+            ['id' => 103, 'name' => 'Copy of PESERTA ANAK MAGANG', 'index' => 2, 'row_count' => 40, 'column_count' => 20, 'header_row' => 1],
+            ['id' => 104, 'name' => 'Jadwal Jam Kerja Magang', 'index' => 3, 'row_count' => 30, 'column_count' => 15, 'header_row' => 4],
+            ['id' => 105, 'name' => 'PEMBAGIAN TUGAS SEMENTARA', 'index' => 4, 'row_count' => 20, 'column_count' => 10, 'header_row' => 1],
+            ['id' => 106, 'name' => 'GRUP WA MAGANG ONLINE', 'index' => 5, 'row_count' => 50, 'column_count' => 5, 'header_row' => 1],
+            ['id' => 107, 'name' => 'GRUP WA MAGANG OFFLINE', 'index' => 6, 'row_count' => 50, 'column_count' => 5, 'header_row' => 1],
+        ];
+
+        // 42 headers including duplicate KET at col AL and AM
+        $jogjaHeaders = [
+            'Timestamp', 'Nama Lengkap', 'Email', 'No WhatsApp', 'Asal Sekolah/Universitas',
+            'Jurusan', 'Jenis Kelamin', 'NIM / NISN', 'Agama', 'Kota Asal',
+            'Alamat Domisili', 'Akun Instagram', 'Link Portofolio / CV', 'Posisi Magang',
+            'Alasan Memilih Posisi Ini', 'Rencana Mulai Magang', 'Rencana Selesai Magang',
+            'Durasi Magang', 'Kesiapan WFO Yogyakarta', 'Kesiapan Shift Kerja',
+            'Memiliki Laptop Pribadi', 'Spesifikasi Laptop', 'Software yang Dikuasai',
+            'Kemampuan Baca Buku Inggris', 'Surat Rekomendasi Kampus / Sekolah',
+            'Nama Dosen / Guru Pembimbing', 'Kontak Pembimbing', 'Kegiatan Saat Ini',
+            'Informasi Kos / Tempat Tinggal', 'Riwayat Organisasi', 'Pengalaman Proyek',
+            'Harapan Mengikuti Magang', 'Pertanyaan Khusus Brand 1', 'Pertanyaan Khusus Brand 2',
+            'Sumber Informasi Lowongan', 'Pernah Mendaftar Sebelumnya', 'Status Mahasiswa',
+            'Catatan Khusus', 'KET', 'KET', 'SERTIF_SYNC_ID', 'SERTIF_REGISTRATION_ID'
+        ];
+        $this->remoteHeaders['Form Pendaftaran Magang'] = $jogjaHeaders;
+
+        $pendaftaranRows = [
+            [
+                'Timestamp' => '2026-01-10 10:00:00',
+                'Nama Lengkap' => 'Budi Santoso Jogja',
+                'Email' => 'budi.jogja@test.com',
+                'No WhatsApp' => '081234567891',
+                'Asal Sekolah/Universitas' => 'Universitas Gadjah Mada',
+                'Jurusan' => 'Teknologi Informasi',
+                '_row_background' => '#ffffff',
+            ],
+            [
+                'Timestamp' => '2026-01-11 11:30:00',
+                'Nama Lengkap' => 'Siti Rahayu Jogja',
+                'Email' => 'siti.jogja@test.com',
+                'No WhatsApp' => '081234567892',
+                'Asal Sekolah/Universitas' => 'Universitas Negeri Yogyakarta',
+                'Jurusan' => 'Pendidikan Teknik Informatika',
+                '_row_background' => '#fff2cc', // Kuning (Calon/Followup)
+            ],
+            [
+                'Timestamp' => '2026-01-12 14:15:00',
+                'Nama Lengkap' => 'Ahmad Fauzi Jogja',
+                'Email' => 'ahmad.jogja@test.com',
+                'No WhatsApp' => '081234567893',
+                'Asal Sekolah/Universitas' => 'UPN Veteran Yogyakarta',
+                'Jurusan' => 'Sistem Informasi',
+                '_row_background' => '#d9ead3', // Hijau (Diterima)
+            ]
+        ];
+        $this->setMockSheetData('Form Pendaftaran Magang', $pendaftaranRows);
+    }
+
+    public function loadAreaKerjaFixture(): void
+    {
+        $this->mockTabs = [
+            ['id' => 201, 'name' => 'Form Responses 1', 'index' => 0, 'row_count' => 200, 'column_count' => 61, 'header_row' => 7],
+            ['id' => 202, 'name' => 'PESERTA MAGANG AREAKERJA', 'index' => 1, 'row_count' => 80, 'column_count' => 35, 'header_row' => 13],
+        ];
+
+        $akHeaders = [
+            'Timestamp', 'Email Address', 'Nama Lengkap Peserta', 'Nomor WhatsApp Aktif', 'Instansi Pendidikan',
+            'Program Studi', 'Jenjang Pendidikan', 'NIM', 'Jenis Kelamin', 'Kota',
+        ];
+        for ($i = 11; $i <= 61; $i++) {
+            $akHeaders[] = "AreaKerja Field {$i}";
+        }
+        $this->remoteHeaders['Form Responses 1'] = $akHeaders;
+
+        $akRows = [
+            [
+                'Timestamp' => '2026-02-01 09:00:00',
+                'Email Address' => 'pelamar.ak1@areakerja.test',
+                'Nama Lengkap Peserta' => 'Rina AreaKerja',
+                'Nomor WhatsApp Aktif' => '082212345678',
+                'Instansi Pendidikan' => 'Universitas Diponegoro',
+                'Program Studi' => 'Ilmu Komunikasi',
+                '_row_background' => '#ffffff',
+            ],
+            [
+                'Timestamp' => '2026-02-02 10:00:00',
+                'Email Address' => 'pelamar.ak2@areakerja.test',
+                'Nama Lengkap Peserta' => 'Dimas AreaKerja',
+                'Nomor WhatsApp Aktif' => '082212345679',
+                'Instansi Pendidikan' => 'Universitas Sebelas Maret',
+                'Program Studi' => 'Manajemen Bisnis',
+                '_row_background' => '#fff2cc',
+            ],
+        ];
+        $this->setMockSheetData('Form Responses 1', $akRows);
     }
 
     public function reset(): void

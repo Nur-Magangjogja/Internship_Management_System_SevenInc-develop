@@ -20,7 +20,9 @@ class UserController extends Controller
             ->select(
                 'users.*',
                 \Illuminate\Support\Facades\DB::raw('COALESCE(latest_reg.fullname, users.name) as display_name'),
-                'latest_reg.fullname as latest_registration_fullname'
+                'latest_reg.fullname as latest_registration_fullname',
+                'latest_reg.registration_type as registration_type',
+                'latest_reg.is_integrated as is_integrated'
             )
             ->leftJoinSub($latestRegSub, 'latest_reg_map', function ($join) {
                 $join->on('users.id', '=', 'latest_reg_map.user_id');
@@ -48,6 +50,21 @@ class UserController extends Controller
 
         if ($role = $request->get('role')) {
             $query->where('users.role', $role);
+        }
+
+        // Filter sumber data: website reguler vs data terintegrasi spreadsheet
+        if ($source = $request->get('source')) {
+            if ($source === 'integrated') {
+                $query->where(function ($q) {
+                    $q->where('latest_reg.is_integrated', true)
+                      ->orWhere('latest_reg.registration_type', 'integrated');
+                });
+            } elseif ($source === 'web') {
+                $query->where(function ($q) {
+                    $q->whereNull('latest_reg.is_integrated')
+                      ->orWhere('latest_reg.is_integrated', false);
+                });
+            }
         }
 
         // Filter berdasarkan status ban / trashed

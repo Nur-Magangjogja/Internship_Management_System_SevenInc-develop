@@ -2061,6 +2061,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        // Tampilkan jawaban pertanyaan khusus form brand (Universal Integrasi)
+        if (it.custom_answers_list && it.custom_answers_list.length > 0) {
+            const brandTitle = it.brand_name || it.brand || 'Brand';
+            fieldsHtml += sectionHtml(`Informasi Khusus Form Brand (${escapeHtml(brandTitle)})`);
+            it.custom_answers_list.forEach(ca => {
+                fieldsHtml += detailRow(ca.label, ca.value);
+            });
+        }
+
         document.getElementById('appModalBody').innerHTML = `
         <div class="space-y-4">
             <div class="flex items-center gap-4 rounded-[10px] bg-[#F4F8F6] px-4 py-3">
@@ -2567,10 +2576,32 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        // Render Pertanyaan Khusus Form Brand jika tersedia (Universal Integration)
+        let brandCustomAnswersHtml = '';
+        if (it.custom_answers_list && it.custom_answers_list.length > 0) {
+            const brandTitle = it.brand_name || it.brand || 'Brand';
+            brandCustomAnswersHtml += section(`Informasi Khusus Form Brand (${escapeHtml(brandTitle)})`);
+            it.custom_answers_list.forEach(ca => {
+                const valStr = (fmtStr(ca.value) === '-') ? '' : fmtStr(ca.value);
+                brandCustomAnswersHtml += `
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-[12px] font-semibold text-[#1B3A34]">
+                            ${escapeHtml(ca.label)}
+                            <span class="ml-1 text-[10px] font-mono text-[#2D8659] font-normal">(${escapeHtml(ca.key)})</span>
+                        </label>
+                        <input type="text" name="custom_answers[${escapeHtml(ca.key)}]" value="${escapeHtml(valStr)}"
+                            class="w-full rounded-[8px] border border-[#DCE7E1] bg-[#F4F8F6] px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition"
+                            placeholder="Isi jawaban ${escapeHtml(ca.label)}...">
+                    </div>
+                `;
+            });
+        }
+
         document.getElementById('appModalBody').innerHTML = `
         <form id="editForm" class="space-y-1">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 ${dynamicFieldsHtml}
+                ${brandCustomAnswersHtml}
 
                 <div class="col-span-2 mt-1 border-b border-[#DCE7E1] pb-1">
                     <p class="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#2D8659]">Status Pendaftaran</p>

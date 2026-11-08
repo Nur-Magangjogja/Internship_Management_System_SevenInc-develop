@@ -359,6 +359,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/fields',                                [\App\Http\Controllers\Admin\FormFieldController::class, 'store'])->name('fields.store');
         Route::post('/fields/publish',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'publish'])->name('fields.publish');
         Route::post('/fields/sync-previous',                  [\App\Http\Controllers\Admin\FormFieldController::class, 'syncFromPreviousYear'])->name('fields.sync-previous');
+        Route::post('/fields/fork-global',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'forkGlobalTemplate'])->name('fields.fork-global');
         Route::post('/fields/{field}/archive',                [\App\Http\Controllers\Admin\FormFieldController::class, 'archive'])->name('fields.archive');
         Route::get('/fields/preview-data',                    [\App\Http\Controllers\Admin\FormFieldController::class, 'previewData'])->name('fields.preview-data');
         Route::post('/fields/reorder',                        [\App\Http\Controllers\Admin\FormFieldController::class, 'reorder'])->name('fields.reorder');
@@ -366,6 +367,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::put('/fields/{field}',                         [\App\Http\Controllers\Admin\FormFieldController::class, 'update'])->name('fields.update');
         Route::post('/fields/{field}/toggle',                 [\App\Http\Controllers\Admin\FormFieldController::class, 'toggle'])->name('fields.toggle');
         Route::post('/fields/{field}/toggle-required',        [\App\Http\Controllers\Admin\FormFieldController::class, 'toggleRequired'])->name('fields.toggle-required');
+        Route::post('/fields/submit-settings',                [\App\Http\Controllers\Admin\FormFieldController::class, 'saveSubmitSettings'])->name('fields.submit-settings');
         Route::delete('/fields/{field}',                      [\App\Http\Controllers\Admin\FormFieldController::class, 'destroy'])->name('fields.destroy');
     });
 
@@ -470,6 +472,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/{spreadsheetConnection}/proposals/{proposal}/diff', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'previewDiff'])->name('proposals.diff');
         Route::post('/{spreadsheetConnection}/proposals/{proposal}/apply', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'applyProposal'])->name('proposals.apply');
         Route::put('/{spreadsheetConnection}/proposals/{proposal}/items/{item}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'updateProposalItem'])->name('proposals.items.update');
+        Route::delete('/{spreadsheetConnection}/proposals/{proposal}', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'destroyProposal'])->name('proposals.destroy');
 
         // Safe Header / Column Deletion Eligibility & Execution (Fase 3)
         Route::get('/{spreadsheetConnection}/tabs/{sheetId}/columns/{columnIdentity}/deletion-eligibility', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'checkColumnDeletionEligibility'])->name('columns.deletion-eligibility');
@@ -480,6 +483,25 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::get('/{spreadsheetConnection}/inbound-staging', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'getInboundStaging'])->name('inbound.staging');
         Route::post('/{spreadsheetConnection}/inbound-staging/{staging}/approve', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'approveInboundStaging'])->name('inbound.staging.approve');
         Route::post('/{spreadsheetConnection}/inbound-staging/{staging}/reject', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'rejectInboundStaging'])->name('inbound.staging.reject');
+
+        // Fase 5: Kloning Tab Baru & Rekonsiliasi Baris / Akun Terintegrasi
+        Route::post('/{spreadsheetConnection}/duplicate-tab', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'duplicateTab'])->name('duplicate-tab');
+        Route::get('/{spreadsheetConnection}/unsynced-rows', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'getUnsyncedRows'])->name('unsynced-rows');
+        Route::post('/{spreadsheetConnection}/reconcile-row', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'reconcileRow'])->name('reconcile-row');
+
+        // Workspace Integrasi Universal: Kolom, Header ID, Penyesuaian Form Brand, & Filter Warna Baris
+        Route::get('/{spreadsheetConnection}/inspect-columns', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'inspectColumns'])->name('inspect-columns');
+        Route::post('/{spreadsheetConnection}/inject-header-ids', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'injectHeaderIds'])->name('inject-header-ids');
+        Route::post('/{spreadsheetConnection}/save-brand-columns', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'saveBrandColumns'])->name('save-brand-columns');
+        Route::get('/{spreadsheetConnection}/workspace-rows', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'workspaceRows'])->name('workspace-rows');
+        Route::post('/{spreadsheetConnection}/dry-run-reconcile', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'dryRunReconcile'])->name('dry-run-reconcile');
+        Route::post('/{spreadsheetConnection}/test-composite-parser', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'testCompositeParser'])->name('test-composite-parser');
+        Route::post('/{spreadsheetConnection}/batch-reconcile', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'batchReconcile'])->name('batch-reconcile');
+
+        // Universal Spreadsheet Search Engine & Projection (Phase 4-5)
+        Route::get('/{spreadsheetConnection}/search', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'searchDocuments'])->name('search');
+        Route::post('/{spreadsheetConnection}/index-tab', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'startIndexing'])->name('index-tab');
+        Route::get('/{spreadsheetConnection}/index-runs/{runId}/status', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'checkIndexingStatus'])->name('index-status');
     });
 
     // Manajemen Template MOU -> admin.mou-templates.*

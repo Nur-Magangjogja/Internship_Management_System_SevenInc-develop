@@ -380,14 +380,17 @@ class SpreadsheetDiscoveryService
         ?User $user = null
     ): SheetMappingProposal {
         return DB::transaction(function () use ($connection, $snapshot, $year, $targetSchema, $user) {
-            $formFields = $this->getAvailableFormFields($targetSchema);
+            $effectiveYear = $year ?? (preg_match('/^\d{4}$/', $snapshot->tab_name) ? (int) $snapshot->tab_name : (int) now()->year);
+            $formBuilderService = app(FormBuilderService::class);
+            $effectiveSchema = $targetSchema ?? $formBuilderService->resolveEffectivePublishedSchema($connection->brand_id, $effectiveYear);
+            $formFields = $this->getAvailableFormFields($effectiveSchema);
 
             $proposal = SheetMappingProposal::create([
                 'spreadsheet_connection_id' => $connection->id,
                 'snapshot_id'               => $snapshot->id,
                 'expected_schema_hash'      => $snapshot->schema_hash,
-                'year'                      => $year ?? (preg_match('/^\d{4}$/', $snapshot->tab_name) ? (int) $snapshot->tab_name : (int) now()->year),
-                'form_schema_id'            => $targetSchema?->id,
+                'year'                      => $effectiveYear,
+                'form_schema_id'            => $effectiveSchema?->id,
                 'version'                   => 1,
                 'status'                    => SheetMappingProposal::STATUS_DRAFT,
                 'proposed_by'               => $user?->id,
@@ -398,6 +401,7 @@ class SpreadsheetDiscoveryService
 
             foreach ($columns as $col) {
                 $rawLabel = trim($col->observed_label);
+                $colFingerprint = hash('sha256', ($col->inferred_type ?? '') . '|' . json_encode($col->sample_values ?? []) . '|' . strtolower(trim($col->observed_label ?? '')));
 
                 // 1. Reserved System Fields
                 if ($col->is_system_reserved) {
@@ -405,6 +409,7 @@ class SpreadsheetDiscoveryService
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => $rawLabel,
@@ -426,6 +431,7 @@ class SpreadsheetDiscoveryService
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => $rawLabel,
@@ -437,7 +443,7 @@ class SpreadsheetDiscoveryService
                         'confidence_level'     => self::CONFIDENCE_NONE,
                         'match_reason'         => 'Konflik collision: Ditemukan header ganda dengan teks persis sama.',
                         'has_collision'        => true,
-                        'collision_detail'     => "Header '{$rawLabel}' muncul lebih dari satu kali pada tab ini.",
+                        'collision_detail'     => "Header '" . Str::limit($rawLabel, 100) . "' muncul lebih dari satu kali pada tab ini.",
                     ]);
                     continue;
                 }
@@ -448,6 +454,7 @@ class SpreadsheetDiscoveryService
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => '',
@@ -492,6 +499,7 @@ class SpreadsheetDiscoveryService
                     'proposal_id'          => $proposal->id,
                     'discovered_column_id' => $col->id,
                     'column_identity'      => $col->column_identity,
+                    'column_fingerprint'   => $colFingerprint,
                     'col_letter'           => $col->col_letter,
                     'physical_index'       => $col->physical_index,
                     'observed_label'       => $rawLabel,
@@ -705,10 +713,26 @@ class SpreadsheetDiscoveryService
                             'label'            => $item->suggested_label ?: $item->observed_label,
                             'group_name'       => 'Pendaftaran',
                             'is_system'        => false,
-                            'is_active'        => true,
+                            'is_active'        => false, // Dibuat nonaktif agar tidak langsung mengubah form publik brand
                             'is_archived'      => false,
                             'is_required'      => false,
                         ]);
+
+                        // Daftarkan ke FormFieldRegistry agar validasi kolom & edit pemagang lintas brand siap
+                        FormFieldRegistry::firstOrCreate(
+                            ['field_key' => $fieldKey],
+                            [
+                                'field_type'               => $fieldType,
+                                'field_state'              => FormFieldRegistry::STATE_FORM_FIELD,
+                                'canonical_label'          => $item->suggested_label ?: $item->observed_label,
+                                'form_enabled'             => false,
+                                'history_storage_enabled'  => true,
+                                'spreadsheet_sync_enabled' => true,
+                                'source_header_alias'      => $item->observed_label,
+                                'is_locked'                => false,
+                            ]
+                        );
+
                         $createdCount++;
                     }
                     $appliedCount++;
@@ -1072,6 +1096,8 @@ class SpreadsheetDiscoveryService
         foreach ($formFields as $field) {
             $labelNorm = $this->normalizeString($field['label']);
             if (strlen($labelNorm) >= 4 && (str_contains($normalizedHeader, $labelNorm) || str_contains($labelNorm, $normalizedHeader))) {
+                $shortH = \Illuminate\Support\Str::limit($cleanHeader, 80);
+                $shortL = \Illuminate\Support\Str::limit($field['label'], 80);
                 return [
                     'field_key'        => $field['field_key'],
                     'label'            => $field['label'],
@@ -1079,7 +1105,7 @@ class SpreadsheetDiscoveryService
                     'is_system'        => $field['is_system'],
                     'confidence_score' => 0.60,
                     'confidence_level' => self::CONFIDENCE_MEDIUM,
-                    'match_reason'     => "Kemiripan teks frasa ('{$cleanHeader}' mendekati '{$field['label']}').",
+                    'match_reason'     => "Kemiripan teks frasa ('{$shortH}' mendekati '{$shortL}').",
                 ];
             }
         }

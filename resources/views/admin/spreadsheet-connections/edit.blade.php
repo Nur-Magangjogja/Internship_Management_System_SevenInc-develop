@@ -241,6 +241,155 @@
                     </div>
                 @endif
 
+                <!-- Pengaturan Universal Tahunan & Pembuatan Tab (Fase 5) -->
+                <div x-data="{ isYearly: {{ old('is_yearly_cloning_enabled', $connection->is_yearly_cloning_enabled) ? 'true' : 'false' }} }" class="rounded-xl border border-blue-100 bg-blue-50/50 p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-calendar-alt text-blue-600"></i>
+                            <h4 class="text-sm font-bold text-slate-800">Pengaturan Tab &amp; Kloning Tahunan Universal</h4>
+                        </div>
+                        <span x-show="!isYearly" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-600">
+                            Fitur Dinonaktifkan
+                        </span>
+                    </div>
+
+                    {{-- Kotak Panduan Informatif --}}
+                    <div class="rounded-lg bg-blue-100/70 p-3 text-[11px] text-blue-900 leading-relaxed border border-blue-200">
+                        <p class="font-bold mb-1 flex items-center gap-1.5">
+                            <i class="fas fa-info-circle text-blue-600"></i> Panduan Pengaturan Tab:
+                        </p>
+                        <ul class="list-disc list-inside space-y-0.5 text-blue-800">
+                            <li><strong>Centang jika:</strong> Spreadsheet brand ini memisahkan data pemagang ke tab baru setiap tahun (misal: 2026, 2027) agar data tidak menumpuk.</li>
+                            <li><strong>Jangan dicentang jika:</strong> Spreadsheet brand ini menggunakan 1 tab berkelanjutan tanpa batas tahun (seluruh sub-fitur di bawah akan otomatis dinonaktifkan).</li>
+                        </ul>
+                    </div>
+
+                    {{-- Toggle Wajib Clone Per Tahun --}}
+                    <div class="flex items-start gap-3">
+                        <div class="flex h-5 items-center">
+                            <input
+                                type="checkbox"
+                                name="is_yearly_cloning_enabled"
+                                id="is_yearly_cloning_enabled"
+                                value="1"
+                                @change="isYearly = $event.target.checked"
+                                {{ old('is_yearly_cloning_enabled', $connection->is_yearly_cloning_enabled) ? 'checked' : '' }}
+                                class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label for="is_yearly_cloning_enabled" class="text-xs font-semibold text-slate-800 cursor-pointer">
+                                Aktifkan Mode Kloning Tab Per Tahun
+                            </label>
+                            <p class="text-[11px] text-slate-500 mt-0.5">
+                                Jika diaktifkan, data pemagang akan diisolasi per tab tahun (misal: 2026, 2027) dan divalidasi ketat agar tidak tercampur. Jika dinonaktifkan, spreadsheet brand ini menggunakan satu tab berkelanjutan.
+                            </p>
+                        </div>
+                    </div>
+
+                    {{-- Sub-Opsi Kloning Tahunan (Otomatis Disabled & Grayed Out jika tidak dicentang) --}}
+                    <div :class="{ 'opacity-40 pointer-events-none select-none bg-slate-100/50 p-3 rounded-lg border border-dashed border-slate-300': !isYearly }" class="transition-all space-y-4">
+                        {{-- Metode Pembuatan Tab --}}
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                Metode Pembuatan Tab Baru
+                            </label>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                                    <input
+                                        type="radio"
+                                        name="tab_creation_mode"
+                                        value="manual_link"
+                                        :disabled="!isYearly"
+                                        {{ old('tab_creation_mode', $connection->tab_creation_mode ?? 'manual_link') === 'manual_link' ? 'checked' : '' }}
+                                        class="text-blue-600"
+                                    />
+                                    <div class="text-xs">
+                                        <span class="font-semibold text-slate-800">Manual (Link / Scan)</span>
+                                        <p class="text-[10px] text-slate-500">Admin buat tab di Google Sheets, SertIF link profilnya.</p>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                                    <input
+                                        type="radio"
+                                        name="tab_creation_mode"
+                                        value="auto_clone"
+                                        :disabled="!isYearly"
+                                        {{ old('tab_creation_mode', $connection->tab_creation_mode ?? 'manual_link') === 'auto_clone' ? 'checked' : '' }}
+                                        class="text-blue-600"
+                                    />
+                                    <div class="text-xs">
+                                        <span class="font-semibold text-slate-800">Otomatis (Apps Script Clone)</span>
+                                        <p class="text-[10px] text-slate-500">SertIF menduplikasi tab template langsung ke Google Sheets.</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {{-- Nama Template Tab Sumber --}}
+                            <div>
+                                <label for="yearly_tab_template_name" class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Nama Tab Template Sumber
+                                </label>
+                                <input
+                                    type="text"
+                                    name="yearly_tab_template_name"
+                                    id="yearly_tab_template_name"
+                                    :disabled="!isYearly"
+                                    value="{{ old('yearly_tab_template_name', $connection->yearly_tab_template_name ?? 'TEMPLATE_TAHUN') }}"
+                                    placeholder="TEMPLATE_TAHUN"
+                                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 font-mono focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+
+                            {{-- Izinkan Penamaan Tab Bebas/Kustom --}}
+                            <div class="flex items-start gap-2 pt-5">
+                                <input
+                                    type="checkbox"
+                                    name="allow_custom_tab_naming"
+                                    id="allow_custom_tab_naming"
+                                    value="1"
+                                    :disabled="!isYearly"
+                                    {{ old('allow_custom_tab_naming', $connection->allow_custom_tab_naming ?? true) ? 'checked' : '' }}
+                                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                                />
+                                <label for="allow_custom_tab_naming" class="text-xs font-semibold text-slate-700 cursor-pointer">
+                                    Izinkan Penamaan Tab Kustom/Manual (selain 4 digit tahun)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Pengaturan Status Default Data Terintegrasi --}}
+                    <div class="pt-3 border-t border-blue-200/60">
+                        <label for="default_integrated_status" class="block text-xs font-semibold text-slate-700 mb-1">
+                            Status Pemagang Default untuk Baris Baru dari Spreadsheet
+                        </label>
+                        <select
+                            name="default_integrated_status"
+                            id="default_integrated_status"
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                        >
+                            <option value="waiting" {{ old('default_integrated_status', $connection->default_integrated_status ?? 'waiting') === 'waiting' ? 'selected' : '' }}>
+                                Calon Pemagang / Menunggu Seleksi (waiting) — Direkomendasikan
+                            </option>
+                            <option value="pending" {{ old('default_integrated_status', $connection->default_integrated_status) === 'pending' ? 'selected' : '' }}>
+                                Pending / Ditangguhkan (pending)
+                            </option>
+                            <option value="accepted" {{ old('default_integrated_status', $connection->default_integrated_status) === 'accepted' ? 'selected' : '' }}>
+                                Diterima (accepted)
+                            </option>
+                            <option value="active" {{ old('default_integrated_status', $connection->default_integrated_status) === 'active' ? 'selected' : '' }}>
+                                Aktif Magang (active)
+                            </option>
+                        </select>
+                        <p class="text-[11px] text-slate-500 mt-1">
+                            Status yang akan otomatis diberikan ketika data pendaftar baru dari spreadsheet luar diverifikasi dan dipasangi ID resmi.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- Security Notice -->
                 <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
                     <p class="font-semibold text-slate-700 mb-1">Keamanan Kredensial:</p>

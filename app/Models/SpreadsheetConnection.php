@@ -41,6 +41,11 @@ class SpreadsheetConnection extends Model
         'drive_folder_url',
         'drive_folder_id',
         'is_enabled',
+        'is_yearly_cloning_enabled',
+        'tab_creation_mode',
+        'yearly_tab_template_name',
+        'allow_custom_tab_naming',
+        'default_integrated_status',
         'connection_status',
         'last_tested_at',
         'last_successful_test_at',
@@ -56,6 +61,8 @@ class SpreadsheetConnection extends Model
 
     protected $casts = [
         'is_enabled' => 'boolean',
+        'is_yearly_cloning_enabled' => 'boolean',
+        'allow_custom_tab_naming' => 'boolean',
         'target_generation' => 'integer',
         'last_tested_at' => 'datetime',
         'last_successful_test_at' => 'datetime',

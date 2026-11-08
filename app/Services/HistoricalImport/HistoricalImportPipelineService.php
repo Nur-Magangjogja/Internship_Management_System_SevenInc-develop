@@ -94,9 +94,10 @@ class HistoricalImportPipelineService
     public function analyzeGoogleSheet(
         string $spreadsheetId,
         ?string $tabName = null,
-        ?SpreadsheetConnection $connection = null
+        ?SpreadsheetConnection $connection = null,
+        ?int $brandId = null
     ): array {
-        $conn = $this->resolveRegistrationConnection($connection, $spreadsheetId);
+        $conn = $this->resolveRegistrationConnection($connection, $spreadsheetId, $brandId);
 
         $targetConn = clone $conn;
         $targetConn->spreadsheet_id = $spreadsheetId;
@@ -190,19 +191,23 @@ class HistoricalImportPipelineService
         ?string $sourceTabName = null,
         ?int $userId = null,
         ?string $startDateFilter = null,
-        ?string $endDateFilter = null
+        ?string $endDateFilter = null,
+        ?int $brandId = null,
+        ?int $spreadsheetConnectionId = null
     ): HistoricalImportBatch {
         $fileHash = file_exists($filePath) ? hash_file('sha256', $filePath) : null;
 
         $batch = HistoricalImportBatch::create([
-            'source_type'           => $sourceType,
-            'source_filename'       => $sourceFilename,
-            'source_identifier'     => $sourceIdentifier ?: basename($filePath),
-            'source_tab_name'       => $sourceTabName,
-            'source_file_hash'      => $fileHash,
-            'column_mapping_config' => $columnMappingConfig,
-            'status'                => HistoricalImportBatch::STATUS_STAGED,
-            'created_by'            => $userId,
+            'source_type'               => $sourceType,
+            'source_filename'           => $sourceFilename,
+            'source_identifier'         => $sourceIdentifier ?: basename($filePath),
+            'source_tab_name'           => $sourceTabName,
+            'source_file_hash'          => $fileHash,
+            'brand_id'                  => $brandId,
+            'spreadsheet_connection_id' => $spreadsheetConnectionId,
+            'column_mapping_config'     => $columnMappingConfig,
+            'status'                    => HistoricalImportBatch::STATUS_STAGED,
+            'created_by'                => $userId,
         ]);
 
         $filterStart = $startDateFilter ? $this->parseFilterDate($startDateFilter) : null;
@@ -322,22 +327,26 @@ class HistoricalImportPipelineService
         ?string $endDateFilter = null,
         ?int $userId = null,
         ?int $maxRows = null,
-        ?SpreadsheetConnection $connection = null
+        ?SpreadsheetConnection $connection = null,
+        ?int $brandId = null,
+        ?int $spreadsheetConnectionId = null
     ): HistoricalImportBatch {
-        $conn = $this->resolveRegistrationConnection($connection, $spreadsheetId);
+        $conn = $this->resolveRegistrationConnection($connection, $spreadsheetId, $brandId);
 
         $targetConn = clone $conn;
         $targetConn->spreadsheet_id = $spreadsheetId;
 
         $batch = HistoricalImportBatch::create([
-            'source_type'           => HistoricalImportBatch::SOURCE_GOOGLE_SHEETS,
-            'source_filename'       => "Google Sheet [{$tabName}] - {$spreadsheetId}",
-            'source_identifier'     => $spreadsheetId,
-            'source_tab_name'       => $tabName,
-            'source_file_hash'      => hash('sha256', "GS|{$spreadsheetId}|{$tabName}"),
-            'column_mapping_config' => $columnMappingConfig,
-            'status'                => HistoricalImportBatch::STATUS_STAGED,
-            'created_by'            => $userId,
+            'source_type'               => HistoricalImportBatch::SOURCE_GOOGLE_SHEETS,
+            'source_filename'           => "Google Sheet [{$tabName}] - {$spreadsheetId}",
+            'source_identifier'         => $spreadsheetId,
+            'source_tab_name'           => $tabName,
+            'source_file_hash'          => hash('sha256', "GS|{$spreadsheetId}|{$tabName}"),
+            'brand_id'                  => $brandId,
+            'spreadsheet_connection_id' => $spreadsheetConnectionId ?: $conn?->id,
+            'column_mapping_config'     => $columnMappingConfig,
+            'status'                    => HistoricalImportBatch::STATUS_STAGED,
+            'created_by'                => $userId,
         ]);
 
         $filterStart = $startDateFilter ? $this->parseFilterDate($startDateFilter) : null;
@@ -459,9 +468,27 @@ class HistoricalImportPipelineService
             throw new DomainException("Batch impor #{$batch->id} sudah pernah dikomit sebelumnya.");
         }
 
-        $conn = $connection ?: SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        $conn = $connection;
+        if (!$conn && $batch->spreadsheet_connection_id) {
+            $conn = SpreadsheetConnection::find($batch->spreadsheet_connection_id);
+        }
+        if (!$conn && $batch->brand_id) {
+            $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                ->where('brand_id', $batch->brand_id)
+                ->first();
+        }
+        if (!$conn) {
+            $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
+        }
         if (!$conn) {
             throw new DomainException("Koneksi Spreadsheet Pendaftaran resmi belum dikonfigurasi.");
+        }
+
+        $brand = null;
+        if ($batch->brand_id) {
+            $brand = \App\Models\Brand::find($batch->brand_id);
+        } elseif ($conn && $conn->brand_id) {
+            $brand = \App\Models\Brand::find($conn->brand_id);
         }
 
         // 1. Eksekusi pra-pendaftaran field historis nonaktif ke FormFieldRegistry dan Spreadsheet Schema
@@ -482,7 +509,7 @@ class HistoricalImportPipelineService
             }
 
             try {
-                DB::transaction(function () use ($stagedRow, $batch, $conn, &$importedCount, &$createdRegistrations) {
+                DB::transaction(function () use ($stagedRow, $batch, $conn, $brand, &$importedCount, &$createdRegistrations) {
                     $mapped = $stagedRow->mapped_data ?? [];
                     $targetYear = $stagedRow->target_year ?: (int) date('Y');
 
@@ -490,6 +517,8 @@ class HistoricalImportPipelineService
                     $reg = InternshipRegistration::create([
                         'public_uuid'                 => (string) Str::uuid(),
                         'user_id'                     => null, // Outsider pendaftar mandiri
+                        'brand_id'                    => $brand?->id,
+                        'registration_host'           => $brand?->registration_host,
                         'email'                       => $mapped['email'] ?? null,
                         'fullname'                    => $mapped['fullname'] ?? '-',
                         'student_id'                  => $mapped['student_id'] ?? null,
@@ -788,13 +817,25 @@ class HistoricalImportPipelineService
     /**
      * Resolusi koneksi spreadsheet registrasi dengan fallback aman untuk pengujian.
      */
-    protected function resolveRegistrationConnection(?SpreadsheetConnection $connection = null, ?string $fallbackSheetId = null): ?SpreadsheetConnection
-    {
+    protected function resolveRegistrationConnection(
+        ?SpreadsheetConnection $connection = null,
+        ?string $fallbackSheetId = null,
+        ?int $brandId = null
+    ): ?SpreadsheetConnection {
         if ($connection) {
             return $connection;
         }
 
         try {
+            if ($brandId) {
+                $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)
+                    ->where('brand_id', $brandId)
+                    ->first();
+                if ($conn) {
+                    return $conn;
+                }
+            }
+
             $conn = SpreadsheetConnection::where('connection_key', SpreadsheetConnection::KEY_REGISTRATION)->first();
             if ($conn) {
                 return $conn;
@@ -807,6 +848,7 @@ class HistoricalImportPipelineService
             return new SpreadsheetConnection([
                 'connection_key' => SpreadsheetConnection::KEY_REGISTRATION,
                 'spreadsheet_id' => $fallbackSheetId,
+                'brand_id'       => $brandId,
             ]);
         }
 
