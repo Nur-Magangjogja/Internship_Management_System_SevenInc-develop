@@ -314,7 +314,12 @@ class SpreadsheetSyncEngineService
             return null;
         }
 
-        $targetTab = (string) $year;
+        $schemaVersion = $this->registrationMappingService->getSchemaForRegistration($registration);
+        $targetTab = !empty($schemaVersion?->sheet_tab_name)
+            ? $schemaVersion->sheet_tab_name
+            : ($connection->tabProfiles()->where('is_active', true)->value('tab_name') ?? (string) $year);
+        $schemaVerCode = $schemaVersion?->schema_version ?: 'v1';
+
         $baseSyncId = $this->generateExternalSyncId($registration);
         $externalSyncId = $baseSyncId;
 
@@ -341,7 +346,7 @@ class SpreadsheetSyncEngineService
                 'target_sheet_tab'      => $targetTab,
                 'target_spreadsheet_id' => $connection->spreadsheet_id,
                 'target_generation'     => $connection->target_generation ?? 1,
-                'schema_version'        => 'v1',
+                'schema_version'        => $schemaVerCode,
                 'sync_status'           => SpreadsheetRowSync::STATUS_PENDING,
                 'next_retry_at'         => now(),
             ]
@@ -1018,6 +1023,30 @@ class SpreadsheetSyncEngineService
 
         $fenceToken = (string) Str::uuid();
 
+        $updateFields = [
+            'attempt_count'    => 0,
+            'sync_status'      => SpreadsheetRowSync::STATUS_PROCESSING,
+            'locked_at'        => now(),
+            'locked_by'        => $fenceToken,
+            'payload_checksum' => null, // Explicit retry clears checksum so remote upsert is forced
+            'error_message'    => null,
+            'updated_at'       => now(),
+        ];
+
+        $entity = $rowSync->syncable;
+        if ($entity instanceof InternshipRegistration) {
+            $schemaVersion = $this->registrationMappingService->getSchemaForRegistration($entity);
+            $targetTab = !empty($schemaVersion?->sheet_tab_name)
+                ? $schemaVersion->sheet_tab_name
+                : ($rowSync->spreadsheetConnection?->tabProfiles()->where('is_active', true)->value('tab_name') ?? $rowSync->target_sheet_tab);
+            if (!empty($targetTab)) {
+                $updateFields['target_sheet_tab'] = $targetTab;
+            }
+            if (!empty($schemaVersion?->schema_version)) {
+                $updateFields['schema_version'] = $schemaVersion->schema_version;
+            }
+        }
+
         // Single atomic transition directly to processing, resetting checksum and attempts
         // Fail-closed: Never claim a record currently in processing (active or stale)
         $claimed = DB::table('spreadsheet_row_syncs')
@@ -1027,15 +1056,7 @@ class SpreadsheetSyncEngineService
                 $query->whereNull('locked_at')
                       ->orWhere('locked_at', '<', now()->subMinutes(5));
             })
-            ->update([
-                'attempt_count'    => 0,
-                'sync_status'      => SpreadsheetRowSync::STATUS_PROCESSING,
-                'locked_at'        => now(),
-                'locked_by'        => $fenceToken,
-                'payload_checksum' => null, // Explicit retry clears checksum so remote upsert is forced
-                'error_message'    => null,
-                'updated_at'       => now(),
-            ]);
+            ->update($updateFields);
 
         if ($claimed === 0) {
             // Reject: Record is actively processing, holds an active lock, or has a stale lock (fail-closed)

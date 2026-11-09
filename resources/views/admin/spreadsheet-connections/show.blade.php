@@ -383,7 +383,10 @@
                             />
                         </div>
                         <div class="md:col-span-2">
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Baris Akhir (Opsional)</label>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-xs font-semibold text-slate-700">Baris Akhir</label>
+                                <span id="ws-tab-limit-badge" class="text-[10px] text-teal-700 font-mono font-bold" title="Batas maksimal baris riil pada tab aktif">Maks: -</span>
+                            </div>
                             <input
                                 type="number"
                                 id="ws-end-row"
@@ -402,16 +405,51 @@
                                 <option value="range">Partisi Rentang Baris (Manual Range Partition)</option>
                             </select>
                         </div>
-                        <div class="md:col-span-4 flex items-center">
+                        <div class="md:col-span-4 flex items-center gap-2">
                             <button
                                 type="button"
                                 id="btn-scan-workspace"
-                                class="w-full inline-flex justify-center items-center gap-2 px-3 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                                class="flex-1 inline-flex justify-center items-center gap-2 px-3 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold shadow-sm transition disabled:opacity-50"
                             >
                                 <i class="fas fa-palette text-xs"></i>
                                 Pindai Data &amp; Status Spreadsheet
                             </button>
+                            <button
+                                type="button"
+                                id="btn-stop-scan"
+                                class="hidden inline-flex justify-center items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs font-semibold shadow-sm transition whitespace-nowrap"
+                                title="Hentikan pemindaian data sekarang"
+                            >
+                                <i class="fas fa-stop-circle text-xs"></i>
+                                Hentikan
+                            </button>
                         </div>
+                    </div>
+                    <!-- Safeguard Controls: Deteksi Status Saja & Skip ID (Cegah Looping Tak Terhenti) -->
+                    <div class="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-lg bg-teal-50/80 border border-teal-200 text-xs">
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                id="ws-detect-status-only"
+                                class="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4"
+                            />
+                            <span class="text-teal-950 font-semibold flex items-center gap-1.5">
+                                <i class="fas fa-bullseye text-teal-600"></i>
+                                <span>Hanya deteksi sumber status (Sampel aman dibatasi baris tab)</span>
+                            </span>
+                        </label>
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                id="ws-skip-synced-scan"
+                                class="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4"
+                                checked
+                            />
+                            <span class="text-teal-950 font-semibold flex items-center gap-1.5">
+                                <i class="fas fa-filter text-teal-600"></i>
+                                <span>Lewati baris yang sudah punya ID (Cegah duplikasi &amp; looping)</span>
+                            </span>
+                        </label>
                     </div>
                     <!-- Preset & Fast Range Navigation Helper -->
                     <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px]">
@@ -471,56 +509,68 @@
                             <span class="text-[11px] text-slate-500">Atur pemetaan warna atau partisi baris lalu klik 'Terapkan Aturan'</span>
                         </div>
 
-                        <!-- Grid: Color Palette Mapping & Sorting -->
+                        <!-- Grid: Status Source Rules (Color Palette / Column Values / Range) & Sorting -->
                         <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
-                            <!-- Color Palette Mapping -->
-                            <div class="md:col-span-6 space-y-2">
-                                <label class="block text-xs font-semibold text-slate-700">
-                                    1. Pemetaan Warna Baris (Palet Terdeteksi):
-                                </label>
+                            <!-- 1. Color Palette Mapping (Active when Status Source = Color) -->
+                            <div id="ws-palette-section" class="md:col-span-6 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-semibold text-slate-700">
+                                        1. Pemetaan Warna Baris (Palet Terdeteksi):
+                                    </label>
+                                    <span id="ws-palette-count-badge" class="text-[10px] px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">0 Warna Terdeteksi</span>
+                                </div>
                                 <div id="ws-palette-container" class="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                    <!-- Populated dynamically via JS -->
                                     <p class="text-xs text-slate-400 italic">Pindai sheet untuk membaca palet warna.</p>
                                 </div>
                             </div>
 
-                            <!-- Range Partitioning & Sorting Controls -->
-                            <div class="md:col-span-6 space-y-4">
-                                <!-- Partisi Rentang Baris -->
-                                <div class="space-y-2">
-                                    <div class="flex items-center justify-between">
-                                        <label class="block text-xs font-semibold text-slate-700">
-                                            2. Partisi Rentang Baris Manual:
-                                        </label>
-                                        <button type="button" id="btn-add-range-rule" class="text-[11px] font-semibold text-teal-700 hover:text-teal-900">
-                                            + Tambah Rentang
-                                        </button>
-                                    </div>
-                                    <div id="ws-ranges-container" class="space-y-2 max-h-36 overflow-y-auto pr-1">
-                                        <!-- Dynamic range rows -->
-                                    </div>
-                                </div>
-
-                                <!-- Sorting Controls -->
-                                <div class="pt-2 border-t border-slate-200">
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
-                                        3. Pengurutan Data (Bukan Timestamp Saja):
+                            <!-- 2. Column Distinct Values Mapping (Active when Status Source = Column) -->
+                            <div id="ws-column-values-section" class="hidden md:col-span-6 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-semibold text-slate-700">
+                                        1. Pemetaan Varian Nilai Kolom Status:
                                     </label>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        <div>
-                                            <select id="ws-sort-by" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
-                                                <option value="_row_number">Nomor Baris Asli (Sheet)</option>
-                                                <option value="display_name">Nama Lengkap Pemagang</option>
-                                                <option value="display_contact">Kontak / Email</option>
-                                                <option value="status">Status Magang</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <select id="ws-sort-dir" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
-                                                <option value="asc">Menaik (A-Z / 1-9)</option>
-                                                <option value="desc">Menurun (Z-A / 9-1)</option>
-                                            </select>
-                                        </div>
+                                    <span id="ws-column-values-count-badge" class="text-[10px] px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">0 Varian Terdeteksi</span>
+                                </div>
+                                <div id="ws-column-values-container" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                    <p class="text-xs text-slate-400 italic">Pilih kolom status di atas dan pindai untuk membaca varian nilai.</p>
+                                </div>
+                            </div>
+
+                            <!-- 3. Manual Range Partitioning (Active when Status Source = Range) -->
+                            <div id="ws-ranges-section" class="hidden md:col-span-6 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-semibold text-slate-700">
+                                        1. Partisi Rentang Baris Manual:
+                                    </label>
+                                    <button type="button" id="btn-add-range-rule" class="text-[11px] font-semibold text-teal-700 hover:text-teal-900">
+                                        + Tambah Rentang
+                                    </button>
+                                </div>
+                                <div id="ws-ranges-container" class="space-y-2 max-h-36 overflow-y-auto pr-1">
+                                    <!-- Dynamic range rows -->
+                                </div>
+                            </div>
+
+                            <!-- Sorting Controls -->
+                            <div class="md:col-span-6 space-y-2">
+                                <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                    2. Pengurutan Data Pratinjau:
+                                </label>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div>
+                                        <select id="ws-sort-by" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                                            <option value="_row_number">Nomor Baris Asli (Sheet)</option>
+                                            <option value="display_name">Nama Lengkap Pemagang</option>
+                                            <option value="display_contact">Kontak / Email</option>
+                                            <option value="status">Status Magang</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <select id="ws-sort-dir" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
+                                            <option value="asc">Menaik (A-Z / 1-9)</option>
+                                            <option value="desc">Menurun (Z-A / 9-1)</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -542,40 +592,67 @@
                     <!-- Table Pratinjau Terpadu -->
                     <div id="ws-table-card" class="hidden space-y-3">
                         <!-- Filter Pills & Search Bar -->
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-                            <div class="flex flex-wrap items-center gap-1.5" id="ws-status-filter-pills">
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-800 text-white" data-filter="all">
+                        <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2.5">
+                            <!-- Baris 1: Filter Status Integrasi ID & Search Bar -->
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div class="flex items-center gap-1.5 flex-wrap" id="ws-source-filter-pills">
+                                    <span class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mr-1">
+                                        <i class="fas fa-id-badge text-teal-600 mr-1"></i>Filter ID:
+                                    </span>
+                                    <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-bold bg-teal-700 text-white shadow-xs" data-source-filter="no_id">
+                                        ⚡ Hanya Tanpa ID (<span id="count-source-no-id">0</span>)
+                                    </button>
+                                    <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-source-filter="all">
+                                        Semua Baris (<span id="count-source-all">0</span>)
+                                    </button>
+                                    <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300" data-source-filter="missing_local" title="Baris ber-ID di spreadsheet namun hilang/belum ada di SertIF">
+                                        ⚠️ Ber-ID (Hilang di DB) (<span id="count-source-missing-local">0</span>)
+                                    </button>
+                                    <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-source-filter="synced_intact" title="Baris ber-ID dan terhubung aktif di SertIF">
+                                        ✅ Ber-ID (Sinkron di DB) (<span id="count-source-synced-intact">0</span>)
+                                    </button>
+                                    <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-source-filter="synced">
+                                        Semua Ber-ID (<span id="count-source-synced">0</span>)
+                                    </button>
+                                </div>
+                                <div class="w-full sm:w-64">
+                                    <input
+                                        type="text"
+                                        id="ws-search-input"
+                                        placeholder="Cari nama / kontak pemagang..."
+                                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <!-- Baris 2: Filter Status Magang -->
+                            <div class="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-200/60" id="ws-status-filter-pills">
+                                <span class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mr-1">
+                                    <i class="fas fa-tag text-teal-600 mr-1"></i>Status Magang:
+                                </span>
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-white" data-filter="all">
                                     Semua (<span id="count-all">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300" data-filter="unassigned">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300" data-filter="unassigned">
                                     <i class="fas fa-question-circle text-[10px]"></i> Belum Ditentukan (<span id="count-unassigned">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="accepted">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="accepted">
                                     Diterima (<span id="count-accepted">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="active">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="active">
                                     Aktif (<span id="count-active">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="waiting">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="waiting">
                                     Calon (<span id="count-waiting">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="completed">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="completed">
                                     Selesai (<span id="count-completed">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="rejected">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="rejected">
                                     Ditolak (<span id="count-rejected">0</span>)
                                 </button>
-                                <button type="button" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="exited">
+                                <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200" data-filter="exited">
                                     Dikeluarkan (<span id="count-exited">0</span>)
                                 </button>
-                            </div>
-                            <div class="w-full sm:w-64">
-                                <input
-                                    type="text"
-                                    id="ws-search-input"
-                                    placeholder="Cari nama / kontak pemagang..."
-                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none"
-                                />
                             </div>
                         </div>
 
@@ -631,6 +708,15 @@
                                 </button>
                                 <button
                                     type="button"
+                                    id="btn-bulk-recover-missing"
+                                    class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5"
+                                    title="Tarik dan pulihkan seluruh baris yang sudah punya ID di spreadsheet tapi datanya hilang/belum ada di SertIF"
+                                >
+                                    <i class="fas fa-file-import text-xs"></i>
+                                    ⚡ Tarik &amp; Pulihkan Semua yang Hilang di SertIF
+                                </button>
+                                <button
+                                    type="button"
                                     id="btn-bulk-sync-without-id"
                                     class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5"
                                     title="Sinkronkan seluruh baris tanpa ID yang cocok dengan aturan status secara massal"
@@ -652,88 +738,383 @@
                     </div>
                 </div>
 
-                <!-- PANEL UNIVERSAL SEARCH ENGINE (Pencarian Cepat Proyeksi Lokal) -->
-                <div class="rounded-xl border border-indigo-200 bg-indigo-50/20 p-4 space-y-4" id="card-search-engine">
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-indigo-100 pb-3">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-600 text-white">
-                                Pencarian Cepat
-                            </span>
-                            <h3 class="text-sm font-bold text-slate-800">
-                                Mesin Penelusuran Cepat (Database Projection)
-                            </h3>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span id="global-search-count-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                                0 Ditemukan
-                            </span>
-                            <button
-                                type="button"
-                                id="btn-trigger-indexing"
-                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition"
-                                title="Indeks data tab terpilih ke database lokal agar pencarian instan (< 30ms)"
-                            >
-                                <svg id="icon-indexing" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                                </svg>
-                                <span>⚡ Indeks Tab Ini</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Indexing Progress Bar -->
-                    <div id="index-progress-box" class="hidden p-3 rounded-lg bg-white border border-indigo-200 text-xs space-y-1.5 shadow-2xs">
-                        <div class="flex items-center justify-between text-indigo-900 font-semibold">
-                            <span id="index-progress-label">Mengindeks data...</span>
-                            <span id="index-progress-percent">0%</span>
-                        </div>
-                        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                            <div id="index-progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: 0%;"></div>
-                        </div>
-                        <div class="flex items-center justify-between text-[11px] text-slate-400">
-                            <span id="index-progress-count">Memulai...</span>
-                            <span>Aman &bull; Background Worker</span>
-                        </div>
-                    </div>
-
-                    <!-- Search Input -->
-                    <div class="relative">
-                        <input
-                            type="text"
-                            id="global-search-input"
-                            placeholder="Ketik nama pemagang, email, no HP, atau sync ID untuk mencari instan (< 30ms)..."
-                            class="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
-                        />
-                        <div id="global-search-loading" class="hidden absolute right-3 top-2.5">
-                            <i class="fas fa-spinner fa-spin text-indigo-600 text-sm"></i>
-                        </div>
-                    </div>
-
-                    <!-- Search Results Table -->
-                    <div class="overflow-x-auto rounded-lg border border-slate-200 max-h-56 overflow-y-auto bg-white">
-                        <table class="w-full text-left text-xs min-w-[600px]">
-                            <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold text-[11px]">
-                                <tr>
-                                    <th class="px-3 py-2 w-24">Baris Sheet</th>
-                                    <th class="px-3 py-2">Identitas Pemagang</th>
-                                    <th class="px-3 py-2">Kontak</th>
-                                    <th class="px-3 py-2 w-28">Skor Relevansi</th>
-                                    <th class="px-3 py-2 w-24">Sheet ID</th>
-                                </tr>
-                            </thead>
-                            <tbody id="global-search-results-tbody" class="divide-y divide-slate-100">
-                                <tr>
-                                    <td colspan="5" class="py-6 text-center text-xs text-slate-400 italic">
-                                        Ketik kata kunci di atas untuk mencari data pendaftar yang sudah terindeks.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
+
+
+    <!-- Fase 2: Explicit Tab Profiles & Stable Mapping Lifecycle Card -->
+    <div class="mb-8 rounded-xl border border-indigo-200 bg-white p-6 shadow-sm" id="fase2-lifecycle-section">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        Fase 2: Stable Mapping & Lifecycle
+                    </span>
+                    <h2 class="text-lg font-bold text-slate-800">Profil Header Tab & Usulan Pemetaan Interaktif</h2>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">
+                    Konfigurasi posisi header berbasis sheet_id numerik stabil, seleksi interaktif pemetaan kolom, perlindungan field historis, schema diff non-destruktif, dan decoupled remote sync.
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button
+                    type="button"
+                    onclick="openTabProfileModal()"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Atur Profil Tab (Eksplisit)
+                </button>
+                <button
+                    type="button"
+                    id="btn-create-proposal-from-active"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-sm transition"
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                    </svg>
+                    Buat Snapshot & Usulan Pemetaan
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. Explicit Tab Profiles Table -->
+        <div class="mb-6">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2 flex items-center gap-2">
+                <span>Daftar Profil Tab Tersimpan (Stabil Berdasarkan sheet_id)</span>
+                <span class="text-[10px] font-normal text-slate-400 font-mono">(Kebal terhadap rename nama tab)</span>
+            </h3>
+            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-2.5">Sheet ID (Numerik)</th>
+                            <th class="px-4 py-2.5">Nama Tab Terdaftar</th>
+                            <th class="px-4 py-2.5 text-center">Baris Header</th>
+                            <th class="px-4 py-2.5 text-center">Baris Mulai Data</th>
+                            <th class="px-4 py-2.5 text-center">Status</th>
+                            <th class="px-4 py-2.5 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse ($tabProfiles as $profile)
+                            <tr class="hover:bg-slate-50/70 transition">
+                                <td class="px-4 py-2 font-mono font-semibold text-slate-700">{{ $profile->sheet_id }}</td>
+                                <td class="px-4 py-2 font-medium text-slate-800">
+                                    <span class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
+                                        [{{ $profile->tab_name }}]
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2 text-center font-mono font-bold text-blue-700">Baris {{ $profile->header_row }}</td>
+                                <td class="px-4 py-2 text-center font-mono text-slate-600">Baris {{ $profile->data_start_row }}</td>
+                                <td class="px-4 py-2 text-center">
+                                    @if ($profile->is_active)
+                                        <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Aktif</span>
+                                    @else
+                                        <span class="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-500">Nonaktif</span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-2 text-right">
+                                    <button
+                                        type="button"
+                                        onclick="editTabProfile({{ $profile->sheet_id }}, '{{ addslashes($profile->tab_name) }}', {{ $profile->header_row }}, {{ $profile->data_start_row }})"
+                                        class="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px]"
+                                    >
+                                        Edit
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-4 py-4 text-center text-slate-400 italic">
+                                    Belum ada profil tab eksplisit. Sistem menggunakan deteksi default (Tab 2026 = Baris 12, tab lain = Baris 1).
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 2. Interactive Mapping Proposals & Decisions -->
+        @if ($recentProposals->isNotEmpty())
+            @php
+                $activeProposal = $recentProposals->first();
+                $hasCollision = $activeProposal->items->contains('has_collision', true);
+            @endphp
+            <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-5 mb-6" id="proposal-card-container">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3 mb-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-800 text-sm">Usulan Pemetaan Aktif: Tab [{{ $activeProposal->snapshot->tab_name ?? 'Tab' }}]</span>
+                            <span class="font-mono text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">
+                                UUID: {{ substr($activeProposal->public_uuid, 0, 8) }}...
+                            </span>
+                            @php
+                                $statusBadge = match($activeProposal->status) {
+                                    'draft' => 'bg-amber-100 text-amber-800 border-amber-200',
+                                    'approved_to_draft' => 'bg-blue-100 text-blue-800 border-blue-200',
+                                    'applied' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                                    'conflict' => 'bg-rose-100 text-rose-800 border-rose-200',
+                                    default => 'bg-slate-100 text-slate-600 border-slate-200',
+                                };
+                            @endphp
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold border {{ $statusBadge }}">
+                                {{ strtoupper($activeProposal->status) }}
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-0.5">
+                            Target Formulir: <strong>Tahun {{ $activeProposal->year ?? '2026' }}</strong> &bull; Total Kolom Terusul: <strong>{{ $activeProposal->items->count() }}</strong>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onclick="previewDiffAjax({{ $activeProposal->id }})"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 border border-indigo-200 text-xs font-semibold shadow-sm transition"
+                        >
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="12" y1="8" x2="12" y2="12"/>
+                                <line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                            Pratinjau Dampak (Schema Diff)
+                        </button>
+                        <button
+                            type="button"
+                            onclick="applyProposalAjax({{ $activeProposal->id }})"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold shadow-sm transition"
+                        >
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Terapkan ke Draf (Apply to Draft)
+                        </button>
+                    </div>
+                </div>
+
+                @if ($hasCollision)
+                    <div class="mb-4 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800 flex items-start gap-2.5">
+                        <svg class="h-4 w-4 text-rose-600 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <div>
+                            <strong>Peringatan Tabrakan Header (Collision Detected):</strong>
+                            Ditemukan header kembar/duplikat pada tab ini. Sistem sengaja tidak melakukan automatch untuk mencegah data tertukar secara keliru. Tentukan target pemetaan secara eksplisit di bawah ini.
+                        </div>
+                    </div>
+                @endif
+
+                <!-- Decision Table -->
+                <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                            <tr>
+                                <th class="px-3 py-2.5 w-14 text-center">Kolom</th>
+                                <th class="px-3 py-2.5">Header di Spreadsheet</th>
+                                <th class="px-3 py-2.5 w-44">Keputusan Aksi</th>
+                                <th class="px-3 py-2.5">Target Field Form Builder</th>
+                                <th class="px-3 py-2.5 text-center">Keyakinan</th>
+                                <th class="px-3 py-2.5 text-right w-36">Aksi & Keamanan</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-sans">
+                            @foreach ($activeProposal->items as $item)
+                                <tr class="hover:bg-slate-50/70 transition {{ $item->has_collision ? 'bg-rose-50/30' : '' }}" id="proposal-row-{{ $item->id }}">
+                                    <td class="px-3 py-2 text-center font-mono font-bold text-indigo-700 bg-slate-50/40">
+                                        {{ $item->col_letter }}
+                                        <div class="text-[9px] text-slate-400 font-normal">#{{ $item->physical_index }}</div>
+                                    </td>
+                                    <td class="px-3 py-2 font-medium text-slate-800">
+                                        <span class="font-mono bg-slate-50 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
+                                            {{ $item->observed_label }}
+                                        </span>
+                                        @if ($item->has_collision)
+                                            <span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold {{ $item->collision_type === 'target_field' ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-amber-100 text-amber-800 border-amber-200' }} border" title="{{ $item->collision_detail }}">
+                                                {{ $item->collision_type === 'target_field' ? 'KONFLIK TARGET' : 'HEADER KEMBAR (' . $item->col_letter . ')' }}
+                                            </span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <select
+                                            id="action-select-{{ $item->id }}"
+                                            onchange="onActionChange({{ $item->id }})"
+                                            class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                                            {{ $item->action === 'system_protected' ? 'disabled' : '' }}
+                                        >
+                                            <option value="link_existing" {{ $item->action === 'link_existing' ? 'selected' : '' }}>Hubungkan ke Field Ada</option>
+                                            <option value="create_draft_field" {{ $item->action === 'create_draft_field' ? 'selected' : '' }}>Buat Field Draf Baru</option>
+                                            <option value="system_derived" {{ $item->action === 'system_derived' ? 'selected' : '' }}>Status Sistem (Derived: KET)</option>
+                                            <option value="attachment_adapter" {{ $item->action === 'attachment_adapter' ? 'selected' : '' }}>Adapter Berkas (Drive)</option>
+                                            <option value="external_only" {{ $item->action === 'external_only' ? 'selected' : '' }}>Eksternal Saja (Simpan di Sheet)</option>
+                                            <option value="ignore" {{ $item->action === 'ignore' ? 'selected' : '' }}>Abaikan Kolom Ini</option>
+                                            @if ($item->action === 'system_protected')
+                                                <option value="system_protected" selected>Dilindungi Sistem</option>
+                                            @endif
+                                        </select>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <div id="field-config-link-{{ $item->id }}" class="{{ $item->action === 'link_existing' ? '' : 'hidden' }}">
+                                            <select
+                                                id="field-key-select-{{ $item->id }}"
+                                                class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
+                                            >
+                                                <option value="">-- Pilih Field Form Builder --</option>
+                                                @foreach ($formFields as $ff)
+                                                    <option value="{{ $ff->field_key }}" {{ $item->field_key === $ff->field_key ? 'selected' : '' }}>
+                                                        {{ $ff->field_label }} ({{ $ff->field_key }}) [{{ $ff->field_type }}]
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div id="field-config-create-{{ $item->id }}" class="{{ $item->action === 'create_draft_field' ? '' : 'hidden' }} flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                id="suggested-label-{{ $item->id }}"
+                                                value="{{ $item->suggested_label ?? $item->observed_label }}"
+                                                placeholder="Label Field Baru"
+                                                class="w-2/3 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                                            />
+                                            <select
+                                                id="suggested-type-{{ $item->id }}"
+                                                class="w-1/3 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
+                                            >
+                                                @foreach (['text', 'number', 'email', 'phone', 'date', 'select', 'file', 'textarea'] as $ft)
+                                                    <option value="{{ $ft }}" {{ ($item->suggested_field_type ?? 'text') === $ft ? 'selected' : '' }}>{{ $ft }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div id="field-config-none-{{ $item->id }}" class="{{ in_array($item->action, ['external_only', 'ignore', 'system_protected', 'system_derived', 'attachment_adapter']) ? '' : 'hidden' }} text-slate-400 italic text-[11px]">
+                                            @if ($item->action === 'system_protected')
+                                                <span class="text-purple-700 font-mono font-medium">Field Identitas Sistem (Terkunci)</span>
+                                            @elseif ($item->action === 'system_derived')
+                                                <span class="text-blue-700 font-mono font-medium">Status Sistem (Derived / Display-Only)</span>
+                                            @elseif ($item->action === 'attachment_adapter')
+                                                <span class="text-emerald-700 font-medium">Adapter Berkas (Disimpan ke Google Drive Pendaftar)</span>
+                                            @elseif ($item->action === 'external_only')
+                                                <span>Tidak masuk formulir pemagang, tetap dibaca/disimpan dari spreadsheet</span>
+                                            @else
+                                                <span>Kolom ini diabaikan dari form & sinkronisasi</span>
+                                            @endif
+                                        </div>
+                                    </td>
+                                    <td class="px-3 py-2 text-center">
+                                        @php
+                                            $cBadge = match($item->confidence_level) {
+                                                'EXACT' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                                                'HIGH' => 'bg-blue-100 text-blue-800 border-blue-200',
+                                                'MEDIUM' => 'bg-amber-100 text-amber-800 border-amber-200',
+                                                default => 'bg-slate-100 text-slate-600 border-slate-200',
+                                            };
+                                        @endphp
+                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold border {{ $cBadge }}">
+                                            {{ $item->confidence_level }}
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2 text-right">
+                                        @if ($item->action !== 'system_protected')
+                                            <div class="flex items-center justify-end gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onclick="saveProposalItemAjax({{ $activeProposal->id }}, {{ $item->id }})"
+                                                    id="btn-save-item-{{ $item->id }}"
+                                                    class="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] border border-indigo-200 transition"
+                                                    title="Simpan keputusan pemetaan"
+                                                >
+                                                    Simpan
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onclick="openColumnDeletionModal('{{ $item->col_letter }}', '{{ addslashes($item->observed_label) }}', '{{ addslashes($activeProposal->snapshot->tab_name ?? 'Tab') }}', '{{ $activeProposal->snapshot->schema_hash ?? '' }}', {{ $activeProposal->snapshot->sheet_id ?? 0 }})"
+                                                    class="px-2 py-1 rounded bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-semibold text-[11px] border border-slate-200 hover:border-rose-300 transition"
+                                                    title="Verifikasi keamanan & hapus kolom kosong"
+                                                >
+                                                    Hapus Kosong
+                                                </button>
+                                            </div>
+                                        @else
+                                            <span class="text-purple-600 font-mono text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">Sistem</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
+        <!-- 3. Integration Outbox Events (Decoupled Publish & Remote Sync Status F2-14, F2-15) -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                    <span>Log Antrean Sinkronisasi Outbox (Decoupled DB Publish vs Remote Sync)</span>
+                </h3>
+                <span class="text-[11px] text-slate-500">
+                    DB Publish berhasil seketika &bull; Remote sync diproses terpisah secara aman
+                </span>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-2.5">Event Tipe</th>
+                            <th class="px-4 py-2.5">Idempotency Key</th>
+                            <th class="px-4 py-2.5 text-center">Percobaan</th>
+                            <th class="px-4 py-2.5 text-center">Status Remote</th>
+                            <th class="px-4 py-2.5">Waktu Dibuat</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse ($outboxEvents as $event)
+                            <tr class="hover:bg-slate-50/70 transition">
+                                <td class="px-4 py-2 font-mono font-medium text-slate-800">
+                                    {{ $event->event_type }}
+                                </td>
+                                <td class="px-4 py-2 font-mono text-slate-600 text-[11px] truncate max-w-xs" title="{{ $event->idempotency_key }}">
+                                    {{ $event->idempotency_key }}
+                                </td>
+                                <td class="px-4 py-2 text-center font-mono">
+                                    {{ $event->attempt_count }} / {{ $event->max_attempts }}
+                                </td>
+                                <td class="px-4 py-2 text-center">
+                                    @php
+                                        $evBadge = match($event->status) {
+                                            'verified' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                            'pending' => 'bg-blue-50 text-blue-700 border-blue-200',
+                                            'processing' => 'bg-purple-50 text-purple-700 border-purple-200',
+                                            'failed' => 'bg-rose-50 text-rose-700 border-rose-200',
+                                            default => 'bg-slate-100 text-slate-600 border-slate-200',
+                                        };
+                                    @endphp
+                                    <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border {{ $evBadge }}">
+                                        {{ ucfirst($event->status) }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2 font-mono text-slate-500 text-[11px]">
+                                    {{ $event->created_at ? $event->created_at->format('d M Y H:i:s') : '-' }}
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="5" class="px-4 py-4 text-center text-slate-400 italic">
+                                    Belum ada antrean event outbox. Event dibuat otomatis saat Form Builder dipublikasikan.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
 
     <!-- Schema Versions & Column Mappings -->
     <div class="mt-12 space-y-8">
@@ -1029,143 +1410,101 @@
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Universal Spreadsheet Search Engine Card (Database-Native Hybrid Search) -->
-    <div class="mb-8 rounded-xl border border-teal-200 bg-white p-6 shadow-sm" id="universal-search-section">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
-            <div>
-                <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-teal-100 text-teal-800 border border-teal-200 flex items-center gap-1">
-                        <i class="fas fa-bolt text-teal-600"></i> Universal Search Engine (Lokal Database)
-                    </span>
-                    <h2 class="text-lg font-bold text-slate-800">Pencarian Universal Spreadsheet</h2>
-                </div>
-                <p class="text-xs text-slate-500 mt-1">
-                    Pencarian instan ribuan data pemagang dari Google Spreadsheet menggunakan proyeksi database lokal SertIF (&lt; 30 ms). Bebas dari batasan 100 baris dan tanpa panggilan/kuota ke Google Sheets saat mengetik.
-                </p>
+
+
+    <!-- Modal: Atur Profil Header Tab Eksplisit -->
+    <div id="modal-tab-profile" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h3 class="text-sm font-bold text-slate-800" id="modal-profile-title">Atur Profil Header Tab Eksplisit</h3>
+                <button type="button" onclick="closeTabProfileModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
             </div>
-            <div class="flex items-center gap-2">
-                <span id="search-index-freshness" class="text-[11px] text-slate-500 italic">
-                    <i class="fas fa-clock text-slate-400"></i> Indeks siap
-                </span>
-                <button
-                    type="button"
-                    id="btn-trigger-indexing"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold shadow-2xs transition"
-                >
-                    <i class="fas fa-sync-alt text-xs" id="icon-indexing"></i>
-                    Perbarui Indeks Tab
+            <form id="form-tab-profile" onsubmit="submitTabProfile(event)">
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Sheet ID Google (Numerik Stabil)</label>
+                        <input
+                            type="number"
+                            id="input-sheet-id"
+                            required
+                            placeholder="misal: 0 atau 12345678"
+                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
+                        />
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Nama Tab Spreadsheet</label>
+                        <input
+                            type="text"
+                            id="input-tab-name"
+                            required
+                            placeholder="misal: 2026 atau Pendaftaran"
+                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-indigo-500 focus:outline-none"
+                        />
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Baris Header</label>
+                            <input
+                                type="number"
+                                id="input-header-row"
+                                min="1"
+                                max="1000"
+                                value="10"
+                                required
+                                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
+                            />
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Baris Mulai Data</label>
+                            <input
+                                type="number"
+                                id="input-data-start-row"
+                                min="2"
+                                max="1001"
+                                value="11"
+                                required
+                                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-indigo-500 focus:outline-none font-mono"
+                            />
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 flex items-center justify-end gap-2">
+                    <button type="button" onclick="closeTabProfileModal()" class="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-semibold">
+                        Batal
+                    </button>
+                    <button type="submit" class="px-4 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-sm">
+                        Simpan Profil Tab
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Pratinjau Dampak Perubahan Skema (Schema Diff) -->
+    <div id="modal-schema-diff" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-slate-200 max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">Pratinjau Dampak Perubahan Skema (Schema Diff)</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Analisis non-destruktif: tidak ada kolom yang dihapus dari Form Builder.</p>
+                </div>
+                <button type="button" onclick="closeSchemaDiffModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+            </div>
+            <div id="diff-summary-badges" class="flex flex-wrap gap-2 mb-4 text-xs">
+                <!-- Badges populated via AJAX -->
+            </div>
+            <div class="overflow-y-auto flex-1 border border-slate-200 rounded-lg p-3 bg-slate-50/50 text-xs space-y-2" id="diff-items-container">
+                <!-- Items populated via AJAX -->
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
+                <button type="button" onclick="closeSchemaDiffModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900 text-xs font-semibold">
+                    Tutup Pratinjau
                 </button>
             </div>
         </div>
-
-        <!-- Progress Box (Hidden by default) -->
-        <div id="index-progress-box" class="hidden mb-4 p-3.5 rounded-lg bg-teal-50 border border-teal-200 text-xs">
-            <div class="flex items-center justify-between font-semibold text-teal-800 mb-1.5">
-                <span id="index-progress-label"><i class="fas fa-spinner fa-spin mr-1"></i> Sedang mengindeks data spreadsheet di latar belakang...</span>
-                <span id="index-progress-percent">0%</span>
-            </div>
-            <div class="w-full bg-teal-200 rounded-full h-2 overflow-hidden">
-                <div id="index-progress-bar" class="bg-teal-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-            </div>
-            <div class="flex items-center justify-between text-[11px] text-teal-600 mt-1" id="index-progress-subtext">
-                <span id="index-progress-count">Memproses batch...</span>
-                <span>Proses berjalan di background antrean database</span>
-            </div>
-        </div>
-
-        <!-- Search Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4 items-end">
-            <div class="md:col-span-6">
-                <label class="block text-xs font-semibold text-slate-700 mb-1">
-                    Cari Nama, Email, No. HP, atau ID Sistem (SERTIF_SYNC_ID)
-                </label>
-                <div class="relative">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                        <i class="fas fa-search text-xs"></i>
-                    </span>
-                    <input
-                        type="text"
-                        id="global-search-input"
-                        placeholder="Ketik nama (contoh: Fauzi), no HP (contoh: 0812...), email, atau ID..."
-                        class="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-8 py-2 text-xs text-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                    />
-                    <button
-                        type="button"
-                        id="btn-clear-global-search"
-                        class="hidden absolute inset-y-0 right-0 items-center pr-2.5 text-slate-400 hover:text-slate-600 text-sm font-bold"
-                        title="Hapus pencarian"
-                    >
-                        &times;
-                    </button>
-                </div>
-            </div>
-
-            <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Filter Tab</label>
-                <select id="global-search-tab-filter" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
-                    <option value="">-- Semua Tab Terindeks --</option>
-                </select>
-            </div>
-
-            <div class="md:col-span-3">
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Status Identitas</label>
-                <select id="global-search-identity-filter" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-teal-500 focus:outline-none">
-                    <option value="">Semua Identitas</option>
-                    <option value="stable">Sudah Ber-ID (Stable)</option>
-                    <option value="provisional">Belum Ber-ID (Provisional)</option>
-                    <option value="ambiguous">Konflik / Ambigu</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Search Results Table Area -->
-        <div id="global-search-results-section" class="border border-slate-200 rounded-lg overflow-hidden">
-            <!-- Header bar with summary stats -->
-            <div class="flex items-center justify-between px-3.5 py-2 bg-slate-50 border-b border-slate-200 text-xs">
-                <div class="flex items-center gap-2">
-                    <span id="global-search-stats" class="font-semibold text-slate-700">Hasil Pencarian</span>
-                    <span id="global-search-speed" class="text-[11px] text-teal-600 font-mono bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 hidden"></span>
-                </div>
-                <div class="text-[11px] text-slate-400" id="global-search-tip">
-                    <i class="fas fa-info-circle"></i> Hasil pencarian langsung dari database lokal SertIF.
-                </div>
-            </div>
-
-            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
-                <table class="w-full text-left text-xs min-w-[700px]">
-                    <thead class="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
-                        <tr>
-                            <th class="px-3 py-2 w-24">Baris Sheet</th>
-                            <th class="px-3 py-2">Nama Pemagang</th>
-                            <th class="px-3 py-2">Email / Kontak</th>
-                            <th class="px-3 py-2">Asal Sekolah / Jurusan</th>
-                            <th class="px-3 py-2 w-32">Status Identitas</th>
-                            <th class="px-3 py-2 w-28 text-center">Status Integrasi</th>
-                        </tr>
-                    </thead>
-                    <tbody id="global-search-results-body" class="divide-y divide-slate-100 bg-white">
-                        <tr>
-                            <td colspan="6" class="py-10 text-center text-xs text-slate-400 italic">
-                                <i class="fas fa-search text-slate-300 text-2xl mb-2 block"></i>
-                                Masukkan kata kunci pada input pencarian di atas untuk mencari pendaftar.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Footer Pagination -->
-            <div class="flex items-center justify-between px-3.5 py-2 bg-slate-50 border-t border-slate-200 text-xs" id="global-search-pagination">
-                <span id="global-search-pagination-info" class="text-[11px] text-slate-500">Menampilkan 0 hasil</span>
-                <div class="flex items-center gap-1" id="global-search-page-btns">
-                    <!-- Dynamic page buttons -->
-                </div>
-            </div>
-        </div>
     </div>
-</div>
-
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -1179,11 +1518,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const urlWorkspaceRows = @json(route('admin.spreadsheet-connections.workspace-rows', $connection));
     const urlDryRunReconcile = @json(route('admin.spreadsheet-connections.dry-run-reconcile', $connection));
     const urlBatchReconcile = @json(route('admin.spreadsheet-connections.batch-reconcile', $connection));
+    const urlBatchRecover = @json(route('admin.spreadsheet-connections.batch-recover', $connection));
+    const urlRecoverRow = @json(route('admin.spreadsheet-connections.recover-row', $connection));
     const urlTestCompositeParser = @json(route('admin.spreadsheet-connections.test-composite-parser', $connection));
     const urlDuplicateTab = @json(route('admin.spreadsheet-connections.duplicate-tab', $connection));
-    const urlSearch = @json(route('admin.spreadsheet-connections.search', $connection));
-    const urlIndexTab = @json(route('admin.spreadsheet-connections.index-tab', $connection));
-    const urlIndexStatusBase = @json(url('/admin/spreadsheet-connections/' . $connection->id . '/index-status'));
     const csrfToken = '{{ csrf_token() }}';
 
     // ----------------------------------------------------
@@ -1198,9 +1536,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let wsColorPaletteMap = {};
     let wsRangeRules = [];
     let wsCurrentFilter = 'all';
-    let wsCurrentSourceFilter = 'all';
-    let activeIndexingPollTimer = null;
-    let globalSearchDebounceTimer = null;
+    let wsCurrentSourceFilter = 'no_id';
 
     // ----------------------------------------------------
     // DOM Elements - Langkah 1 (Columns & Headers)
@@ -1237,15 +1573,27 @@ document.addEventListener('DOMContentLoaded', function () {
     const wsStatusColWrapper = document.getElementById('ws-status-col-wrapper');
     const wsStatusColSelect = document.getElementById('ws-status-col-select');
     const btnScanWorkspace = document.getElementById('btn-scan-workspace');
+    const btnStopScan = document.getElementById('btn-stop-scan');
+    const wsDetectStatusOnly = document.getElementById('ws-detect-status-only');
+    const wsTabLimitBadge = document.getElementById('ws-tab-limit-badge');
+    let currentScanAbortController = null;
     const wsLoading = document.getElementById('ws-loading');
     const wsLoadingText = document.getElementById('ws-loading-text');
     const wsRulesCard = document.getElementById('ws-rules-card');
+    const wsPaletteSection = document.getElementById('ws-palette-section');
     const wsPaletteContainer = document.getElementById('ws-palette-container');
+    const wsPaletteCountBadge = document.getElementById('ws-palette-count-badge');
+    const wsColumnValuesSection = document.getElementById('ws-column-values-section');
+    const wsColumnValuesContainer = document.getElementById('ws-column-values-container');
+    const wsColumnValuesCountBadge = document.getElementById('ws-column-values-count-badge');
+    const wsRangesSection = document.getElementById('ws-ranges-section');
     const wsRangesContainer = document.getElementById('ws-ranges-container');
     const btnAddRangeRule = document.getElementById('btn-add-range-rule');
     const wsSortBy = document.getElementById('ws-sort-by');
     const wsSortDir = document.getElementById('ws-sort-dir');
     const btnApplyWorkspaceRules = document.getElementById('btn-apply-workspace-rules');
+    let wsColumnValueMap = {};
+    let wsRawColumnDistinct = {};
     const wsTableCard = document.getElementById('ws-table-card');
     const wsTableTbody = document.getElementById('ws-table-tbody');
     const wsSearchInput = document.getElementById('ws-search-input');
@@ -1256,12 +1604,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const btnDryRunReconcile = document.getElementById('btn-dry-run-reconcile');
     const btnExecuteBatch = document.getElementById('btn-execute-batch');
     const btnBulkSyncWithoutId = document.getElementById('btn-bulk-sync-without-id');
+    const btnBulkRecoverMissing = document.getElementById('btn-bulk-recover-missing');
 
     // ----------------------------------------------------
     // 1. POPULATE & FETCH TABS (Instant 0ms + Background Sync)
     // ----------------------------------------------------
     function populateTabsUi(autoSelectFirst = true) {
         if (!tabSelect) return false;
+        const prevValue = tabSelect.value;
         tabSelect.innerHTML = '';
 
         if (!allDiscoveredTabs || allDiscoveredTabs.length === 0) {
@@ -1297,8 +1647,25 @@ document.addEventListener('DOMContentLoaded', function () {
             opt.textContent = `${tab.name} (${tab.row_count || 0} baris)`;
             if (tab.header_row) opt.dataset.headerRow = tab.header_row;
             if (tab.data_start_row) opt.dataset.dataStartRow = tab.data_start_row;
+            if (tab.last_row) opt.dataset.lastRow = tab.last_row;
+            if (tab.row_count) opt.dataset.rowCount = tab.row_count;
             tabSelect.appendChild(opt);
         });
+
+        // Retain previous selection or auto-select first tab
+        let selectedTab = null;
+        if (prevValue && Array.from(tabSelect.options).some(o => o.value === prevValue)) {
+            tabSelect.value = prevValue;
+            selectedTab = filteredTabs.find(t => t.name === prevValue);
+        } else if (tabSelect.options.length > 0) {
+            tabSelect.selectedIndex = 0;
+            selectedTab = filteredTabs[0];
+        }
+
+        if (selectedTab) {
+            if (headerRowInput && selectedTab.header_row) headerRowInput.value = selectedTab.header_row;
+            if (wsStartRowInput && selectedTab.data_start_row) wsStartRowInput.value = selectedTab.data_start_row;
+        }
 
         // Render Sidebar Cards
         if (wsSidebarTabsList) {
@@ -1307,8 +1674,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 wsSidebarTabsList.innerHTML = '<div class="py-6 text-center text-xs text-slate-400 italic">Tidak ada tab yang sesuai filter.</div>';
             } else {
                 filteredTabs.forEach((tab) => {
+                    const isSelected = selectedTab && tab.name === selectedTab.name;
                     const card = document.createElement('div');
-                    card.className = 'p-2.5 rounded-lg border border-slate-200 bg-white hover:border-teal-400 hover:bg-teal-50/40 cursor-pointer transition flex items-center justify-between text-xs group';
+                    card.className = `p-2.5 rounded-lg border bg-white hover:border-teal-400 hover:bg-teal-50/40 cursor-pointer transition flex items-center justify-between text-xs group ${isSelected ? 'border-teal-500 ring-2 ring-teal-500 bg-teal-50/20' : 'border-slate-200'}`;
                     card.innerHTML = `
                         <div class="truncate mr-2">
                             <div class="font-semibold text-slate-800 group-hover:text-teal-900 truncate">${escapeHtml(tab.name)}</div>
@@ -1325,24 +1693,71 @@ document.addEventListener('DOMContentLoaded', function () {
                             wsStartRowInput.value = tab.data_start_row;
                         }
                         // Visual active state
-                        wsSidebarTabsList.querySelectorAll('div').forEach(el => el.classList.remove('ring-2', 'ring-teal-500'));
-                        card.classList.add('ring-2', 'ring-teal-500');
+                        wsSidebarTabsList.querySelectorAll('div').forEach(el => el.classList.remove('ring-2', 'ring-teal-500', 'border-teal-500', 'bg-teal-50/20'));
+                        card.classList.add('ring-2', 'ring-teal-500', 'border-teal-500', 'bg-teal-50/20');
+                        updateTabBoundariesUi();
                     });
                     wsSidebarTabsList.appendChild(card);
                 });
             }
         }
+        updateTabBoundariesUi();
+        return true;
+    }
 
-        // Auto select first tab if appropriate
-        if (autoSelectFirst && tabSelect.options.length > 0) {
-            tabSelect.selectedIndex = 0;
-            const firstTab = filteredTabs[0];
-            if (firstTab) {
-                if (headerRowInput && firstTab.header_row) headerRowInput.value = firstTab.header_row;
-                if (wsStartRowInput && firstTab.data_start_row) wsStartRowInput.value = firstTab.data_start_row;
+    function getActiveTabInfo() {
+        const tabName = tabSelect ? tabSelect.value : '';
+        if (!tabName || !allDiscoveredTabs) return null;
+        return allDiscoveredTabs.find(t => t.name === tabName) || null;
+    }
+
+    function updateTabBoundariesUi() {
+        const activeTab = getActiveTabInfo();
+        if (!activeTab) {
+            if (wsTabLimitBadge) wsTabLimitBadge.textContent = 'Maks: -';
+            return;
+        }
+
+        const startRow = activeTab.data_start_row || 11;
+        const maxRow = activeTab.last_row || activeTab.row_count || 5000;
+
+        if (wsStartRowInput) {
+            wsStartRowInput.min = startRow;
+            wsStartRowInput.max = maxRow;
+            const curStart = parseInt(wsStartRowInput.value, 10);
+            if (!curStart || curStart < startRow) {
+                wsStartRowInput.value = startRow;
             }
         }
-        return true;
+
+        const isStatusOnly = wsDetectStatusOnly && wsDetectStatusOnly.checked;
+        if (wsEndRowInput) {
+            wsEndRowInput.min = startRow;
+            wsEndRowInput.max = maxRow;
+            if (isStatusOnly) {
+                wsEndRowInput.value = Math.min(startRow + 49, maxRow);
+            } else {
+                const curEnd = parseInt(wsEndRowInput.value, 10);
+                if (!curEnd || curEnd > maxRow || curEnd < startRow) {
+                    wsEndRowInput.value = Math.min(startRow + 99, maxRow);
+                }
+            }
+        }
+
+        if (wsTabLimitBadge) {
+            wsTabLimitBadge.textContent = `Maks: #${maxRow}`;
+            wsTabLimitBadge.title = `Tab "${activeTab.name}" memiliki ${maxRow} baris riil di spreadsheet.`;
+        }
+
+        // Safeguard tombol 100 Baris Berikutnya agar tidak looping tak terhenti
+        const curStart = parseInt(wsStartRowInput ? wsStartRowInput.value : startRow, 10) || startRow;
+        if (btnNextBlock) {
+            const hasNext = curStart + 100 <= maxRow;
+            btnNextBlock.disabled = !hasNext;
+            btnNextBlock.classList.toggle('opacity-40', !hasNext);
+            btnNextBlock.classList.toggle('cursor-not-allowed', !hasNext);
+            btnNextBlock.title = hasNext ? 'Lanjut ke blok 100 baris berikutnya' : 'Sudah mencapai baris akhir spreadsheet';
+        }
     }
 
     async function fetchTabsList(forceRefresh = false) {
@@ -1381,6 +1796,22 @@ document.addEventListener('DOMContentLoaded', function () {
         } finally {
             if (iconFetch) iconFetch.classList.remove('fa-spin');
         }
+    }
+
+    // Tab dropdown change listener
+    if (tabSelect) {
+        tabSelect.addEventListener('change', () => {
+            const selectedOpt = tabSelect.options[tabSelect.selectedIndex];
+            if (selectedOpt) {
+                if (headerRowInput && selectedOpt.dataset.headerRow) {
+                    headerRowInput.value = selectedOpt.dataset.headerRow;
+                }
+                if (wsStartRowInput && selectedOpt.dataset.dataStartRow) {
+                    wsStartRowInput.value = selectedOpt.dataset.dataStartRow;
+                }
+                updateTabBoundariesUi();
+            }
+        });
     }
 
     // Tab Filter listeners
@@ -1485,7 +1916,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
                 let catLabel = 'Kustom';
-                if (c.category === 'standard') {
+                if (c.col_letter === 'AL' && (c.header_name || '').toUpperCase() === 'KET') {
+                    badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                    catLabel = 'Catatan Eksternal (Manual)';
+                } else if (c.col_letter === 'AM' && (c.header_name || '').toUpperCase() === 'KET') {
+                    badgeClass = 'bg-blue-50 text-blue-800 border-blue-200';
+                    catLabel = 'Status Sistem & Follow-up';
+                } else if (c.category === 'external') {
+                    badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                    catLabel = 'Catatan Eksternal';
+                } else if (c.category === 'standard') {
                     badgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
                     catLabel = 'Identitas Standar';
                 } else if (c.category === 'system') {
@@ -1631,14 +2071,58 @@ document.addEventListener('DOMContentLoaded', function () {
     // 3. LANGKAH 2: PINDAI BARIS DATA, PALET WARNA & MASUKKAN SERTIF
     // ----------------------------------------------------
     // Status source type toggle
-    if (wsStatusSourceType) {
-        wsStatusSourceType.addEventListener('change', function () {
-            if (wsStatusColWrapper) {
-                if (this.value === 'column') {
-                    wsStatusColWrapper.classList.remove('hidden');
-                } else {
-                    wsStatusColWrapper.classList.add('hidden');
+    function updateStatusSourceUi() {
+        const srcType = wsStatusSourceType ? wsStatusSourceType.value : 'color';
+
+        if (wsStatusColWrapper) {
+            if (srcType === 'column') {
+                wsStatusColWrapper.classList.remove('hidden');
+            } else {
+                wsStatusColWrapper.classList.add('hidden');
+            }
+        }
+
+        if (wsPaletteSection) {
+            if (srcType === 'color') wsPaletteSection.classList.remove('hidden');
+            else wsPaletteSection.classList.add('hidden');
+        }
+
+        if (wsColumnValuesSection) {
+            if (srcType === 'column') {
+                wsColumnValuesSection.classList.remove('hidden');
+                renderColumnValuesMapUi();
+            } else {
+                wsColumnValuesSection.classList.add('hidden');
+            }
+        }
+
+        if (wsRangesSection) {
+            if (srcType === 'range') {
+                wsRangesSection.classList.remove('hidden');
+                if (wsRangeRules.length === 0) {
+                    const startVal = parseInt(wsStartRowInput ? wsStartRowInput.value : 11, 10) || 11;
+                    wsRangeRules.push({ start: startVal, end: startVal + 49, status: 'waiting' });
+                    renderRangeRulesUi();
                 }
+            } else {
+                wsRangesSection.classList.add('hidden');
+            }
+        }
+
+        if (wsAllRows && wsAllRows.length > 0) {
+            applyWorkspaceRules();
+        }
+    }
+
+    if (wsStatusSourceType) {
+        wsStatusSourceType.addEventListener('change', updateStatusSourceUi);
+    }
+
+    if (wsStatusColSelect) {
+        wsStatusColSelect.addEventListener('change', function () {
+            renderColumnValuesMapUi();
+            if (wsAllRows && wsAllRows.length > 0) {
+                applyWorkspaceRules();
             }
         });
     }
@@ -1647,107 +2131,297 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.btn-range-preset').forEach(btn => {
         btn.addEventListener('click', function () {
             const range = parseInt(this.dataset.range, 10);
+            const activeTab = getActiveTabInfo();
+            const maxRow = activeTab ? (activeTab.last_row || activeTab.row_count || 10000) : 10000;
             const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
             if (wsEndRowInput) {
-                wsEndRowInput.value = startVal + range - 1;
+                wsEndRowInput.value = Math.min(startVal + range - 1, maxRow);
             }
             document.querySelectorAll('.btn-range-preset').forEach(b => {
                 b.className = 'btn-range-preset px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition';
             });
             this.className = 'btn-range-preset px-2.5 py-1 rounded bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold border border-teal-300 transition';
+            updateTabBoundariesUi();
         });
     });
 
-    // Navigasi Blok « 100 Sebelumnya / 100 Berikutnya »
+    // Navigasi Blok « 100 Sebelumnya / 100 Berikutnya » (Terkunci Sesuai Baris Tab Spreadsheet)
     const btnPrevBlock = document.getElementById('btn-prev-block');
     const btnNextBlock = document.getElementById('btn-next-block');
 
     if (btnPrevBlock) {
         btnPrevBlock.addEventListener('click', function () {
-            const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
-            const newStart = Math.max(11, startVal - 100);
+            const activeTab = getActiveTabInfo();
+            const minStart = activeTab ? (activeTab.data_start_row || 11) : 11;
+            const maxRow = activeTab ? (activeTab.last_row || activeTab.row_count || 10000) : 10000;
+            const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || minStart) : minStart;
+            const newStart = Math.max(minStart, startVal - 100);
             if (wsStartRowInput) wsStartRowInput.value = newStart;
-            if (wsEndRowInput) wsEndRowInput.value = newStart + 99;
+            if (wsEndRowInput) wsEndRowInput.value = Math.min(newStart + 99, maxRow);
+            updateTabBoundariesUi();
             if (btnScanWorkspace) btnScanWorkspace.click();
         });
     }
 
     if (btnNextBlock) {
         btnNextBlock.addEventListener('click', function () {
+            const activeTab = getActiveTabInfo();
+            const maxRow = activeTab ? (activeTab.last_row || activeTab.row_count || 10000) : 10000;
             const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || 11) : 11;
             const newStart = startVal + 100;
+            if (newStart > maxRow) {
+                alert(`Pencarian dihentikan: Sudah mencapai batas baris data terakhir di tab ini (Baris #${maxRow}). Tidak ada baris data berikutnya.`);
+                updateTabBoundariesUi();
+                return;
+            }
             if (wsStartRowInput) wsStartRowInput.value = newStart;
-            if (wsEndRowInput) wsEndRowInput.value = newStart + 99;
+            if (wsEndRowInput) wsEndRowInput.value = Math.min(newStart + 99, maxRow);
+            updateTabBoundariesUi();
             if (btnScanWorkspace) btnScanWorkspace.click();
+        });
+    }
+
+    if (wsDetectStatusOnly) {
+        wsDetectStatusOnly.addEventListener('change', function () {
+            if (this.checked) {
+                const activeTab = getActiveTabInfo();
+                const maxRow = activeTab ? (activeTab.last_row || activeTab.row_count || 10000) : 10000;
+                const minStart = activeTab ? (activeTab.data_start_row || 11) : 11;
+                const startVal = wsStartRowInput ? (parseInt(wsStartRowInput.value, 10) || minStart) : minStart;
+                if (wsEndRowInput) {
+                    wsEndRowInput.value = Math.min(startVal + 49, maxRow);
+                }
+            }
+            updateTabBoundariesUi();
+        });
+    }
+    if (wsStartRowInput) {
+        wsStartRowInput.addEventListener('input', updateTabBoundariesUi);
+    }
+    if (btnStopScan) {
+        btnStopScan.addEventListener('click', function () {
+            if (currentScanAbortController) {
+                currentScanAbortController.abort();
+                currentScanAbortController = null;
+            }
+            if (wsLoading) wsLoading.classList.add('hidden');
+            if (btnStopScan) btnStopScan.classList.add('hidden');
+            if (btnScanWorkspace) btnScanWorkspace.disabled = false;
         });
     }
 
     async function scanWorkspaceRows() {
         const tab = tabSelect ? tabSelect.value : '';
-        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
-        const startRow = wsStartRowInput ? parseInt(wsStartRowInput.value, 10) : 11;
+        const activeTab = getActiveTabInfo();
+        const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : (activeTab?.header_row || 10);
+        const maxRow = activeTab ? (activeTab.last_row || activeTab.row_count || 10000) : 10000;
+        const minStart = activeTab ? (activeTab.data_start_row || 11) : 11;
+        const startRow = wsStartRowInput ? parseInt(wsStartRowInput.value, 10) : minStart;
         const endRow = (wsEndRowInput && wsEndRowInput.value) ? parseInt(wsEndRowInput.value, 10) : null;
         const statusSource = wsStatusSourceType ? wsStatusSourceType.value : 'color';
         const fetchColors = (statusSource === 'color') ? 1 : 0;
+        const wsSkipSyncedScan = document.getElementById('ws-skip-synced-scan');
+        let skipSynced = wsSkipSyncedScan ? (wsSkipSyncedScan.checked ? 1 : 0) : 1;
 
         if (!tab) {
             alert('Pilih tab spreadsheet terlebih dahulu!');
             return;
         }
 
-        let pageSize = 100;
-        if (endRow && startRow) {
-            pageSize = Math.min(500, Math.max(10, endRow - startRow + 1));
+        if (startRow > maxRow) {
+            alert(`Pencarian dihentikan: Baris mulai (#${startRow}) sudah melebihi batas akhir data spreadsheet (#${maxRow}).`);
+            return;
         }
+
+        let clampedEndRow = endRow ? Math.min(endRow, maxRow) : Math.min(startRow + 99, maxRow);
+        if (wsDetectStatusOnly && wsDetectStatusOnly.checked) {
+            // Mode Deteksi Status Saja: Sampel aman dibatasi maks 50 baris riil
+            clampedEndRow = Math.min(startRow + 49, maxRow);
+        }
+
+        let pageSize = Math.min(500, Math.max(10, clampedEndRow - startRow + 1));
+
+        if (currentScanAbortController) {
+            currentScanAbortController.abort();
+        }
+        currentScanAbortController = new AbortController();
 
         if (wsLoading) wsLoading.classList.remove('hidden');
         if (wsRulesCard) wsRulesCard.classList.add('hidden');
         if (wsTableCard) wsTableCard.classList.add('hidden');
         if (btnScanWorkspace) btnScanWorkspace.disabled = true;
+        if (btnStopScan) btnStopScan.classList.remove('hidden');
 
         try {
-            const url = `${urlWorkspaceRows}?tab_name=${encodeURIComponent(tab)}&start_row=${startRow}&header_row=${headerRow}&page_size=${pageSize}&fetch_colors=${fetchColors}`;
+            const url = `${urlWorkspaceRows}?tab_name=${encodeURIComponent(tab)}&start_row=${startRow}&end_row=${clampedEndRow}&header_row=${headerRow}&page_size=${pageSize}&fetch_colors=${fetchColors}&skip_synced=${skipSynced}`;
             const res = await fetch(url, {
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                signal: currentScanAbortController.signal
             });
             const data = await res.json();
 
-            if (data.success && Array.isArray(data.rows)) {
-                wsAllRows = data.rows;
+            if (!res.ok) {
+                const errMsg = data?.message || (data?.errors ? Object.values(data.errors).flat().join(', ') : `HTTP Error ${res.status}`);
+                alert('Gagal memindai baris: ' + errMsg);
+                return;
+            }
+
+            const rows = Array.isArray(data.rows) ? data.rows : (Array.isArray(data.data?.rows) ? data.data.rows : []);
+
+            if (data.success && rows.length >= 0 && (Array.isArray(data.rows) || Array.isArray(data.data?.rows))) {
+                wsAllRows = rows.map(r => {
+                    const rowBg = (r.row_background || r.bg_color || r.raw_background || '#ffffff').toUpperCase();
+                    const rowStatus = r.status || r.inferred_status || 'unassigned';
+                    const rawData = r.data || r.raw_data || {};
+                    const syncId = r.sync_id || r.external_sync_id || null;
+                    const matchedId = r.matched_local_id || null;
+                    const isMissing = !!(r.is_missing_local !== undefined ? r.is_missing_local : (syncId && !matchedId));
+                    return {
+                        ...r,
+                        bg_color: rowBg,
+                        row_background: rowBg,
+                        inferred_status: rowStatus,
+                        status: rowStatus,
+                        raw_data: rawData,
+                        data: rawData,
+                        external_sync_id: syncId,
+                        sync_id: syncId,
+                        matched_local_id: matchedId,
+                        is_missing_local: isMissing,
+                        remote_registration_id: r.remote_registration_id || null,
+                    };
+                });
                 wsSelectedIndices.clear();
 
-                // Build detected colors
-                buildPaletteMapFromRows(wsAllRows);
+                // 1. Process server palette (every unique color 1 time)
+                if (data.palette && Array.isArray(data.palette) && data.palette.length > 0) {
+                    updatePaletteMapFromServer(data.palette);
+                } else {
+                    buildPaletteMapFromRows(wsAllRows);
+                }
                 renderPaletteMapUi();
 
-                // Render Table
-                filterAndSortVisibleRows();
+                // 2. Process server distinct column values (every unique text value 1 time)
+                if (data.column_distinct_values && typeof data.column_distinct_values === 'object') {
+                    wsRawColumnDistinct = data.column_distinct_values;
+                    renderColumnValuesMapUi();
+                }
+
+                // 3. Ensure UI sections match current status source type
+                updateStatusSourceUi();
+
+                // 4. Apply rules to candidate rows
+                applyWorkspaceRules();
 
                 if (wsRulesCard) wsRulesCard.classList.remove('hidden');
                 if (wsTableCard) wsTableCard.classList.remove('hidden');
             } else {
-                alert('Gagal memindai baris: ' + (data.message || 'Terjadi kesalahan sistem'));
+                const errMsg = data.message || (data.data && data.data.message) || (data.errors ? Object.values(data.errors).flat().join(', ') : 'Format respons data tidak valid dari server');
+                alert('Gagal memindai baris: ' + errMsg);
             }
         } catch (err) {
+            if (err.name === 'AbortError') {
+                console.log('Pencarian spreadsheet dihentikan oleh pengguna.');
+                return;
+            }
             console.error('Scan workspace error:', err);
-            alert('Timeout saat memindai data spreadsheet. Coba gunakan rentang 100 baris.');
+            alert('Gagal memindai data spreadsheet: ' + (err.message || 'Periksa koneksi jaringan.'));
         } finally {
             if (wsLoading) wsLoading.classList.add('hidden');
+            if (btnStopScan) btnStopScan.classList.add('hidden');
             if (btnScanWorkspace) btnScanWorkspace.disabled = false;
+            currentScanAbortController = null;
         }
+    }
+
+    function renderRangeRulesUi() {
+        if (!wsRangesContainer) return;
+        wsRangesContainer.innerHTML = '';
+        if (wsRangeRules.length === 0) {
+            wsRangesContainer.innerHTML = '<p class="text-[11px] text-slate-400 italic">Belum ada partisi rentang baris.</p>';
+            return;
+        }
+
+        wsRangeRules.forEach((rule, idx) => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-1.5 p-1.5 rounded-lg border border-slate-200 bg-white text-xs';
+            div.innerHTML = `
+                <span class="text-slate-500 font-mono text-[10px]">Baris:</span>
+                <input type="number" class="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs font-mono rule-start" value="${rule.start}" min="1">
+                <span class="text-slate-400">-</span>
+                <input type="number" class="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs font-mono rule-end" value="${rule.end}" min="1">
+                <select class="rounded border border-slate-300 px-1.5 py-0.5 text-xs rule-status flex-1">
+                    <option value="waiting" ${rule.status === 'waiting' ? 'selected' : ''}>Calon (waiting)</option>
+                    <option value="accepted" ${rule.status === 'accepted' ? 'selected' : ''}>Diterima (accepted)</option>
+                    <option value="active" ${rule.status === 'active' ? 'selected' : ''}>Aktif (active)</option>
+                    <option value="completed" ${rule.status === 'completed' ? 'selected' : ''}>Selesai (completed)</option>
+                    <option value="rejected" ${rule.status === 'rejected' ? 'selected' : ''}>Ditolak (rejected)</option>
+                    <option value="exited" ${rule.status === 'exited' ? 'selected' : ''}>Dikeluarkan (exited)</option>
+                </select>
+                <button type="button" class="text-rose-500 hover:text-rose-700 px-1 font-bold rule-remove" title="Hapus rentang">&times;</button>
+            `;
+            div.querySelector('.rule-start').addEventListener('change', function() { rule.start = parseInt(this.value, 10) || 1; applyWorkspaceRules(); });
+            div.querySelector('.rule-end').addEventListener('change', function() { rule.end = parseInt(this.value, 10) || 1; applyWorkspaceRules(); });
+            div.querySelector('.rule-status').addEventListener('change', function() { rule.status = this.value; applyWorkspaceRules(); });
+            div.querySelector('.rule-remove').addEventListener('click', function() {
+                wsRangeRules.splice(idx, 1);
+                renderRangeRulesUi();
+                applyWorkspaceRules();
+            });
+            wsRangesContainer.appendChild(div);
+        });
+    }
+
+    if (btnAddRangeRule) {
+        btnAddRangeRule.addEventListener('click', function() {
+            const startVal = wsRangeRules.length > 0
+                ? (wsRangeRules[wsRangeRules.length - 1].end + 1)
+                : (parseInt(wsStartRowInput ? wsStartRowInput.value : 11, 10) || 11);
+            wsRangeRules.push({ start: startVal, end: startVal + 49, status: 'waiting' });
+            renderRangeRulesUi();
+            applyWorkspaceRules();
+        });
+    }
+
+    function updatePaletteMapFromServer(paletteList) {
+        if (!Array.isArray(paletteList)) return;
+        paletteList.forEach(p => {
+            let hex = (p.hex || '#ffffff').toUpperCase();
+            if (hex === 'TRANSPARENT') hex = '#FFFFFF';
+
+            const existing = wsColorPaletteMap[hex];
+            let status = (existing && existing.status !== 'unassigned') ? existing.status : 'unassigned';
+
+            if (status === 'unassigned') {
+                if (hex === '#00FF00' || hex === '#D9EAD3' || hex === '#B6D7A8' || hex === '#6AA84F') status = 'accepted';
+                else if (hex === '#FFFF00' || hex === '#FFF2CC' || hex === '#FFE599' || hex === '#F1C232') status = 'waiting';
+                else if (hex === '#FF0000' || hex === '#F4CCCC' || hex === '#E06666' || hex === '#CC0000') status = 'rejected';
+                else if (hex === '#00FFFF' || hex === '#C9DAF8' || hex === '#A4C2F4' || hex === '#4A86E8') status = 'active';
+            }
+
+            wsColorPaletteMap[hex] = {
+                hex: hex,
+                name: p.name || hex,
+                count: p.count || 0,
+                status: status,
+                is_transparent: !!p.is_transparent,
+                is_white: !!p.is_white,
+            };
+        });
     }
 
     function buildPaletteMapFromRows(rows) {
         wsColorPaletteMap = {};
         rows.forEach(r => {
-            const hex = (r.bg_color || '#ffffff').toUpperCase();
+            let hex = (r.bg_color || r.row_background || '#ffffff').toUpperCase();
+            if (hex === 'TRANSPARENT') hex = '#FFFFFF';
             if (!wsColorPaletteMap[hex]) {
                 // Auto guess status based on common colors
                 let guessedStatus = 'unassigned';
-                if (hex === '#00FF00' || hex === '#D9EAD3' || hex === '#B6D7A8') guessedStatus = 'accepted';
-                else if (hex === '#FFFF00' || hex === '#FFF2CC' || hex === '#FFE599') guessedStatus = 'waiting';
-                else if (hex === '#FF0000' || hex === '#F4CCCC') guessedStatus = 'rejected';
-                else if (hex === '#00FFFF' || hex === '#C9DAF8') guessedStatus = 'active';
+                if (hex === '#00FF00' || hex === '#D9EAD3' || hex === '#B6D7A8' || hex === '#6AA84F') guessedStatus = 'accepted';
+                else if (hex === '#FFFF00' || hex === '#FFF2CC' || hex === '#FFE599' || hex === '#F1C232') guessedStatus = 'waiting';
+                else if (hex === '#FF0000' || hex === '#F4CCCC' || hex === '#E06666' || hex === '#CC0000') guessedStatus = 'rejected';
+                else if (hex === '#00FFFF' || hex === '#C9DAF8' || hex === '#A4C2F4' || hex === '#4A86E8') guessedStatus = 'active';
 
                 wsColorPaletteMap[hex] = {
                     hex: hex,
@@ -1764,6 +2438,10 @@ document.addEventListener('DOMContentLoaded', function () {
         wsPaletteContainer.innerHTML = '';
 
         const keys = Object.keys(wsColorPaletteMap);
+        if (wsPaletteCountBadge) {
+            wsPaletteCountBadge.textContent = `${keys.length} Warna Terdeteksi`;
+        }
+
         if (keys.length === 0) {
             wsPaletteContainer.innerHTML = '<p class="text-xs text-slate-400 italic">Tidak ada warna latar terdeteksi.</p>';
             return;
@@ -1777,7 +2455,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div class="flex items-center gap-2 truncate">
                     <span class="h-5 w-5 rounded border border-slate-300 shadow-2xs shrink-0" style="background-color: ${hex};"></span>
                     <span class="font-mono text-slate-700 text-[11px]">${hex}</span>
-                    <span class="text-[10px] text-slate-400">(${p.count} baris)</span>
+                    <span class="text-[10px] text-slate-400 shrink-0">(${p.count} baris)</span>
                 </div>
                 <select class="ws-palette-select rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none" data-hex="${hex}">
                     <option value="unassigned" ${p.status === 'unassigned' ? 'selected' : ''}>-- Belum Ditentukan --</option>
@@ -1791,31 +2469,131 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
             div.querySelector('.ws-palette-select').addEventListener('change', function () {
                 wsColorPaletteMap[hex].status = this.value;
+                applyWorkspaceRules();
             });
             wsPaletteContainer.appendChild(div);
         });
     }
 
-    function applyWorkspaceRules() {
-        // Apply color mapping to rows
-        wsAllRows.forEach(r => {
-            const hex = (r.bg_color || '#ffffff').toUpperCase();
-            if (wsColorPaletteMap[hex] && wsColorPaletteMap[hex].status !== 'unassigned') {
-                r.inferred_status = wsColorPaletteMap[hex].status;
-            }
-        });
+    function renderColumnValuesMapUi() {
+        if (!wsColumnValuesContainer) return;
+        wsColumnValuesContainer.innerHTML = '';
 
-        // Apply column value mapping if chosen
+        const colKey = wsStatusColSelect ? wsStatusColSelect.value : '';
+        if (!colKey || !wsRawColumnDistinct[colKey]) {
+            wsColumnValuesContainer.innerHTML = '<p class="text-xs text-slate-400 italic">Pilih kolom status di atas untuk memetakan varian nilai kolom.</p>';
+            if (wsColumnValuesCountBadge) wsColumnValuesCountBadge.textContent = '0 Varian Terdeteksi';
+            return;
+        }
+
+        const distinctObj = wsRawColumnDistinct[colKey];
+        const uniqueValues = Object.keys(distinctObj);
+
+        if (wsColumnValuesCountBadge) {
+            wsColumnValuesCountBadge.textContent = `${uniqueValues.length} Varian Terdeteksi`;
+        }
+
+        if (uniqueValues.length === 0) {
+            wsColumnValuesContainer.innerHTML = '<p class="text-xs text-slate-400 italic">Tidak ada varian teks terdeteksi pada kolom ini.</p>';
+            return;
+        }
+
+        if (!wsColumnValueMap[colKey]) {
+            wsColumnValueMap[colKey] = {};
+        }
+
+        uniqueValues.forEach(valText => {
+            const count = distinctObj[valText] || 0;
+            const existing = wsColumnValueMap[colKey][valText];
+            let status = (existing && existing.status !== 'unassigned') ? existing.status : 'unassigned';
+
+            if (status === 'unassigned') {
+                const lower = valText.toLowerCase();
+                if (lower.includes('terima') || lower.includes('diterima') || lower.includes('accept') || lower.includes('acc') || lower.includes('lolos')) status = 'accepted';
+                else if (lower.includes('calon') || lower.includes('wait') || lower.includes('pending') || lower.includes('tunda') || lower.includes('proses')) status = 'waiting';
+                else if (lower.includes('aktif') || lower.includes('active') || lower.includes('masuk')) status = 'active';
+                else if (lower.includes('tolak') || lower.includes('reject') || lower.includes('gagal')) status = 'rejected';
+                else if (lower.includes('selesai') || lower.includes('graduat') || lower.includes('lulus') || lower.includes('alumni')) status = 'completed';
+                else if (lower.includes('keluar') || lower.includes('exit')) status = 'exited';
+            }
+
+            wsColumnValueMap[colKey][valText] = {
+                text: valText,
+                count: count,
+                status: status
+            };
+
+            const div = document.createElement('div');
+            div.className = 'flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-200 bg-white text-xs';
+            div.innerHTML = `
+                <div class="flex items-center gap-2 truncate">
+                    <span class="inline-flex items-center justify-center h-5 w-5 rounded bg-teal-50 border border-teal-200 text-teal-700 shrink-0">
+                        <i class="fas fa-font text-[10px]"></i>
+                    </span>
+                    <span class="font-bold text-slate-800 text-xs truncate max-w-[140px]" title="${escapeHtml(valText)}">${escapeHtml(valText)}</span>
+                    <span class="text-[10px] text-slate-400 shrink-0">(${count} baris)</span>
+                </div>
+                <select class="ws-col-val-select rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none" data-col="${escapeHtml(colKey)}" data-val="${escapeHtml(valText)}">
+                    <option value="unassigned" ${status === 'unassigned' ? 'selected' : ''}>-- Belum Ditentukan --</option>
+                    <option value="waiting" ${status === 'waiting' ? 'selected' : ''}>Calon (waiting)</option>
+                    <option value="accepted" ${status === 'accepted' ? 'selected' : ''}>Diterima (accepted)</option>
+                    <option value="active" ${status === 'active' ? 'selected' : ''}>Aktif (active)</option>
+                    <option value="completed" ${status === 'completed' ? 'selected' : ''}>Selesai (completed)</option>
+                    <option value="rejected" ${status === 'rejected' ? 'selected' : ''}>Ditolak (rejected)</option>
+                    <option value="exited" ${status === 'exited' ? 'selected' : ''}>Dikeluarkan (exited)</option>
+                </select>
+            `;
+            div.querySelector('.ws-col-val-select').addEventListener('change', function () {
+                wsColumnValueMap[colKey][valText].status = this.value;
+                applyWorkspaceRules();
+            });
+            wsColumnValuesContainer.appendChild(div);
+        });
+    }
+
+    function applyWorkspaceRules() {
         const statusSource = wsStatusSourceType ? wsStatusSourceType.value : 'color';
-        if (statusSource === 'column' && wsStatusColSelect && wsStatusColSelect.value) {
-            const colKey = wsStatusColSelect.value;
+
+        if (statusSource === 'color') {
+            // Apply color mapping to rows
             wsAllRows.forEach(r => {
-                const val = ((r.raw_data && r.raw_data[colKey]) || '').toString().toLowerCase();
-                if (val.includes('terima') || val.includes('diterima') || val.includes('accept')) r.inferred_status = 'accepted';
-                else if (val.includes('calon') || val.includes('wait') || val.includes('pending')) r.inferred_status = 'waiting';
-                else if (val.includes('aktif') || val.includes('active')) r.inferred_status = 'active';
-                else if (val.includes('tolak') || val.includes('reject')) r.inferred_status = 'rejected';
-                else if (val.includes('selesai') || val.includes('graduat')) r.inferred_status = 'completed';
+                let hex = (r.bg_color || r.row_background || '#ffffff').toUpperCase();
+                if (hex === 'TRANSPARENT') hex = '#FFFFFF';
+                if (wsColorPaletteMap[hex] && wsColorPaletteMap[hex].status !== 'unassigned') {
+                    r.inferred_status = wsColorPaletteMap[hex].status;
+                    r.status = wsColorPaletteMap[hex].status;
+                }
+            });
+        } else if (statusSource === 'column' && wsStatusColSelect && wsStatusColSelect.value) {
+            // Apply column value mapping
+            const colKey = wsStatusColSelect.value;
+            const ruleMap = wsColumnValueMap[colKey] || {};
+            wsAllRows.forEach(r => {
+                const raw = r.data || r.raw_data || {};
+                const cellVal = (raw[colKey] !== undefined && raw[colKey] !== null) ? raw[colKey].toString().trim() : '';
+                if (ruleMap[cellVal] && ruleMap[cellVal].status && ruleMap[cellVal].status !== 'unassigned') {
+                    r.inferred_status = ruleMap[cellVal].status;
+                    r.status = ruleMap[cellVal].status;
+                } else {
+                    const lower = cellVal.toLowerCase();
+                    if (lower.includes('terima') || lower.includes('diterima') || lower.includes('accept') || lower.includes('lolos') || lower.includes('acc')) r.inferred_status = 'accepted';
+                    else if (lower.includes('calon') || lower.includes('wait') || lower.includes('pending') || lower.includes('proses')) r.inferred_status = 'waiting';
+                    else if (lower.includes('aktif') || lower.includes('active') || lower.includes('masuk')) r.inferred_status = 'active';
+                    else if (lower.includes('tolak') || lower.includes('reject') || lower.includes('gagal')) r.inferred_status = 'rejected';
+                    else if (lower.includes('selesai') || lower.includes('graduat') || lower.includes('lulus') || lower.includes('alumni')) r.inferred_status = 'completed';
+                    else if (lower.includes('keluar') || lower.includes('exit')) r.inferred_status = 'exited';
+                    r.status = r.inferred_status;
+                }
+            });
+        } else if (statusSource === 'range' && wsRangeRules.length > 0) {
+            // Apply range partition rules
+            wsAllRows.forEach(r => {
+                const rowNo = parseInt(r.row_number, 10);
+                const matched = wsRangeRules.find(rule => rowNo >= rule.start && rowNo <= rule.end);
+                if (matched && matched.status !== 'unassigned') {
+                    r.inferred_status = matched.status;
+                    r.status = matched.status;
+                }
             });
         }
 
@@ -1845,6 +2623,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // Source/ID filter pill
             if (wsCurrentSourceFilter === 'no_id') {
                 if (r.external_sync_id) return false;
+            } else if (wsCurrentSourceFilter === 'missing_local') {
+                if (!r.external_sync_id || r.matched_local_id) return false;
+            } else if (wsCurrentSourceFilter === 'synced_intact') {
+                if (!r.external_sync_id || !r.matched_local_id) return false;
             } else if (wsCurrentSourceFilter === 'synced') {
                 if (!r.external_sync_id) return false;
             }
@@ -1899,6 +2681,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const isChecked = wsSelectedIndices.has(r.row_number);
             const hex = (r.bg_color || '#ffffff').toUpperCase();
             const hasId = !!r.external_sync_id;
+            const isMissingInDb = !!(r.is_missing_local || (hasId && !r.matched_local_id));
 
             tr.innerHTML = `
                 <td class="px-3 py-2 text-center">
@@ -1925,9 +2708,21 @@ document.addEventListener('DOMContentLoaded', function () {
                     </select>
                 </td>
                 <td class="px-3 py-2">
-                    ${hasId
-                        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check text-[9px]"></i> Sudah Ber-ID</span>'
-                        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200"><i class="fas fa-plus text-[9px]"></i> Baris Baru</span>'
+                    ${isMissingInDb
+                        ? `<div class="flex flex-col gap-1 items-start">
+                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                 <i class="fas fa-exclamation-triangle text-amber-600 text-[9px]"></i> Ber-ID (Hilang di DB)
+                             </span>
+                             <button type="button" class="btn-recover-single text-[10px] font-bold text-teal-700 hover:text-teal-900 underline flex items-center gap-1" data-row="${r.row_number}">
+                                 <i class="fas fa-download text-[9px]"></i> Pulihkan ke SertIF
+                             </button>
+                           </div>`
+                        : (hasId
+                            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Terhubung ke pendaftaran #${r.matched_local_id}">
+                                 <i class="fas fa-check-circle text-[9px]"></i> Terhubung (#${r.matched_local_id || 'ID'})
+                               </span>`
+                            : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200"><i class="fas fa-plus text-[9px]"></i> Baris Baru</span>'
+                        )
                     }
                 </td>
             `;
@@ -1945,6 +2740,57 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateFilterCounts();
             });
 
+            // Single row recover listener
+            const btnSingleRecover = tr.querySelector('.btn-recover-single');
+            if (btnSingleRecover) {
+                btnSingleRecover.addEventListener('click', async function (e) {
+                    e.stopPropagation();
+                    const rowNo = parseInt(this.dataset.row, 10);
+                    const targetRow = wsAllRows.find(x => x.row_number === rowNo);
+                    if (!targetRow) return;
+
+                    if (!confirm(`Pulihkan dan tarik data baris #${rowNo} (${targetRow.display_name || targetRow.sync_id}) ke database SertIF dengan mempertahankan ID yang sudah ada?`)) {
+                        return;
+                    }
+
+                    this.disabled = true;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin text-[9px]"></i> Memulihkan...';
+                    try {
+                        const tab = tabSelect ? tabSelect.value : '';
+                        const res = await fetch(urlRecoverRow, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify({
+                                tab_name: tab,
+                                row_index: targetRow.row_number,
+                                sync_id: targetRow.external_sync_id || targetRow.sync_id,
+                                registration_id: targetRow.remote_registration_id || null,
+                                internship_status: targetRow.inferred_status !== 'unassigned' ? targetRow.inferred_status : null,
+                                row_data: targetRow.raw_data || targetRow.data || {},
+                                expected_checksum: targetRow.checksum || targetRow.content_checksum || null
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            alert(data.message || `Baris #${rowNo} berhasil dipulihkan ke SertIF!`);
+                            scanWorkspaceRows();
+                        } else {
+                            alert('Gagal memulihkan baris: ' + (data.message || 'Terjadi kesalahan'));
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-download text-[9px]"></i> Pulihkan ke SertIF';
+                        }
+                    } catch (err) {
+                        alert('Terjadi kesalahan jaringan saat memulihkan baris: ' + err.message);
+                        this.disabled = false;
+                        this.innerHTML = '<i class="fas fa-download text-[9px]"></i> Pulihkan ke SertIF';
+                    }
+                });
+            }
+
             wsTableTbody.appendChild(tr);
         });
 
@@ -1961,7 +2807,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (btnDryRunReconcile) btnDryRunReconcile.disabled = true;
             if (btnExecuteBatch) btnExecuteBatch.disabled = true;
         } else {
-            wsSelectedBreakdown.textContent = `${count} baris siap diproses (simulasi pra-tulis atau pendaftaran langsung).`;
+            wsSelectedBreakdown.textContent = `${count} baris siap diproses (simulasi pra-tulis, pendaftaran, atau pemulihan ID).`;
             if (btnDryRunReconcile) btnDryRunReconcile.disabled = false;
             if (btnExecuteBatch) btnExecuteBatch.disabled = false;
         }
@@ -1969,16 +2815,58 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function updateFilterCounts() {
         const counts = { all: wsAllRows.length, unassigned: 0, accepted: 0, active: 0, waiting: 0, completed: 0, rejected: 0, exited: 0 };
+        let countNoId = 0;
+        let countSynced = 0;
+        let countMissingLocal = 0;
+        let countSyncedIntact = 0;
+
         wsAllRows.forEach(r => {
             const st = r.inferred_status || 'unassigned';
             if (counts[st] !== undefined) counts[st]++;
             else counts.unassigned++;
+
+            if (r.external_sync_id) {
+                countSynced++;
+                if (r.matched_local_id) {
+                    countSyncedIntact++;
+                } else {
+                    countMissingLocal++;
+                }
+            } else {
+                countNoId++;
+            }
         });
 
         for (const [k, v] of Object.entries(counts)) {
             const el = document.getElementById(`count-${k}`);
             if (el) el.textContent = v;
         }
+
+        const elNoId = document.getElementById('count-source-no-id');
+        if (elNoId) elNoId.textContent = countNoId;
+        const elSynced = document.getElementById('count-source-synced');
+        if (elSynced) elSynced.textContent = countSynced;
+        const elMissingLocal = document.getElementById('count-source-missing-local');
+        if (elMissingLocal) elMissingLocal.textContent = countMissingLocal;
+        const elSyncedIntact = document.getElementById('count-source-synced-intact');
+        if (elSyncedIntact) elSyncedIntact.textContent = countSyncedIntact;
+        const elSourceAll = document.getElementById('count-source-all');
+        if (elSourceAll) elSourceAll.textContent = wsAllRows.length;
+    }
+
+    // Source/ID Filter buttons (⚡ Hanya Tanpa ID / Semua Baris / Sudah Punya ID)
+    const sourceFilterPills = document.getElementById('ws-source-filter-pills');
+    if (sourceFilterPills) {
+        sourceFilterPills.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function () {
+                sourceFilterPills.querySelectorAll('button').forEach(b => {
+                    b.className = 'px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200';
+                });
+                this.className = 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-teal-700 text-white shadow-xs';
+                wsCurrentSourceFilter = this.dataset.sourceFilter || 'all';
+                filterAndSortVisibleRows();
+            });
+        });
     }
 
     // Status filter buttons
@@ -2044,7 +2932,8 @@ document.addEventListener('DOMContentLoaded', function () {
             status: r.inferred_status || 'waiting',
             row_data: r.raw_data || {},
             expected_checksum: r.checksum || null,
-            registration_id: r.local_registration_id || null,
+            registration_id: r.matched_local_id || r.local_registration_id || null,
+            sync_id: r.external_sync_id || r.sync_id || null,
         }));
 
         const endpoint = isDryRun ? urlDryRunReconcile : urlBatchReconcile;
@@ -2143,172 +3032,57 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // ----------------------------------------------------
-    // 5. UNIVERSAL SEARCH ENGINE (Proyeksi Pencarian Cepat)
-    // ----------------------------------------------------
-    const globalSearchInput = document.getElementById('global-search-input');
-    const globalSearchResultsTbody = document.getElementById('global-search-results-tbody');
-    const globalSearchCountBadge = document.getElementById('global-search-count-badge');
-    const globalSearchLoading = document.getElementById('global-search-loading');
-    const btnTriggerIndexing = document.getElementById('btn-trigger-indexing');
-    const indexProgressBox = document.getElementById('index-progress-box');
-    const indexProgressBar = document.getElementById('index-progress-bar');
-    const indexProgressPercent = document.getElementById('index-progress-percent');
-    const indexProgressLabel = document.getElementById('index-progress-label');
-    const indexProgressCount = document.getElementById('index-progress-count');
-
-    function executeGlobalSearch(page = 1) {
-        if (!globalSearchInput || !globalSearchResultsTbody) return;
-        const query = globalSearchInput.value.trim();
-
-        if (globalSearchLoading) globalSearchLoading.classList.remove('hidden');
-
-        fetch(`${urlSearch}?q=${encodeURIComponent(query)}&page=${page}`, {
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (globalSearchLoading) globalSearchLoading.classList.add('hidden');
-            if (data.success) {
-                if (globalSearchCountBadge) globalSearchCountBadge.textContent = `${data.total} Ditemukan (${data.query_duration_ms}ms)`;
-                renderGlobalSearchResults(data.data || []);
-            }
-        })
-        .catch(err => {
-            console.error('Search error:', err);
-            if (globalSearchLoading) globalSearchLoading.classList.add('hidden');
-        });
-    }
-
-    function renderGlobalSearchResults(items) {
-        if (!globalSearchResultsTbody) return;
-        globalSearchResultsTbody.innerHTML = '';
-
-        if (items.length === 0) {
-            globalSearchResultsTbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-xs text-slate-400 italic">Tidak ada data pendaftar yang cocok.</td></tr>';
-            return;
-        }
-
-        items.forEach(doc => {
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-slate-50 border-b border-slate-100 text-xs';
-            tr.innerHTML = `
-                <td class="px-3 py-2 font-mono font-bold text-slate-700">Baris #${doc.source_row_number || '-'}</td>
-                <td class="px-3 py-2">
-                    <div class="font-bold text-slate-800">${escapeHtml(doc.normalized_name || '-')}</div>
-                    <div class="font-mono text-[10px] text-teal-700">${escapeHtml(doc.source_record_key || '-')}</div>
-                </td>
-                <td class="px-3 py-2 text-slate-600">
-                    <div>${escapeHtml(doc.normalized_email || '-')}</div>
-                    <div class="font-mono text-[11px] text-slate-500">${escapeHtml(doc.normalized_phone || '-')}</div>
-                </td>
-                <td class="px-3 py-2">
-                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                        Skor: ${doc.search_score || 70}
-                    </span>
-                </td>
-                <td class="px-3 py-2 font-mono text-[11px] text-slate-500">${doc.sheet_id || '-'}</td>
-            `;
-            globalSearchResultsTbody.appendChild(tr);
-        });
-    }
-
-    if (globalSearchInput) {
-        globalSearchInput.addEventListener('input', function () {
-            clearTimeout(globalSearchDebounceTimer);
-            globalSearchDebounceTimer = setTimeout(() => executeGlobalSearch(1), 300);
-        });
-    }
-
-    // Trigger Indexing Tab
-    if (btnTriggerIndexing) {
-        btnTriggerIndexing.addEventListener('click', async function () {
-            const activeTab = tabSelect ? tabSelect.value : '';
-            if (!activeTab) {
-                alert('Pilih tab yang ingin diindeks terlebih dahulu di Langkah 1.');
+    // Mass Pemulihan Baris Ber-ID yang Hilang di DB (Bulk Recover Missing Rows)
+    if (btnBulkRecoverMissing) {
+        btnBulkRecoverMissing.addEventListener('click', async function () {
+            const missingRows = wsAllRows.filter(r => r.external_sync_id && (!r.matched_local_id || r.is_missing_local));
+            if (missingRows.length === 0) {
+                alert('Tidak ada baris ber-ID yang hilang di SertIF pada tampilan data saat ini.');
                 return;
             }
 
-            if (!confirm(`Mulai proses pengindeksan cepat untuk tab "${activeTab}" ke database lokal?`)) return;
+            if (!confirm(`Tarik dan pulihkan ${missingRows.length} baris ber-ID yang hilang ke database SertIF? Sistem akan mempertahankan SERTIF_SYNC_ID asli tanpa mengubah ID di spreadsheet.`)) {
+                return;
+            }
 
-            btnTriggerIndexing.disabled = true;
-            const icon = document.getElementById('icon-indexing');
-            if (icon) icon.classList.add('animate-spin');
-
+            btnBulkRecoverMissing.disabled = true;
             try {
-                const res = await fetch(urlIndexTab, {
+                const tab = tabSelect ? tabSelect.value : '';
+                const items = missingRows.map(r => ({
+                    row_index: r.row_number,
+                    sync_id: r.external_sync_id || r.sync_id,
+                    registration_id: r.remote_registration_id || null,
+                    status: r.inferred_status !== 'unassigned' ? r.inferred_status : null,
+                    row_data: r.raw_data || r.data || {},
+                    expected_checksum: r.checksum || r.content_checksum || null
+                }));
+
+                const res = await fetch(urlBatchRecover, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ tab_name: activeTab })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ tab_name: tab, items: items })
                 });
                 const data = await res.json();
-
-                if (!data.success) {
-                    alert('Gagal memicu indexing: ' + (data.message || 'Terjadi kesalahan'));
-                    if (icon) icon.classList.remove('animate-spin');
-                    btnTriggerIndexing.disabled = false;
-                    return;
+                if (data.success) {
+                    alert(data.message || `Berhasil memulihkan ${data.data?.recovered_count || items.length} data ke database SertIF!`);
+                    scanWorkspaceRows();
+                } else {
+                    alert('Gagal: ' + (data.message || 'Terjadi kesalahan'));
                 }
-
-                if (indexProgressBox) indexProgressBox.classList.remove('hidden');
-                pollIndexingStatus(data.index_run_id, activeTab);
-            } catch (e) {
-                console.error('Indexing trigger error:', e);
-                alert('Terjadi kesalahan jaringan.');
-                if (icon) icon.classList.remove('animate-spin');
-                btnTriggerIndexing.disabled = false;
+            } catch (err) {
+                alert('Terjadi kesalahan jaringan saat memulihkan data: ' + err.message);
+            } finally {
+                btnBulkRecoverMissing.disabled = false;
             }
         });
     }
 
-    function pollIndexingStatus(runId, tabName) {
-        clearInterval(activeIndexingPollTimer);
-        activeIndexingPollTimer = setInterval(async () => {
-            try {
-                const resp = await fetch(`${urlIndexStatusBase}/${runId}/status`);
-                const data = await resp.json();
-
-                if (!data.success) {
-                    clearInterval(activeIndexingPollTimer);
-                    return;
-                }
-
-                const processed = data.processed_rows || 0;
-                const total = data.total_rows || 0;
-                const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 50;
-
-                if (indexProgressBar) indexProgressBar.style.width = `${percent}%`;
-                if (indexProgressPercent) indexProgressPercent.textContent = `${percent}%`;
-                if (indexProgressCount) {
-                    indexProgressCount.textContent = `Baris: ${processed} / ${total} (${data.indexed_rows} tersimpan)`;
-                }
-
-                if (data.status === 'completed' || data.status === 'failed') {
-                    clearInterval(activeIndexingPollTimer);
-                    const icon = document.getElementById('icon-indexing');
-                    if (icon) icon.classList.remove('animate-spin');
-                    if (btnTriggerIndexing) btnTriggerIndexing.disabled = false;
-
-                    if (data.status === 'completed') {
-                        if (indexProgressLabel) {
-                            indexProgressLabel.innerHTML = `<i class="fas fa-check-circle text-teal-600 mr-1"></i> Indexing tab selesai! Total ${data.indexed_rows} data terindeks.`;
-                        }
-                        if (indexProgressBar) indexProgressBar.style.width = '100%';
-                        setTimeout(() => { if (indexProgressBox) indexProgressBox.classList.add('hidden'); }, 3000);
-                        executeGlobalSearch(1);
-                    } else {
-                        alert('Proses indexing gagal: ' + (data.last_error || 'Terjadi kesalahan'));
-                        if (indexProgressBox) indexProgressBox.classList.add('hidden');
-                    }
-                }
-            } catch (err) {
-                console.error('Poll status error:', err);
-            }
-        }, 1500);
-    }
-
     // ----------------------------------------------------
-    // 6. INITIAL RUN (Instant Render from Preloaded)
+    // 5. INITIAL RUN (Instant Render from Preloaded)
     // ----------------------------------------------------
     const hasPreloaded = populateTabsUi(true);
     if (!hasPreloaded) {
@@ -2328,6 +3102,240 @@ document.addEventListener('DOMContentLoaded', function () {
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return text.toString().replace(/[&<>"']/g, m => map[m]);
     }
+
+    // ==========================================
+    // Fase 2: Penyesuaian Sinkronisasi Form JS
+    // ==========================================
+    const tabProfileSaveUrl = "{{ route('admin.spreadsheet-connections.tab-profile.save', $connection) }}";
+    const proposalsStoreUrl = "{{ route('admin.spreadsheet-connections.proposals.store', $connection) }}";
+    const diffUrlTemplate = "{{ route('admin.spreadsheet-connections.proposals.diff', [$connection, 999999]) }}";
+    const applyUrlTemplate = "{{ route('admin.spreadsheet-connections.proposals.apply', [$connection, 999999]) }}";
+    const itemUpdateUrlTemplate = "{{ route('admin.spreadsheet-connections.proposals.items.update', [$connection, 999999, 888888]) }}";
+
+    window.openTabProfileModal = function () {
+        document.getElementById('input-sheet-id').value = '';
+        document.getElementById('input-tab-name').value = (tabSelect && tabSelect.value) ? tabSelect.value : '';
+        document.getElementById('input-header-row').value = headerRowInput ? headerRowInput.value : 10;
+        document.getElementById('input-data-start-row').value = wsStartRowInput ? wsStartRowInput.value : 11;
+        document.getElementById('modal-tab-profile').classList.remove('hidden');
+    };
+
+    window.closeTabProfileModal = function () {
+        document.getElementById('modal-tab-profile').classList.add('hidden');
+    };
+
+    window.editTabProfile = function (sheetId, tabName, headerRow, dataStartRow) {
+        document.getElementById('input-sheet-id').value = sheetId;
+        document.getElementById('input-tab-name').value = tabName;
+        document.getElementById('input-header-row').value = headerRow;
+        document.getElementById('input-data-start-row').value = dataStartRow;
+        document.getElementById('modal-tab-profile').classList.remove('hidden');
+    };
+
+    window.submitTabProfile = async function (e) {
+        e.preventDefault();
+        const payload = {
+            sheet_id: parseInt(document.getElementById('input-sheet-id').value, 10),
+            tab_name: document.getElementById('input-tab-name').value.trim(),
+            header_row: parseInt(document.getElementById('input-header-row').value, 10),
+            data_start_row: parseInt(document.getElementById('input-data-start-row').value, 10)
+        };
+
+        try {
+            const resp = await fetch(tabProfileSaveUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert('Profil tab berhasil disimpan!');
+                closeTabProfileModal();
+                window.location.reload();
+            } else {
+                alert('Gagal: ' + (data.message || 'Error'));
+            }
+        } catch (err) {
+            alert('Kesalahan jaringan: ' + err.message);
+        }
+    };
+
+    // Create Proposal from Active Tab
+    const btnCreateProposal = document.getElementById('btn-create-proposal-from-active');
+    if (btnCreateProposal) {
+        btnCreateProposal.addEventListener('click', async function () {
+            const tabName = (tabSelect && tabSelect.value) ? tabSelect.value : prompt('Masukkan nama tab spreadsheet target (misal: 2026):', '2026');
+            if (!tabName) return;
+
+            const headerRow = headerRowInput ? parseInt(headerRowInput.value, 10) : 10;
+            btnCreateProposal.disabled = true;
+            btnCreateProposal.innerHTML = 'Membuat usulan...';
+
+            try {
+                const resp = await fetch(proposalsStoreUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ tab_name: tabName, header_row: headerRow })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('Proposal usulan pemetaan berhasil dibuat!');
+                    window.location.reload();
+                } else {
+                    alert('Gagal: ' + (data.message || 'Error'));
+                    btnCreateProposal.disabled = false;
+                    btnCreateProposal.innerHTML = 'Buat Snapshot & Usulan Pemetaan';
+                }
+            } catch (err) {
+                alert('Kesalahan jaringan: ' + err.message);
+                btnCreateProposal.disabled = false;
+                btnCreateProposal.innerHTML = 'Buat Snapshot & Usulan Pemetaan';
+            }
+        });
+    }
+
+    window.currentProposalVersion = {{ $activeProposal->version ?? 1 }};
+
+    // Save Proposal Item Ajax
+    window.saveProposalItemAjax = async function (proposalId, itemId) {
+        const actionEl = document.getElementById(`action-select-${itemId}`);
+        const action = actionEl ? actionEl.value : 'map_to_field';
+        const fieldKeyEl = document.getElementById(`field-key-select-${itemId}`);
+        const fieldKey = fieldKeyEl ? fieldKeyEl.value : null;
+        const labelEl = document.getElementById(`suggested-label-${itemId}`);
+        const suggestedLabel = labelEl ? labelEl.value : null;
+        const typeEl = document.getElementById(`suggested-type-${itemId}`);
+        const suggestedType = typeEl ? typeEl.value : 'text';
+
+        const url = itemUpdateUrlTemplate.replace('999999', proposalId).replace('888888', itemId);
+
+        try {
+            const resp = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({
+                    action: action,
+                    field_key: fieldKey,
+                    suggested_label: suggestedLabel,
+                    suggested_field_type: suggestedType,
+                    expected_version: window.currentProposalVersion || {{ $activeProposal->version ?? 1 }}
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                if (data.proposal_version) {
+                    window.currentProposalVersion = data.proposal_version;
+                }
+                const rowEl = document.getElementById(`proposal-row-${itemId}`);
+                if (rowEl) {
+                    const badge = rowEl.querySelector('.bg-amber-100, .bg-rose-100');
+                    if (badge && (action === 'system_derived' || action === 'attachment_adapter' || action === 'ignore' || action === 'external_only' || (fieldKey && (action === 'link_existing' || action === 'create_draft_field')))) {
+                        badge.classList.add('hidden');
+                    }
+                }
+                alert('Item pemetaan diperbarui!');
+            } else {
+                alert('Gagal memperbarui item: ' + (data.message || 'Error'));
+            }
+        } catch (err) {
+            alert('Kesalahan jaringan: ' + err.message);
+        }
+    };
+
+    // Preview Diff Ajax
+    window.previewDiffAjax = async function (proposalId) {
+        const url = diffUrlTemplate.replace('999999', proposalId);
+        const modal = document.getElementById('modal-schema-diff');
+        const badgesContainer = document.getElementById('diff-summary-badges');
+        const itemsContainer = document.getElementById('diff-items-container');
+
+        badgesContainer.innerHTML = '<span class="text-slate-500 italic">Menganalisis perbedaan skema...</span>';
+        itemsContainer.innerHTML = '';
+        modal.classList.remove('hidden');
+
+        try {
+            const resp = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                const diff = data.diff;
+                badgesContainer.innerHTML = `
+                    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">${diff.identical_count || 0} Identik</span>
+                    <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">${diff.new_columns_count || 0} Kolom Baru</span>
+                    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">${diff.type_changes_count || 0} Tipe Berubah</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">${diff.missing_in_target_count || 0} Diabaikan</span>
+                `;
+
+                if (diff.details && diff.details.length > 0) {
+                    diff.details.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'p-2 bg-white rounded border border-slate-200 flex items-center justify-between text-xs';
+                        div.innerHTML = `
+                            <div>
+                                <span class="font-bold text-slate-800">${item.label || item.header}</span>
+                                <span class="text-slate-400 font-mono text-[10px]">(${item.field_key})</span>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${item.status === 'NEW' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}">${item.status}</span>
+                        `;
+                        itemsContainer.appendChild(div);
+                    });
+                } else {
+                    itemsContainer.innerHTML = '<div class="text-center py-4 text-slate-400 italic">Tidak ada perubahan terdeteksi.</div>';
+                }
+            } else {
+                badgesContainer.innerHTML = `<span class="text-rose-600 font-semibold">Gagal: ${data.message}</span>`;
+            }
+        } catch (err) {
+            badgesContainer.innerHTML = `<span class="text-rose-600 font-semibold">Kesalahan jaringan: ${err.message}</span>`;
+        }
+    };
+
+    window.closeSchemaDiffModal = function () {
+        document.getElementById('modal-schema-diff').classList.add('hidden');
+    };
+
+    // Apply Proposal to Draft Form
+    window.applyProposalAjax = async function (proposalId) {
+        if (!confirm('Terapkan usulan pemetaan ini ke draf Form Builder? Perubahan bersifat non-destruktif dan akan tersimpan sebagai versi draf baru.')) {
+            return;
+        }
+
+        const url = applyUrlTemplate.replace('999999', proposalId);
+
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                }
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert('Usulan pemetaan berhasil diterapkan ke Form Schema!');
+                window.location.reload();
+            } else {
+                alert('Gagal menerapkan usulan: ' + (data.message || 'Error'));
+            }
+        } catch (err) {
+            alert('Kesalahan jaringan: ' + err.message);
+        }
+    };
 });
 </script>
 @endsection

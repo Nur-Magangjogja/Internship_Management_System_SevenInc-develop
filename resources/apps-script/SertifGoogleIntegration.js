@@ -312,8 +312,21 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDyna
       };
     }
 
+    // Positional Column Contract: Support values_by_position for duplicate header disambiguation (e.g. multi-KET)
+    var posMap = null;
+    if (rowData && rowData.values_by_position && Array.isArray(rowData.values_by_position)) {
+      posMap = {};
+      for (var p = 0; p < rowData.values_by_position.length; p++) {
+        var pItem = rowData.values_by_position[p];
+        if (pItem && pItem.col_index) {
+          posMap[pItem.col_index] = pItem.val;
+        }
+      }
+    }
+
     var dynValues = [];
     for (var dh = 0; dh < actualHeaders.length; dh++) {
+      var col1Based = dh + 1;
       var dRawHeader = actualHeaders[dh];
       if (dRawHeader === undefined || dRawHeader === null || dRawHeader.toString().trim() === "") {
         return {
@@ -327,7 +340,9 @@ function buildRowValuesForSheet(actualHeaders, rowData, connectionKey, allowDyna
       var dSlot = matchRegistrationSlot(dRawHeader);
       var dVal = undefined;
 
-      if (rowData.hasOwnProperty(dRawStr)) {
+      if (posMap && posMap.hasOwnProperty(col1Based)) {
+        dVal = posMap[col1Based];
+      } else if (rowData.hasOwnProperty(dRawStr)) {
         dVal = rowData[dRawStr];
       } else if (rowData.hasOwnProperty(dRawStr.trim())) {
         dVal = rowData[dRawStr.trim()];
@@ -762,21 +777,28 @@ function handleUpsertRowAction(payload) {
     }, 400);
   }
 
-  // 4. Strict allowlist validation for tab_name (2020-2099 for registration, explicit string for followup)
+  // 4. Validation for tab_name (2020-2099 for legacy registration tabs, universal custom tabs per brand, and followup)
   var validTab = false;
   if (connectionKey === "registration") {
-    if (typeof targetTabName === "string" && /^\d{4}$/.test(targetTabName.trim())) {
-      var yearNum = parseInt(targetTabName.trim(), 10);
-      if (yearNum >= 2020 && yearNum <= 2099) {
+    if (typeof targetTabName === "string" && targetTabName.trim().length > 0) {
+      var trimmedTab = targetTabName.trim();
+      if (/^\d{4}$/.test(trimmedTab)) {
+        var yearNum = parseInt(trimmedTab, 10);
+        if (yearNum >= 2020 && yearNum <= 2099) {
+          validTab = true;
+        }
+      } else if (/^\d{3,4}[a-z0-9]$/i.test(trimmedTab)) {
+        validTab = false;
+      } else if (trimmedTab.length <= 150) {
         validTab = true;
       }
     }
-  } else if (connectionKey === "followup" && targetTabName === "Follow Up Guru Dosen") {
+  } else if (connectionKey === "followup" && (targetTabName === "Follow Up Guru Dosen" || (typeof targetTabName === "string" && targetTabName.trim().length > 0))) {
     validTab = true;
   }
 
   if (!validTab) {
-    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit)" : "Follow Up Guru Dosen";
+    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit) atau tab universal brand valid" : "Follow Up Guru Dosen";
     return createJsonResponse({
       success: false,
       sync_id: syncId,
@@ -1105,21 +1127,28 @@ function handleUpdateRowAction(payload) {
     }, 400);
   }
 
-  // 4. Strict allowlist validation for tab_name (2020-2099 for registration, explicit string for followup)
+  // 4. Validation for tab_name (2020-2099 for legacy registration tabs, universal custom tabs per brand, and followup)
   var validTab = false;
   if (connectionKey === "registration") {
-    if (typeof targetTabName === "string" && /^\d{4}$/.test(targetTabName.trim())) {
-      var yearNum = parseInt(targetTabName.trim(), 10);
-      if (yearNum >= 2020 && yearNum <= 2099) {
+    if (typeof targetTabName === "string" && targetTabName.trim().length > 0) {
+      var trimmedTab = targetTabName.trim();
+      if (/^\d{4}$/.test(trimmedTab)) {
+        var yearNum = parseInt(trimmedTab, 10);
+        if (yearNum >= 2020 && yearNum <= 2099) {
+          validTab = true;
+        }
+      } else if (/^\d{3,4}[a-z0-9]$/i.test(trimmedTab)) {
+        validTab = false;
+      } else if (trimmedTab.length <= 150) {
         validTab = true;
       }
     }
-  } else if (connectionKey === "followup" && targetTabName === "Follow Up Guru Dosen") {
+  } else if (connectionKey === "followup" && (targetTabName === "Follow Up Guru Dosen" || (typeof targetTabName === "string" && targetTabName.trim().length > 0))) {
     validTab = true;
   }
 
   if (!validTab) {
-    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit)" : "Follow Up Guru Dosen";
+    var expectedTab = (connectionKey === "registration") ? "2020-2099 (4 digit) atau tab universal brand valid" : "Follow Up Guru Dosen";
     return createJsonResponse({
       success: false,
       sync_id: syncId,
@@ -4199,7 +4228,9 @@ function handleReadRowsPageAction(payload) {
     for (var r = 0; r < dataValues.length; r++) {
       var currentRowNumber = startSheetRow + r;
       var rowObj = {
-        _row_number: currentRowNumber
+        _row_number: currentRowNumber,
+        _cells_by_letter: {},
+        _cells: []
       };
 
       var rowBg = "#ffffff";
@@ -4219,6 +4250,8 @@ function handleReadRowsPageAction(payload) {
 
       for (var colIdx = 0; colIdx < headerMap.length; colIdx++) {
         var hName = headerMap[colIdx].header_name;
+        var cLetter = headerMap[colIdx].col_letter;
+        var cIndex = headerMap[colIdx].col_index;
         var cellRaw = dataValues[r][colIdx];
         var cellDisplay = (dataDisplayValues && dataDisplayValues[r]) ? String(dataDisplayValues[r][colIdx] || "").trim() : "";
 
@@ -4239,11 +4272,19 @@ function handleReadRowsPageAction(payload) {
           if (!dividerText) dividerText = cellStr;
         }
 
-        if (maskPii && typeof cellRaw === "string" && cellRaw !== "") {
-          rowObj[hName] = maskPiiValue(cellRaw);
-        } else {
-          rowObj[hName] = cellRaw;
-        }
+        var valToStore = (maskPii && typeof cellRaw === "string" && cellRaw !== "") ? maskPiiValue(cellRaw) : cellRaw;
+
+        // Positional preservation (vital for duplicate headers like multi-KET AL & AM)
+        rowObj._cells_by_letter[cLetter] = valToStore;
+        rowObj._cells.push({
+          col_index: cIndex,
+          col_letter: cLetter,
+          header: hName,
+          val: valToStore
+        });
+
+        // Legacy header-indexed property
+        rowObj[hName] = valToStore;
       }
 
       if (nonEmptyCount === 1 && dividerText.length >= 2) {

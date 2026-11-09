@@ -974,12 +974,22 @@ class SpreadsheetConnectionController extends Controller
             abort(404);
         }
 
+        if ($request->has('expected_version')) {
+            if ((int) $proposal->version !== (int) $request->input('expected_version')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Konflik konkurensi: Usulan mapping telah diubah oleh admin lain. Silakan muat ulang halaman.',
+                ], 409);
+            }
+        }
+
         $supportedTypes = implode(',', array_keys(\App\Models\FormField::supportedTypes()));
         $validated = $request->validate([
-            'action'               => 'required|in:link_existing,create_draft_field,external_only,ignore',
+            'action'               => 'required|in:link_existing,create_draft_field,external_only,ignore,system_derived,attachment_adapter',
             'field_key'            => 'nullable|string|max:100',
             'suggested_label'      => 'nullable|string|max:255',
             'suggested_field_type' => "nullable|string|in:{$supportedTypes}",
+            'expected_version'     => 'nullable|integer',
         ]);
 
         // Guardrail: Reserved system fields cannot be overwritten
@@ -990,18 +1000,57 @@ class SpreadsheetConnectionController extends Controller
             ], 422);
         }
 
+        $action = $validated['action'];
+        if (in_array($action, ['external_only', 'ignore', 'system_derived', 'attachment_adapter'], true)) {
+            $fieldKey = null;
+        } else {
+            $fieldKey = $validated['field_key'] ?? null;
+        }
+
+        if (!empty($fieldKey) && in_array($action, ['link_existing', 'create_draft_field'], true)) {
+            $duplicateTarget = \App\Models\SheetMappingProposalItem::where('proposal_id', $proposal->id)
+                ->where('id', '!=', $item->id)
+                ->where('field_key', $fieldKey)
+                ->whereNotIn('action', ['ignore'])
+                ->first();
+            if ($duplicateTarget) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Target field '{$fieldKey}' telah dipilih oleh kolom '{$duplicateTarget->col_letter}'. Dua kolom tidak boleh mengarah ke target field yang sama.",
+                ], 422);
+            }
+        }
+
         $item->update([
-            'action'               => $validated['action'],
-            'field_key'            => $validated['field_key'] ?? $item->field_key,
+            'action'               => $action,
+            'field_key'            => $fieldKey,
             'suggested_label'      => $validated['suggested_label'] ?? $item->suggested_label,
             'suggested_field_type' => $validated['suggested_field_type'] ?? $item->suggested_field_type,
-            'has_collision'        => false, // Resolved by admin manual intervention
+            'has_collision'        => false,
+            'resolved_at'          => now(),
+            'resolved_by'          => auth()->id(),
         ]);
 
+        // Re-evaluate siblings with identical header
+        $normHeader = strtolower(trim($item->observed_label));
+        $siblings = \App\Models\SheetMappingProposalItem::where('proposal_id', $proposal->id)
+            ->where('id', '!=', $item->id)
+            ->whereRaw('LOWER(TRIM(observed_label)) = ?', [$normHeader])
+            ->get();
+
+        foreach ($siblings as $sib) {
+            if (in_array($sib->action, ['link_existing', 'create_draft_field', 'system_derived', 'attachment_adapter', 'external_only', 'ignore'], true) && (!empty($sib->field_key) || in_array($sib->action, ['system_derived', 'attachment_adapter', 'external_only', 'ignore'], true))) {
+                $sib->update(['has_collision' => false, 'resolved_at' => now(), 'resolved_by' => auth()->id()]);
+            }
+        }
+
+        $proposal->increment('version');
+
         return response()->json([
-            'success' => true,
-            'message' => "Keputusan pemetaan kolom '{$item->col_letter}' berhasil diperbarui.",
-            'item'    => $item->fresh(),
+            'success'          => true,
+            'message'          => "Keputusan pemetaan kolom '{$item->col_letter}' berhasil diperbarui.",
+            'item'             => $item->fresh(),
+            'proposal_version' => $proposal->fresh()->version,
         ]);
     }
 
@@ -1292,11 +1341,12 @@ class SpreadsheetConnectionController extends Controller
         $endRow = $request->filled('end_row') ? (int) $request->query('end_row') : null;
         $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
         $page = max(1, (int) $request->query('page', 1));
-        // Batasi ukuran per blok maksimal 200 baris agar responsif <1 detik
-        $pageSize = min(max(1, (int) $request->query('page_size', 100)), 200);
+        // Batasi ukuran per blok maksimal 500 baris agar responsif dan mencakup jangkauan luas
+        $pageSize = min(max(1, (int) $request->query('page_size', 100)), 500);
         $sortBy = $request->query('sort_by');
         $sortDir = $request->query('sort_dir', 'asc');
         $fetchColors = $request->boolean('fetch_colors', true);
+        $skipSynced = $request->boolean('skip_synced', false);
 
         // Parse color_mapping & range_mapping jika dikirim via JSON query / payload
         $colorMapping = [];
@@ -1323,6 +1373,7 @@ class SpreadsheetConnectionController extends Controller
             'page'           => $page,
             'page_size'      => $pageSize,
             'fetch_colors'   => $fetchColors,
+            'skip_synced'    => $skipSynced,
             'status_col'     => $statusColumn,
             'default_status' => $defaultStatus,
             'colors'         => $colorMapping,
@@ -1334,11 +1385,29 @@ class SpreadsheetConnectionController extends Controller
         if (!$refresh && \Illuminate\Support\Facades\Cache::has($cacheKey)) {
             $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
             if (is_array($cached)) {
-                return response()->json([
+                return response()->json(array_merge([
                     'success' => true,
                     'data'    => $cached,
-                ]);
+                ], $cached));
             }
+        }
+
+        // Safeguard batas baris tab spreadsheet (cegah pencarian looping di luar baris data riil)
+        $profile = \App\Models\SpreadsheetTabProfile::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+            ->where('tab_name', $tabName)
+            ->first();
+        if ($profile && $profile->total_rows > 0 && $startRow !== null && $startRow > $profile->total_rows) {
+            return response()->json([
+                'success'            => true,
+                'message'            => 'Baris mulai melebihi total baris data yang ada pada tab spreadsheet.',
+                'tab_name'           => $tabName,
+                'start_row'          => $startRow,
+                'total_rows_scanned' => 0,
+                'returned_rows'      => 0,
+                'palette'            => [],
+                'dividers'           => [],
+                'rows'               => [],
+            ], 200);
         }
 
         try {
@@ -1356,16 +1425,20 @@ class SpreadsheetConnectionController extends Controller
                 rangeMapping: $rangeMapping,
                 defaultStatus: $defaultStatus,
                 statusColumn: $statusColumn,
-                fetchColors: $fetchColors
+                fetchColors: $fetchColors,
+                skipSynced: $skipSynced
             );
 
             \Illuminate\Support\Facades\Cache::put($cacheKey, $result, 120); // Simpan 2 menit
 
-            return response()->json([
+            return response()->json(array_merge([
                 'success' => true,
                 'data'    => $result,
-            ]);
+            ], $result));
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("workspaceRows error for conn {$spreadsheetConnection->id}: " . $e->getMessage(), [
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memindai workspace spreadsheet: ' . $e->getMessage(),
@@ -1452,6 +1525,7 @@ class SpreadsheetConnectionController extends Controller
             'items.*.row_data' => 'nullable|array',
             'items.*.expected_checksum' => 'nullable|string|max:100',
             'items.*.registration_id'   => 'nullable|integer',
+            'items.*.sync_id'           => 'nullable|string|max:100',
             'ownership_policies'        => 'nullable|array',
         ]);
 
@@ -1472,6 +1546,87 @@ class SpreadsheetConnectionController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal melakukan rekonsiliasi batch: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pulihkan dan tarik kembali baris yang SUDAH memiliki ID di spreadsheet ke database SertIF secara massal.
+     */
+    public function batchRecover(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'                  => 'required|string|max:100',
+            'items'                     => 'required|array|min:1',
+            'items.*.row_index'         => 'required|integer|min:1',
+            'items.*.sync_id'           => 'nullable|string|max:100',
+            'items.*.status'            => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+            'items.*.row_data'          => 'nullable|array',
+            'items.*.expected_checksum' => 'nullable|string|max:100',
+            'items.*.registration_id'   => 'nullable|integer',
+            'ownership_policies'        => 'nullable|array',
+        ]);
+
+        try {
+            $result = $reconcileService->batchRecoverRows(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                items: $validated['items'],
+                ownershipPolicies: $validated['ownership_policies'] ?? []
+            );
+
+            return response()->json([
+                'success' => true,
+                'data'    => $result,
+                'message' => "Berhasil memulihkan {$result['recovered_count']} dari {$result['total']} baris data ber-ID ke SertIF.",
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memulihkan baris ber-ID: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pulihkan dan tarik kembali satu baris yang ber-ID di spreadsheet ke database SertIF.
+     */
+    public function recoverRow(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'          => 'required|string|max:100',
+            'row_index'         => 'required|integer|min:2',
+            'sync_id'           => 'required|string|max:100',
+            'registration_id'   => 'nullable|integer',
+            'expected_checksum' => 'nullable|string|max:100',
+            'row_data'          => 'nullable|array',
+            'internship_status' => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+        ]);
+
+        try {
+            $result = $reconcileService->recoverOrReingestExistingRow(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                rowIndex: (int) $validated['row_index'],
+                existingSyncId: $validated['sync_id'],
+                remoteRegistrationId: isset($validated['registration_id']) ? (int) $validated['registration_id'] : null,
+                rowData: $validated['row_data'] ?? [],
+                targetStatus: $validated['internship_status'] ?? null,
+                expectedChecksum: $validated['expected_checksum'] ?? null
+            );
+
+            $status = ($result['success'] ?? false) ? 200 : 422;
+            return response()->json($result, $status);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memulihkan baris ber-ID: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -1571,7 +1726,7 @@ class SpreadsheetConnectionController extends Controller
             'tab_name'   => 'required|string|max:100',
             'header_row' => 'nullable|integer|min:1|max:1000',
             'columns'    => 'required|array|min:1',
-            'columns.*.header_name'  => 'required|string',
+            'columns.*.header_name'  => 'nullable|string',
             'columns.*.col_letter'   => 'nullable|string',
             'columns.*.category'     => 'nullable|string',
             'columns.*.field_key'    => 'nullable|string',
@@ -1597,102 +1752,5 @@ class SpreadsheetConnectionController extends Controller
                 'message' => 'Gagal menyimpan pemetaan kolom brand: ' . $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * Universal Spreadsheet Search: Cari pendaftar pada proyeksi lokal database (Read-Only).
-     */
-    public function searchDocuments(
-        Request $request,
-        SpreadsheetConnection $spreadsheetConnection,
-        \App\Services\SpreadsheetSearch\UniversalSpreadsheetSearchService $searchService
-    ) {
-        $q = (string) $request->query('q', '');
-        $tabName = $request->query('tab_name');
-        $identityType = $request->query('identity_type');
-        $page = (int) $request->query('page', 1);
-        $pageSize = (int) $request->query('page_size', 20);
-
-        $result = $searchService->search(
-            connection: $spreadsheetConnection,
-            searchQuery: $q,
-            tabName: $tabName,
-            identityType: $identityType,
-            page: $page,
-            pageSize: $pageSize
-        );
-
-        return response()->json($result);
-    }
-
-    /**
-     * Mulai proses background indexing untuk tab tertentu.
-     */
-    public function startIndexing(
-        Request $request,
-        SpreadsheetConnection $spreadsheetConnection,
-        \App\Services\SpreadsheetSearch\SpreadsheetIndexingPipelineService $pipelineService
-    ) {
-        $validated = $request->validate([
-            'tab_name'  => 'required|string|max:150',
-            'sheet_id'  => 'nullable|integer',
-            'page_size' => 'nullable|integer|min:20|max:200',
-        ]);
-
-        try {
-            $pageSize = $validated['page_size'] ?? 200;
-            $run = $pipelineService->startIndexRun(
-                connection: $spreadsheetConnection,
-                tabName: $validated['tab_name'],
-                sheetId: $validated['sheet_id'] ?? null,
-                pageSize: $pageSize,
-                dispatchQueue: true
-            );
-
-            // Jika dalam unit test, jalankan secara sinkron
-            if (app()->runningUnitTests()) {
-                $pipelineService->processSync($run, 5);
-            }
-
-            return response()->json([
-                'success'      => true,
-                'message'      => "Proses indexing untuk tab '{$run->tab_name}' telah dimulai di latar belakang.",
-                'index_run_id' => $run->id,
-                'status'       => $run->fresh()->status,
-                'indexed_rows' => $run->fresh()->indexed_rows,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memulai proses indexing: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Periksa status proses background indexing.
-     */
-    public function checkIndexingStatus(
-        Request $request,
-        SpreadsheetConnection $spreadsheetConnection,
-        int $runId
-    ) {
-        $run = \App\Models\SpreadsheetSearchIndexRun::where('spreadsheet_connection_id', $spreadsheetConnection->id)
-            ->findOrFail($runId);
-
-        return response()->json([
-            'success'        => true,
-            'index_run_id'   => $run->id,
-            'tab_name'       => $run->tab_name,
-            'status'         => $run->status,
-            'total_rows'     => $run->total_rows,
-            'processed_rows' => $run->processed_rows,
-            'indexed_rows'   => $run->indexed_rows,
-            'skipped_rows'   => $run->skipped_rows,
-            'current_page'   => $run->current_page,
-            'started_at'     => $run->started_at?->toIso8601String(),
-            'completed_at'   => $run->completed_at?->toIso8601String(),
-            'last_error'     => $run->last_error,
-        ]);
     }
 }

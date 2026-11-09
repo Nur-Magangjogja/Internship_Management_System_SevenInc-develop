@@ -816,6 +816,10 @@ class GoogleAppsScriptTransport implements SpreadsheetSidecarTransportInterface
         $dangerousLeading = ['=', '+', '-', '@', "\t", "\r"];
 
         foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $sanitized[$key] = $this->sanitizePayloadForFormulas($value);
+                continue;
+            }
             if (is_string($value) && !empty($value)) {
                 $firstChar = $value[0];
                 if (in_array($firstChar, $dangerousLeading, true)) {

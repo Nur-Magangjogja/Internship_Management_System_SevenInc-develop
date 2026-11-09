@@ -113,6 +113,63 @@ class ActiveSheetManualRowReconciliationService
         $effectiveRegistrationId = $registrationId;
         $isNewlyIntegrated = false;
 
+        // Source-row idempotency key to prevent duplicate account creation on retries
+        $sourceRowKey = "row_sync_{$connection->id}_{$tabName}_{$rowIndex}_" . substr(md5(json_encode($rowData)), 0, 12);
+
+        $sheetSyncId = $rowData['SERTIF_SYNC_ID'] ?? $rowData['sertif_sync_id'] ?? null;
+        if (empty($existingSyncId) && !empty($sheetSyncId) && trim((string) $sheetSyncId) !== '' && trim((string) $sheetSyncId) !== '-') {
+            $existingSyncId = trim((string) $sheetSyncId);
+        }
+
+        $sheetRegId = $rowData['SERTIF_REGISTRATION_ID'] ?? $rowData['sertif_registration_id'] ?? null;
+        if (empty($registrationId) && !empty($sheetRegId) && is_numeric($sheetRegId)) {
+            $registrationId = (int) $sheetRegId;
+        }
+
+        // Recovery Guard: Jika baris SUDAH ber-ID di sheet, periksa apakah datanya hilang di database lokal
+        if ($existingSyncId) {
+            $existingRowSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
+                ->where('external_sync_id', $existingSyncId)
+                ->first();
+            $localRegExists = false;
+            if ($existingRowSync && $existingRowSync->syncable_id) {
+                $localRegExists = InternshipRegistration::where('id', $existingRowSync->syncable_id)->whereNull('deleted_at')->exists();
+            } elseif ($registrationId) {
+                $localRegExists = InternshipRegistration::where('id', $registrationId)->whereNull('deleted_at')->exists();
+            }
+
+            if (!$localRegExists) {
+                return $this->recoverOrReingestExistingRow(
+                    connection: $connection,
+                    tabName: $tabName,
+                    rowIndex: $rowIndex,
+                    existingSyncId: $existingSyncId,
+                    remoteRegistrationId: $registrationId,
+                    rowData: $rowData,
+                    targetStatus: $targetStatus,
+                    expectedChecksum: $expectedChecksum,
+                    ownershipPolicies: $ownershipPolicies
+                );
+            }
+        }
+
+        $existingRowSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
+            ->where(function ($q) use ($sourceRowKey, $existingSyncId) {
+                if ($existingSyncId) {
+                    $q->where('external_sync_id', $existingSyncId);
+                } else {
+                    $q->where('locked_by', $sourceRowKey);
+                }
+            })
+            ->first();
+
+        if ($existingRowSync) {
+            $syncId = $existingRowSync->external_sync_id;
+            if ($existingRowSync->syncable_id && !$effectiveRegistrationId) {
+                $effectiveRegistrationId = $existingRowSync->syncable_id;
+            }
+        }
+
         if (!$effectiveRegistrationId && !empty($rowData)) {
             $identityMatch = $this->resolveIdentityMatch($connection, $rowData);
             if ($identityMatch['matched_registration_id']) {
@@ -127,7 +184,31 @@ class ActiveSheetManualRowReconciliationService
                 );
                 $effectiveRegistrationId = $integratedReg->id;
                 $isNewlyIntegrated = true;
+
+                // Keep is_integrated = false until remote write-back is confirmed
+                $integratedReg->is_integrated = false;
+                $integratedReg->save();
             }
+        }
+
+        // PRE-WRITE PERSISTENCE: Record SpreadsheetRowSync as PENDING before remote call
+        if ($effectiveRegistrationId) {
+            SpreadsheetRowSync::updateOrCreate(
+                [
+                    'spreadsheet_connection_id' => $connection->id,
+                    'syncable_type'             => InternshipRegistration::class,
+                    'syncable_id'               => $effectiveRegistrationId,
+                ],
+                [
+                    'external_sync_id' => $syncId,
+                    'target_sheet_tab' => $tabName,
+                    'sync_channel'     => $isNewlyIntegrated ? 'integrated_external' : 'manual_reconciliation',
+                    'sync_status'      => SpreadsheetRowSync::STATUS_PENDING,
+                    'row_index'        => $rowIndex,
+                    'locked_by'        => $sourceRowKey,
+                    'last_attempt_at'  => now(),
+                ]
+            );
         }
 
         // 1. Panggil attach_row_sync_id ke Apps Script
@@ -142,6 +223,14 @@ class ActiveSheetManualRowReconciliationService
 
         if (!$response->success) {
             Log::warning("Reconciliation failed for row {$rowIndex} on tab {$tabName}: " . $response->errorMessage);
+            if ($effectiveRegistrationId) {
+                SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
+                    ->where('syncable_id', $effectiveRegistrationId)
+                    ->update([
+                        'sync_status'   => SpreadsheetRowSync::STATUS_FAILED,
+                        'error_message' => $response->errorMessage,
+                    ]);
+            }
             return [
                 'success'    => false,
                 'row_index'  => $rowIndex,
@@ -150,7 +239,7 @@ class ActiveSheetManualRowReconciliationService
             ];
         }
 
-        // 2. Catat atau perbarui SpreadsheetRowSync
+        // 2. Catat atau perbarui SpreadsheetRowSync setelah terkonfirmasi sukses
         if ($effectiveRegistrationId) {
             SpreadsheetRowSync::updateOrCreate(
                 [
@@ -164,6 +253,7 @@ class ActiveSheetManualRowReconciliationService
                     'sync_channel'     => $isNewlyIntegrated ? 'integrated_external' : 'manual_reconciliation',
                     'sync_status'      => SpreadsheetRowSync::STATUS_SYNCED,
                     'last_synced_at'   => now(),
+                    'error_message'    => null,
                 ]
             );
 
@@ -199,34 +289,40 @@ class ActiveSheetManualRowReconciliationService
     }
 
     /**
-     * Buat otomatis akun User pemagang dan record InternshipRegistration bertipe terintegrasi.
+     * Ekstrak atribut calon pemagang dari baris spreadsheet dengan fallback universal.
      */
-    public function createIntegratedUserAndRegistration(
+    public function extractCandidateAttributesFromRow(
         SpreadsheetConnection $connection,
         array $rowData,
-        string $syncId,
-        int $rowIndex,
         ?string $targetStatus = null
-    ): InternshipRegistration {
+    ): array {
         $fullname = null;
         $email = null;
         $phone = null;
         $studentId = null;
+        $institution = null;
+        $studyProgram = null;
+        $divisionId = null;
         $detectedStatus = null;
 
         foreach ($rowData as $k => $v) {
+            if (empty($v) || is_array($v)) continue;
             $cleanK = strtolower(trim((string) $k));
             $cleanV = strtolower(trim((string) $v));
-            if (empty($v)) continue;
+            if (str_starts_with($cleanK, '_') || str_starts_with($cleanK, 'sertif_')) continue;
 
-            if (str_contains($cleanK, 'email') && !$email) {
-                $email = strtolower(trim((string) $v));
-            } elseif ((str_contains($cleanK, 'nama lengkap') || $cleanK === 'nama') && !$fullname) {
+            if ((str_contains($cleanK, 'nama lengkap') || $cleanK === 'nama' || $cleanK === 'fullname' || $cleanK === 'field_nama_lengkap') && !$fullname) {
                 $fullname = trim((string) $v);
-            } elseif ((str_contains($cleanK, 'no. hp') || str_contains($cleanK, 'whatsapp') || $cleanK === 'no hp') && !$phone) {
+            } elseif ((str_contains($cleanK, 'email') || $cleanK === 'surel' || $cleanK === 'field_email') && !$email) {
+                $email = strtolower(trim((string) $v));
+            } elseif ((str_contains($cleanK, 'no. hp') || str_contains($cleanK, 'whatsapp') || $cleanK === 'no hp' || $cleanK === 'wa' || $cleanK === 'field_no_hp' || $cleanK === 'phone_number') && !$phone) {
                 $phone = preg_replace('/\D/', '', (string) $v);
-            } elseif ((str_contains($cleanK, 'nim') || str_contains($cleanK, 'nis')) && !$studentId) {
+            } elseif ((str_contains($cleanK, 'nim') || str_contains($cleanK, 'nis') || $cleanK === 'field_nim' || $cleanK === 'student_id') && !$studentId) {
                 $studentId = trim((string) $v);
+            } elseif ((str_contains($cleanK, 'sekolah') || str_contains($cleanK, 'universitas') || str_contains($cleanK, 'instansi') || str_contains($cleanK, 'kampus') || $cleanK === 'field_asal_sekolah') && !$institution) {
+                $institution = trim((string) $v);
+            } elseif ((str_contains($cleanK, 'jurusan') || str_contains($cleanK, 'prodi') || str_contains($cleanK, 'program studi') || $cleanK === 'field_jurusan') && !$studyProgram) {
+                $studyProgram = trim((string) $v);
             } elseif ((str_contains($cleanK, 'status') || str_contains($cleanK, 'ket')) && !$detectedStatus) {
                 if (str_contains($cleanV, 'aktif') || str_contains($cleanV, 'masuk')) {
                     $detectedStatus = InternshipRegistration::STATUS_ACTIVE;
@@ -260,8 +356,32 @@ class ActiveSheetManualRowReconciliationService
             ? $targetStatus
             : ($detectedStatus ?: ($connection->default_integrated_status ?: InternshipRegistration::STATUS_WAITING));
 
-        $fullname = $fullname ?: "Peserta Terintegrasi Baris {$rowIndex}";
-        $cleanEmail = $email ?: ("integrated." . substr(Str::slug($syncId, ''), 0, 10) . "@brand" . ($connection->brand_id ?? 'global') . ".test");
+        return [
+            'fullname'               => $fullname,
+            'email'                  => $email,
+            'phone_number'           => $phone,
+            'student_id'             => $studentId,
+            'raw_institution_name'   => $institution,
+            'raw_study_program_name' => $studyProgram,
+            'division_id'            => $divisionId,
+            'internship_status'      => $effectiveStatus,
+        ];
+    }
+
+    /**
+     * Buat otomatis akun User pemagang dan record InternshipRegistration bertipe terintegrasi.
+     */
+    public function createIntegratedUserAndRegistration(
+        SpreadsheetConnection $connection,
+        array $rowData,
+        string $syncId,
+        int $rowIndex,
+        ?string $targetStatus = null
+    ): InternshipRegistration {
+        $extracted = $this->extractCandidateAttributesFromRow($connection, $rowData, $targetStatus);
+
+        $fullname = $extracted['fullname'] ?: "Peserta Terintegrasi Baris {$rowIndex}";
+        $cleanEmail = $extracted['email'] ?: ("integrated." . substr(Str::slug($syncId, ''), 0, 10) . "@brand" . ($connection->brand_id ?? 'global') . ".test");
 
         $user = User::firstOrCreate(
             ['email' => $cleanEmail],
@@ -278,10 +398,13 @@ class ActiveSheetManualRowReconciliationService
             'user_id'                 => $user->id,
             'fullname'                => $fullname,
             'email'                   => $cleanEmail,
-            'phone_number'            => $phone,
-            'student_id'              => $studentId,
+            'phone_number'            => $extracted['phone_number'],
+            'student_id'              => $extracted['student_id'],
+            'raw_institution_name'    => $extracted['raw_institution_name'],
+            'raw_study_program_name'  => $extracted['raw_study_program_name'],
+            'division_id'             => $extracted['division_id'],
             'brand_id'                => $connection->brand_id,
-            'internship_status'       => $effectiveStatus,
+            'internship_status'       => $extracted['internship_status'],
             'registration_type'       => 'integrated',
             'is_integrated'           => true,
             'registration_provenance' => 'reconciled_sheet',
@@ -293,6 +416,178 @@ class ActiveSheetManualRowReconciliationService
         }
 
         return $reg;
+    }
+
+    /**
+     * Pulihkan / ambil kembali (re-ingest) data pendaftaran dari baris spreadsheet yang SUDAH memiliki ID
+     * namun datanya hilang/belum ada di database SertIF lokal, tanpa mengubah SERTIF_SYNC_ID pada spreadsheet.
+     */
+    public function recoverOrReingestExistingRow(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        int $rowIndex,
+        string $existingSyncId,
+        ?int $remoteRegistrationId = null,
+        array $rowData = [],
+        ?string $targetStatus = null,
+        ?string $expectedChecksum = null,
+        array $ownershipPolicies = []
+    ): array {
+        // Pre-Write Fingerprint Guard
+        if ($expectedChecksum !== null && !empty($rowData)) {
+            $computed = $this->computeRowContentChecksum($rowData);
+            if ($computed !== $expectedChecksum) {
+                return [
+                    'success'    => false,
+                    'row_index'  => $rowIndex,
+                    'error_code' => 'CONCURRENCY_CONFLICT',
+                    'message'    => "Struktur atau isi data baris {$rowIndex} telah berubah secara konkuren di Google Sheets. Operasi dibatalkan demi keamanan data.",
+                ];
+            }
+        }
+
+        $existingRowSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
+            ->where('external_sync_id', $existingSyncId)
+            ->first();
+
+        $registration = null;
+        if ($existingRowSync && $existingRowSync->syncable_id) {
+            $registration = InternshipRegistration::where('id', $existingRowSync->syncable_id)
+                ->whereNull('deleted_at')
+                ->first();
+        }
+
+        if (!$registration && $remoteRegistrationId) {
+            $registration = InternshipRegistration::where('id', $remoteRegistrationId)
+                ->where('brand_id', $connection->brand_id)
+                ->whereNull('deleted_at')
+                ->first();
+        }
+
+        $extracted = $this->extractCandidateAttributesFromRow($connection, $rowData, $targetStatus);
+
+        if (!$registration && !empty($extracted['email'])) {
+            $registration = InternshipRegistration::where('email', $extracted['email'])
+                ->where('brand_id', $connection->brand_id)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->first();
+        }
+
+        $isNewlyRestored = false;
+
+        if ($registration) {
+            $registration->is_integrated = true;
+            if (empty($registration->registration_provenance) || $registration->registration_provenance === 'regular_web') {
+                $registration->registration_provenance = 'reconciled_sheet';
+            }
+            $registration->save();
+
+            if (!empty($rowData)) {
+                $this->saveCustomAnswersFromRowData($registration, $rowData);
+                if (!empty($ownershipPolicies)) {
+                    $this->applyFieldOwnership($registration, $rowData, $ownershipPolicies);
+                }
+            }
+        } else {
+            // Data hilang di database lokal SertIF -> Pulihkan dan buat ulang akun serta registrasi
+            $fullname = $extracted['fullname'] ?: "Peserta Pulih Baris {$rowIndex}";
+            $cleanEmail = $extracted['email'] ?: ("recovered." . substr(Str::slug($existingSyncId, ''), 0, 10) . "@brand" . ($connection->brand_id ?? 'global') . ".test");
+
+            $user = User::firstOrCreate(
+                ['email' => $cleanEmail],
+                [
+                    'name'      => $fullname,
+                    'password'  => Hash::make(Str::random(16)),
+                    'role'      => 'pemagang',
+                    'brand_id'  => $connection->brand_id,
+                    'is_banned' => false,
+                ]
+            );
+
+            $reg = new InternshipRegistration([
+                'user_id'                 => $user->id,
+                'fullname'                => $fullname,
+                'email'                   => $cleanEmail,
+                'phone_number'            => $extracted['phone_number'],
+                'student_id'              => $extracted['student_id'],
+                'raw_institution_name'    => $extracted['raw_institution_name'],
+                'raw_study_program_name'  => $extracted['raw_study_program_name'],
+                'division_id'             => $extracted['division_id'],
+                'brand_id'                => $connection->brand_id,
+                'internship_status'       => $extracted['internship_status'],
+                'registration_type'       => 'integrated',
+                'is_integrated'           => true,
+                'registration_provenance' => 'recovered_sheet',
+                'created_at'              => now(),
+            ]);
+
+            // Pertahankan ID asli jika remoteRegistrationId tersedia dan primary key tersebut belum terpakai
+            if ($remoteRegistrationId && !InternshipRegistration::where('id', $remoteRegistrationId)->exists()) {
+                $reg->id = $remoteRegistrationId;
+            }
+
+            $reg->save();
+
+            if (!empty($rowData)) {
+                $this->saveCustomAnswersFromRowData($reg, $rowData);
+                if (!empty($ownershipPolicies)) {
+                    $this->applyFieldOwnership($reg, $rowData, $ownershipPolicies);
+                }
+            }
+
+            $registration = $reg;
+            $isNewlyRestored = true;
+        }
+
+        // Tautkan SpreadsheetRowSync dengan SERTIF_SYNC_ID asli tanpa mengubah ID di spreadsheet
+        SpreadsheetRowSync::updateOrCreate(
+            [
+                'spreadsheet_connection_id' => $connection->id,
+                'external_sync_id'          => $existingSyncId,
+            ],
+            [
+                'syncable_type'             => InternshipRegistration::class,
+                'syncable_id'               => $registration->id,
+                'target_sheet_tab'          => $tabName,
+                'sync_channel'              => 'recovered_external',
+                'sync_status'               => SpreadsheetRowSync::STATUS_SYNCED,
+                'row_index'                 => $rowIndex,
+                'last_synced_at'            => now(),
+                'payload_checksum'          => $this->computeRowContentChecksum($rowData),
+                'error_message'             => null,
+            ]
+        );
+
+        // Jika di remote spreadsheet kolom SERTIF_REGISTRATION_ID masih kosong atau belum cocok dengan ID lokal,
+        // perbarui informasi registrasi di Google Sheets dengan tetap mempertahankan SERTIF_SYNC_ID asli
+        $remoteRegIdStr = !empty($rowData['SERTIF_REGISTRATION_ID']) ? (string) $rowData['SERTIF_REGISTRATION_ID'] : null;
+        if (empty($remoteRegIdStr) || (string) $remoteRegIdStr !== (string) $registration->id) {
+            try {
+                $this->transport->attachRowSyncId(
+                    connection: $connection,
+                    tabName: $tabName,
+                    rowIndex: $rowIndex,
+                    syncId: $existingSyncId,
+                    registrationId: (string) $registration->id,
+                    expectedChecksum: $expectedChecksum
+                );
+            } catch (\Throwable $e) {
+                Log::warning("Gagal memperbarui SERTIF_REGISTRATION_ID remote saat recovery baris {$rowIndex}: " . $e->getMessage());
+            }
+        }
+
+        return [
+            'success'         => true,
+            'row_index'       => $rowIndex,
+            'sync_id'         => $existingSyncId,
+            'registration_id' => $registration->id,
+            'is_recovered'    => true,
+            'is_integrated'   => true,
+            'message'         => $isNewlyRestored
+                ? "Data baris {$rowIndex} dengan ID {$existingSyncId} berhasil dipulihkan ke database SertIF (#{$registration->id})."
+                : "Data baris {$rowIndex} berhasil ditautkan kembali ke pendaftaran #{$registration->id}.",
+        ];
     }
 
     /**
@@ -351,6 +646,12 @@ class ActiveSheetManualRowReconciliationService
             $syncMap = SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
                 ->whereIn('external_sync_id', $syncIds)
                 ->whereNotNull('syncable_id')
+                ->whereExists(function ($sub) {
+                    $sub->select(DB::raw(1))
+                        ->from('internship_registrations')
+                        ->whereColumn('internship_registrations.id', 'spreadsheet_row_syncs.syncable_id')
+                        ->whereNull('internship_registrations.deleted_at');
+                })
                 ->pluck('syncable_id', 'external_sync_id')
                 ->all();
         }
@@ -449,7 +750,11 @@ class ActiveSheetManualRowReconciliationService
                 $existingSync = SpreadsheetRowSync::where('spreadsheet_connection_id', $connection->id)
                     ->where('external_sync_id', $cleanSync)
                     ->first();
-                $syncableId = $existingSync?->syncable_id;
+                if ($existingSync && $existingSync->syncable_id) {
+                    if (InternshipRegistration::where('id', $existingSync->syncable_id)->whereNull('deleted_at')->exists()) {
+                        $syncableId = $existingSync->syncable_id;
+                    }
+                }
             }
 
             if ($syncableId) {
@@ -495,6 +800,9 @@ class ActiveSheetManualRowReconciliationService
         $studentId = null;
         foreach ($rowData as $k => $v) {
             $cleanK = strtolower(trim((string) $k));
+            if (str_starts_with($cleanK, '_')) continue;
+            if (!is_string($v) && !is_numeric($v)) continue;
+
             if (str_contains($cleanK, 'email') && !empty($v)) {
                 $email = strtolower(trim((string) $v));
             } elseif ((str_contains($cleanK, 'nim') || str_contains($cleanK, 'nis')) && !empty($v)) {
@@ -599,13 +907,29 @@ class ActiveSheetManualRowReconciliationService
             }
         }
 
+        if (!empty($cleanSync) || (!empty($regId) && is_numeric($regId))) {
+            $idLabel = !empty($cleanSync) ? $cleanSync : ('#' . $regId);
+            return [
+                'match_type'              => 'orphaned_remote_id',
+                'confidence'              => 1.0,
+                'matched_registration_id' => null,
+                'sync_id'                 => $cleanSync,
+                'remote_registration_id'  => (!empty($regId) && is_numeric($regId)) ? (int) $regId : null,
+                'reason'                  => "Baris telah memiliki ID ({$idLabel}) di spreadsheet, namun data belum ada / hilang di database lokal SertIF. Siap untuk dipulihkan (recovery).",
+                'requires_review'         => false,
+                'is_recovery_candidate'   => true,
+            ];
+        }
+
         return [
             'match_type'              => 'no_match',
             'confidence'              => 0.0,
             'matched_registration_id' => null,
             'sync_id'                 => null,
+            'remote_registration_id'  => null,
             'reason'                  => 'Tidak ada kecocokan identitas lokal (Siap dibuatkan pendaftaran baru)',
             'requires_review'         => false,
+            'is_recovery_candidate'   => false,
         ];
     }
 
@@ -748,7 +1072,8 @@ class ActiveSheetManualRowReconciliationService
         array $rangeMapping = [],
         ?string $defaultStatus = null,
         ?string $statusColumn = null,
-        bool $fetchColors = true
+        bool $fetchColors = true,
+        bool $skipSynced = false
     ): array {
         $profile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
             ->where('tab_name', $tabName)
@@ -809,6 +1134,7 @@ class ActiveSheetManualRowReconciliationService
         }
 
         $paletteMap = [];
+        $columnValuesMap = [];
         $detectedDividers = [];
         $processedRows = [];
 
@@ -844,17 +1170,32 @@ class ActiveSheetManualRowReconciliationService
                 ];
             }
 
-            // Pisahkan kolom data mentah
+            // Pisahkan kolom data mentah (abaikan semua metadata berawalan underscore)
             $rowData = [];
             foreach ($r as $k => $v) {
-                if (!in_array($k, ['_row_number', '_row_background', '_is_divider', '_divider_text'], true)) {
+                if (!str_starts_with((string) $k, '_')) {
                     $rowData[$k] = $v;
+                }
+            }
+
+            // Kumpulkan varian nilai unik per kolom di seluruh baris sheet (untuk deteksi status berbasis nilai kolom)
+            foreach ($rowData as $k => $v) {
+                if (is_string($v) || is_numeric($v)) {
+                    $valStr = trim((string) $v);
+                    if ($valStr !== '' && strlen($valStr) <= 100) {
+                        $columnValuesMap[$k][$valStr] = ($columnValuesMap[$k][$valStr] ?? 0) + 1;
+                    }
                 }
             }
 
             // Periksa keberadaan SERTIF_SYNC_ID
             $syncId = $rowData['SERTIF_SYNC_ID'] ?? $rowData['sertif_sync_id'] ?? null;
             $hasSyncId = !empty($syncId) && trim((string) $syncId) !== '' && trim((string) $syncId) !== '-';
+
+            // Filter skip jika sudah ada ID SertIF (agar jangkauan pemberian status lebih luas pada baris baru)
+            if ($skipSynced && $hasSyncId) {
+                continue;
+            }
 
             // Rule Engine Penentuan Status Magang: Status awal MUTLAK NULL
             $assignedStatus = null;
@@ -911,8 +1252,10 @@ class ActiveSheetManualRowReconciliationService
 
             // Prioritaskan kolom yang namanya mengandung nama lengkap
             foreach ($rowData as $k => $val) {
-                $cleanK = strtolower(trim($k));
-                if ((str_contains($cleanK, 'nama lengkap') || $cleanK === 'nama') && !empty($val) && is_string($val)) {
+                if (str_starts_with((string) $k, '_')) continue;
+                if (!is_string($val)) continue;
+                $cleanK = strtolower(trim((string) $k));
+                if ((str_contains($cleanK, 'nama lengkap') || $cleanK === 'nama') && !empty($val)) {
                     $displayName = $val;
                     break;
                 }
@@ -920,16 +1263,18 @@ class ActiveSheetManualRowReconciliationService
 
             // Cari kontak
             foreach ($rowData as $k => $val) {
-                $cleanK = strtolower(trim($k));
+                if (str_starts_with((string) $k, '_')) continue;
+                if (!is_string($val) && !is_numeric($val)) continue;
+                $cleanK = strtolower(trim((string) $k));
                 if ((str_contains($cleanK, 'email') || str_contains($cleanK, 'whatsapp') || str_contains($cleanK, 'no. hp') || $cleanK === 'no hp') && !empty($val)) {
-                    $displayContact = $val;
+                    $displayContact = (string) $val;
                     break;
                 }
             }
 
             if (!$displayName) {
                 foreach ($rowData as $k => $val) {
-                    $cleanK = strtolower(trim($k));
+                    $cleanK = strtolower(trim((string) $k));
                     if (str_starts_with($cleanK, '_') || str_starts_with($cleanK, 'sertif_')) continue;
                     if (!empty($val) && is_string($val) && strlen($val) > 2) {
                         $displayName = $val;
@@ -939,22 +1284,25 @@ class ActiveSheetManualRowReconciliationService
             }
 
             $processedRows[] = [
-                'row_number'       => $rowNum,
-                'row_background'   => $cleanBg === 'transparent' ? '#ffffff' : $cleanBg,
-                'raw_background'   => $cleanBg,
-                'is_transparent'   => $isTransparent,
-                'is_divider'       => $isDivider,
-                'divider_text'     => $dividerText,
-                'display_name'     => (string) ($displayName ?: "Baris {$rowNum}"),
-                'display_contact'  => (string) ($displayContact ?: '-'),
-                'status'           => $assignedStatus,
-                'has_sync_id'      => $hasSyncId,
-                'sync_id'          => $hasSyncId ? (string) $syncId : null,
-                'matched_local_id' => $identityMatch['matched_registration_id'],
-                'match_type'       => $identityMatch['match_type'],
-                'match_reason'     => $identityMatch['reason'],
-                'content_checksum' => $checksum,
-                'data'             => $rowData,
+                'row_number'             => $rowNum,
+                'row_background'         => $cleanBg === 'transparent' ? '#ffffff' : $cleanBg,
+                'raw_background'         => $cleanBg,
+                'is_transparent'         => $isTransparent,
+                'is_divider'             => $isDivider,
+                'divider_text'           => $dividerText,
+                'display_name'           => (string) ($displayName ?: "Baris {$rowNum}"),
+                'display_contact'        => (string) ($displayContact ?: '-'),
+                'status'                 => $assignedStatus,
+                'has_sync_id'            => $hasSyncId,
+                'sync_id'                => $hasSyncId ? (string) $syncId : null,
+                'matched_local_id'       => $identityMatch['matched_registration_id'],
+                'is_missing_local'       => $hasSyncId && empty($identityMatch['matched_registration_id']),
+                'remote_registration_id' => $identityMatch['remote_registration_id'] ?? null,
+                'is_recovery_candidate'  => !empty($identityMatch['is_recovery_candidate']),
+                'match_type'             => $identityMatch['match_type'],
+                'match_reason'           => $identityMatch['reason'],
+                'content_checksum'       => $checksum,
+                'data'                   => $rowData,
             ];
         }
 
@@ -991,15 +1339,16 @@ class ActiveSheetManualRowReconciliationService
         }
 
         return [
-            'success'           => true,
-            'total_rows'        => count($processedRows),
-            'header_row'        => $headerRow,
-            'start_row'         => $startRow,
-            'palette'           => $palette,
-            'detected_dividers' => $detectedDividers,
-            'page'              => (int) ($response->context['page'] ?? $page),
-            'total_pages'       => (int) ($response->context['total_pages'] ?? 1),
-            'rows'              => $processedRows,
+            'success'                => true,
+            'total_rows'             => count($processedRows),
+            'header_row'             => $headerRow,
+            'start_row'              => $startRow,
+            'palette'                => $palette,
+            'column_distinct_values' => $columnValuesMap,
+            'detected_dividers'      => $detectedDividers,
+            'page'                   => (int) ($response->context['page'] ?? $page),
+            'total_pages'            => (int) ($response->context['total_pages'] ?? 1),
+            'rows'                   => array_values($processedRows),
         ];
     }
 
@@ -1015,6 +1364,7 @@ class ActiveSheetManualRowReconciliationService
         $counts = [
             'exact_source_match'       => 0,
             'exact_registration_match' => 0,
+            'orphaned_remote_id'       => 0,
             'strong_candidate'         => 0,
             'conflicting_identity'     => 0,
             'ambiguous_identity'       => 0,
@@ -1052,6 +1402,8 @@ class ActiveSheetManualRowReconciliationService
             $action = 'create_new';
             if ($mType === 'exact_source_match' || $mType === 'exact_registration_match') {
                 $action = 'sync_existing';
+            } elseif ($mType === 'orphaned_remote_id') {
+                $action = 'recover_and_reingest';
             } elseif ($mType === 'strong_candidate') {
                 $action = 'link_and_sync';
             } elseif ($mType === 'conflicting_identity') {
@@ -1081,7 +1433,7 @@ class ActiveSheetManualRowReconciliationService
             ];
         }
 
-        $canWrite = $counts['no_match'] + $counts['strong_candidate'] + $counts['exact_registration_match'] + $counts['exact_source_match'];
+        $canWrite = $counts['no_match'] + $counts['strong_candidate'] + $counts['exact_registration_match'] + $counts['exact_source_match'] + $counts['orphaned_remote_id'];
         $conflicts = $counts['conflicting_identity'] + $counts['ambiguous_identity'];
 
         $report = [
@@ -1142,6 +1494,7 @@ class ActiveSheetManualRowReconciliationService
             $rowData = (array) ($item['row_data'] ?? []);
             $checksum = $item['expected_checksum'] ?? null;
             $regId = !empty($item['registration_id']) ? (int) $item['registration_id'] : null;
+            $syncId = !empty($item['sync_id']) ? trim((string) $item['sync_id']) : null;
 
             if ($rIndex < 1) continue;
             if (empty($status) || $status === 'skip' || $status === 'none') {
@@ -1153,6 +1506,7 @@ class ActiveSheetManualRowReconciliationService
                     connection: $connection,
                     tabName: $tabName,
                     rowIndex: $rIndex,
+                    existingSyncId: $syncId,
                     registrationId: $regId,
                     expectedChecksum: $checksum,
                     rowData: $rowData,
@@ -1194,15 +1548,96 @@ class ActiveSheetManualRowReconciliationService
     }
 
     /**
+     * Pulihkan dan tarik kembali sekumpulan baris yang SUDAH memiliki ID di spreadsheet ke SertIF secara massal.
+     *
+     * @param array<int, array{row_index: int, status?: string, sync_id: string, row_data?: array, expected_checksum?: string, registration_id?: int}> $items
+     */
+    public function batchRecoverRows(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        array $items,
+        array $ownershipPolicies = []
+    ): array {
+        $recoveredCount = 0;
+        $failedCount = 0;
+        $results = [];
+
+        foreach ($items as $item) {
+            $rIndex = (int) ($item['row_index'] ?? 0);
+            $status = trim((string) ($item['status'] ?? ''));
+            $rowData = (array) ($item['row_data'] ?? []);
+            $checksum = $item['expected_checksum'] ?? null;
+            $syncId = $item['sync_id'] ?? ($rowData['SERTIF_SYNC_ID'] ?? $rowData['sertif_sync_id'] ?? null);
+            $regId = !empty($item['registration_id']) ? (int) $item['registration_id'] : (!empty($rowData['SERTIF_REGISTRATION_ID']) ? (int) $rowData['SERTIF_REGISTRATION_ID'] : null);
+
+            if ($rIndex < 1 || empty($syncId)) continue;
+
+            try {
+                $res = $this->recoverOrReingestExistingRow(
+                    connection: $connection,
+                    tabName: $tabName,
+                    rowIndex: $rIndex,
+                    existingSyncId: (string) $syncId,
+                    remoteRegistrationId: $regId,
+                    rowData: $rowData,
+                    targetStatus: (!empty($status) && $status !== 'unassigned' && $status !== 'skip') ? $status : null,
+                    expectedChecksum: $checksum,
+                    ownershipPolicies: $ownershipPolicies
+                );
+
+                if (!empty($res['success'])) {
+                    $recoveredCount++;
+                    $results[] = [
+                        'row_index'       => $rIndex,
+                        'success'         => true,
+                        'sync_id'         => $res['sync_id'],
+                        'registration_id' => $res['registration_id'],
+                    ];
+                } else {
+                    $failedCount++;
+                    $results[] = [
+                        'row_index' => $rIndex,
+                        'success'   => false,
+                        'message'   => $res['message'] ?? 'Gagal memulihkan baris.',
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $failedCount++;
+                $results[] = [
+                    'row_index' => $rIndex,
+                    'success'   => false,
+                    'message'   => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'total'           => count($items),
+            'recovered_count' => $recoveredCount,
+            'failed_count'    => $failedCount,
+            'results'         => $results,
+        ];
+    }
+
+    /**
      * Hitung checksum isi baris data mentah (mengabaikan kolom sistem).
      */
     public function computeRowContentChecksum(array $rowData): string
     {
         $filtered = [];
         foreach ($rowData as $k => $v) {
+            // Abaikan metadata internal berawalan underscore (_cells, _cells_by_letter, _row_background, dll)
+            if (str_starts_with((string) $k, '_')) {
+                continue;
+            }
+
             $cleanK = strtoupper(trim((string) $k));
             if (!in_array($cleanK, ['SERTIF_SYNC_ID', 'SERTIF_REGISTRATION_ID', 'SERTIF_SYNC_STATUS', 'SERTIF_LAST_SYNC_AT'], true)) {
-                $filtered[$cleanK] = trim((string) ($v ?? ''));
+                if (is_array($v)) {
+                    $filtered[$cleanK] = json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                } else {
+                    $filtered[$cleanK] = trim((string) ($v ?? ''));
+                }
             }
         }
         ksort($filtered);
@@ -1227,7 +1662,6 @@ class ActiveSheetManualRowReconciliationService
 
         $columns = $result['columns'] ?? [];
         $requiredSystemIds = [
-            'KET'                    => false,
             'SERTIF_SYNC_ID'         => false,
             'SERTIF_REGISTRATION_ID' => false,
             'SERTIF_SYNC_STATUS'     => false,
@@ -1255,13 +1689,17 @@ class ActiveSheetManualRowReconciliationService
 
             if ($hClean === 'KET') {
                 $ketColumns[] = $colLetter;
-            }
-
-            if (isset($requiredSystemIds[$hClean])) {
-                $requiredSystemIds[$hClean] = true;
-                $isSystem = true;
-                $category = 'system';
-            } elseif (str_starts_with($hClean, 'SERTIF_')) {
+                if (count($ketColumns) === 1) {
+                    $category = 'external';
+                    $fieldKey = 'ket_external';
+                } else {
+                    $category = 'standard';
+                    $fieldKey = 'ket_status_followup';
+                }
+            } elseif (isset($requiredSystemIds[$hClean]) || str_starts_with($hClean, 'SERTIF_')) {
+                if (isset($requiredSystemIds[$hClean])) {
+                    $requiredSystemIds[$hClean] = true;
+                }
                 $isSystem = true;
                 $category = 'system';
             } else {
@@ -1276,7 +1714,9 @@ class ActiveSheetManualRowReconciliationService
             $isDuplicate = isset($seenHeaders[$hClean]);
             $seenHeaders[$hClean] = true;
 
-            $fieldKey = $isSystem ? $hClean : ('field_' . Str::slug($col['header_name'] ?: ('col_' . $colLetter), '_'));
+            if ($hClean !== 'KET') {
+                $fieldKey = $isSystem ? $hClean : substr('field_' . Str::slug($col['header_name'] ?: ('col_' . $colLetter), '_'), 0, 50);
+            }
 
             $categorizedColumns[] = [
                 'col_letter'      => $colLetter,
@@ -1385,22 +1825,54 @@ class ActiveSheetManualRowReconciliationService
 
             $colLetter = $col['col_letter'] ?? \App\Services\SpreadsheetDiscoveryService::columnIndexToLetter($idx + 1);
             $category = $col['category'] ?? 'custom';
-            $fieldKey = $col['field_key'] ?? ('field_' . Str::slug($headerName, '_'));
+            $fieldKey = substr($col['field_key'] ?? ('field_' . Str::slug($headerName, '_')), 0, 50);
             $isSystem = ($category === 'system');
 
-            // Gunakan column_identity unik komposit (colLetter + fieldKey) agar kebal duplikasi nama header
-            $columnIdentity = $colLetter . '_' . $fieldKey;
+            $targetEntity = $isSystem ? 'spreadsheet_row_syncs' : ($category === 'standard' ? 'internship_registration' : ($category === 'external' ? 'external_sheet' : 'custom_answer'));
+            $targetField = substr($fieldKey, 0, 50);
+            $transformKey = null;
+            $direction = $isSystem ? 'system' : 'display_only';
+
+            if ($colLetter === 'AL' && strtoupper($headerName) === 'KET') {
+                $targetEntity = 'external_sheet';
+                $targetField = 'ket_external';
+                $direction = 'display_only';
+            } elseif ($colLetter === 'AM' && strtoupper($headerName) === 'KET') {
+                $targetEntity = 'internship_registration';
+                $targetField = 'ket';
+                $transformKey = 'status_label';
+                $direction = 'display_only';
+            } elseif ($isSystem) {
+                $targetField = substr(strtolower($headerName), 0, 50);
+                $transformKey = substr(strtolower($headerName), 0, 50);
+            } else {
+                $normTransform = \App\Services\RegistrationSpreadsheetMappingService::normalizeTransformKey($fieldKey, $headerName);
+                if ($normTransform !== $fieldKey) {
+                    $transformKey = $normTransform;
+                    $targetEntity = in_array($normTransform, ['email'], true) ? 'user' : (in_array($normTransform, ['institution_name'], true) ? 'institution' : 'internship_registration');
+                    $targetField = $normTransform;
+                    $direction = 'outbound';
+                }
+            }
+
+            $existing = SpreadsheetColumnMapping::where('spreadsheet_schema_version_id', $schemaVersion->id)
+                ->where('column_order', $idx + 1)
+                ->first();
+
+            $columnIdentity = $existing?->column_identity ?: \App\Services\SpreadsheetDiscoveryService::generatePhysicalColumnIdentity(0, $colLetter, $idx + 1, $headerName);
 
             SpreadsheetColumnMapping::updateOrCreate(
                 [
                     'spreadsheet_schema_version_id' => $schemaVersion->id,
-                    'column_identity'               => $columnIdentity,
+                    'column_order'                  => $idx + 1,
                 ],
                 [
-                    'column_order'   => $idx + 1,
+                    'column_identity' => $columnIdentity,
                     'sheet_header'   => $headerName,
-                    'target_entity'  => $isSystem ? 'system' : ($category === 'standard' ? 'registration' : 'custom_answer'),
-                    'target_field'   => $fieldKey,
+                    'target_entity'  => $targetEntity,
+                    'target_field'   => $targetField,
+                    'transform_key'  => $transformKey,
+                    'direction'      => $direction,
                     'data_type'      => $col['inferred_type'] ?? 'string',
                     'mapping_status' => 'active',
                 ]
@@ -1423,6 +1895,8 @@ class ActiveSheetManualRowReconciliationService
                 ];
             }
         }
+
+        $schemaVersion->update(['is_active' => true]);
 
         $existingProfile = SpreadsheetTabProfile::where('spreadsheet_connection_id', $connection->id)
             ->where(function ($q) use ($tabName) {
@@ -1509,7 +1983,7 @@ class ActiveSheetManualRowReconciliationService
                     'field_key'       => $fieldKey,
                 ],
                 [
-                    'answer_value'    => (string) $val,
+                    'answer_value'    => is_array($val) ? json_encode($val, JSON_UNESCAPED_UNICODE) : (string) $val,
                     'answer_label'    => (string) $header,
                 ]
             );

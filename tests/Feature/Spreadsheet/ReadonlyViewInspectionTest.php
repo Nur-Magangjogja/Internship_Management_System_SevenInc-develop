@@ -289,10 +289,11 @@ class ReadonlyViewInspectionTest extends TestCase
         $service = app(RegistrationSpreadsheetMappingService::class);
 
         $connection = SpreadsheetConnection::create([
-            'connection_key'    => SpreadsheetConnection::KEY_REGISTRATION,
-            'display_name'      => 'Spreadsheet Pendaftaran',
-            'is_enabled'        => true,
-            'connection_status' => SpreadsheetConnection::STATUS_CONNECTED,
+            'connection_key'            => SpreadsheetConnection::KEY_REGISTRATION,
+            'display_name'              => 'Spreadsheet Pendaftaran',
+            'is_enabled'                => true,
+            'is_yearly_cloning_enabled' => true,
+            'connection_status'         => SpreadsheetConnection::STATUS_CONNECTED,
         ]);
 
         $schema2024 = SpreadsheetSchemaVersion::create([
@@ -332,10 +333,11 @@ class ReadonlyViewInspectionTest extends TestCase
         $service = app(RegistrationSpreadsheetMappingService::class);
 
         $connection = SpreadsheetConnection::create([
-            'connection_key'    => SpreadsheetConnection::KEY_REGISTRATION,
-            'display_name'      => 'Spreadsheet Pendaftaran',
-            'is_enabled'        => true,
-            'connection_status' => SpreadsheetConnection::STATUS_CONNECTED,
+            'connection_key'            => SpreadsheetConnection::KEY_REGISTRATION,
+            'display_name'              => 'Spreadsheet Pendaftaran',
+            'is_enabled'                => true,
+            'is_yearly_cloning_enabled' => true,
+            'connection_status'         => SpreadsheetConnection::STATUS_CONNECTED,
         ]);
 
         $reg2020 = $this->createInternshipRegistration([

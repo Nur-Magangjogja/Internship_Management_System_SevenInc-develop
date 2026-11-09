@@ -497,11 +497,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin', 'preve
         Route::post('/{spreadsheetConnection}/dry-run-reconcile', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'dryRunReconcile'])->name('dry-run-reconcile');
         Route::post('/{spreadsheetConnection}/test-composite-parser', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'testCompositeParser'])->name('test-composite-parser');
         Route::post('/{spreadsheetConnection}/batch-reconcile', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'batchReconcile'])->name('batch-reconcile');
-
-        // Universal Spreadsheet Search Engine & Projection (Phase 4-5)
-        Route::get('/{spreadsheetConnection}/search', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'searchDocuments'])->name('search');
-        Route::post('/{spreadsheetConnection}/index-tab', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'startIndexing'])->name('index-tab');
-        Route::get('/{spreadsheetConnection}/index-runs/{runId}/status', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'checkIndexingStatus'])->name('index-status');
+        Route::post('/{spreadsheetConnection}/batch-recover', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'batchRecover'])->name('batch-recover');
+        Route::post('/{spreadsheetConnection}/recover-row', [\App\Http\Controllers\Admin\SpreadsheetConnectionController::class, 'recoverRow'])->name('recover-row');
     });
 
     // Manajemen Template MOU -> admin.mou-templates.*

@@ -685,6 +685,10 @@ class MockSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
                 if (in_array($k, ['_row_background', '_is_divider', '_divider_text', '_row_number'], true)) {
                     continue;
                 }
+                if ($k === '_cells_by_letter' || $k === '_cells') {
+                    $rowWithNum[$k] = $v;
+                    continue;
+                }
                 $rowWithNum[$k] = $maskPii ? $this->mockMaskPii((string) $v) : (string) $v;
             }
             $mappedRows[] = $rowWithNum;
