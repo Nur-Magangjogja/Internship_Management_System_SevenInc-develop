@@ -169,6 +169,15 @@ class RegistrationSpreadsheetMappingService
             ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
             ->first();
 
+        // Fallback jika brand memilih tidak clone per tahun: gunakan schema aktif berkelanjutan koneksi tersebut
+        if (!$schemaVersion && !$connection->is_yearly_cloning_enabled) {
+            $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
+                ->where('is_active', true)
+                ->latest('id')
+                ->with(['columnMappings' => fn($q) => $q->where('mapping_status', 'active')->orderBy('column_order')])
+                ->first();
+        }
+
         // Jika tidak ada versi yang aktif, gunakan versi terbaru untuk tahun tersebut (historis)
         if (!$schemaVersion) {
             $schemaVersion = SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $connection->id)
@@ -361,9 +370,17 @@ class RegistrationSpreadsheetMappingService
                             'mapping_status' => 'active',
                         ]);
                     } else {
+                        $colLetter = \App\Services\SpreadsheetDiscoveryService::columnIndexToLetter($order);
+                        $physicalIdentity = \App\Services\SpreadsheetDiscoveryService::generatePhysicalColumnIdentity(
+                            $schemaVersion->sheet_id ?? 0,
+                            $colLetter,
+                            $order,
+                            $col['header']
+                        );
+
                         $newMapping = SpreadsheetColumnMapping::create([
                             'public_uuid'                   => (string) \Illuminate\Support\Str::uuid(),
-                            'column_identity'               => $col['field'] ? 'col_' . $col['field'] : 'col_' . \Illuminate\Support\Str::slug($col['header'], '_'),
+                            'column_identity'               => $physicalIdentity,
                             'spreadsheet_schema_version_id' => $schemaVersion->id,
                             'column_order'                  => $order,
                             'sheet_header'                  => $col['header'],
@@ -435,16 +452,41 @@ class RegistrationSpreadsheetMappingService
             throw new DomainException("Schema Spreadsheet untuk tahun {$year} belum dikonfigurasi.");
         }
 
+        $regYear = (int) $createdAt->format('Y');
+        $conn = $schemaVersion->spreadsheetConnection;
+        if ($conn && $conn->is_yearly_cloning_enabled && $schemaVersion->year && (int) $schemaVersion->year !== $regYear) {
+            \Illuminate\Support\Facades\Log::warning("PERINGATAN_ISOLASI_TAHUN: Registrasi #{$registration->id} (Tahun: {$regYear}) diarahkan ke skema tab tahun {$schemaVersion->year} pada koneksi {$conn->display_name}.");
+        }
+
         $mappings = $schemaVersion->columnMappings()->where('mapping_status', 'active')->orderBy('column_order', 'asc')->get();
         if ($mappings->isEmpty()) {
             throw new DomainException("Pemetaan kolom untuk schema versi '{$schemaVersion->schema_version}' tahun {$schemaVersion->year} masih kosong.");
         }
 
         $payload = [];
+        $valuesByPosition = [];
 
         foreach ($mappings as $mapping) {
             $value = $this->resolveColumnValue($registration, $mapping);
-            $payload[$mapping->sheet_header] = self::escapeFormulaInjection($value);
+            $escaped = self::escapeFormulaInjection($value);
+
+            // Legacy header map
+            $payload[$mapping->sheet_header] = $escaped;
+
+            // Positional descriptor for duplicate header support (multi-KET)
+            $colLetter = \App\Services\SpreadsheetDiscoveryService::columnIndexToLetter((int) $mapping->column_order);
+            $valuesByPosition[] = [
+                'col_index'       => (int) $mapping->column_order,
+                'col_letter'      => $colLetter,
+                'header'          => $mapping->sheet_header,
+                'column_identity' => $mapping->column_identity,
+                'val'             => $escaped,
+            ];
+        }
+
+        $payload['values_by_position'] = $valuesByPosition;
+        if (!empty($schemaVersion->schema_hash)) {
+            $payload['expected_schema_hash'] = $schemaVersion->schema_hash;
         }
 
         return $payload;
@@ -474,13 +516,19 @@ class RegistrationSpreadsheetMappingService
      */
     public function resolveColumnValue(InternshipRegistration $registration, SpreadsheetColumnMapping $mapping): mixed
     {
-        $transformKey = $mapping->transform_key ?? $mapping->target_field;
+        if ($mapping->target_entity === 'external_sheet') {
+            return '';
+        }
+
+        $rawKey = $mapping->transform_key ?? $mapping->target_field;
+        $transformKey = self::normalizeTransformKey((string) $rawKey, (string) $mapping->sheet_header);
 
         return match ($transformKey) {
             'timestamp' => $this->formatDateTimeValue($registration->created_at),
-            'fullname' => $registration->fullname,
+            'fullname', 'nama_lengkap' => $registration->fullname,
             'student_id' => $registration->student_id ?? '-',
             'study_program' => $registration->study_program ?? '-',
+            'faculty' => $registration->faculty ?? '-',
             'email' => $registration->email ?? '-',
             'gender' => $registration->gender,
             'phone_number' => $registration->phone_number,
@@ -488,6 +536,7 @@ class RegistrationSpreadsheetMappingService
             'current_city' => $registration->current_city ?? '-',
             'internship_reason' => $registration->internship_reason ?? '-',
             'internship_type' => $registration->internship_type ?? '-',
+            'internship_arrangement' => $registration->internship_arrangement ?? '-',
             'current_status' => $registration->current_status ?? '-',
             'wfo_readiness' => $registration->wfo_readiness ?? '-',
             'supervisor_info' => $this->formatSupervisorInfo($registration),
@@ -504,6 +553,8 @@ class RegistrationSpreadsheetMappingService
             'birth_place' => $registration->birth_place ?? '-',
             'born_date', 'birth_date' => $this->formatDateValue($registration->born_date),
             'religion' => $registration->religion ?? '-',
+            'marital_status' => $registration->marital_status ?? '-',
+            'english_book_ability' => $registration->english_book_ability ?? '-',
             'link_cv' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_CV),
             'link_ktm_ktp' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_IDENTITY),
             'link_portofolio' => $this->resolveSpecificAttachmentUrl($registration, \App\Models\RegistrationAttachment::TYPE_PORTFOLIO),
@@ -528,6 +579,128 @@ class RegistrationSpreadsheetMappingService
             'custom_field' => $this->resolveCustomFieldAnswer($registration, $mapping->target_field),
             default => $this->fallbackResolve($registration, $mapping->target_field),
         };
+    }
+
+    /**
+     * Normalisasi transform key / target field dari representasi kustom/slug ke canonical transform key.
+     */
+    public static function normalizeTransformKey(string $key, string $header = ''): string
+    {
+        $k = strtolower(trim($key));
+        $h = strtolower(trim($header));
+
+        // 1. Exact canonical matches
+        $canonicals = [
+            'timestamp', 'fullname', 'student_id', 'study_program', 'faculty', 'email', 'gender',
+            'phone_number', 'institution_name', 'current_city', 'internship_reason', 'internship_type',
+            'internship_arrangement', 'current_status', 'wfo_readiness', 'supervisor_info',
+            'schedule_shift_readiness', 'has_laptop', 'laptop_equipment', 'start_date', 'planned_duration',
+            'internship_info_sources', 'social_media_instagram', 'boarding_info', 'internship_interest',
+            'attachment_url', 'birth_place', 'born_date', 'religion', 'marital_status',
+            'english_book_ability', 'link_cv', 'link_ktm_ktp', 'link_portofolio', 'design_software',
+            'video_software', 'programming_languages', 'digital_marketing_type', 'equipment',
+            'owned_tools', 'supervisor_name', 'supervisor_contact', 'current_activities', 'status_label',
+            'ket', 'sertif_sync_id', 'sertif_registration_id', 'sertif_sync_status', 'sertif_last_sync_at',
+            'custom_field',
+        ];
+
+        if (in_array($k, $canonicals, true)) {
+            return $k;
+        }
+
+        // 2. Map known field_... slugs
+        if (str_starts_with($k, 'field_')) {
+            $sub = substr($k, 6);
+
+            if (in_array($sub, ['fullname', 'nama_lengkap', 'name', 'nama'], true)) return 'fullname';
+            if (in_array($sub, ['email', 'surel'], true)) return 'email';
+            if (in_array($sub, ['timestamp', 'waktu'], true)) return 'timestamp';
+            if (in_array($sub, ['gender', 'jenis_kelamin'], true)) return 'gender';
+            if (str_starts_with($sub, 'no_hp_aktif_yang_bisa') || in_array($sub, ['phone_number', 'no_hp', 'whatsapp', 'wa'], true)) return 'phone_number';
+            if (str_starts_with($sub, 'asal_sekolah') || str_starts_with($sub, 'sekolah') || in_array($sub, ['institution_name', 'asal_kampus', 'universitas'], true)) return 'institution_name';
+            if (str_starts_with($sub, 'nama_kota') || in_array($sub, ['current_city', 'kota_tinggal', 'daerah'], true)) return 'current_city';
+            if (str_starts_with($sub, 'mengapa_anda_ingin_magang') || in_array($sub, ['internship_reason', 'alasan_magang'], true)) return 'internship_reason';
+            if (str_starts_with($sub, 'program_magangpkl_apa_yang_anda_minati') || in_array($sub, ['internship_interest', 'program_minat', 'divisi'], true)) return 'internship_interest';
+            if (str_starts_with($sub, 'apakah_anda_ada_alat_kerja_sendiri_laptop') || in_array($sub, ['has_laptop', 'laptop_sendiri'], true)) return 'has_laptop';
+            if (str_starts_with($sub, 'jika_ya_alat_apa_yang_anda_miliki') || in_array($sub, ['laptop_equipment', 'owned_tools', 'alat_dimiliki', 'equipment'], true)) return 'laptop_equipment';
+            if (str_starts_with($sub, 'kapan_anda_berencana_mulai') || in_array($sub, ['start_date', 'rencana_mulai', 'tgl_mulai'], true)) return 'start_date';
+            if (str_starts_with($sub, 'berapa_lama') || in_array($sub, ['planned_duration', 'durasi_magang'], true)) return 'planned_duration';
+            if (str_starts_with($sub, 'jika_anda_memilih_minat_program_magang_di_disain_grafis') || in_array($sub, ['design_software', 'software_desain'], true)) return 'design_software';
+            if (str_starts_with($sub, 'jika_anda_memilih_minat_program_magang_videografer') || in_array($sub, ['video_software', 'software_video'], true)) return 'video_software';
+            if (str_starts_with($sub, 'jenis_magang') || in_array($sub, ['internship_type'], true)) return 'internship_type';
+            if (str_starts_with($sub, 'jika_anda_memilih_minat_program_magang_programmer') || in_array($sub, ['programming_languages', 'bahasa_pemrograman'], true)) return 'programming_languages';
+            if (str_starts_with($sub, 'jika_anda_memilih_minat_program_magang_digital_marketing') || in_array($sub, ['digital_marketing_type', 'digital_marketing'], true)) return 'digital_marketing_type';
+            if (str_starts_with($sub, 'anda_tahu_info_magang_ini_darimana') || in_array($sub, ['internship_info_sources', 'sumber_info'], true)) return 'internship_info_sources';
+            if (str_starts_with($sub, 'silakan_upload_cv_scan_ktpktm') || in_array($sub, ['attachment_url', 'upload_pdf', 'cv_ktp_portofolio_pdf'], true)) return 'attachment_url';
+            if (str_starts_with($sub, 'silakan_upload_portofolio') || in_array($sub, ['link_portofolio', 'portfolio'], true)) return 'link_portofolio';
+            if (str_starts_with($sub, 'nim') || in_array($sub, ['student_id', 'nis'], true)) return 'student_id';
+            if (str_starts_with($sub, 'program_studi') || in_array($sub, ['study_program', 'prodi', 'jurusan'], true)) return 'study_program';
+            if (str_starts_with($sub, 'fakultas') || in_array($sub, ['faculty'], true)) return 'faculty';
+            if (str_starts_with($sub, 'magang_sistem') || in_array($sub, ['internship_arrangement'], true)) return 'internship_arrangement';
+            if (str_starts_with($sub, 'no_hp_aktif_wa_dosen_atau_guru_pembimbing') || in_array($sub, ['supervisor_info', 'dosen_pembimbing'], true)) return 'supervisor_info';
+            if (str_starts_with($sub, 'status_anda_saat_ini') || in_array($sub, ['current_status', 'status_saat_ini'], true)) return 'current_status';
+            if (str_starts_with($sub, 'apakah_anda_bisa_membaca_buku_berbahasa_ingg') || in_array($sub, ['english_book_ability'], true)) return 'english_book_ability';
+            if (str_starts_with($sub, 'saya_siap_dg_sistem_magang_ini') || in_array($sub, ['schedule_shift_readiness', 'kesanggupan_jadwal'], true)) return 'schedule_shift_readiness';
+            if (str_starts_with($sub, 'kegiatan_anda_saat_ini_selain_magang') || in_array($sub, ['current_activities'], true)) return 'current_activities';
+            if (str_starts_with($sub, 'apakah_anda_membutuhkan_info') || in_array($sub, ['boarding_info', 'info_kost'], true)) return 'boarding_info';
+            if (str_starts_with($sub, 'tahun_lahir') || str_starts_with($sub, 'tanggal_lahir') || in_array($sub, ['born_date'], true)) return 'born_date';
+            if (str_starts_with($sub, 'sosial_media_intagram') || str_starts_with($sub, 'sosial_media_instagram') || in_array($sub, ['social_media_instagram', 'instagram'], true)) return 'social_media_instagram';
+            if (str_starts_with($sub, 'semisal_nanti_anda_diterima_magang_apakah_bersedia_jika_suatu_saat_di_rolling') || in_array($sub, ['wfo_readiness', 'kesiapan_wfo'], true)) return 'wfo_readiness';
+            if (str_starts_with($sub, 'no_hp_aktif_wa_wali_ortu') || in_array($sub, ['supervisor_contact'], true)) return 'supervisor_contact';
+            if (str_starts_with($sub, 'apakah_anda_sudah_berkeluarga') || in_array($sub, ['marital_status'], true)) return 'marital_status';
+            if (in_array($sub, ['religion', 'agama'], true)) return 'religion';
+        }
+
+        // 3. Fallback: match via raw sheet header if available
+        if ($h !== '') {
+            if ($h === 'timestamp' || $h === 'waktu') return 'timestamp';
+            if ($h === 'email' || $h === 'surel') return 'email';
+            if (str_contains($h, 'nama lengkap') || $h === 'nama' || str_contains($h, 'nama peserta') || str_contains($h, 'nama pemagang')) return 'fullname';
+            if (str_contains($h, 'jenis kelamin') || str_contains($h, 'gender')) return 'gender';
+            if ((str_contains($h, 'no. hp') || str_contains($h, 'no hp') || str_contains($h, 'nomor hp') || str_contains($h, 'whatsapp') || preg_match('/\bwa\b/i', $h))
+                && !str_contains($h, 'dosen') && !str_contains($h, 'guru') && !str_contains($h, 'pembimbing') && !str_contains($h, 'wali') && !str_contains($h, 'ortu')) {
+                return 'phone_number';
+            }
+            if (str_contains($h, 'asal sekolah') || str_contains($h, 'asal kampus') || str_contains($h, 'universitas') || str_contains($h, 'sekolah')) return 'institution_name';
+            if (str_contains($h, 'kota') || str_contains($h, 'daerah tempat tinggal')) return 'current_city';
+            if (str_contains($h, 'mengapa anda ingin magang') || str_contains($h, 'alasan magang')) return 'internship_reason';
+            if (str_contains($h, 'disain grafis') || str_contains($h, 'desain grafis') || str_contains($h, 'software design')) return 'design_software';
+            if (str_contains($h, 'videografer') || str_contains($h, 'video software') || str_contains($h, 'editing video')) return 'video_software';
+            if (str_contains($h, 'programmer') || str_contains($h, 'bahasa pemrograman')) return 'programming_languages';
+            if (str_contains($h, 'digital marketing')) return 'digital_marketing_type';
+            if (str_contains($h, 'apa yang anda minati') || str_contains($h, 'pilihan divisi') || str_contains($h, 'divisi magang')) return 'internship_interest';
+            if (str_contains($h, 'alat kerja sendiri') || str_contains($h, 'laptop')) return 'has_laptop';
+            if (str_contains($h, 'alat apa yang anda miliki') || str_contains($h, 'alat yang bisa anda bawa')) return 'laptop_equipment';
+            if (str_contains($h, 'kapan anda berencana mulai') || str_contains($h, 'tanggal mulai') || str_contains($h, 'start date')) return 'start_date';
+            if (str_contains($h, 'berapa lama') || str_contains($h, 'durasi magang')) return 'planned_duration';
+            if (str_contains($h, 'jenis magang apa') || str_contains($h, 'jenis magang')) return 'internship_type';
+            if (str_contains($h, 'info magang ini darimana') || str_contains($h, 'sumber info')) return 'internship_info_sources';
+            if (str_contains($h, 'upload : cv, scan ktp/ktm') || str_contains($h, 'upload cv')) return 'attachment_url';
+            if (str_contains($h, 'upload : portofolio') || str_contains($h, 'portofolio')) return 'link_portofolio';
+            if (str_contains($h, 'nim') || str_contains($h, 'nomor induk')) return 'student_id';
+            if (str_contains($h, 'program studi') || str_contains($h, 'prodi') || str_contains($h, 'jurusan')) return 'study_program';
+            if (str_contains($h, 'fakultas')) return 'faculty';
+            if (str_contains($h, 'magang sistem')) return 'internship_arrangement';
+            if (str_contains($h, 'dosen') || str_contains($h, 'guru pembimbing')) return 'supervisor_info';
+            if (str_contains($h, 'status anda saat ini')) return 'current_status';
+            if (str_contains($h, 'buku berbahasa inggris')) return 'english_book_ability';
+            if (str_contains($h, 'siap dg sistem magang ini')) return 'schedule_shift_readiness';
+            if (str_contains($h, 'kegiatan anda saat ini')) return 'current_activities';
+            if (str_contains($h, 'kost') || str_contains($h, 'kontrakan')) return 'boarding_info';
+            if (str_contains($h, 'tahun lahir') || str_contains($h, 'tanggal lahir')) return 'born_date';
+            if (str_contains($h, 'instagram') || str_contains($h, 'sosial media')) return 'social_media_instagram';
+            if (str_contains($h, 'rolling ke kantor cabang')) return 'wfo_readiness';
+            if (str_contains($h, 'wali') || str_contains($h, 'ortu')) return 'supervisor_contact';
+            if (str_contains($h, 'berkeluarga') || str_contains($h, 'menikah')) return 'marital_status';
+            if (str_contains($h, 'agama') || str_contains($h, 'religion')) return 'religion';
+            if ($h === 'ket' || str_contains($h, 'keterangan')) return 'status_label';
+            if ($h === 'sertif_sync_id') return 'sertif_sync_id';
+            if ($h === 'sertif_registration_id') return 'sertif_registration_id';
+            if ($h === 'sertif_sync_status') return 'sertif_sync_status';
+            if ($h === 'sertif_last_sync_at') return 'sertif_last_sync_at';
+        }
+
+        return $key;
     }
 
     /**

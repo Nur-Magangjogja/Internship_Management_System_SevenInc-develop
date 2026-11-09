@@ -322,6 +322,14 @@
                     <option value="trashed" {{ request('status','') === 'trashed' ? 'selected':'' }}>Arsip Terhapus</option>
                 </select>
 
+                {{-- Filter Sumber Data --}}
+                <select name="source"
+                    class="rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 text-[13px] text-[#1B3A34] outline-none focus:border-[#2D8659]">
+                    <option value=""           {{ request('source','') === ''           ? 'selected':'' }}>Semua Sumber Data</option>
+                    <option value="web"        {{ request('source','') === 'web'        ? 'selected':'' }}>Pendaftar Web</option>
+                    <option value="integrated" {{ request('source','') === 'integrated' ? 'selected':'' }}>Data Terintegrasi</option>
+                </select>
+
                 {{-- Tombol Filter --}}
                 <button type="submit"
                     class="flex items-center gap-2 rounded-[9px] bg-[#2D8659] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-[#1F5F3F]">
@@ -329,7 +337,7 @@
                     Filter
                 </button>
 
-                @if(request()->hasAny(['name','email','role','sort','status']))
+                @if(request()->hasAny(['name','email','role','sort','status','source']))
                 <a href="{{ route('admin.users.index') }}"
                     class="flex items-center gap-1.5 rounded-[9px] border border-[#DCE7E1] bg-white px-3 py-2 text-[13px] font-semibold text-[#4B5F5A] transition hover:text-[#D32F2F]">
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -400,9 +408,16 @@
 
                         {{-- Role --}}
                         <td class="px-5 py-4">
-                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold {{ $roleMeta['cls'] }}">
-                                {{ $roleMeta['label'] }}
-                            </span>
+                            <div class="flex flex-col gap-1 items-start">
+                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold {{ $roleMeta['cls'] }}">
+                                    {{ $roleMeta['label'] }}
+                                </span>
+                                @if(!empty($user->is_integrated) || ($user->registration_type === 'integrated'))
+                                <span class="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 border border-cyan-200" title="Akun dibuat otomatis dari integrasi spreadsheet Google">
+                                    <i class="fas fa-file-excel text-[9px]"></i> Terintegrasi
+                                </span>
+                                @endif
+                            </div>
                         </td>
 
                         {{-- Status Akun --}}

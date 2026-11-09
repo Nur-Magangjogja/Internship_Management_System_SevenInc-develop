@@ -33,11 +33,61 @@ class SpreadsheetDiscoveryService
     public const RESERVED_SYSTEM_KEYS = [
         'SERTIF_SYNC_ID',
         'SERTIF_REGISTRATION_ID',
+        'SERTIF_SYNC_STATUS',
+        'SERTIF_LAST_SYNC_AT',
         'FORM_SCHEMA_VERSION',
         'LAST_SYNC_AT',
+        'SYNC_STATUS',
         'sync_id',
         'registration_id',
     ];
+
+    /**
+     * Unified System Protocol Classifier: Case-insensitive & namespace-safe (SERTIF_*).
+     */
+    public static function classifySystemProtocol(string $header): ?array
+    {
+        $clean = strtoupper(trim($header));
+        if ($clean === '') {
+            return null;
+        }
+
+        $normalizedReserved = array_map('strtoupper', self::RESERVED_SYSTEM_KEYS);
+        if (in_array($clean, $normalizedReserved, true) || str_starts_with($clean, 'SERTIF_')) {
+            return [
+                'is_system'     => true,
+                'canonical_key' => $clean,
+                'category'      => 'system',
+                'description'   => 'Kolom terproteksi protokol sistem internal SERTIF (immutable).',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Canonical Physical Column Identity Formula.
+     */
+    public static function generatePhysicalColumnIdentity(int|string $sheetId, string $colLetter, int $colIndex, string $label): string
+    {
+        $clean = Str::slug(trim($label), '_') ?: 'empty';
+        $raw = "col_{$sheetId}_{$colLetter}_{$colIndex}_{$clean}";
+        return 'cid_' . substr(hash('sha256', $raw), 0, 16);
+    }
+
+    /**
+     * Convert 1-based column index (1, 2, ..., 26, 27, 38) to Google Sheets column letter (A, B, ..., Z, AA, AL).
+     */
+    public static function columnIndexToLetter(int $colIndex): string
+    {
+        $letter = '';
+        while ($colIndex > 0) {
+            $rem = ($colIndex - 1) % 26;
+            $letter = chr(65 + $rem) . $letter;
+            $colIndex = intdiv($colIndex - 1, 26);
+        }
+        return $letter ?: 'A';
+    }
 
     public function __construct(
         protected SpreadsheetTransportInterface $transport
@@ -292,11 +342,12 @@ class SpreadsheetDiscoveryService
                 'scanned_at'                => now(),
             ]);
 
-            // Track duplicate labels for collision detection
+            // Track duplicate labels for collision detection (system protocol excluded)
             $labelCounts = [];
             foreach ($inspection['columns'] as $col) {
                 $rawLabel = trim($col['header_name'] ?? '');
-                if ($rawLabel !== '') {
+                $protocol = self::classifySystemProtocol($rawLabel);
+                if ($rawLabel !== '' && !$protocol) {
                     $norm = strtolower($rawLabel);
                     $labelCounts[$norm] = ($labelCounts[$norm] ?? 0) + 1;
                 }
@@ -305,10 +356,11 @@ class SpreadsheetDiscoveryService
             foreach ($inspection['columns'] as $col) {
                 $rawLabel = trim($col['header_name'] ?? '');
                 $norm = strtolower($rawLabel);
-                $isDuplicate = ($rawLabel !== '' && ($labelCounts[$norm] ?? 0) > 1);
-                $isReserved = in_array(strtoupper($rawLabel), self::RESERVED_SYSTEM_KEYS, true);
+                $protocol = self::classifySystemProtocol($rawLabel);
+                $isReserved = ($protocol !== null);
+                $isDuplicate = (!$isReserved && $rawLabel !== '' && ($labelCounts[$norm] ?? 0) > 1);
 
-                $columnIdentity = $this->generateColumnIdentity(
+                $columnIdentity = self::generatePhysicalColumnIdentity(
                     $snapshot->sheet_id,
                     $col['col_letter'],
                     $col['col_index'],
@@ -380,14 +432,17 @@ class SpreadsheetDiscoveryService
         ?User $user = null
     ): SheetMappingProposal {
         return DB::transaction(function () use ($connection, $snapshot, $year, $targetSchema, $user) {
-            $formFields = $this->getAvailableFormFields($targetSchema);
+            $effectiveYear = $year ?? (preg_match('/^\d{4}$/', $snapshot->tab_name) ? (int) $snapshot->tab_name : (int) now()->year);
+            $formBuilderService = app(FormBuilderService::class);
+            $effectiveSchema = $targetSchema ?? $formBuilderService->resolveEffectivePublishedSchema($connection->brand_id, $effectiveYear);
+            $formFields = $this->getAvailableFormFields($effectiveSchema);
 
             $proposal = SheetMappingProposal::create([
                 'spreadsheet_connection_id' => $connection->id,
                 'snapshot_id'               => $snapshot->id,
                 'expected_schema_hash'      => $snapshot->schema_hash,
-                'year'                      => $year ?? (preg_match('/^\d{4}$/', $snapshot->tab_name) ? (int) $snapshot->tab_name : (int) now()->year),
-                'form_schema_id'            => $targetSchema?->id,
+                'year'                      => $effectiveYear,
+                'form_schema_id'            => $effectiveSchema?->id,
                 'version'                   => 1,
                 'status'                    => SheetMappingProposal::STATUS_DRAFT,
                 'proposed_by'               => $user?->id,
@@ -398,13 +453,16 @@ class SpreadsheetDiscoveryService
 
             foreach ($columns as $col) {
                 $rawLabel = trim($col->observed_label);
+                $colFingerprint = hash('sha256', ($col->inferred_type ?? '') . '|' . json_encode($col->sample_values ?? []) . '|' . strtolower(trim($col->observed_label ?? '')));
 
                 // 1. Reserved System Fields
-                if ($col->is_system_reserved) {
+                $protocol = self::classifySystemProtocol($rawLabel);
+                if ($col->is_system_reserved || $protocol !== null) {
                     SheetMappingProposalItem::create([
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => $rawLabel,
@@ -426,6 +484,7 @@ class SpreadsheetDiscoveryService
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => $rawLabel,
@@ -437,7 +496,8 @@ class SpreadsheetDiscoveryService
                         'confidence_level'     => self::CONFIDENCE_NONE,
                         'match_reason'         => 'Konflik collision: Ditemukan header ganda dengan teks persis sama.',
                         'has_collision'        => true,
-                        'collision_detail'     => "Header '{$rawLabel}' muncul lebih dari satu kali pada tab ini.",
+                        'collision_type'       => SheetMappingProposalItem::COLLISION_DUPLICATE_HEADER,
+                        'collision_detail'     => "Header '" . Str::limit($rawLabel, 100) . "' muncul lebih dari satu kali pada tab ini.",
                     ]);
                     continue;
                 }
@@ -448,6 +508,7 @@ class SpreadsheetDiscoveryService
                         'proposal_id'          => $proposal->id,
                         'discovered_column_id' => $col->id,
                         'column_identity'      => $col->column_identity,
+                        'column_fingerprint'   => $colFingerprint,
                         'col_letter'           => $col->col_letter,
                         'physical_index'       => $col->physical_index,
                         'observed_label'       => '',
@@ -483,8 +544,10 @@ class SpreadsheetDiscoveryService
                     $action = SheetMappingProposalItem::ACTION_IGNORE;
                 } elseif ($match['confidence_level'] === self::CONFIDENCE_EXACT || $match['confidence_level'] === self::CONFIDENCE_HIGH) {
                     $action = SheetMappingProposalItem::ACTION_LINK_EXISTING;
-                } elseif ($match['confidence_level'] === self::CONFIDENCE_NONE) {
-                    // Unknown header: defaults to unmapped / external-only (F2-04)
+                } elseif ($match['confidence_level'] === self::CONFIDENCE_MEDIUM) {
+                    $action = SheetMappingProposalItem::ACTION_LINK_EXISTING;
+                } else {
+                    // Unknown header or low confidence: defaults to unmapped / external-only (F2-04)
                     $action = SheetMappingProposalItem::ACTION_EXTERNAL_ONLY;
                 }
 
@@ -492,6 +555,7 @@ class SpreadsheetDiscoveryService
                     'proposal_id'          => $proposal->id,
                     'discovered_column_id' => $col->id,
                     'column_identity'      => $col->column_identity,
+                    'column_fingerprint'   => $colFingerprint,
                     'col_letter'           => $col->col_letter,
                     'physical_index'       => $col->physical_index,
                     'observed_label'       => $rawLabel,
@@ -503,6 +567,7 @@ class SpreadsheetDiscoveryService
                     'confidence_level'     => $hasKeyCollision ? self::CONFIDENCE_NONE : $match['confidence_level'],
                     'match_reason'         => $hasKeyCollision ? $collisionDetail : $match['match_reason'],
                     'has_collision'        => $hasKeyCollision,
+                    'collision_type'       => $hasKeyCollision ? SheetMappingProposalItem::COLLISION_TARGET_FIELD : null,
                     'collision_detail'     => $collisionDetail,
                 ]);
             }
@@ -679,6 +744,13 @@ class SpreadsheetDiscoveryService
             }
 
             $items = $proposal->items()->get();
+
+            // Guardrail: reject apply if unresolved collisions remain
+            $unresolvedCollisions = $items->where('has_collision', true)->count();
+            if ($unresolvedCollisions > 0) {
+                throw new DomainException("RESOLVE_COLLISIONS_REQUIRED: Terdapat {$unresolvedCollisions} kolom dengan tabrakan/konflik yang belum diselesaikan.");
+            }
+
             $appliedCount = 0;
             $createdCount = 0;
 
@@ -705,10 +777,26 @@ class SpreadsheetDiscoveryService
                             'label'            => $item->suggested_label ?: $item->observed_label,
                             'group_name'       => 'Pendaftaran',
                             'is_system'        => false,
-                            'is_active'        => true,
+                            'is_active'        => false, // Dibuat nonaktif agar tidak langsung mengubah form publik brand
                             'is_archived'      => false,
                             'is_required'      => false,
                         ]);
+
+                        // Daftarkan ke FormFieldRegistry agar validasi kolom & edit pemagang lintas brand siap
+                        FormFieldRegistry::firstOrCreate(
+                            ['field_key' => $fieldKey],
+                            [
+                                'field_type'               => $fieldType,
+                                'field_state'              => FormFieldRegistry::STATE_FORM_FIELD,
+                                'canonical_label'          => $item->suggested_label ?: $item->observed_label,
+                                'form_enabled'             => false,
+                                'history_storage_enabled'  => true,
+                                'spreadsheet_sync_enabled' => true,
+                                'source_header_alias'      => $item->observed_label,
+                                'is_locked'                => false,
+                            ]
+                        );
+
                         $createdCount++;
                     }
                     $appliedCount++;
@@ -721,6 +809,85 @@ class SpreadsheetDiscoveryService
                         $appliedCount++;
                     }
                 }
+            }
+
+            // Persist approved items to SpreadsheetColumnMapping
+            $effectiveYear = $proposal->year ?? (int) now()->year;
+            $schemaVersion = \App\Models\SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $proposal->spreadsheet_connection_id)
+                ->where('year', $effectiveYear)
+                ->where('is_active', true)
+                ->latest('id')
+                ->first();
+
+            if (!$schemaVersion) {
+                $maxVer = (int) \App\Models\SpreadsheetSchemaVersion::where('spreadsheet_connection_id', $proposal->spreadsheet_connection_id)
+                    ->where('year', $effectiveYear)
+                    ->count();
+                $schemaVersion = \App\Models\SpreadsheetSchemaVersion::create([
+                    'spreadsheet_connection_id' => $proposal->spreadsheet_connection_id,
+                    'year'                      => $effectiveYear,
+                    'sheet_tab_name'            => $proposal->snapshot?->tab_name ?? 'Pendaftaran',
+                    'schema_version'            => 'v' . ($maxVer + 1),
+                    'is_active'                 => true,
+                    'notes'                     => "Schema generated from proposal #{$proposal->id} for tab '{$proposal->snapshot?->tab_name}'",
+                ]);
+            } else {
+                if ($proposal->snapshot?->tab_name && $schemaVersion->sheet_tab_name !== $proposal->snapshot->tab_name) {
+                    $schemaVersion->update(['sheet_tab_name' => $proposal->snapshot->tab_name]);
+                }
+            }
+
+            foreach ($items as $item) {
+                if ($item->action === SheetMappingProposalItem::ACTION_IGNORE) {
+                    continue;
+                }
+
+                $targetEntity = 'internship_registration';
+                $direction = 'outbound';
+                $transformKey = $item->field_key;
+
+                if ($item->action === SheetMappingProposalItem::ACTION_SYSTEM_PROTECTED) {
+                    $targetEntity = 'spreadsheet_row_syncs';
+                    $direction = 'system';
+                    $transformKey = $item->field_key;
+                } elseif ($item->action === SheetMappingProposalItem::ACTION_SYSTEM_DERIVED) {
+                    $targetEntity = 'internship_registration';
+                    $direction = 'display_only';
+                    $transformKey = 'status_label';
+                } elseif ($item->action === SheetMappingProposalItem::ACTION_ATTACHMENT_ADAPTER) {
+                    $targetEntity = 'registration_attachments';
+                    $direction = 'inbound';
+                    $transformKey = 'attachment_url';
+                } elseif ($item->action === SheetMappingProposalItem::ACTION_CREATE_DRAFT) {
+                    $targetEntity = 'custom_answer';
+                    $direction = 'inbound';
+                } elseif ($item->action === SheetMappingProposalItem::ACTION_EXTERNAL_ONLY) {
+                    $targetEntity = 'external_sheet';
+                    $direction = 'display_only';
+                }
+
+                $targetField = $item->field_key ?: substr(strtolower(preg_replace('/[^a-zA-Z0-9_]+/', '_', trim($item->observed_label))), 0, 50);
+                if (empty($targetField)) {
+                    $targetField = 'col_' . $item->physical_index;
+                }
+
+                \App\Models\SpreadsheetColumnMapping::updateOrCreate(
+                    [
+                        'spreadsheet_schema_version_id' => $schemaVersion->id,
+                        'column_order'                  => $item->physical_index,
+                    ],
+                    [
+                        'column_identity' => $item->column_identity,
+                        'sheet_id'        => $proposal->snapshot?->sheet_id,
+                        'sheet_header'    => $item->observed_label,
+                        'target_entity'   => $targetEntity,
+                        'target_field'    => $targetField,
+                        'data_type'       => $item->suggested_field_type ?: 'string',
+                        'direction'       => $direction,
+                        'transform_key'   => $transformKey,
+                        'mapping_status'  => 'active',
+                    ]
+                );
             }
 
             $proposal->update([
@@ -840,11 +1007,12 @@ class SpreadsheetDiscoveryService
         $scannedColumns = $inspection['columns'] ?? [];
         $formFields = $this->getAvailableFormFields();
 
-        // Detect duplicate header collisions across scanned columns
+        // Detect duplicate header collisions across scanned columns (system protocol excluded)
         $labelCounts = [];
         foreach ($scannedColumns as $col) {
             $rawHeader = trim($col['header_name'] ?? '');
-            if ($rawHeader !== '') {
+            $protocol = self::classifySystemProtocol($rawHeader);
+            if ($rawHeader !== '' && !$protocol) {
                 $norm = strtolower($rawHeader);
                 $labelCounts[$norm] = ($labelCounts[$norm] ?? 0) + 1;
             }
@@ -879,6 +1047,27 @@ class SpreadsheetDiscoveryService
                 continue;
             }
 
+            // Check system protocol first (immutable & exact)
+            $protocol = self::classifySystemProtocol($headerName);
+            if ($protocol) {
+                $matchedCount++;
+                $proposals[] = [
+                    'col_index'             => $colIndex,
+                    'col_letter'            => $colLetter,
+                    'scanned_header'        => $headerName,
+                    'suggested_field_key'   => strtolower($headerName),
+                    'suggested_field_label' => $headerName,
+                    'suggested_field_type'  => 'system',
+                    'is_system'             => true,
+                    'confidence_score'      => 1.0,
+                    'confidence_level'      => self::CONFIDENCE_EXACT,
+                    'match_reason'          => 'Kolom terproteksi sistem internal SERTIF (immutable).',
+                    'has_collision'         => false,
+                    'sample_values'         => $col['samples'] ?? [],
+                ];
+                continue;
+            }
+
             // Check for collision (duplicate header text)
             $norm = strtolower($headerName);
             if (($labelCounts[$norm] ?? 0) > 1) {
@@ -895,6 +1084,7 @@ class SpreadsheetDiscoveryService
                     'confidence_level'      => self::CONFIDENCE_NONE,
                     'match_reason'          => "Konflik: Ditemukan {$labelCounts[$norm]} kolom dengan nama header persis sama ('{$headerName}'). Wajib penanganan manual.",
                     'has_collision'         => true,
+                    'collision_type'        => SheetMappingProposalItem::COLLISION_DUPLICATE_HEADER,
                     'sample_values'         => $col['samples'] ?? [],
                 ];
                 continue;
@@ -942,8 +1132,7 @@ class SpreadsheetDiscoveryService
      */
     protected function generateColumnIdentity(int|string $sheetId, string $colLetter, int $colIndex, string $label): string
     {
-        $raw = "col_{$sheetId}_{$colLetter}_{$colIndex}_" . Str::slug($label, '_');
-        return 'cid_' . substr(hash('sha256', $raw), 0, 16);
+        return self::generatePhysicalColumnIdentity($sheetId, $colLetter, $colIndex, $label);
     }
 
     /**
@@ -1072,6 +1261,8 @@ class SpreadsheetDiscoveryService
         foreach ($formFields as $field) {
             $labelNorm = $this->normalizeString($field['label']);
             if (strlen($labelNorm) >= 4 && (str_contains($normalizedHeader, $labelNorm) || str_contains($labelNorm, $normalizedHeader))) {
+                $shortH = \Illuminate\Support\Str::limit($cleanHeader, 80);
+                $shortL = \Illuminate\Support\Str::limit($field['label'], 80);
                 return [
                     'field_key'        => $field['field_key'],
                     'label'            => $field['label'],
@@ -1079,26 +1270,42 @@ class SpreadsheetDiscoveryService
                     'is_system'        => $field['is_system'],
                     'confidence_score' => 0.60,
                     'confidence_level' => self::CONFIDENCE_MEDIUM,
-                    'match_reason'     => "Kemiripan teks frasa ('{$cleanHeader}' mendekati '{$field['label']}').",
+                    'match_reason'     => "Kemiripan teks frasa ('{$shortH}' mendekati '{$shortL}').",
                 ];
             }
         }
 
-        // 4. Low confidence: word overlap
-        $headerWords = explode(' ', $normalizedHeader);
-        foreach ($formFields as $field) {
-            $labelWords = explode(' ', $this->normalizeString($field['label']));
-            $intersect = array_intersect($headerWords, $labelWords);
-            if (count($intersect) > 0 && reset($intersect) !== '') {
-                return [
-                    'field_key'        => $field['field_key'],
-                    'label'            => $field['label'],
-                    'field_type'       => $field['field_type'],
-                    'is_system'        => $field['is_system'],
-                    'confidence_score' => 0.30,
-                    'confidence_level' => self::CONFIDENCE_LOW,
-                    'match_reason'     => "Ditemukan kata beririsan: '" . implode(', ', $intersect) . "'.",
-                ];
+        // 4. Word overlap (ignoring common Indonesian stop words)
+        $stopWords = [
+            'anda', 'apakah', 'jika', 'yang', 'dan', 'atau', 'di', 'ke', 'dari', 'ini', 'itu',
+            'ada', 'kah', 'bisa', 'dg', 'yg', 'bs', 'saat', 'mohon', 'untuk', 'pada', 'dengan',
+            'saya', 'apa', 'saja', 'pun', 'juga', 'oleh', 'tentang', 'atas', 'bawah', 'bila',
+            'siap', 'sudah', 'belum', 'mohon', 'sebutkan', 'tulis'
+        ];
+        $headerWords = array_values(array_filter(
+            explode(' ', $normalizedHeader),
+            fn($w) => strlen($w) >= 3 && !in_array($w, $stopWords, true)
+        ));
+
+        if (!empty($headerWords)) {
+            foreach ($formFields as $field) {
+                $labelWords = array_values(array_filter(
+                    explode(' ', $this->normalizeString($field['label'])),
+                    fn($w) => strlen($w) >= 3 && !in_array($w, $stopWords, true)
+                ));
+                $intersect = array_values(array_intersect($headerWords, $labelWords));
+                // Only consider overlap if at least 2 significant words match
+                if (count($intersect) >= 2) {
+                    return [
+                        'field_key'        => $field['field_key'],
+                        'label'            => $field['label'],
+                        'field_type'       => $field['field_type'],
+                        'is_system'        => $field['is_system'],
+                        'confidence_score' => 0.45,
+                        'confidence_level' => self::CONFIDENCE_MEDIUM,
+                        'match_reason'     => "Ditemukan kata kunci beririsan: '" . implode(', ', $intersect) . "'.",
+                    ];
+                }
             }
         }
 

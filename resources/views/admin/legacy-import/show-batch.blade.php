@@ -17,6 +17,15 @@
             <h1 class="mt-2 text-2xl font-bold text-slate-800">Review & Verifikasi Batch Staging</h1>
             <p class="text-sm text-slate-500">
                 Sumber: <span class="font-semibold text-slate-700">{{ $batch->source_filename }}</span> ({{ strtoupper($batch->source_type) }}) &bull; Target Tahun: <span class="font-semibold text-slate-700">{{ $batch->target_year ?: 'Otomatis via Timestamp' }}</span>
+                @if ($batch->brand)
+                    &bull; Brand: <span class="inline-flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-xs font-bold text-sky-800 border border-sky-200">{{ $batch->brand->name }}</span>
+                    @if ($batch->brand->registration_host)
+                        <span class="text-xs text-slate-400 font-mono">({{ $batch->brand->registration_host }})</span>
+                    @endif
+                @endif
+                @if ($batch->spreadsheetConnection)
+                    &bull; Spreadsheet: <a href="{{ route('admin.spreadsheet-connections.show', $batch->spreadsheetConnection) }}" class="text-blue-600 hover:underline font-semibold">{{ $batch->spreadsheetConnection->display_name ?: 'Koneksi #'.$batch->spreadsheetConnection->id }}</a>
+                @endif
             </p>
         </div>
         <div class="flex items-center gap-3">

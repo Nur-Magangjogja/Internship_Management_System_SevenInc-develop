@@ -24,12 +24,12 @@
         <div class="flex flex-wrap items-center gap-3">
             {{-- Mode Tahun Ini vs Persiapan Tahun Depan --}}
             <div class="inline-flex rounded-[10px] border border-[#DCE7E1] bg-white p-1 shadow-sm">
-                <a href="{{ route('admin.form-settings.fields', ['year' => $currentYear]) }}"
+                <a href="{{ route('admin.form-settings.fields', array_filter(['year' => $currentYear, 'brand_id' => $effectiveBrand?->id])) }}"
                    class="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-xs font-bold transition {{ !$isNextYear ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
                     <span class="h-2 w-2 rounded-full {{ !$isNextYear ? 'bg-white' : 'bg-emerald-500' }}"></span>
                     Form Tahun Ini ({{ $currentYear }})
                 </a>
-                <a href="{{ route('admin.form-settings.fields', ['year' => $nextYear]) }}"
+                <a href="{{ route('admin.form-settings.fields', array_filter(['year' => $nextYear, 'brand_id' => $effectiveBrand?->id])) }}"
                    class="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-xs font-bold transition {{ $isNextYear ? 'bg-[#2D8659] text-white shadow-xs' : 'text-[#4B5F5A] hover:bg-[#F4F8F6]' }}">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     Persiapan Tahun Depan ({{ $nextYear }})
@@ -38,24 +38,117 @@
 
             {{-- Draft & Published Badges --}}
             <div class="flex items-center gap-2 text-xs">
-                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]">
+                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]" title="Draf aktif yang sedang diedit">
                     Draft: <strong class="text-[#2D8659]">{{ $currentDraft->version_code }}</strong>
                 </span>
-                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]">
+                <span class="rounded-[6px] border border-[#DCE7E1] bg-white px-2.5 py-1.5 font-medium text-[#1B3A34]" title="Versi publikasi resmi yang sedang digunakan">
                     Publikasi: <strong>{{ $activePublished ? $activePublished->version_code : 'Belum Terbit' }}</strong>
                 </span>
+                @if ($effectiveBrand)
+                    @if ($activePublished && $activePublished->brand_id === $effectiveBrand->id)
+                        <span class="rounded-[6px] border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-800">
+                            Skema Khusus {{ $effectiveBrand->code }}
+                        </span>
+                    @else
+                        <span class="rounded-[6px] border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700" title="Brand ini saat ini mewarisi formulir baseline global">
+                            Mewarisi Baseline Global
+                        </span>
+                    @endif
+                @else
+                    <span class="rounded-[6px] border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700">
+                        Template Baseline Global
+                    </span>
+                @endif
             </div>
 
+            @if ($effectiveBrand)
+                <form method="POST" action="{{ route('admin.form-settings.fields.fork-global') }}" onsubmit="return confirm('Salin seluruh pertanyaan dari Template Baseline Global ke draf brand {{ $effectiveBrand->name }}?\n\nDraf saat ini untuk brand ini akan diperbarui berdasarkan baseline global.');" class="inline">
+                    @csrf
+                    <input type="hidden" name="year" value="{{ $activeYear }}">
+                    <input type="hidden" name="brand_id" value="{{ $effectiveBrand->id }}">
+                    <button type="submit" class="inline-flex items-center gap-1.5 rounded-[8px] border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs" title="Salin pertanyaan dari Template Global">
+                        <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Salin dari Global
+                    </button>
+                </form>
+            @endif
+
             {{-- Publish Button --}}
-            <form method="POST" action="{{ route('admin.form-settings.fields.publish') }}" onsubmit="return confirm('Publikasikan draf formulir {{ $currentDraft->version_code }} untuk tahun {{ $activeYear }}?\n\nPerhatian: Setelah dipublikasikan, pertanyaan baru yang ditambahkan akan dikunci permanen dan tidak dapat dihapus lagi (hanya dapat diedit).');">
+            <form method="POST" action="{{ route('admin.form-settings.fields.publish') }}" onsubmit="return confirm('Publikasikan draf formulir {{ $currentDraft->version_code }} untuk tahun {{ $activeYear }}{{ $effectiveBrand ? ' (Brand: '.$effectiveBrand->name.')' : ' (Global)' }}?\n\nPerhatian: Setelah dipublikasikan, pertanyaan baru yang ditambahkan akan dikunci permanen dan tidak dapat dihapus lagi (hanya dapat diedit).');">
                 @csrf
                 <input type="hidden" name="year" value="{{ $activeYear }}">
+                <input type="hidden" name="brand_id" value="{{ $effectiveBrand?->id ?? '' }}">
                 <button type="submit"
                     class="inline-flex items-center gap-2 rounded-[8px] bg-[#2D8659] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#1F5F3F] transition">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     Publikasikan Formulir
                 </button>
             </form>
+        </div>
+    </div>
+
+    {{-- Bar Konteks Brand & Integrasi Universal Spreadsheet --}}
+    <div class="mb-5 rounded-[12px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            {{-- Brand Selector & Host Trust Info --}}
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-700">Pilih Brand:</span>
+                    <select
+                        id="form-brand-select"
+                        onchange="window.location.href='?year={{ $activeYear }}&brand_id=' + this.value"
+                        class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-[#2D8659] focus:outline-none"
+                    >
+                        <option value="global" {{ ($effectiveBrand === null) ? 'selected' : '' }}>
+                            ★ Template Baseline Global (Default)
+                        </option>
+                        @foreach ($brands ?? [] as $b)
+                            <option value="{{ $b->id }}" {{ ($effectiveBrand?->id === $b->id) ? 'selected' : '' }}>
+                                {{ $b->name }} ({{ $b->code }}) {{ $b->is_default ? '★ Default Brand' : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                @if ($effectiveBrand?->registration_host)
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-800 border border-emerald-200" title="Domain / Host Trust terverifikasi untuk formulir publik brand ini">
+                        <svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Host Trust: <code class="font-mono text-[10.5px] text-emerald-900">{{ $effectiveBrand->registration_host }}</code>
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] text-slate-600 border border-slate-200">
+                        Host Default (Semua Domain)
+                    </span>
+                @endif
+            </div>
+
+            {{-- Universal Spreadsheet Connection Status & Quick Link --}}
+            <div class="flex flex-wrap items-center gap-3">
+                @if ($brandConnection)
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-800 border border-indigo-200">
+                            <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            Spreadsheet: <strong class="font-semibold">{{ $brandConnection->display_name ?: 'Koneksi #'.$brandConnection->id }}</strong>
+                            <span class="text-indigo-500 font-mono text-[10px]">({{ $mappedColumnsCount }} kolom terpetakan)</span>
+                        </span>
+                    </div>
+                    <a
+                        href="{{ route('admin.spreadsheet-connections.show', $brandConnection) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition"
+                    >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        Buka Workspace Universal Spreadsheet
+                    </a>
+                @else
+                    <a
+                        href="{{ route('admin.spreadsheet-connections.index') }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition"
+                    >
+                        <svg class="h-3.5 w-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        Hubungkan Spreadsheet untuk Brand Ini
+                    </a>
+                @endif
+            </div>
         </div>
     </div>
 
@@ -237,13 +330,44 @@
                                 <div class="pt-1">
                                     <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                         <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">5</span>
-                                        Finalisasi & Submit
+                                        {{ $submitSettings->section_title ?? 'Finalisasi & Submit' }}
                                     </h4>
+                                    @if($submitSettings->show_notice_box ?? true)
                                     <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 mb-2">
-                                        Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
+                                        <strong>{{ $submitSettings->notice_title ?? 'Perhatian:' }}</strong> {{ $submitSettings->notice_text ?? 'Program magang ini bersifat unpaid / tidak bergaji.' }}
+                                        @if(!empty($submitSettings->admin_wa_number))
+                                            <span class="block mt-0.5 text-[10.5px] opacity-90">Konfirmasi WA: <strong>{{ $submitSettings->admin_wa_number }}</strong> ({{ $submitSettings->admin_wa_message ?? 'SAYA SUDAH ISI FORM' }})</span>
+                                        @endif
                                     </div>
+                                    @endif
+
+                                    @if(!empty($groupedFields['finalisasi_submit']) && $groupedFields['finalisasi_submit']->where('is_active', true)->isNotEmpty())
+                                    <div class="space-y-2 mb-2.5">
+                                        @foreach($groupedFields['finalisasi_submit']->where('is_active', true) as $pf)
+                                            <div>
+                                                <label class="block mb-1 text-xs font-medium text-gray-700">
+                                                    {{ $pf->label }}
+                                                    @if($pf->is_required) <span class="text-red-500">*</span> @endif
+                                                </label>
+                                                @if($pf->field_type === 'checkbox')
+                                                    <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                                                        <input type="checkbox" disabled class="w-3.5 h-3.5 rounded text-green-600">
+                                                        <span>{{ $pf->placeholder ?: $pf->label }}</span>
+                                                    </label>
+                                                @elseif($pf->field_type === 'textarea')
+                                                    <textarea rows="2" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                                        class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs resize-none"></textarea>
+                                                @else
+                                                    <input type="text" disabled placeholder="{{ $pf->placeholder ?? '' }}"
+                                                        class="block w-full rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 px-3 py-2 text-xs">
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                    @endif
+
                                     <button disabled class="w-full py-2 bg-emerald-700 text-white rounded text-xs font-semibold opacity-80 cursor-not-allowed">
-                                        Kirim Pendaftaran (Preview)
+                                        {{ $submitSettings->submit_button_text ?? 'Kirim Pendaftaran' }} (Preview)
                                     </button>
                                 </div>
                             </div>
@@ -273,6 +397,7 @@
                 <form id="form-add-field" method="POST" action="{{ route('admin.form-settings.fields.store') }}" class="space-y-3">
                     @csrf
                     <input type="hidden" name="year" value="{{ $activeYear }}">
+                    <input type="hidden" name="brand_id" value="{{ $effectiveBrand?->id ?? '' }}">
                     <div class="grid grid-cols-2 gap-3">
                         <div class="col-span-2">
                             <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Pertanyaan <span class="text-red-500">*</span></label>
@@ -386,6 +511,220 @@
                     :fields="$groupedFields['informasi_tambahan'] ?? collect()"
                     :types="$types"
                     group="informasi_tambahan" />
+
+                {{-- Grup 5: Finalisasi & Submit (Area Khusus) --}}
+                <div class="rounded-[12px] border border-[#DCE7E1] bg-white shadow-sm overflow-hidden" id="group-card-finalisasi_submit">
+                    <div class="flex items-center justify-between border-b border-[#DCE7E1] px-5 py-3.5 bg-gradient-to-r from-emerald-50/60 via-white to-white">
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <div>
+                                <h2 class="text-[14px] font-bold text-[#1B3A34]">5. Finalisasi & Submit</h2>
+                                <p class="text-[11.5px] text-[#4B5F5A]">
+                                    Pengaturan area submit pendaftaran, teks ketentuan unpaid, kontak WA admin, dan pertanyaan/pernyataan tambahan.
+                                </p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
+                            ★ Area Khusus
+                        </span>
+                    </div>
+
+                    {{-- Form Pengaturan Area Submit --}}
+                    <div class="p-5 border-b border-[#DCE7E1] bg-[#FBFDFB]">
+                        <div class="flex items-center justify-between mb-3.5">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-[#1B3A34] flex items-center gap-1.5">
+                                <svg class="h-4 w-4 text-[#2D8659]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                Konfigurasi Konten & Tombol Area Submit
+                            </h3>
+                            <span class="text-[11px] text-[#4B5F5A]">Perubahan langsung terlihat di Live Preview</span>
+                        </div>
+
+                        <form id="form-submit-settings" class="space-y-3.5">
+                            @csrf
+                            <input type="hidden" name="year" value="{{ $activeYear }}">
+                            <input type="hidden" name="brand_id" value="{{ $effectiveBrand?->id }}">
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Judul Bagian</label>
+                                    <input type="text" name="section_title" id="sub-section-title"
+                                        value="{{ $submitSettings->section_title ?? 'Finalisasi & Submit' }}"
+                                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                                </div>
+                                <div>
+                                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Subjudul / Deskripsi Singkat</label>
+                                    <input type="text" name="section_subtitle" id="sub-section-subtitle"
+                                        value="{{ $submitSettings->section_subtitle ?? 'Tinjau ketentuan program magang dan kirim formulir pendaftaran Anda.' }}"
+                                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                                </div>
+                            </div>
+
+                            {{-- Kotak Peringatan / Disclaimer Unpaid --}}
+                            <div class="rounded-[10px] border border-amber-200 bg-amber-50/60 p-3.5 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-bold text-amber-900">
+                                        <input type="checkbox" name="show_notice_box" id="sub-show-notice" value="1"
+                                            {{ ($submitSettings->show_notice_box ?? true) ? 'checked' : '' }}
+                                            class="w-4 h-4 rounded accent-[#2D8659]">
+                                        Tampilkan Kotak Informasi / Perhatian (Amber Alert Box)
+                                    </label>
+                                    <span class="text-[10.5px] font-medium text-amber-700 bg-amber-100/70 border border-amber-200 rounded px-2 py-0.5">Disclaimer Magang</span>
+                                </div>
+
+                                <div id="sub-notice-fields" class="space-y-2.5 {{ ($submitSettings->show_notice_box ?? true) ? '' : 'hidden' }}">
+                                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                                        <div class="sm:col-span-1">
+                                            <label class="block mb-1 text-[11.5px] font-semibold text-amber-900">Label Awalan</label>
+                                            <input type="text" name="notice_title" id="sub-notice-title"
+                                                value="{{ $submitSettings->notice_title ?? 'Perhatian:' }}"
+                                                class="w-full rounded-[7px] border border-amber-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-800 outline-none focus:border-[#2D8659]">
+                                        </div>
+                                        <div class="sm:col-span-3">
+                                            <label class="block mb-1 text-[11.5px] font-semibold text-amber-900">Isi Teks Ketentuan / Disclaimer</label>
+                                            <input type="text" name="notice_text" id="sub-notice-text"
+                                                value="{{ $submitSettings->notice_text ?? 'Program magang ini bersifat unpaid / tidak bergaji.' }}"
+                                                class="w-full rounded-[7px] border border-amber-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-800 outline-none focus:border-[#2D8659]">
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                        <div>
+                                            <label class="block mb-1 text-[11.5px] font-semibold text-amber-900">No. WhatsApp Admin Konfirmasi</label>
+                                            <input type="text" name="admin_wa_number" id="sub-wa-number"
+                                                value="{{ $submitSettings->admin_wa_number ?? '0895 2900 2944' }}" placeholder="Contoh: 0895 2900 2944"
+                                                class="w-full rounded-[7px] border border-amber-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-800 outline-none focus:border-[#2D8659]">
+                                        </div>
+                                        <div>
+                                            <label class="block mb-1 text-[11.5px] font-semibold text-amber-900">Teks Pesan Konfirmasi WA</label>
+                                            <input type="text" name="admin_wa_message" id="sub-wa-message"
+                                                value="{{ $submitSettings->admin_wa_message ?? 'SAYA SUDAH ISI FORM' }}" placeholder="Contoh: SAYA SUDAH ISI FORM"
+                                                class="w-full rounded-[7px] border border-amber-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-800 outline-none focus:border-[#2D8659]">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div>
+                                    <label class="block mb-1 text-[12px] font-semibold text-[#1B3A34]">Label Tombol Submit</label>
+                                    <input type="text" name="submit_button_text" id="sub-button-text"
+                                        value="{{ $submitSettings->submit_button_text ?? 'Kirim Pendaftaran' }}"
+                                        class="w-full rounded-[8px] border border-[#DCE7E1] bg-white px-3 py-2 text-[12.5px] text-[#1B3A34] outline-none focus:border-[#2D8659] transition">
+                                </div>
+                                <div class="flex items-center pt-5">
+                                    <label class="flex items-center gap-2 cursor-pointer select-none text-[12.5px] font-medium text-[#1B3A34]">
+                                        <input type="checkbox" name="save_draft_enabled" id="sub-save-draft" value="1"
+                                            {{ ($submitSettings->save_draft_enabled ?? true) ? 'checked' : '' }}
+                                            class="w-4 h-4 rounded accent-[#2D8659]">
+                                        Aktifkan Fitur "Simpan di Browser" (Draft Lokal)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-1">
+                                <p class="text-[11px] text-[#4B5F5A]">
+                                    Pengaturan berlaku untuk Tahun <strong>{{ $activeYear }}</strong>
+                                    @if($effectiveBrand) (Konteks: {{ $effectiveBrand->name }}) @endif
+                                </p>
+                                <button type="button" id="btn-save-submit-settings"
+                                    class="inline-flex items-center gap-1.5 rounded-[8px] bg-[#2D8659] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1F5F3F] transition cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                    Simpan Pengaturan Area Submit
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    {{-- Pertanyaan / Checklist Tambahan di Grup 5 --}}
+                    <div>
+                        <div class="flex items-center justify-between border-b border-[#DCE7E1] px-5 py-3 bg-[#F8FBF9]">
+                            <div>
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-[#1B3A34]">
+                                    Pertanyaan / Checkbox Tambahan di Area 5
+                                </h3>
+                                <p class="text-[11px] text-[#4B5F5A]">
+                                    {{ ($groupedFields['finalisasi_submit'] ?? collect())->where('is_active', true)->count() }} aktif,
+                                    {{ ($groupedFields['finalisasi_submit'] ?? collect())->where('is_active', false)->count() }} nonaktif
+                                    · {{ ($groupedFields['finalisasi_submit'] ?? collect())->count() }} total
+                                </p>
+                            </div>
+                            <span class="text-[11px] text-[#4B5F5A]">Geser <span class="font-bold">☰</span> untuk urut ulang</span>
+                        </div>
+
+                        <ul id="field-list-finalisasi_submit" class="divide-y divide-[#F4F8F6] bg-white min-h-[50px]">
+                            @forelse($groupedFields['finalisasi_submit'] as $field)
+                            @php
+                                $isDeletable = $field->isDeletable();
+                            @endphp
+                            <li id="field-row-{{ $field->id }}"
+                                data-field-id="{{ $field->id }}"
+                                data-is-active="{{ $field->is_active ? '1' : '0' }}"
+                                class="flex items-center gap-3 px-4 py-3 transition hover:bg-[#F4F8F6] {{ !$field->is_active ? 'opacity-50' : '' }}">
+
+                                <span class="drag-handle cursor-grab text-[#DCE7E1] hover:text-[#2D8659] shrink-0 select-none" title="Geser untuk urut ulang">
+                                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                                        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                                    </svg>
+                                </span>
+
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-[13.5px] font-semibold {{ $field->is_active ? 'text-[#1B3A34]' : 'text-[#4B5F5A] line-through' }}">
+                                            {{ $field->label }}
+                                        </span>
+                                        @if($field->is_system)
+                                        <span class="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">Sistem</span>
+                                        @endif
+                                        @if($isDeletable)
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700" title="Belum dipublikasikan">Sementara</span>
+                                        @else
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600" title="Sudah dipublikasikan">Terkunci</span>
+                                        @endif
+                                    </div>
+                                    <div class="flex items-center gap-2 text-[11px] text-[#4B5F5A] mt-0.5 flex-wrap">
+                                        <span class="font-medium text-[#2D8659]">{{ $types[$field->field_type] ?? $field->field_type }}</span>
+                                        <span>·</span>
+                                        <span>{{ $field->column_span == 2 ? 'Setengah kolom' : 'Penuh' }}</span>
+                                        <span>·</span>
+                                        <code class="text-[10.5px] text-gray-400 font-mono">{{ $field->field_key }}</code>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="toggleActive({{ $field->id }})" title="{{ $field->is_active ? 'Klik untuk nonaktifkan' : 'Klik untuk aktifkan' }}"
+                                        class="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-bold transition {{ $field->is_active ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200' }}">
+                                        <span class="h-1.5 w-1.5 rounded-full {{ $field->is_active ? 'bg-emerald-600' : 'bg-gray-400' }}"></span>
+                                        {{ $field->is_active ? 'Aktif' : 'Nonaktif' }}
+                                    </button>
+
+                                    <button type="button" onclick="openEditModal({{ $field->id }})" title="Edit pertanyaan"
+                                        class="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#4B5F5A] hover:bg-[#F4F8F6] hover:text-[#1B3A34] transition">
+                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </button>
+
+                                    <button type="button" onclick="toggleRequired({{ $field->id }})" title="Ubah status wajib"
+                                        class="rounded-[6px] px-2 py-1 text-[10.5px] font-medium transition {{ $field->is_required ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-400 hover:bg-gray-100' }}">
+                                        {{ $field->is_required ? 'Wajib' : 'opsional' }}
+                                    </button>
+
+                                    @if($isDeletable)
+                                    <button type="button" onclick="deleteField({{ $field->id }}, '{{ addslashes($field->label) }}')" title="Hapus pertanyaan sementara"
+                                        class="flex h-7 w-7 items-center justify-center rounded-[6px] text-red-500 hover:bg-red-50 hover:text-red-700 transition">
+                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                    </button>
+                                    @endif
+                                </div>
+                            </li>
+                            @empty
+                            <li class="px-5 py-6 text-center text-[12.5px] text-[#4B5F5A]">
+                                <p>Belum ada pertanyaan tambahan di area ini.</p>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    Anda dapat menambahkan pernyataan persetujuan atau checkbox komitmen di form <strong>"Tambah Pertanyaan Baru"</strong> dengan memilih grup <strong>5. Finalisasi & Submit</strong>.
+                                </p>
+                            </li>
+                            @endforelse
+                        </ul>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -522,6 +861,7 @@ const CURRENT_YEAR = {{ (int) $activeYear }};
         'pilihan_durasi'     => ($groupedFields['pilihan_durasi'] ?? collect())->where('is_active', true)->values(),
         'berkas_portofolio'  => ($groupedFields['berkas_portofolio'] ?? collect())->where('is_active', true)->values(),
         'informasi_tambahan' => ($groupedFields['informasi_tambahan'] ?? collect())->where('is_active', true)->values(),
+        'finalisasi_submit'  => ($groupedFields['finalisasi_submit'] ?? collect())->where('is_active', true)->values(),
     ];
 @endphp
 const INITIAL_PREVIEW_DATA = {
@@ -529,6 +869,7 @@ const INITIAL_PREVIEW_DATA = {
     main_fields: @json($previewMainFields),
     extra_fields: @json($previewExtraFields),
     divisions: @json($previewDivisions),
+    submit_settings: @json($submitSettings),
     draft_version: @json($currentDraft->version_code),
     year: {{ (int) $activeYear }}
 };
@@ -838,7 +1179,9 @@ function refreshPreview() {
     const container = document.getElementById('form-preview-container');
     if (!container) return;
 
-    fetch(`/admin/form-settings/fields/preview-data?year=${CURRENT_YEAR}`, {
+    const brandSelect = document.getElementById('form-brand-select');
+    const brandParam = brandSelect && brandSelect.value ? `&brand_id=${brandSelect.value}` : '';
+    fetch(`/admin/form-settings/fields/preview-data?year=${CURRENT_YEAR}${brandParam}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
     })
     .then(r => r.json())
@@ -866,6 +1209,8 @@ function buildPreviewHtml(data) {
     const gPilihan  = grouped.pilihan_durasi || [];
     const gBerkas   = grouped.berkas_portofolio || [];
     const gInfo     = grouped.informasi_tambahan || [];
+    const gSubmit   = grouped.finalisasi_submit || [];
+    const ss        = data.submit_settings || {};
 
     let html = `
         <h3 class="text-sm font-semibold text-gray-800 mb-1">Form Pendaftaran Magang (${escHtml(data.year || CURRENT_YEAR)})</h3>
@@ -990,16 +1335,40 @@ function buildPreviewHtml(data) {
         </div>`;
     }
 
+    const submitTitle = ss.section_title || 'Finalisasi & Submit';
+    const showNotice = (ss.show_notice_box !== false && ss.show_notice_box !== 0 && ss.show_notice_box !== '0');
+    const noticeTitle = ss.notice_title || 'Perhatian:';
+    const noticeText = ss.notice_text !== undefined ? ss.notice_text : 'Program magang ini bersifat unpaid / tidak bergaji.';
+    const waNumber = ss.admin_wa_number || '';
+    const waMsg = ss.admin_wa_message || '';
+    const btnText = ss.submit_button_text || 'Kirim Pendaftaran';
+
+    let noticeHtml = '';
+    if (showNotice) {
+        let waNote = '';
+        if (waNumber) {
+            waNote = `<span class="block mt-0.5 text-[10.5px] opacity-90">Konfirmasi WA: <strong>${escHtml(waNumber)}</strong> ${waMsg ? `("${escHtml(waMsg)}")` : ''}</span>`;
+        }
+        noticeHtml = `<div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 mb-2">
+            <strong>${escHtml(noticeTitle)}</strong> ${escHtml(noticeText)}
+            ${waNote}
+        </div>`;
+    }
+
+    let submitFieldsHtml = '';
+    if (gSubmit.length > 0) {
+        submitFieldsHtml = `<div class="space-y-2 mb-2.5">${renderFieldGroup(gSubmit, renderField)}</div>`;
+    }
+
     html += `<div class="pt-1">
         <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <span class="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] flex items-center justify-center font-bold">5</span>
-            Finalisasi & Submit
+            ${escHtml(submitTitle)}
         </h4>
-        <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 mb-2">
-            Program magang ini bersifat <strong>unpaid / tidak bergaji</strong>.
-        </div>
+        ${noticeHtml}
+        ${submitFieldsHtml}
         <button disabled class="w-full py-2 bg-emerald-700 text-white rounded text-xs font-semibold opacity-80 cursor-not-allowed">
-            Kirim Pendaftaran (Preview)
+            ${escHtml(btnText)} (Preview)
         </button>
     </div>`;
 
@@ -1056,9 +1425,55 @@ if (initialContainer && typeof INITIAL_PREVIEW_DATA !== 'undefined') {
     initialContainer.innerHTML = buildPreviewHtml(INITIAL_PREVIEW_DATA);
 }
 
+// ================================================================
+// Pengaturan Khusus Area No 5 Submit
+// ================================================================
+document.getElementById('sub-show-notice')?.addEventListener('change', function () {
+    const fields = document.getElementById('sub-notice-fields');
+    if (fields) {
+        fields.classList.toggle('hidden', !this.checked);
+    }
+});
+
+document.getElementById('btn-save-submit-settings')?.addEventListener('click', function () {
+    const btn = this;
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="h-3.5 w-3.5 animate-spin inline-block mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg> Menyimpan...`;
+
+    const form = document.getElementById('form-submit-settings');
+    const formData = new FormData(form);
+
+    fetch('{{ route('admin.form-settings.fields.submit-settings') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': CSRF,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+        },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        if (data.ok) {
+            showToast(data.message, 'success');
+            refreshPreview();
+        } else {
+            showToast(data.message || 'Gagal menyimpan pengaturan submit.', 'error');
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        showToast('Terjadi kesalahan saat menyimpan pengaturan submit.', 'error');
+    });
+});
+
 document.addEventListener('DOMContentLoaded', function () {
     const bindSortables = () => {
-        ['data_diri_edukasi', 'pilihan_durasi', 'berkas_portofolio', 'informasi_tambahan', 'main', 'extra'].forEach(grp => {
+        ['data_diri_edukasi', 'pilihan_durasi', 'berkas_portofolio', 'informasi_tambahan', 'finalisasi_submit', 'main', 'extra'].forEach(grp => {
             initSortable('field-list-' + grp, grp);
         });
     };

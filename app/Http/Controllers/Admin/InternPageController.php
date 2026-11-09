@@ -31,10 +31,11 @@ class InternPageController extends Controller
                 $targetYear = (request()->filled('year') && (int) request('year') >= 2020)
                     ? (int) request('year')
                     : (int) now()->year;
+                $targetBrandId = request()->filled('brand_id') ? (int) request('brand_id') : null;
                 if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
-                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                    app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear, null, false, $targetBrandId);
                 }
-                $activeSchema = \App\Models\FormSchema::where('year', $targetYear)->activePublished()->first()
+                $activeSchema = app(\App\Services\FormBuilderService::class)->resolveEffectivePublishedSchema($targetBrandId, $targetYear)
                     ?: \App\Models\FormSchema::activePublished()->first()
                     ?: \App\Models\FormSchema::where('year', $targetYear)->orderByDesc('id')->first();
 

@@ -128,7 +128,10 @@ class SpreadsheetInboundSyncService
                   }
               })
               ->where('is_active', true);
-        })->get()->keyBy(fn ($m) => mb_strtolower(trim($m->sheet_header)));
+        })->where(function ($q) {
+            $q->where('mapping_status', 'active')
+              ->orWhereNull('mapping_status');
+        })->get();
 
         $columnMap = [];
         foreach ($remoteColumns as $col) {
@@ -139,7 +142,22 @@ class SpreadsheetInboundSyncService
             $colLetter = (string) ($col['col_letter'] ?? '');
             $colIndex  = (int) ($col['col_index'] ?? 0);
             $normHeader = mb_strtolower(trim($hName));
-            $mapping   = $activeMappings->get($normHeader);
+
+            // Priority 1: match by physical column_order
+            $mapping = $activeMappings->firstWhere('column_order', $colIndex);
+
+            // Priority 2: match by column_identity
+            if (!$mapping && !empty($col['column_identity'])) {
+                $mapping = $activeMappings->firstWhere('column_identity', $col['column_identity']);
+            }
+
+            // Priority 3: fallback match by header ONLY if unique
+            if (!$mapping) {
+                $matchedHeaders = $activeMappings->filter(fn($m) => mb_strtolower(trim($m->sheet_header)) === $normHeader);
+                if ($matchedHeaders->count() === 1) {
+                    $mapping = $matchedHeaders->first();
+                }
+            }
 
             if ($mapping) {
                 $direction = strtolower(trim((string) $mapping->direction));
@@ -179,7 +197,9 @@ class SpreadsheetInboundSyncService
                 $columnIdentity = $hName;
             }
 
-            $columnMap[$hName] = [
+            $colKey = $colLetter ?: ('col_' . $colIndex);
+            $columnMap[$colKey] = [
+                'col_key'         => $colKey,
                 'header_name'     => $hName,
                 'col_letter'      => $colLetter,
                 'col_index'       => $colIndex,
@@ -294,7 +314,8 @@ class SpreadsheetInboundSyncService
                 }
 
                 // E. Periksa Perubahan per Kolom
-                foreach ($columnMap as $headerName => $colMeta) {
+                foreach ($columnMap as $colKey => $colMeta) {
+                    $headerName     = $colMeta['header_name'];
                     $classification = $colMeta['classification'];
                     $fieldKey       = $colMeta['field_key'];
 
@@ -311,7 +332,12 @@ class SpreadsheetInboundSyncService
                         continue;
                     }
 
-                    $rawRemoteValue = isset($row[$headerName]) ? (string) $row[$headerName] : null;
+                    $rawRemoteValue = null;
+                    if (!empty($colMeta['col_letter']) && isset($row['_cells_by_letter'][$colMeta['col_letter']])) {
+                        $rawRemoteValue = (string) $row['_cells_by_letter'][$colMeta['col_letter']];
+                    } elseif (isset($row[$headerName])) {
+                        $rawRemoteValue = (string) $row[$headerName];
+                    }
                     $normalizedRemoteValue = $this->normalizeCellValue($rawRemoteValue);
                     $isFormula = $this->isFormulaValue($rawRemoteValue);
 
@@ -998,8 +1024,14 @@ class SpreadsheetInboundSyncService
     protected function computeRowChecksum(array $row, array $columnMap): string
     {
         $payload = [];
-        foreach ($columnMap as $headerName => $meta) {
-            $payload[$headerName] = isset($row[$headerName]) ? (string) $row[$headerName] : '';
+        foreach ($columnMap as $colKey => $meta) {
+            $val = '';
+            if (!empty($meta['col_letter']) && isset($row['_cells_by_letter'][$meta['col_letter']])) {
+                $val = (string) $row['_cells_by_letter'][$meta['col_letter']];
+            } elseif (isset($row[$meta['header_name']])) {
+                $val = (string) $row[$meta['header_name']];
+            }
+            $payload[$colKey] = $val;
         }
         return hash('sha256', json_encode($payload));
     }

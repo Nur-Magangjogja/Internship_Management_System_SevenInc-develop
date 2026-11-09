@@ -169,13 +169,19 @@
         z-index: 99999 !important;
     }
     .mou-ribbon-tab-btn {
-        padding: 0.55rem 1.1rem;
+        padding: 0.5rem 0.85rem;
         font-size: 0.8125rem;
         font-weight: 600;
         color: #475569;
         border-bottom: 2px solid transparent;
         transition: all 0.15s ease;
         white-space: nowrap;
+        flex-shrink: 0;
+    }
+    @media (min-width: 1280px) {
+        .mou-ribbon-tab-btn {
+            padding: 0.55rem 1.05rem;
+        }
     }
     .mou-ribbon-tab-btn:hover {
         color: #1e293b;
@@ -185,6 +191,21 @@
         color: #1d4ed8;
         border-bottom-color: #2563eb;
         background: #ffffff;
+    }
+    .mou-ribbon-top-bar {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+        -webkit-overflow-scrolling: touch;
+    }
+    .mou-ribbon-top-bar::-webkit-scrollbar {
+        height: 3px;
+    }
+    .mou-ribbon-top-bar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    .mou-ribbon-top-bar::-webkit-scrollbar-track {
+        background: transparent;
     }
     .mou-ribbon-btn {
         display: inline-flex;
@@ -1037,15 +1058,25 @@
     /* Table Presets & Explicit Right Border Enforcement */
     .mou-table-borderless,
     .ProseMirror table.mou-table-borderless,
-    table.mou-table-borderless {
+    .ProseMirror table[data-table-style="borderless"],
+    table.mou-table-borderless,
+    table[data-table-style="borderless"] {
         border: none !important;
         border-collapse: collapse !important;
     }
     .mou-table-borderless td,
     .mou-table-borderless th,
+    table[data-table-style="borderless"] td,
+    table[data-table-style="borderless"] th,
     .ProseMirror table.mou-table-borderless td,
-    .ProseMirror table.mou-table-borderless th {
+    .ProseMirror table.mou-table-borderless th,
+    .ProseMirror table[data-table-style="borderless"] td,
+    .ProseMirror table[data-table-style="borderless"] th {
         border: none !important;
+        border-right: none !important;
+        border-left: none !important;
+        border-top: none !important;
+        border-bottom: none !important;
     }
 
     .ProseMirror table.mou-table-bordered,
@@ -1085,6 +1116,43 @@
     table.mou-paraf-table td:last-child,
     table.mou-paraf-table th:last-child {
         border-right: 1px solid #000000 !important;
+    }
+
+    /* Strict protection: borderless tables & cells must NEVER have right or outer borders */
+    table.mou-table-borderless td:last-child,
+    table.mou-table-borderless th:last-child,
+    table[data-table-style="borderless"] td:last-child,
+    table[data-table-style="borderless"] th:last-child,
+    .ProseMirror table.mou-table-borderless td:last-child,
+    .ProseMirror table.mou-table-borderless th:last-child,
+    .ProseMirror table[data-table-style="borderless"] td:last-child,
+    .ProseMirror table[data-table-style="borderless"] th:last-child,
+    .mou-preview-sheet-body table.mou-table-borderless,
+    .mou-preview-sheet-body table[data-table-style="borderless"],
+    .mou-preview-sheet-body table.mou-table-borderless td,
+    .mou-preview-sheet-body table.mou-table-borderless th,
+    .mou-preview-sheet-body table.mou-table-borderless td:last-child,
+    .mou-preview-sheet-body table.mou-table-borderless th:last-child,
+    .mou-preview-sheet-body table[data-table-style="borderless"] td,
+    .mou-preview-sheet-body table[data-table-style="borderless"] th,
+    .mou-preview-sheet-body table[data-table-style="borderless"] td:last-child,
+    .mou-preview-sheet-body table[data-table-style="borderless"] th:last-child,
+    .mou-preview-pages-stage table.mou-table-borderless,
+    .mou-preview-pages-stage table[data-table-style="borderless"],
+    .mou-preview-pages-stage table.mou-table-borderless td,
+    .mou-preview-pages-stage table.mou-table-borderless th,
+    .mou-preview-pages-stage table.mou-table-borderless td:last-child,
+    .mou-preview-pages-stage table.mou-table-borderless th:last-child,
+    .mou-preview-pages-stage table[data-table-style="borderless"] td,
+    .mou-preview-pages-stage table[data-table-style="borderless"] th,
+    .mou-preview-pages-stage table[data-table-style="borderless"] td:last-child,
+    .mou-preview-pages-stage table[data-table-style="borderless"] th:last-child {
+        border: none !important;
+        border-right: none !important;
+        border-left: none !important;
+        border-top: none !important;
+        border-bottom: none !important;
+        outline: none !important;
     }
 
     /* Table Gridlines ala MS Word (Garis Kisi Bantu Tabel Tanpa Batas) */
@@ -1182,10 +1250,40 @@
         border-color: #3b82f6;
         color: #2563eb;
     }
+    .mou-table-move-handle:active {
+        cursor: grabbing;
+        transform: scale(0.95);
+    }
     .ProseMirror .tableWrapper:hover .mou-table-move-handle,
     .mou-zone-active .tableWrapper:hover .mou-table-move-handle,
-    .ProseMirror .tableWrapper.ProseMirror-selectednode .mou-table-move-handle {
+    .ProseMirror .tableWrapper.ProseMirror-selectednode .mou-table-move-handle,
+    .tableWrapper.has-focus .mou-table-move-handle {
         opacity: 1;
+    }
+    .tableWrapper.is-table-dragging {
+        opacity: 0.35 !important;
+        outline: 1.5px dashed #2563eb !important;
+    }
+    .mou-table-drop-indicator {
+        height: 3px;
+        background: #2563eb;
+        border-radius: 2px;
+        margin: 4px 0;
+        pointer-events: none;
+        box-shadow: 0 0 8px rgba(37, 99, 235, 0.6);
+        position: relative;
+        z-index: 40;
+    }
+    .mou-table-drop-indicator::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: -3px;
+        width: 9px;
+        height: 9px;
+        background: #2563eb;
+        border-radius: 50%;
+        box-shadow: 0 0 4px rgba(37, 99, 235, 0.8);
     }
 
     /* Signature & Official Wet-Ink Stamp Seal Overlapping Container */
@@ -1547,54 +1645,112 @@
             size: A4 portrait;
             margin: 0;
         }
+
+        *, *::before, *::after {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        /* 1. Reset Global Dokumen untuk Pagination Multi-Halaman */
+        html,
+        body,
+        body.mou-preview-modal-open,
+        main,
+        #admin-main-content {
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+        }
+
+        /* 2. Sembunyikan elemen navigasi, topbar, toolbar, dan tombol modal */
+        .no-print,
         body.mou-preview-modal-open > *:not(#mouA4PreviewModal),
-        body.mou-preview-modal-open #mouA4PreviewModal .no-print {
+        body.mou-preview-modal-open #mouA4PreviewModal .no-print,
+        header,
+        nav,
+        aside,
+        footer,
+        #admin-topbar,
+        #admin-sidebar,
+        .mou-studio-sticky-header,
+        #mouStudioStickyHeader {
             display: none !important;
         }
-        body.mou-preview-modal-open,
-        body.mou-preview-modal-open main {
-            background: white !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
+
+        /* 3. Modal Container: Ubah dari overlay fixed ke flow dokumen statis */
         body.mou-preview-modal-open #mouA4PreviewModal {
             position: static !important;
+            inset: auto !important;
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
             display: block !important;
-            background: white !important;
+            background: transparent !important;
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
             height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             overflow: visible !important;
             z-index: auto !important;
-        }
-        body.mou-preview-modal-open .mou-modal-card {
-            border: none !important;
             box-shadow: none !important;
-            max-width: none !important;
+            border: none !important;
+        }
+
+        /* 4. Ratakan container flex menjadi block layout agar pagination multi-halaman tidak terpotong */
+        body.mou-preview-modal-open .mou-modal-card,
+        body.mou-preview-modal-open #mouModalPaperDeskScroll,
+        body.mou-preview-modal-open #mouModalScaleContainer,
+        body.mou-preview-modal-open .mou-preview-pages-stage {
+            display: block !important;
+            position: static !important;
             width: 100% !important;
             height: auto !important;
-            border-radius: 0 !important;
+            min-height: 0 !important;
+            max-height: none !important;
             overflow: visible !important;
-        }
-        body.mou-preview-modal-open #mouModalPaperDeskScroll {
-            background: white !important;
-            padding: 0 !important;
-            overflow: visible !important;
-        }
-        body.mou-preview-modal-open #mouModalScaleContainer {
             transform: none !important;
-            margin-bottom: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
         }
-        body.mou-preview-modal-open .mou-preview-pages-stage {
-            gap: 0 !important;
-        }
+
+        /* 5. Lembar Kertas A4 & Pemisah Halaman Eksplisit */
         body.mou-preview-modal-open .mou-preview-a4-sheet {
+            position: relative !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            width: 210mm !important;
+            min-width: 210mm !important;
+            max-width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 auto !important;
             box-shadow: none !important;
             border: none !important;
+            page-break-before: auto !important;
+            break-before: auto !important;
             page-break-after: always !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            box-sizing: border-box !important;
+            background: #ffffff !important;
+            overflow: hidden !important;
         }
+
         body.mou-preview-modal-open .mou-preview-a4-sheet:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
@@ -1647,32 +1803,34 @@
     <!-- Pinned / Sticky Top Ribbon Header -->
     <div id="mouStudioStickyHeader" class="mou-studio-sticky-header">
         <!-- Top Ribbon Header: Tabs & Quick Utilities Bar -->
-        <div class="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-3 py-1 min-h-[44px]">
+        <div class="mou-ribbon-top-bar flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-100 px-2 sm:px-3 py-1 min-h-[44px] overflow-x-auto overflow-y-hidden">
             <!-- Sisi Kiri: Tab Navigasi Ribbon -->
-            <div class="flex items-center gap-0.5 overflow-x-auto shrink-0">
+            <div class="flex items-center gap-0.5 shrink-0">
                 <button type="button" data-ribbon-tab="home" class="mou-ribbon-tab-btn active">Beranda</button>
                 <button type="button" data-ribbon-tab="insert" class="mou-ribbon-tab-btn">Sisipkan</button>
                 <button type="button" data-ribbon-tab="layout" class="mou-ribbon-tab-btn">Tata Letak</button>
                 <button type="button" data-ribbon-tab="table" class="mou-ribbon-tab-btn inline-flex items-center gap-1.5">
-                    <span>Desain &amp; Tata Letak Tabel</span>
+                    <span class="hidden 2xl:inline">Desain &amp; Tata Letak Tabel</span>
+                    <span class="inline 2xl:hidden">Desain Tabel</span>
                     <span id="ribbonTableContextBadge" class="hidden rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Aktif</span>
                 </button>
                 <button type="button" data-ribbon-tab="headerfooter" class="mou-ribbon-tab-btn">Header &amp; Footer</button>
             </div>
 
             <!-- Sisi Kanan: Mail Merge Toggle & Mode Switcher -->
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <!-- Tombol Akses Cepat Variabel Mail Merge -->
                 <button
                     type="button"
                     id="btnTogglePlaceholderDrawer"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs hover:bg-blue-50 hover:border-blue-400 transition"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2 sm:px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs hover:bg-blue-50 hover:border-blue-400 transition"
                     title="Buka / Tutup Panel Variabel Dinamis (Mail Merge)"
                 >
-                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="h-3.5 w-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
                     </svg>
-                    <span>Variabel Mail Merge</span>
+                    <span class="hidden lg:inline">Variabel Mail Merge</span>
+                    <span class="inline lg:hidden">Mail Merge</span>
                     <span class="inline-flex items-center justify-center rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.2">
                         {{ count($placeholders) }}
                     </span>
@@ -1682,14 +1840,15 @@
                 <button
                     type="button"
                     id="btnQuickToggleRuler"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-400 transition"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 sm:px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-400 transition"
                     title="Tampilkan / Sembunyikan Penggaris & Garis Penyelarasan (MS Word Ruler)"
                 >
-                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="h-3.5 w-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M2 12h20M2 12v4M6 12v2M10 12v3M14 12v2M18 12v3M22 12v4"/>
                         <rect x="2" y="7" width="20" height="10" rx="1"/>
                     </svg>
-                    <span>Penggaris (Ruler)</span>
+                    <span class="hidden xl:inline">Penggaris (Ruler)</span>
+                    <span class="inline xl:hidden">Penggaris</span>
                 </button>
 
                 <!-- Quick Table Gridlines Toggle Button (ala MS Word View Gridlines) -->
@@ -1697,34 +1856,36 @@
                     type="button"
                     id="btnQuickToggleGridlines"
                     onclick="window.MouWordProcessor?.toggleTableGridlines()"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-blue-500 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs hover:bg-blue-100 transition"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-blue-500 bg-blue-50 px-2 sm:px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs hover:bg-blue-100 transition"
                     title="Tampilkan / Sembunyikan Garis Kisi Tabel Tanpa Batas (MS Word Table Gridlines)"
                 >
-                    <svg class="h-3.5 w-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="h-3.5 w-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/>
                         <line x1="3" y1="9" x2="21" y2="9" stroke-dasharray="2 2"/>
                         <line x1="3" y1="15" x2="21" y2="15" stroke-dasharray="2 2"/>
                         <line x1="9" y1="3" x2="9" y2="21" stroke-dasharray="2 2"/>
                         <line x1="15" y1="3" x2="15" y2="21" stroke-dasharray="2 2"/>
                     </svg>
-                    <span>Garis Kisi</span>
+                    <span class="hidden sm:inline">Garis Kisi</span>
+                    <span class="inline sm:hidden">Kisi</span>
                 </button>
 
                 <!-- Mode Switcher -->
-                <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-2xs">
+                <div class="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-2xs shrink-0">
                     <button
                         type="button"
                         id="btnModeEdit"
-                        class="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white shadow-xs"
+                        class="rounded-md bg-blue-600 px-2 sm:px-2.5 py-1 text-xs font-semibold text-white shadow-xs shrink-0 whitespace-nowrap"
                     >
                         Editor Word
                     </button>
                     <button
                         type="button"
                         id="btnModePreview"
-                        class="rounded-md px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition"
+                        class="rounded-md px-2 sm:px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition shrink-0 whitespace-nowrap"
                     >
-                        Pratinjau Lembar A4
+                        <span class="hidden sm:inline">Pratinjau Lembar A4</span>
+                        <span class="inline sm:hidden">Pratinjau A4</span>
                     </button>
                 </div>
             </div>
@@ -2414,15 +2575,16 @@
                     <div class="flex items-center gap-1.5 mt-1.5">
                         <label class="text-xs font-semibold text-slate-600">Tinggi:</label>
                         <div class="inline-flex items-center rounded-md border border-slate-300 bg-white">
-                            <input type="number" id="ribbonRowHeightInput" placeholder="18" min="12" max="250" step="1" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
+                            <input type="number" id="ribbonRowHeightInput" placeholder="40" min="12" max="250" step="1" class="h-[30px] w-14 border-0 px-1 text-xs text-center focus:ring-0">
                             <div class="flex flex-col border-l border-slate-200">
                                 <button type="button" id="btnSpinRowHeightUp" onclick="window.MouWordProcessor?.adjustRowHeightSpin(1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600" title="Tambah tinggi baris (+1pt)">▲</button>
                                 <button type="button" id="btnSpinRowHeightDown" onclick="window.MouWordProcessor?.adjustRowHeightSpin(-1)" class="h-[15px] px-1 text-[8px] hover:bg-slate-100 flex items-center justify-center text-slate-600 border-t border-slate-200" title="Kurangi tinggi baris (-1pt)">▼</button>
                             </div>
                         </div>
                         <button type="button" id="btnApplyRowHeight" class="mou-ribbon-btn border-blue-200 bg-blue-50 text-blue-700">Set</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Paraf">18pt (Paraf)</button>
-                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf diperbesar">28pt (Paraf+)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('40pt')" class="mou-ribbon-btn border-blue-300 bg-blue-50 text-blue-700 font-semibold" title="Tinggi standar ruang Paraf (40pt)">40pt (Paraf)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('18pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf ringkas (18pt)">18pt (Ringkas)</button>
+                        <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('28pt')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Paraf sedang (28pt)">28pt (Sedang)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('26mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi standar ruang Tanda Tangan">26mm (TTD)</button>
                         <button type="button" onclick="window.MouWordProcessor?.setCurrentRowHeight('35mm')" class="mou-ribbon-btn border-slate-200 bg-slate-50" title="Tinggi ruang Tanda Tangan besar">35mm (TTD+)</button>
                     </div>
@@ -2984,7 +3146,7 @@
         <!-- WORKSPACE VIEW 2: MULTI-SHEET A4 PREVIEW SIMULATION -->
         <div id="mouMultiSheetPreviewContainer" class="hidden flex-1 overflow-y-auto overflow-x-auto bg-slate-300/80 py-6 px-4">
             <!-- Inline Preview Toolbar -->
-            <div class="mx-auto max-w-4xl mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div class="no-print mx-auto max-w-4xl mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                     <span class="text-xs font-bold text-slate-800">Pratinjau Lembar A4</span>
                     <span id="inlinePreviewPageCountBadge" class="rounded bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
@@ -3179,16 +3341,16 @@
 <!-- ========================================================================= -->
 <div
     id="mouA4PreviewModal"
-    class="fixed inset-0 z-[99999] hidden flex-col bg-slate-900/80 backdrop-blur-xs p-0 sm:p-1.5 md:p-2 no-print"
+    class="fixed inset-0 z-[99999] hidden flex-col bg-slate-900/80 backdrop-blur-xs p-0 sm:p-1.5 md:p-2"
     tabindex="-1"
     role="dialog"
     aria-modal="true"
     aria-labelledby="mouModalTitle"
-    style="position: fixed !important; inset: 0 !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important;"
+    style="z-index: 99999;"
 >
     <div class="mou-modal-card flex flex-col w-full max-w-[1560px] mx-auto h-full rounded-none sm:rounded-xl bg-white shadow-2xl border border-slate-300 overflow-hidden">
         <!-- Top Action Bar Header (Compact & Full to Top) -->
-        <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-4 py-2 shrink-0">
+        <div class="no-print flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-4 py-2 shrink-0">
             <!-- Left: Title, Icon & Page Badge -->
             <div class="flex items-center gap-2.5">
                 <div class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-600 shadow-xs">
@@ -3310,7 +3472,7 @@
         </div>
 
         <!-- Info / Notice Bar (Compact) -->
-        <div class="flex items-center justify-between border-b border-blue-100 bg-blue-50/90 px-4 py-1.5 text-xs text-blue-800 shrink-0">
+        <div class="no-print flex items-center justify-between border-b border-blue-100 bg-blue-50/90 px-4 py-1.5 text-xs text-blue-800 shrink-0">
             <span>
                 <strong>Pratinjau Lembar A4:</strong> Menampilkan pembagian halaman dan tata letak persis seperti yang Anda susun pada editor dokumen.
             </span>
@@ -3884,6 +4046,44 @@
         document.getElementById('mouModalZoomSelect')?.addEventListener('change', (e) => {
             applyModalZoom(e.target.value);
         });
+        // Setup Window Print hooks to guarantee full-page multi-page print without layout clipping
+        window.addEventListener('beforeprint', () => {
+            if (document.body.classList.contains('mou-preview-modal-open')) {
+                const modal = document.getElementById('mouA4PreviewModal');
+                if (modal) {
+                    modal.dataset.prevInlineStyle = modal.getAttribute('style') || '';
+                    modal.style.position = 'static';
+                    modal.style.inset = 'auto';
+                    modal.style.width = '100%';
+                    modal.style.height = 'auto';
+                }
+                const scaleBox = document.getElementById('mouModalScaleContainer');
+                if (scaleBox) {
+                    scaleBox.dataset.prevTransform = scaleBox.style.transform || '';
+                    scaleBox.dataset.prevMargin = scaleBox.style.marginBottom || '';
+                    scaleBox.style.transform = 'none';
+                    scaleBox.style.marginBottom = '0';
+                }
+            }
+        });
+
+        window.addEventListener('afterprint', () => {
+            if (document.body.classList.contains('mou-preview-modal-open')) {
+                const modal = document.getElementById('mouA4PreviewModal');
+                if (modal && modal.dataset.prevInlineStyle !== undefined) {
+                    modal.setAttribute('style', modal.dataset.prevInlineStyle);
+                    delete modal.dataset.prevInlineStyle;
+                }
+                const scaleBox = document.getElementById('mouModalScaleContainer');
+                if (scaleBox && scaleBox.dataset.prevTransform !== undefined) {
+                    scaleBox.style.transform = scaleBox.dataset.prevTransform;
+                    scaleBox.style.marginBottom = scaleBox.dataset.prevMargin;
+                    delete scaleBox.dataset.prevTransform;
+                    delete scaleBox.dataset.prevMargin;
+                }
+            }
+        });
+
         document.getElementById('btnModalPrintBrowser')?.addEventListener('click', () => {
             window.print();
         });
@@ -4505,8 +4705,12 @@
 
         // Header & Footer Controls
         document.getElementById('chkDifferentFirstPage')?.addEventListener('change', (e) => {
-            processor.state.differentFirstPage = e.target.checked;
-            processor.syncAllToHiddenInputs();
+            if (processor.toggleDifferentFirstPage) {
+                processor.toggleDifferentFirstPage(e.target.checked);
+            } else {
+                processor.state.differentFirstPage = e.target.checked;
+                processor.syncAllToHiddenInputs();
+            }
         });
         document.getElementById('selectHeaderFooterVariant')?.addEventListener('change', (e) => {
             processor.setHeaderFooterVariant(e.target.value === 'first');
@@ -4514,6 +4718,8 @@
         document.getElementById('chkShowParafBox')?.addEventListener('change', (e) => {
             processor.state.showParafBox = e.target.checked;
             processor.applyPageLayoutToCanvas();
+            processor.refreshAllPageViews?.();
+            processor.syncAllToHiddenInputs();
         });
         document.getElementById('chkShowPageNumber')?.addEventListener('change', (e) => {
             processor.togglePageNumberVisibility(e.target.checked);
@@ -4609,12 +4815,20 @@
             processor.setWatermarkOpacity(val);
         });
         document.getElementById('inputRibbonHeaderDist')?.addEventListener('input', (e) => {
-            processor.state.headerDistanceMm = parseFloat(e.target.value || '12') || 12;
-            processor.syncAllToHiddenInputs();
+            if (processor.setHeaderDistance) {
+                processor.setHeaderDistance(e.target.value);
+            } else {
+                processor.state.headerDistanceMm = parseFloat(e.target.value || '12') || 12;
+                processor.syncAllToHiddenInputs();
+            }
         });
         document.getElementById('inputRibbonFooterDist')?.addEventListener('input', (e) => {
-            processor.state.footerDistanceMm = parseFloat(e.target.value || '10') || 10;
-            processor.syncAllToHiddenInputs();
+            if (processor.setFooterDistance) {
+                processor.setFooterDistance(e.target.value);
+            } else {
+                processor.state.footerDistanceMm = parseFloat(e.target.value || '10') || 10;
+                processor.syncAllToHiddenInputs();
+            }
         });
 
         // Zoom Control

@@ -8,13 +8,13 @@
         $hasAnyUnconnected = $unconnectedConnections->isNotEmpty();
     @endphp
 
-    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <div class="mb-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div class="max-w-2xl">
             <div class="flex flex-wrap items-center gap-3">
                 <h1 class="text-2xl font-bold text-slate-800">Integrasi Google Spreadsheet</h1>
                 @if ($hasAnyUnconnected)
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-sm animate-pulse">
-                        <svg class="h-3.5 w-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs animate-pulse">
+                        <svg class="h-3.5 w-3.5 text-amber-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <circle cx="12" cy="12" r="10"/>
                             <line x1="12" y1="8" x2="12" y2="12"/>
                             <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -22,8 +22,8 @@
                         Tanda: Link Belum Terhubung ke SertIF
                     </span>
                 @else
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-sm">
-                        <svg class="h-3.5 w-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs">
+                        <svg class="h-3.5 w-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="20 6 9 17 4 12"/>
                         </svg>
                         Semua Link Terhubung ke SertIF
@@ -32,45 +32,56 @@
             </div>
             <p class="text-sm text-slate-500 mt-1">Konfigurasi link dokumen Google Spreadsheet dan folder Google Drive pendaftaran per brand melalui gateway terpadu Apps Script.</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
             @php
                 $unassignedBrands = \App\Models\Brand::whereDoesntHave('spreadsheetConnections', function($q) {
                     $q->where('connection_key', 'registration');
                 })->orderBy('name')->get();
             @endphp
             @if ($unassignedBrands->isNotEmpty())
-                <form action="{{ route('admin.spreadsheet-connections.create-brand') }}" method="POST" class="inline-flex items-center gap-1.5">
+                <form action="{{ route('admin.spreadsheet-connections.create-brand') }}" method="POST" class="inline-flex items-center gap-1.5 shrink-0">
                     @csrf
-                    <select name="brand_id" required class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none">
+                    <select
+                        name="brand_id"
+                        required
+                        class="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-xs font-semibold text-slate-700 shadow-xs hover:border-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer transition"
+                    >
                         <option value="">+ Tambah Spreadsheet Brand...</option>
                         @foreach($unassignedBrands as $ub)
                             <option value="{{ $ub->id }}">{{ $ub->name }} ({{ $ub->code }})</option>
                         @endforeach
                     </select>
-                    <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
-                        Hubungkan
+                    <button
+                        type="submit"
+                        class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 active:scale-[0.98] whitespace-nowrap"
+                    >
+                        <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        <span>Hubungkan</span>
                     </button>
                 </form>
             @endif
             <a
                 href="{{ route('admin.legacy-import.index') }}"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                class="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 active:scale-[0.98] whitespace-nowrap shrink-0"
             >
-                <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4 text-slate-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="7 10 12 15 17 10"/>
                     <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
-                Impor Spreadsheet / XLSX Lama
+                <span>Impor Spreadsheet / XLSX Lama</span>
             </a>
             <a
                 href="{{ route('admin.sync-monitoring.index') }}"
-                class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                class="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700 hover:shadow active:scale-[0.98] whitespace-nowrap shrink-0"
             >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
                 </svg>
-                Monitoring & Pemulihan
+                <span>Monitoring &amp; Pemulihan</span>
             </a>
         </div>
     </div>
@@ -461,12 +472,10 @@
                     <a
                         href="{{ route('admin.spreadsheet-connections.show', $conn) }}"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                        title="Buka Workspace Integrasi & Filterisasi Spreadsheet Semi-Otomatis"
                     >
-                        <svg class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect width="18" height="18" x="3" y="3" rx="2"/>
-                            <path d="M3 9h18M3 15h18M9 3v18"/>
-                        </svg>
-                        Lihat Kolom
+                        <i class="fas fa-sliders-h text-slate-500"></i>
+                        Kelola &amp; Filter Spreadsheet
                     </a>
 
                     <a

@@ -106,6 +106,7 @@ class FormField extends Model
     public const GROUP_PILIHAN_DURASI = 'pilihan_durasi';
     public const GROUP_BERKAS = 'berkas_portofolio';
     public const GROUP_INFORMASI_TAMBAHAN = 'informasi_tambahan';
+    public const GROUP_FINALISASI_SUBMIT = 'finalisasi_submit';
 
     /**
      * Deteksi grup default untuk suatu field berdasarkan key dan tipenya.
@@ -162,11 +163,15 @@ class FormField extends Model
             if ($this->group_name === self::GROUP_DATA_DIRI
                 || $this->group_name === self::GROUP_PILIHAN_DURASI
                 || $this->group_name === self::GROUP_BERKAS
-                || $this->group_name === self::GROUP_INFORMASI_TAMBAHAN) {
+                || $this->group_name === self::GROUP_INFORMASI_TAMBAHAN
+                || $this->group_name === self::GROUP_FINALISASI_SUBMIT) {
                 return $this->group_name;
             }
             if ($this->group_name === 'informasi_tambahan') {
                 return self::GROUP_INFORMASI_TAMBAHAN;
+            }
+            if ($this->group_name === 'finalisasi_submit' || $this->group_name === 'submit') {
+                return self::GROUP_FINALISASI_SUBMIT;
             }
         }
 
@@ -212,6 +217,7 @@ class FormField extends Model
             self::GROUP_PILIHAN_DURASI     => '2. Pilihan & Durasi',
             self::GROUP_BERKAS             => '3. Berkas & Portofolio',
             self::GROUP_INFORMASI_TAMBAHAN => '4. Informasi Tambahan',
+            self::GROUP_FINALISASI_SUBMIT  => '5. Finalisasi & Submit',
         ];
     }
 
@@ -225,6 +231,7 @@ class FormField extends Model
             self::GROUP_PILIHAN_DURASI     => 'Pilihan & Durasi',
             self::GROUP_BERKAS             => 'Berkas & Portofolio',
             self::GROUP_INFORMASI_TAMBAHAN => 'Informasi Tambahan',
+            self::GROUP_FINALISASI_SUBMIT  => 'Finalisasi & Submit',
         ];
     }
 

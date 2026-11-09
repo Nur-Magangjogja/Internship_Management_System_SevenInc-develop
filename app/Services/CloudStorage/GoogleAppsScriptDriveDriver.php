@@ -34,22 +34,27 @@ class GoogleAppsScriptDriveDriver implements CloudStorageProviderInterface
             // Database not accessible
         }
 
-        $testEndpoint = (function_exists('app') && app()->runningUnitTests())
-            ? (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null)
-            : null;
+        $testEndpoint = null;
+        try {
+            if (function_exists('app') && method_exists(app(), 'runningUnitTests') && app()->runningUnitTests()) {
+                $testEndpoint = function_exists('config') ? config('services.google_apps_script.endpoint_url') : null;
+            }
+        } catch (\Throwable) {
+            $testEndpoint = null;
+        }
 
         try {
             $this->endpointUrl = $testEndpoint
                 ?: $setting?->apps_script_endpoint_url
                 ?: $conn?->apps_script_endpoint_url
-                ?: (function_exists('config') ? config('services.google_apps_script.endpoint_url') : null);
-            $this->sharedSecret = function_exists('config') ? config('services.google_apps_script.shared_secret') : null;
+                ?: (function_exists('config') && app()->bound('config') ? config('services.google_apps_script.endpoint_url') : null);
+            $this->sharedSecret = function_exists('config') && app()->bound('config') ? config('services.google_apps_script.shared_secret') : null;
+            $this->rootFolderId = $settingRoot ?: $setting?->canonical_parent_folder_id ?: $conn?->drive_folder_id ?: (function_exists('config') && app()->bound('config') ? config('services.google_apps_script.root_folder_id') : null);
         } catch (\Throwable) {
             $this->endpointUrl = $testEndpoint ?: $setting?->apps_script_endpoint_url ?: $conn?->apps_script_endpoint_url;
             $this->sharedSecret = null;
+            $this->rootFolderId = $settingRoot ?: $setting?->canonical_parent_folder_id ?: $conn?->drive_folder_id;
         }
-
-        $this->rootFolderId = $settingRoot ?: $setting?->canonical_parent_folder_id ?: $conn?->drive_folder_id ?: (function_exists('config') ? config('services.google_apps_script.root_folder_id') : null);
     }
 
     public function isConfigured(): bool

@@ -18,18 +18,17 @@ class DummyPemagangSeeder extends Seeder
 {
     public function run(): void
     {
+        // Proteksi lingkungan produksi: pemagang seeder dinonaktifkan sepenuhnya
+        if (app()->environment('production')) {
+            return;
+        }
+
         $password = Hash::make('password123');
 
+        // Murni data test untuk calon pemagang (tanpa pemagang aktif atau terdaftar)
         $data = [
-            ['Budi Santoso',      'pemagang1@demo.com', 'waiting',   'Yogyakarta', 'Laki-laki',  'Islam',             '081234567801'],
-            ['Siti Rahayu',       'pemagang2@demo.com', 'waiting',   'Sleman',     'Perempuan',  'Islam',             '081234567802'],
-            ['Reza Pratama',      'pemagang3@demo.com', 'accepted',  'Bantul',     'Laki-laki',  'Kristen Protestan', '081234567803'],
-            ['Rina Safitri',      'pemagang4@demo.com', 'accepted',  'Jakarta',    'Perempuan',  'Islam',             '081234567804'],
-            ['Ahmad Fauzi',       'pemagang5@demo.com', 'active',    'Bantul',     'Laki-laki',  'Islam',             '081234567805'],
-            ['Fajar Ramadhan',    'pemagang6@demo.com', 'rejected',  'Semarang',   'Laki-laki',  'Islam',             '081234567806'],
-            ['Bambang Subambang', 'pemagang7@demo.com', 'completed', 'Yogyakarta', 'Laki-laki',  'Katolik',           '081234567807'],
-            ['Maya Indah',        'pemagang8@demo.com', 'exited',    'Surabaya',   'Perempuan',  'Hindu',             '081234567808'],
-            ['Dimas Eko Prayogo', 'pemagang9@demo.com', 'pending',   'Kulonprogo', 'Laki-laki',  'Islam',             '081234567809'],
+            ['[TEST] Calon Pemagang 1', 'test.calon1@demo.test', 'waiting', 'Yogyakarta', 'Laki-laki', 'Islam', '081234567801'],
+            ['[TEST] Calon Pemagang 2', 'test.calon2@demo.test', 'pending', 'Sleman',     'Perempuan', 'Islam', '081234567802'],
         ];
 
         $cityIds = DB::table('cities')->pluck('id')->toArray();

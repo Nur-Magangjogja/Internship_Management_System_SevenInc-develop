@@ -130,7 +130,9 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
         ?int $headerRow = null,
         int $page = 1,
         int $pageSize = 20,
-        bool $maskPii = true
+        bool $maskPii = true,
+        bool $fetchColors = true,
+        ?int $dataStartRow = null
     ): SpreadsheetTransportResponse {
         return SpreadsheetTransportResponse::failure(
             errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
@@ -211,6 +213,31 @@ class NullSpreadsheetTransport implements SpreadsheetSidecarTransportInterface
             errorCode: 'TRANSPORT_UNAVAILABLE',
             isRetryable: true,
             context: ['sync_id' => $syncId]
+        );
+    }
+
+    public function duplicateOrCreateTab(
+        SpreadsheetConnection $connection,
+        string $sourceTabName,
+        string $newTabName
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true,
+            context: ['new_tab_name' => $newTabName]
+        );
+    }
+
+    public function appendSystemHeaderIds(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
+    ): SpreadsheetTransportResponse {
+        return SpreadsheetTransportResponse::failure(
+            errorMessage: 'Transport Spreadsheet Google Apps Script belum aktif.',
+            errorCode: 'TRANSPORT_UNAVAILABLE',
+            isRetryable: true
         );
     }
 }

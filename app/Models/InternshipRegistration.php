@@ -58,6 +58,7 @@ class InternshipRegistration extends Model
         'current_status', 'english_book_ability',
         'wfo_readiness', 'schedule_shift_readiness', 'has_laptop',
         'division_id', 'brand_id', 'registration_host',
+        'registration_type', 'is_integrated',
         'start_date', 'planned_duration', 'end_date',
         'internship_status',
         'followup_status',
@@ -80,6 +81,7 @@ class InternshipRegistration extends Model
     protected $casts = [
         'has_laptop'     => 'boolean',
         'is_outsider'    => 'boolean',
+        'is_integrated'  => 'boolean',
         'created_at'     => 'datetime',
         'updated_at'     => 'datetime',
     ];
@@ -419,6 +421,11 @@ class InternshipRegistration extends Model
     public function rowSyncs()
     {
         return $this->morphMany(\App\Models\SpreadsheetRowSync::class, 'syncable');
+    }
+
+    public function spreadsheetRowSyncs()
+    {
+        return $this->rowSyncs();
     }
 
     public function contactLinks()
@@ -923,7 +930,7 @@ class InternshipRegistration extends Model
     }
 
     /**
-     * Label presentasi sumber pendaftar (Revisi Terminologi V1.3):
+     * Label presentasi sumber pendaftar (Revisi Terminologi V1.3 & Integrasi Universal):
      * - Pendaftar Terintegrasi (umum / waiting / pending)
      * - Pemagang Terintegrasi (accepted / active)
      * - Alumni Terintegrasi (completed)
@@ -931,7 +938,13 @@ class InternshipRegistration extends Model
      */
     public function getProvenanceLabelAttribute(): string
     {
-        if ($this->is_outsider || $this->registration_provenance === 'historical_import' || $this->registration_provenance === 'reconciled_sheet') {
+        // 1. Data dari pendaftaran mandiri langsung web form SERTIF
+        if ($this->registration_type === 'web' || $this->registration_provenance === 'direct_web' || $this->registration_provenance === 'regular_web') {
+            return 'Pendaftaran Langsung SERTIF';
+        }
+
+        // 2. Data terintegrasi
+        if ($this->isIntegratedSource()) {
             return match ($this->internship_status) {
                 self::STATUS_COMPLETED => 'Alumni Terintegrasi',
                 self::STATUS_ACCEPTED, self::STATUS_ACTIVE => 'Pemagang Terintegrasi',
@@ -940,6 +953,21 @@ class InternshipRegistration extends Model
         }
 
         return 'Pendaftaran Langsung SERTIF';
+    }
+
+    /**
+     * Cek apakah pendaftar berasal dari data terintegrasi, diimpor, atau pendaftaran via integrasi sheet eksternal.
+     */
+    public function isIntegratedSource(): bool
+    {
+        if ($this->registration_type === 'web' || $this->registration_provenance === 'direct_web' || $this->registration_provenance === 'regular_web') {
+            return false;
+        }
+
+        return (!empty($this->is_outsider))
+            || (!empty($this->is_integrated))
+            || ($this->registration_type === 'integrated')
+            || in_array($this->registration_provenance, ['historical_import', 'reconciled_sheet', 'integrated_external', 'manual_reconciliation'], true);
     }
 }
 

@@ -99,6 +99,44 @@
         </div>
 
         <div class="p-6">
+            <!-- Brand Selector Bar (Universal Brand Scoping & Host Trust) -->
+            <div class="mb-6 p-4 rounded-xl border border-sky-100 bg-sky-50/50 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="h-9 w-9 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                        <i class="fas fa-building text-sm"></i>
+                    </div>
+                    <div>
+                        <label for="select_brand_id" class="block text-xs font-bold text-slate-800">
+                            Brand Tujuan Impor Data Historis
+                        </label>
+                        <p class="text-[11px] text-slate-500">
+                            Setiap data historis akan diisolasi ke brand terpilih dan disinkronkan ke Spreadsheet resminya.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <select
+                        id="select_brand_id"
+                        name="brand_id"
+                        onchange="window.location.href='{{ route('admin.legacy-import.index') }}?brand_id=' + this.value"
+                        class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-sky-500 focus:outline-none shadow-2xs"
+                    >
+                        @foreach ($brands as $b)
+                            <option value="{{ $b->id }}" {{ ($effectiveBrand && $effectiveBrand->id === $b->id) ? 'selected' : '' }}>
+                                {{ $b->name }} ({{ $b->code }})
+                            </option>
+                        @endforeach
+                    </select>
+
+                    @if ($effectiveBrand && $effectiveBrand->registration_host)
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono bg-white border border-slate-200 text-slate-600 shadow-2xs" title="Trusted Registration Host untuk Brand ini">
+                            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                            {{ $effectiveBrand->registration_host }}
+                        </span>
+                    @endif
+                </div>
+            </div>
+
             <!-- Form Sumber 1: Unggah Berkas Fisik -->
             <div id="source-panel-file">
                 <form id="file-upload-form" onsubmit="handleFilePreview(event)" class="space-y-4">
@@ -150,6 +188,29 @@
 
             <!-- Form Sumber 2: Google Sheets Read-Only -->
             <div id="source-panel-gsheet" class="hidden">
+                @if ($brandConnection)
+                    <div class="mb-4 p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div class="flex items-center gap-2.5">
+                            <span class="h-2.5 w-2.5 rounded-full bg-emerald-600"></span>
+                            <div>
+                                <p class="text-xs font-bold text-emerald-900">
+                                    Spreadsheet Terhubung Brand {{ $effectiveBrand?->name }}: {{ $brandConnection->display_name }}
+                                </p>
+                                <p class="text-[11px] text-emerald-700 font-mono">
+                                    ID: {{ $brandConnection->spreadsheet_id }}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onclick="useOfficialBrandSpreadsheet('{{ addslashes($brandConnection->spreadsheet_url ?: $brandConnection->spreadsheet_id) }}')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition shrink-0"
+                        >
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            Gunakan Spreadsheet Brand Ini
+                        </button>
+                    </div>
+                @endif
                 <form id="gsheet-inspect-form" onsubmit="handleGSheetInspect(event)" class="space-y-4">
                     @csrf
                     <div>
@@ -364,6 +425,7 @@
                 <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                     <tr>
                         <th class="px-5 py-3">Batch ID</th>
+                        <th class="px-5 py-3">Brand Target</th>
                         <th class="px-5 py-3">Sumber Data</th>
                         <th class="px-5 py-3">Nama Berkas / Target Tab</th>
                         <th class="px-5 py-3">Waktu Pembuatan</th>
@@ -377,6 +439,18 @@
                         <tr class="hover:bg-slate-50/75 transition">
                             <td class="px-5 py-3.5 font-mono text-xs font-semibold text-slate-800">
                                 #{{ $batch->id }}
+                            </td>
+                            <td class="px-5 py-3.5">
+                                @if ($batch->brand)
+                                    <span class="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-800 border border-sky-200">
+                                        {{ $batch->brand->name }}
+                                    </span>
+                                    @if ($batch->brand->registration_host)
+                                        <span class="block text-[10px] text-slate-400 font-mono">{{ $batch->brand->registration_host }}</span>
+                                    @endif
+                                @else
+                                    <span class="text-xs text-slate-400 italic">Semua / Default</span>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5">
                                 @if ($batch->source_type === 'xlsx')
@@ -556,6 +630,15 @@
         }
     }
 
+    function useOfficialBrandSpreadsheet(urlOrId) {
+        const input = document.getElementById('spreadsheet_input');
+        if (input) {
+            input.value = urlOrId;
+            const btn = document.getElementById('btn-analyze-gsheet');
+            if (btn) btn.click();
+        }
+    }
+
     // Handle AJAX Inspeksi Google Sheets
     async function handleGSheetInspect(e) {
         e.preventDefault();
@@ -573,9 +656,11 @@
         btn.disabled = true;
         btnText.textContent = 'Memeriksa Google Sheets...';
 
+        const brandSelect = document.getElementById('select_brand_id');
         const payload = {
             spreadsheet_input: rawInput,
             tab_name: tabSelect.value || null,
+            brand_id: brandSelect ? brandSelect.value : null,
             _token: '{{ csrf_token() }}'
         };
 
@@ -840,6 +925,8 @@
             default_status: document.getElementById('default_status').value,
             start_date_filter: document.getElementById('start_date_filter').value || null,
             end_date_filter: document.getElementById('end_date_filter').value || null,
+            brand_id: document.getElementById('select_brand_id')?.value || '{{ $effectiveBrand?->id }}',
+            spreadsheet_connection_id: '{{ $brandConnection?->id }}' || null,
             _token: '{{ csrf_token() }}'
         };
 

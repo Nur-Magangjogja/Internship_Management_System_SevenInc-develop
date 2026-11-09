@@ -15,7 +15,12 @@ class ContactReviewController extends Controller
      */
     public function index(Request $request)
     {
-        $query = ContactMatchingService::getReviewQueueQuery();
+        $tab = $request->get('tab', 'needs_review');
+        if (!in_array($tab, ['needs_review', 'empty', 'all'], true)) {
+            $tab = 'needs_review';
+        }
+
+        $query = ContactMatchingService::getReviewQueueQuery($tab);
 
         if ($request->filled('search')) {
             $search = trim($request->search);
@@ -32,6 +37,8 @@ class ContactReviewController extends Controller
 
         $registrations = $query->paginate(15)->withQueryString();
 
+        $counts = ContactMatchingService::getReviewQueueCounts();
+
         // Ambil daftar kontak kanonikal terverifikasi per institusi yang ada di halaman saat ini untuk dropdown saran
         $institutionIds = $registrations->pluck('institution_id')->filter()->unique();
         $canonicalContactsByInstitution = InstitutionContact::whereIn('institution_id', $institutionIds)
@@ -41,7 +48,7 @@ class ContactReviewController extends Controller
             ->get()
             ->groupBy('institution_id');
 
-        return view('admin.contact-review.index', compact('registrations', 'canonicalContactsByInstitution'));
+        return view('admin.contact-review.index', compact('registrations', 'canonicalContactsByInstitution', 'tab', 'counts'));
     }
 
     /**
@@ -49,6 +56,10 @@ class ContactReviewController extends Controller
      */
     public function linkExisting(Request $request, InternshipRegistration $registration)
     {
+        if (empty($registration->institution_id)) {
+            return back()->with('error', 'Peserta magang belum terhubung ke institusi mitra. Harap hubungkan institusi terlebih dahulu.');
+        }
+
         $request->validate([
             'institution_contact_id' => 'required|integer|exists:institution_contacts,id',
         ]);
@@ -67,6 +78,10 @@ class ContactReviewController extends Controller
      */
     public function createAndVerify(Request $request, InternshipRegistration $registration)
     {
+        if (empty($registration->institution_id)) {
+            return back()->with('error', 'Peserta magang belum terhubung ke institusi mitra. Harap hubungkan institusi terlebih dahulu sebelum menambahkan kontak pembimbing.');
+        }
+
         $validated = $request->validate([
             'name'           => 'required|string|max:255',
             'position_title' => 'nullable|string|max:100',

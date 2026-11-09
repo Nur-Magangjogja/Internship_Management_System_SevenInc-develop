@@ -14,6 +14,10 @@ class InternshipRegistrationSeeder extends Seeder
 {
     public function run(): void
     {
+        // Proteksi lingkungan produksi: seeder dummy pemagang dinonaktifkan
+        if (app()->environment('production')) {
+            return;
+        }
         $firstM = ['Muhammad','Ahmad','Nur','Rizky','Agus','Budi','Andi','Fajar','Arief','Rian','Bayu','Rizal','Fadil','Dwi','Dimas','Eko','Yoga','Ilham','Fauzan','Rafli','Yusuf','Heri','Dede','Galang','Aditya','Bagus','Zaki','Iqbal','Rangga','Reza'];
         $firstF = ['Siti','Nurul','Putri','Ayu','Dewi','Lia','Nadia','Intan','Rani','Dinda','Citra','Wulan','Anisa','Maya','Bella','Sarah','Rizka','Nabila','Fitri','Aulia','Tyas','Niken','Mega','Hana','Zahra','Indah','Silvia','Risa','Yuni','Vina'];
         $last    = ['Pratama','Saputra','Permana','Ramadhan','Santoso','Hidayat','Wijaya','Wibowo','Prasetyo','Fauzi','Kurniawan','Setiawan','Maulana','Pangestu','Firmansyah','Alamsyah','Siregar','Simanjuntak','Sihombing','Nugroho','Susanto','Santika','Lestari','Safitri','Utami','Herlambang','Cahyono','Kusuma','Wardani','Puspitasari'];
@@ -44,15 +48,9 @@ class InternshipRegistrationSeeder extends Seeder
             'Kuliah online di malam hari',
         ];
 
-        // Distribusi status agar mencakup seluruh tab pendaftar dan pemagang
+        // Murni pelamar test (waiting / pending) tanpa pemagang aktif atau terdaftar
         $statusSequence = [
-            'waiting', 'waiting', 'waiting', 'waiting', 'waiting',
-            'accepted', 'accepted', 'accepted', 'accepted', 'accepted',
-            'active', 'active', 'active', 'active',
-            'completed', 'completed', 'completed',
-            'rejected', 'rejected', 'rejected',
-            'pending', 'pending',
-            'exited', 'exited',
+            'waiting', 'pending',
         ];
 
         $pick = fn(array $a) => $a[array_rand($a)];
@@ -77,18 +75,18 @@ class InternshipRegistrationSeeder extends Seeder
 
         $password = Hash::make('password123');
 
-        $totalRecords = 50;
+        $totalRecords = 4;
         for ($i = 1; $i <= $totalRecords; $i++) {
             $isMale = $randBool(55);
             $fname  = $isMale ? $pick($firstM) : $pick($firstF);
             $lname  = $pick($last);
             $mname  = $randBool(35) ? ' ' . $pick($last) : '';
-            $fullname = trim("$fname$mname $lname");
+            $fullname = '[TEST] ' . trim("$fname$mname $lname");
+            $userSlug = Str::slug("$fname $lname", '');
 
             $born = $randDate('1999-01-01', '2007-12-31');
             $studentId = sprintf('%02d%02d%04d', mt_rand(18, 25), mt_rand(1, 14), mt_rand(1000, 9999));
-            $userSlug = Str::slug($fullname, '.');
-            $email = $userSlug . mt_rand(1, 999) . '@gmail.com';
+            $email = 'test.calon.' . $i . '@demo.test';
             $phone = '08' . mt_rand(11, 99) . mt_rand(100, 999) . mt_rand(1000, 9999);
 
             $reason = $pick([
@@ -102,17 +100,25 @@ class InternshipRegistrationSeeder extends Seeder
             $status = $statusSequence[($i - 1) % count($statusSequence)];
             $createdAt = Carbon::create(2026, mt_rand(1, 10), mt_rand(1, 28), mt_rand(8, 17), mt_rand(0, 59), mt_rand(0, 59));
 
-            // 1. Create User
-            $userId = DB::table('users')->insertGetId([
-                'name'       => $fullname,
-                'email'      => $email,
-                'password'   => $password,
-                'role'       => 'pemagang',
-                'created_at' => $createdAt,
-                'updated_at' => $createdAt,
-            ]);
+            // 1. Create User (idempotent)
+            $user = User::firstOrCreate(
+                ['email' => $email],
+                [
+                    'name'       => $fullname,
+                    'password'   => $password,
+                    'role'       => 'pemagang',
+                    'created_at' => $createdAt,
+                    'updated_at' => $createdAt,
+                ]
+            );
+            $userId = $user->id;
 
-            // 2. Create Registration with ALL 47 fields
+            // 2. Create Registration with ALL 47 fields if not exists
+            $existingReg = DB::table('internship_registrations')->where('user_id', $userId)->first();
+            if ($existingReg) {
+                continue;
+            }
+
             $regId = DB::table('internship_registrations')->insertGetId([
                 'user_id'                  => $userId,
                 'fullname'                 => $fullname,

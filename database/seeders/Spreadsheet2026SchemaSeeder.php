@@ -452,10 +452,11 @@ class Spreadsheet2026SchemaSeeder extends Seeder
             // Inisialisasi/sinkronisasi baseline 38 kolom tanpa operasi delete destruktif
             // dan tanpa menimpa berdasarkan column_order semata.
             foreach ($columns as $col) {
-                $identity = !empty($col['field']) ? 'col_' . $col['field'] : 'col_' . \Illuminate\Support\Str::slug($col['header'], '_');
+                $identity = !empty($col['field']) ? 'col_' . $col['field'] . '_' . $col['order'] : 'col_' . \Illuminate\Support\Str::slug($col['header'], '_') . '_' . $col['order'];
 
                 $mapping = $existingMappings->first(function ($m) use ($identity, $col) {
                     return $m->column_identity === $identity
+                        || $m->column_order === $col['order']
                         || (!empty($col['field']) && $m->target_field === $col['field'] && $m->target_entity === $col['entity']);
                 });
 

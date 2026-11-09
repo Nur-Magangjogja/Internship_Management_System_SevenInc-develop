@@ -148,6 +148,24 @@ class SpreadsheetConnectionController extends Controller
         $totalSchemaCount = $spreadsheetConnection->schemaVersions()->count();
         $pausedQueuesSummary = app(\App\Services\SpreadsheetQueueReconciliationService::class)->getPausedQueuesSummary($spreadsheetConnection);
 
+        $cachedTabs = \Illuminate\Support\Facades\Cache::get("sheet_tabs_{$spreadsheetConnection->id}");
+        $preloadedTabs = (is_array($cachedTabs) && ($cachedTabs['success'] ?? false)) ? ($cachedTabs['tabs'] ?? []) : [];
+
+        if (empty($preloadedTabs) && $tabProfiles->isNotEmpty()) {
+            $preloadedTabs = $tabProfiles->map(function ($tp, $idx) {
+                return [
+                    'id'             => $tp->sheet_id,
+                    'name'           => $tp->tab_name,
+                    'index'          => $idx,
+                    'row_count'      => $tp->total_rows ?? 0,
+                    'column_count'   => $tp->total_columns ?? 0,
+                    'header_row'     => $tp->header_row ?? 10,
+                    'data_start_row' => $tp->data_start_row ?? 11,
+                    'is_configured'  => true,
+                ];
+            })->values()->all();
+        }
+
         return view('admin.spreadsheet-connections.show', [
             'connection'          => $spreadsheetConnection,
             'schemaVersions'      => $activeSchemaVersions,
@@ -160,6 +178,7 @@ class SpreadsheetConnectionController extends Controller
             'recentProposals'     => $recentProposals,
             'outboxEvents'        => $outboxEvents,
             'formFields'          => $formFields,
+            'preloadedTabs'       => $preloadedTabs,
         ]);
     }
 
@@ -206,6 +225,11 @@ class SpreadsheetConnectionController extends Controller
             'apps_script_endpoint_url' => 'nullable|url|max:500',
             'drive_folder_url'         => 'nullable|string|max:500',
             'brand_id'                 => 'nullable|integer|exists:brands,id',
+            'is_yearly_cloning_enabled' => 'nullable|boolean',
+            'tab_creation_mode'         => 'nullable|string|in:manual_link,auto_clone',
+            'yearly_tab_template_name'  => 'nullable|string|max:100',
+            'allow_custom_tab_naming'   => 'nullable|boolean',
+            'default_integrated_status' => 'nullable|string|in:waiting,pending,accepted,active',
         ], [
             '_connection_key_scope.unique' => 'Brand tujuan sudah memiliki koneksi spreadsheet dengan jenis yang sama.',
         ]);
@@ -600,7 +624,21 @@ class SpreadsheetConnectionController extends Controller
         SpreadsheetConnection $spreadsheetConnection,
         \App\Services\SpreadsheetDiscoveryService $discoveryService
     ) {
+        $refresh = $request->boolean('refresh', false);
+        $cacheKey = "sheet_tabs_{$spreadsheetConnection->id}";
+
+        if (!$refresh && \Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if (is_array($cached) && ($cached['success'] ?? false)) {
+                return response()->json($cached, 200);
+            }
+        }
+
         $result = $discoveryService->listTabs($spreadsheetConnection);
+
+        if ($result['success'] ?? false) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $result, 1800); // Simpan 30 menit untuk akses instan
+        }
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
@@ -699,6 +737,76 @@ class SpreadsheetConnectionController extends Controller
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 422);
+        }
+    }
+
+    /**
+     * Duplikasi tab template atau buat tab baru untuk tahunan / batch baru secara otomatis via Apps Script (Fase 5 Universal).
+     */
+    public function duplicateTab(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\SpreadsheetTransport\SpreadsheetTransportInterface $transport,
+        \App\Services\SpreadsheetDiscoveryService $discoveryService
+    ) {
+        $validated = $request->validate([
+            'source_tab_name' => 'nullable|string|max:100',
+            'new_tab_name'    => 'required|string|max:100',
+            'header_row'      => 'nullable|integer|min:1|max:100',
+        ]);
+
+        if (!$spreadsheetConnection->is_yearly_cloning_enabled) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Mode kloning tab tahunan dinonaktifkan untuk koneksi spreadsheet brand ini.',
+            ], 422);
+        }
+
+        $sourceTab = !empty($validated['source_tab_name'])
+            ? trim($validated['source_tab_name'])
+            : ($spreadsheetConnection->yearly_tab_template_name ?: 'TEMPLATE_TAHUN');
+        $newTabName = trim($validated['new_tab_name']);
+
+        if (!$spreadsheetConnection->allow_custom_tab_naming && !preg_match('/^20\d{2}$/', $newTabName)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Penamaan tab kustom dinonaktifkan. Nama tab harus berupa 4 digit tahun (contoh: 2027).',
+            ], 422);
+        }
+
+        try {
+            $res = $transport->duplicateOrCreateTab($spreadsheetConnection, $sourceTab, $newTabName);
+
+            if (!$res->success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal membuat/menduplikasi tab: ' . $res->errorMessage,
+                ], 422);
+            }
+
+            // Daftarkan SpreadsheetTabProfile untuk tab baru
+            $sheetId = $res->context['sheet_id'] ?? rand(100000, 999999);
+            $defaultHeaderRow = SpreadsheetTabProfile::defaultHeaderRowSuggestion($newTabName, $spreadsheetConnection->connection_key);
+            $headerRow = $validated['header_row'] ?? $defaultHeaderRow;
+
+            $profile = $discoveryService->resolveTabHeaderProfile(
+                $spreadsheetConnection,
+                $sheetId,
+                $newTabName,
+                $headerRow,
+                $headerRow + 1
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Tab '{$newTabName}' berhasil disiapkan di Spreadsheet dan terdaftar di profil SertIF.",
+                'profile' => $profile,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -832,7 +940,7 @@ class SpreadsheetConnectionController extends Controller
         }
 
         $year = $proposal->year ?? (int) now()->year;
-        $draftSchema = $formBuilderService->ensureYearFormInitialized($year, Auth::user());
+        $draftSchema = $formBuilderService->getOrCreateDraft($year, Auth::user(), $spreadsheetConnection->brand_id);
 
         try {
             $result = $discoveryService->applyProposalToDraft($proposal, $draftSchema, Auth::user());
@@ -866,12 +974,22 @@ class SpreadsheetConnectionController extends Controller
             abort(404);
         }
 
+        if ($request->has('expected_version')) {
+            if ((int) $proposal->version !== (int) $request->input('expected_version')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Konflik konkurensi: Usulan mapping telah diubah oleh admin lain. Silakan muat ulang halaman.',
+                ], 409);
+            }
+        }
+
         $supportedTypes = implode(',', array_keys(\App\Models\FormField::supportedTypes()));
         $validated = $request->validate([
-            'action'               => 'required|in:link_existing,create_draft_field,external_only,ignore',
+            'action'               => 'required|in:link_existing,create_draft_field,external_only,ignore,system_derived,attachment_adapter',
             'field_key'            => 'nullable|string|max:100',
             'suggested_label'      => 'nullable|string|max:255',
             'suggested_field_type' => "nullable|string|in:{$supportedTypes}",
+            'expected_version'     => 'nullable|integer',
         ]);
 
         // Guardrail: Reserved system fields cannot be overwritten
@@ -882,19 +1000,85 @@ class SpreadsheetConnectionController extends Controller
             ], 422);
         }
 
+        $action = $validated['action'];
+        if (in_array($action, ['external_only', 'ignore', 'system_derived', 'attachment_adapter'], true)) {
+            $fieldKey = null;
+        } else {
+            $fieldKey = $validated['field_key'] ?? null;
+        }
+
+        if (!empty($fieldKey) && in_array($action, ['link_existing', 'create_draft_field'], true)) {
+            $duplicateTarget = \App\Models\SheetMappingProposalItem::where('proposal_id', $proposal->id)
+                ->where('id', '!=', $item->id)
+                ->where('field_key', $fieldKey)
+                ->whereNotIn('action', ['ignore'])
+                ->first();
+            if ($duplicateTarget) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Target field '{$fieldKey}' telah dipilih oleh kolom '{$duplicateTarget->col_letter}'. Dua kolom tidak boleh mengarah ke target field yang sama.",
+                ], 422);
+            }
+        }
+
         $item->update([
-            'action'               => $validated['action'],
-            'field_key'            => $validated['field_key'] ?? $item->field_key,
+            'action'               => $action,
+            'field_key'            => $fieldKey,
             'suggested_label'      => $validated['suggested_label'] ?? $item->suggested_label,
             'suggested_field_type' => $validated['suggested_field_type'] ?? $item->suggested_field_type,
-            'has_collision'        => false, // Resolved by admin manual intervention
+            'has_collision'        => false,
+            'resolved_at'          => now(),
+            'resolved_by'          => auth()->id(),
         ]);
 
+        // Re-evaluate siblings with identical header
+        $normHeader = strtolower(trim($item->observed_label));
+        $siblings = \App\Models\SheetMappingProposalItem::where('proposal_id', $proposal->id)
+            ->where('id', '!=', $item->id)
+            ->whereRaw('LOWER(TRIM(observed_label)) = ?', [$normHeader])
+            ->get();
+
+        foreach ($siblings as $sib) {
+            if (in_array($sib->action, ['link_existing', 'create_draft_field', 'system_derived', 'attachment_adapter', 'external_only', 'ignore'], true) && (!empty($sib->field_key) || in_array($sib->action, ['system_derived', 'attachment_adapter', 'external_only', 'ignore'], true))) {
+                $sib->update(['has_collision' => false, 'resolved_at' => now(), 'resolved_by' => auth()->id()]);
+            }
+        }
+
+        $proposal->increment('version');
+
         return response()->json([
-            'success' => true,
-            'message' => "Keputusan pemetaan kolom '{$item->col_letter}' berhasil diperbarui.",
-            'item'    => $item->fresh(),
+            'success'          => true,
+            'message'          => "Keputusan pemetaan kolom '{$item->col_letter}' berhasil diperbarui.",
+            'item'             => $item->fresh(),
+            'proposal_version' => $proposal->fresh()->version,
         ]);
+    }
+
+    /**
+     * Hapus usulan pemetaan (proposal) yang tidak valid / draft usulan lama.
+     */
+    public function destroyProposal(
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Models\SheetMappingProposal $proposal
+    ) {
+        if ((int) $proposal->spreadsheet_connection_id !== (int) $spreadsheetConnection->id) {
+            abort(404);
+        }
+
+        try {
+            $proposal->items()->delete();
+            $proposal->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usulan pemetaan berhasil dihapus.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus usulan pemetaan: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -1062,5 +1246,511 @@ class SpreadsheetConnectionController extends Controller
         $result = $inboundService->rejectStagedChange($staging, Auth::user(), $reason);
 
         return response()->json($result, 200);
+    }
+
+    /**
+     * Memindai baris pada spreadsheet yang belum memiliki SERTIF_SYNC_ID untuk persiapan rekonsiliasi manual.
+     */
+    public function getUnsyncedRows(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $tabName = $request->query('tab_name');
+        if (empty($tabName)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter tab_name wajib disertakan.',
+            ], 422);
+        }
+
+        $page = (int) $request->query('page', 1);
+        $pageSize = min((int) $request->query('page_size', 50), 100);
+
+        try {
+            $result = $reconcileService->scanUnsyncedRows($spreadsheetConnection, $tabName, $page, $pageSize);
+            return response()->json([
+                'success' => true,
+                'data'    => $result,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memindai baris tanpa ID: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Pasangkan SERTIF_SYNC_ID secara manual atau buatkan akun terintegrasi untuk baris spreadsheet.
+     */
+    public function reconcileRow(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'          => 'required|string|max:100',
+            'row_index'         => 'required|integer|min:2',
+            'sync_id'           => 'nullable|string|max:100',
+            'registration_id'   => 'nullable|integer|exists:internship_registrations,id',
+            'expected_checksum' => 'nullable|string|max:100',
+            'row_data'          => 'nullable|array',
+            'internship_status' => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+        ]);
+
+        try {
+            $result = $reconcileService->reconcileRowSyncId(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                rowIndex: (int) $validated['row_index'],
+                existingSyncId: $validated['sync_id'] ?? null,
+                registrationId: isset($validated['registration_id']) ? (int) $validated['registration_id'] : null,
+                expectedChecksum: $validated['expected_checksum'] ?? null,
+                rowData: $validated['row_data'] ?? [],
+                targetStatus: $validated['internship_status'] ?? null
+            );
+
+            $status = ($result['success'] ?? false) ? 200 : 422;
+            return response()->json($result, $status);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal merekonsiliasi baris: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pindai dan analisis baris workspace secara semi-otomatis dengan warna dan deteksi status.
+     */
+    public function workspaceRows(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $tabName = $request->query('tab_name');
+        if (empty($tabName)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter tab_name wajib disertakan.',
+            ], 422);
+        }
+
+        $startRow = $request->filled('start_row') ? (int) $request->query('start_row') : null;
+        $endRow = $request->filled('end_row') ? (int) $request->query('end_row') : null;
+        $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : null;
+        $page = max(1, (int) $request->query('page', 1));
+        // Batasi ukuran per blok maksimal 500 baris agar responsif dan mencakup jangkauan luas
+        $pageSize = min(max(1, (int) $request->query('page_size', 100)), 500);
+        $sortBy = $request->query('sort_by');
+        $sortDir = $request->query('sort_dir', 'asc');
+        $fetchColors = $request->boolean('fetch_colors', true);
+        $skipSynced = $request->boolean('skip_synced', false);
+
+        // Parse color_mapping & range_mapping jika dikirim via JSON query / payload
+        $colorMapping = [];
+        if ($request->filled('color_mapping')) {
+            $rawColor = $request->input('color_mapping');
+            $colorMapping = is_array($rawColor) ? $rawColor : (json_decode($rawColor, true) ?: []);
+        }
+
+        $rangeMapping = [];
+        if ($request->filled('range_mapping')) {
+            $rawRanges = $request->input('range_mapping');
+            $rangeMapping = is_array($rawRanges) ? $rawRanges : (json_decode($rawRanges, true) ?: []);
+        }
+
+        $defaultStatus = $request->query('default_status');
+        $statusColumn = $request->query('status_column');
+
+        // Optimasi Cache 2 Menit untuk pemindaian baris identik agar filter UI instan (0 ms)
+        $cacheHash = md5(json_encode([
+            'tab'            => $tabName,
+            'start'          => $startRow,
+            'end'            => $endRow,
+            'header'         => $headerRow,
+            'page'           => $page,
+            'page_size'      => $pageSize,
+            'fetch_colors'   => $fetchColors,
+            'skip_synced'    => $skipSynced,
+            'status_col'     => $statusColumn,
+            'default_status' => $defaultStatus,
+            'colors'         => $colorMapping,
+            'ranges'         => $rangeMapping
+        ]));
+        $cacheKey = "ws_rows_{$spreadsheetConnection->id}_{$cacheHash}";
+        $refresh = $request->boolean('refresh', false);
+
+        if (!$refresh && \Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return response()->json(array_merge([
+                    'success' => true,
+                    'data'    => $cached,
+                ], $cached));
+            }
+        }
+
+        // Safeguard batas baris tab spreadsheet (cegah pencarian looping di luar baris data riil)
+        $profile = \App\Models\SpreadsheetTabProfile::where('spreadsheet_connection_id', $spreadsheetConnection->id)
+            ->where('tab_name', $tabName)
+            ->first();
+        if ($profile && $profile->total_rows > 0 && $startRow !== null && $startRow > $profile->total_rows) {
+            return response()->json([
+                'success'            => true,
+                'message'            => 'Baris mulai melebihi total baris data yang ada pada tab spreadsheet.',
+                'tab_name'           => $tabName,
+                'start_row'          => $startRow,
+                'total_rows_scanned' => 0,
+                'returned_rows'      => 0,
+                'palette'            => [],
+                'dividers'           => [],
+                'rows'               => [],
+            ], 200);
+        }
+
+        try {
+            $result = $reconcileService->scanWorkspaceRows(
+                connection: $spreadsheetConnection,
+                tabName: $tabName,
+                startRow: $startRow,
+                endRow: $endRow,
+                headerRow: $headerRow,
+                page: $page,
+                pageSize: $pageSize,
+                sortBy: $sortBy,
+                sortDir: $sortDir,
+                colorMapping: $colorMapping,
+                rangeMapping: $rangeMapping,
+                defaultStatus: $defaultStatus,
+                statusColumn: $statusColumn,
+                fetchColors: $fetchColors,
+                skipSynced: $skipSynced
+            );
+
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $result, 120); // Simpan 2 menit
+
+            return response()->json(array_merge([
+                'success' => true,
+                'data'    => $result,
+            ], $result));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("workspaceRows error for conn {$spreadsheetConnection->id}: " . $e->getMessage(), [
+                'exception' => $e,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memindai workspace spreadsheet: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Uji coba rekonsiliasi (Dry-Run) tanpa efek samping mutasi database atau spreadsheet.
+     */
+    public function dryRunReconcile(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'         => 'required|string|max:100',
+            'items'            => 'required|array|min:1',
+            'items.*.row_index'=> 'required|integer|min:1',
+            'items.*.status'   => 'nullable|string',
+            'items.*.row_data' => 'nullable|array',
+        ]);
+
+        try {
+            $result = $reconcileService->dryRunReconciliation(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                items: $validated['items']
+            );
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menjalankan dry-run rekonsiliasi: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Uji coba parser kolom gabungan (Composite Column Parser).
+     */
+    public function testCompositeParser(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $sampleValue = (string) $request->input('sample_value', '');
+        $rule = $request->input('rule');
+
+        if (!is_array($rule)) {
+            $rule = [
+                'type'          => $request->input('rule_type', 'delimiter'),
+                'delimiter'     => $request->input('delimiter', ' - '),
+                'pattern'       => $request->input('regex_pattern', $request->input('pattern', '')),
+                'target_fields' => $request->input('target_keys', $request->input('target_fields', [])),
+            ];
+        }
+
+        if (empty($sampleValue)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'sample_value wajib diisi.',
+            ], 422);
+        }
+
+        $result = $reconcileService->parseCompositeField($sampleValue, $rule);
+        return response()->json($result);
+    }
+
+    /**
+     * Eksekusi rekonsiliasi batch untuk sekumpulan baris terpilih ke SertIF.
+     */
+    public function batchReconcile(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'         => 'required|string|max:100',
+            'items'            => 'required|array|min:1',
+            'items.*.row_index'=> 'required|integer|min:1',
+            'items.*.status'   => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+            'items.*.row_data' => 'nullable|array',
+            'items.*.expected_checksum' => 'nullable|string|max:100',
+            'items.*.registration_id'   => 'nullable|integer',
+            'items.*.sync_id'           => 'nullable|string|max:100',
+            'ownership_policies'        => 'nullable|array',
+        ]);
+
+        try {
+            $result = $reconcileService->reconcileBatchRows(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                items: $validated['items'],
+                ownershipPolicies: $validated['ownership_policies'] ?? []
+            );
+
+            return response()->json([
+                'success' => true,
+                'data'    => $result,
+                'message' => "Berhasil memproses {$result['success_count']} dari {$result['total']} baris data ke SertIF.",
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal melakukan rekonsiliasi batch: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pulihkan dan tarik kembali baris yang SUDAH memiliki ID di spreadsheet ke database SertIF secara massal.
+     */
+    public function batchRecover(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'                  => 'required|string|max:100',
+            'items'                     => 'required|array|min:1',
+            'items.*.row_index'         => 'required|integer|min:1',
+            'items.*.sync_id'           => 'nullable|string|max:100',
+            'items.*.status'            => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+            'items.*.row_data'          => 'nullable|array',
+            'items.*.expected_checksum' => 'nullable|string|max:100',
+            'items.*.registration_id'   => 'nullable|integer',
+            'ownership_policies'        => 'nullable|array',
+        ]);
+
+        try {
+            $result = $reconcileService->batchRecoverRows(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                items: $validated['items'],
+                ownershipPolicies: $validated['ownership_policies'] ?? []
+            );
+
+            return response()->json([
+                'success' => true,
+                'data'    => $result,
+                'message' => "Berhasil memulihkan {$result['recovered_count']} dari {$result['total']} baris data ber-ID ke SertIF.",
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memulihkan baris ber-ID: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pulihkan dan tarik kembali satu baris yang ber-ID di spreadsheet ke database SertIF.
+     */
+    public function recoverRow(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'          => 'required|string|max:100',
+            'row_index'         => 'required|integer|min:2',
+            'sync_id'           => 'required|string|max:100',
+            'registration_id'   => 'nullable|integer',
+            'expected_checksum' => 'nullable|string|max:100',
+            'row_data'          => 'nullable|array',
+            'internship_status' => 'nullable|string|in:waiting,pending,accepted,active,completed,rejected,exited',
+        ]);
+
+        try {
+            $result = $reconcileService->recoverOrReingestExistingRow(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                rowIndex: (int) $validated['row_index'],
+                existingSyncId: $validated['sync_id'],
+                remoteRegistrationId: isset($validated['registration_id']) ? (int) $validated['registration_id'] : null,
+                rowData: $validated['row_data'] ?? [],
+                targetStatus: $validated['internship_status'] ?? null,
+                expectedChecksum: $validated['expected_checksum'] ?? null
+            );
+
+            $status = ($result['success'] ?? false) ? 200 : 422;
+            return response()->json($result, $status);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memulihkan baris ber-ID: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Pindai dan identifikasi semua kolom spreadsheet beserta deteksi Header ID SertIF.
+     */
+    public function inspectColumns(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $tabName = $request->query('tab_name');
+        if (empty($tabName)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter tab_name wajib disertakan.',
+            ], 422);
+        }
+
+        $headerRow = $request->filled('header_row') ? (int) $request->query('header_row') : 10;
+        $sheetId = $request->filled('sheet_id') ? (int) $request->query('sheet_id') : null;
+        $refresh = $request->boolean('refresh', false);
+
+        $cacheKey = "sheet_cols_{$spreadsheetConnection->id}_" . md5("{$tabName}_{$headerRow}_{$sheetId}");
+
+        if (!$refresh && \Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if (is_array($cached) && ($cached['success'] ?? false)) {
+                return response()->json($cached, 200);
+            }
+        }
+
+        try {
+            $result = $reconcileService->inspectSheetColumns(
+                connection: $spreadsheetConnection,
+                tabName: $tabName,
+                headerRow: $headerRow,
+                sheetId: $sheetId
+            );
+
+            if ($result['success'] ?? false) {
+                \Illuminate\Support\Facades\Cache::put($cacheKey, $result, 1800); // 30 menit
+            }
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menginspeksi kolom spreadsheet: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Berikan / tambahkan kolom Header ID SertIF ke Google Spreadsheet.
+     */
+    public function injectHeaderIds(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'   => 'required|string|max:100',
+            'header_row' => 'nullable|integer|min:1|max:1000',
+        ]);
+
+        try {
+            $result = $reconcileService->injectSystemHeaderColumns(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                headerRow: $validated['header_row'] ?? 10
+            );
+
+            // Invalidate cache inspeksi kolom
+            $hRow = $validated['header_row'] ?? 10;
+            \Illuminate\Support\Facades\Cache::forget("sheet_cols_{$spreadsheetConnection->id}_" . md5("{$validated['tab_name']}_{$hRow}_"));
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan kolom Header ID: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Simpan susunan kolom dan sesuaikan ke formulir brand.
+     */
+    public function saveBrandColumns(
+        Request $request,
+        SpreadsheetConnection $spreadsheetConnection,
+        \App\Services\ActiveSheetManualRowReconciliationService $reconcileService
+    ) {
+        $validated = $request->validate([
+            'tab_name'   => 'required|string|max:100',
+            'header_row' => 'nullable|integer|min:1|max:1000',
+            'columns'    => 'required|array|min:1',
+            'columns.*.header_name'  => 'nullable|string',
+            'columns.*.col_letter'   => 'nullable|string',
+            'columns.*.category'     => 'nullable|string',
+            'columns.*.field_key'    => 'nullable|string',
+            'columns.*.inferred_type'=> 'nullable|string',
+        ]);
+
+        try {
+            $result = $reconcileService->saveBrandColumnMapping(
+                connection: $spreadsheetConnection,
+                tabName: $validated['tab_name'],
+                headerRow: $validated['header_row'] ?? 10,
+                columnDefinitions: $validated['columns']
+            );
+
+            // Invalidate cache inspeksi kolom
+            $hRow = $validated['header_row'] ?? 10;
+            \Illuminate\Support\Facades\Cache::forget("sheet_cols_{$spreadsheetConnection->id}_" . md5("{$validated['tab_name']}_{$hRow}_"));
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan pemetaan kolom brand: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

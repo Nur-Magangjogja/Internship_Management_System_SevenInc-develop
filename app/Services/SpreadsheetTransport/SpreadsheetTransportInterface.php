@@ -86,7 +86,9 @@ interface SpreadsheetTransportInterface
         ?int $headerRow = null,
         int $page = 1,
         int $pageSize = 20,
-        bool $maskPii = true
+        bool $maskPii = true,
+        bool $fetchColors = true,
+        ?int $dataStartRow = null
     ): SpreadsheetTransportResponse;
 
     /**
@@ -155,5 +157,23 @@ interface SpreadsheetTransportInterface
         string $syncId,
         ?string $registrationId = null,
         ?string $expectedChecksum = null
+    ): SpreadsheetTransportResponse;
+
+    /**
+     * Duplicate an existing template tab or create a new tab for a new year/batch.
+     */
+    public function duplicateOrCreateTab(
+        SpreadsheetConnection $connection,
+        string $sourceTabName,
+        string $newTabName
+    ): SpreadsheetTransportResponse;
+
+    /**
+     * Append system header ID columns (KET, SERTIF_SYNC_ID, etc.) if missing.
+     */
+    public function appendSystemHeaderIds(
+        SpreadsheetConnection $connection,
+        string $tabName,
+        ?int $headerRow = null
     ): SpreadsheetTransportResponse;
 }

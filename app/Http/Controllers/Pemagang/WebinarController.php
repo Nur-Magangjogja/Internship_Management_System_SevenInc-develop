@@ -35,19 +35,11 @@ class WebinarController extends Controller
 
         // Normalisasi brand ke kode (allowed_brands menyimpan kode, bukan nama lengkap)
         // internship_registrations bisa menyimpan nama lengkap ATAU kode, tangani keduanya
-        $internBrand = $this->normalizeBrandCode($internBrandRaw);
+        $internBrand = Webinar::normalizeBrandCode($internBrandRaw);
 
         $webinars = Webinar::latest('event_date')
             ->get()
-            ->filter(function ($webinar) use ($internBrand) {
-                // allowed_brands null = semua brand boleh ikut
-                if (is_null($webinar->allowed_brands)) return true;
-                // Kalau ada batasan brand dan pemagang punya brand, cek kode
-                if ($internBrand && in_array($internBrand, $webinar->allowed_brands)) return true;
-                // Kalau pemagang tidak punya brand, tampilkan semua (fallback)
-                if (!$internBrand) return true;
-                return false;
-            })
+            ->filter(fn($webinar) => $webinar->isAllowedForBrand($internBrand))
             ->map(function ($webinar) use ($user) {
                 $webinar->my_attendance = $webinar->attendanceOf($user->id);
                 return $webinar;
@@ -62,24 +54,7 @@ class WebinarController extends Controller
      */
     private function normalizeBrandCode(?string $brand): ?string
     {
-        if (!$brand) return null;
-
-        $brandMap = \App\Models\Webinar::brandList(); // ['MJ' => 'Magangjogja', ...]
-
-        // Cek apakah sudah berbentuk kode
-        if (isset($brandMap[strtoupper($brand)])) {
-            return strtoupper($brand);
-        }
-
-        // Cari kode berdasarkan nama lengkap (case-insensitive)
-        foreach ($brandMap as $code => $label) {
-            if (strcasecmp($label, $brand) === 0) {
-                return $code;
-            }
-        }
-
-        // Tidak ketemu — kembalikan as-is (mungkin format lain)
-        return $brand;
+        return Webinar::normalizeBrandCode($brand);
     }
 
     /**

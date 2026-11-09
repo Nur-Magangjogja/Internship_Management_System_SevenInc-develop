@@ -563,7 +563,7 @@ class MouTemplateController extends Controller
         }
 
         $result = [
-            'brand_id'                    => $request->filled('brand_id') ? (int) $request->input('brand_id') : ($baseDefaults['brand_id'] ?? null),
+            'brand_id'                    => $request->has('brand_id') ? ($request->filled('brand_id') ? (int) $request->input('brand_id') : null) : ($baseDefaults['brand_id'] ?? null),
             'company_mou_number'          => $request->input('company_mou_number') ?: ($baseDefaults['company_mou_number'] ?? null),
             'company_name'                => $request->input('company_name') ?: ($baseDefaults['company_name'] ?? 'SEVEN INC'),
             'company_address'             => $request->input('company_address') ?: ($baseDefaults['company_address'] ?? 'Yogyakarta'),

@@ -32,6 +32,11 @@ class LocalDemoDatasetSeeder extends Seeder
      */
     public function run(): void
     {
+        // Proteksi lingkungan produksi: demo pemagang dinonaktifkan
+        if (app()->environment('production')) {
+            return;
+        }
+
         // 1. Akun Pengguna Representatif
         $admin = User::firstOrCreate(
             ['email' => 'admin.demo@seveninc.test'],
@@ -53,30 +58,11 @@ class LocalDemoDatasetSeeder extends Seeder
             ]
         );
 
-        $pemagangAktif = User::firstOrCreate(
-            ['email' => 'pemagang.aktif@seveninc.test'],
+        // Murni akun test untuk calon pemagang (tanpa pemagang aktif atau alumni terdaftar)
+        $pemagangTestCalon = User::firstOrCreate(
+            ['email' => 'test.calon.demo@seveninc.test'],
             [
-                'name'      => 'Ahmad Rizki (Pemagang Aktif)',
-                'password'  => Hash::make('DemoPassword2026!'),
-                'role'      => 'pemagang',
-                'is_banned' => false,
-            ]
-        );
-
-        $pemagangAlumni = User::firstOrCreate(
-            ['email' => 'pemagang.alumni@seveninc.test'],
-            [
-                'name'      => 'Siti Aisyah (Alumni Magang)',
-                'password'  => Hash::make('DemoPassword2026!'),
-                'role'      => 'pemagang',
-                'is_banned' => false,
-            ]
-        );
-
-        $pemagangDraft = User::firstOrCreate(
-            ['email' => 'pemagang.draft@seveninc.test'],
-            [
-                'name'      => 'Bambang Pratama (Draft Pendaftar)',
+                'name'      => '[TEST] Calon Pemagang',
                 'password'  => Hash::make('DemoPassword2026!'),
                 'role'      => 'pemagang',
                 'is_banned' => false,
@@ -281,93 +267,16 @@ class LocalDemoDatasetSeeder extends Seeder
             ]
         );
 
-        // 5. Pendaftaran Pemagang Representatif
-        // Pemagang 1: Aktif Magang
-        $regAktif = IR::firstOrCreate(
-            ['user_id' => $pemagangAktif->id],
-            [
-                'institution_id'           => $ugm->id,
-                'faculty_id'               => $facTeknik->id,
-                'study_program_id'         => $prodiTI->id,
-                'division_id'              => $division->id,
-                'brand_id'                 => $brand->id,
-                'fullname'                 => 'Ahmad Rizki',
-                'phone_number'             => '081234560001',
-                'gender'                   => 'Laki-laki',
-                'current_status'           => 'Mahasiswa / Pelajar Aktif',
-                'internship_type'          => 'Magang Kampus Merdeka',
-                'internship_reason'        => 'Ingin mengasah kemampuan web development berskala riil di industri.',
-                'wfo_readiness'            => 'Siap WFO di Yogyakarta',
-                'schedule_shift_readiness' => 'Sanggup memenuhi jam kerja penuh',
-                'has_laptop'               => 1,
-                'planned_duration'         => '6 Bulan',
-                'internship_status'        => IR::STATUS_ACTIVE,
-                'start_date'               => '2026-02-01',
-                'end_date'                 => '2026-08-01',
-            ]
-        );
-
-        // Daily report & tasks untuk pemagang aktif
-        DailyReport::firstOrCreate(
-            ['intern_id' => $regAktif->id, 'date' => now()->subDay()->toDateString()],
-            [
-                'activities'  => 'Pengembangan Modul Kemitraan: Mempelajari arsitektur database dan alur kerja approval',
-                'challenges'  => 'Tidak ada kendala berarti',
-            ]
-        );
-
-        PendingTask::firstOrCreate(
-            ['intern_id' => $regAktif->id, 'title' => 'Slicing UI Multistep Form'],
-            [
-                'description' => 'Memastikan tampilan form pendaftaran responsif di mobile',
-                'status'      => 'in_progress',
-            ]
-        );
-
-        LeaveRequest::firstOrCreate(
-            ['intern_id' => $regAktif->id, 'leave_date' => now()->addDays(7)->toDateString()],
-            [
-                'leave_type' => 'izin',
-                'reason'     => 'Ujian Tengah Semester di Kampus',
-                'status'     => 'pending',
-            ]
-        );
-
-        // Pemagang 2: Alumni (Selesai Magang)
-        $regAlumni = IR::firstOrCreate(
-            ['user_id' => $pemagangAlumni->id],
-            [
-                'institution_id'           => $uny->id,
-                'faculty_id'               => $facUNY->id,
-                'study_program_id'         => $prodiUNY->id,
-                'division_id'              => $division->id,
-                'brand_id'                 => $brand->id,
-                'fullname'                 => 'Siti Aisyah',
-                'phone_number'             => '081234560002',
-                'gender'                   => 'Perempuan',
-                'current_status'           => 'Mahasiswa / Pelajar Aktif',
-                'internship_type'          => 'Magang Reguler',
-                'internship_reason'        => 'Mengembangkan portofolio profesional.',
-                'wfo_readiness'            => 'Siap WFO di Yogyakarta',
-                'schedule_shift_readiness' => 'Sanggup',
-                'has_laptop'               => 1,
-                'planned_duration'         => '3 Bulan',
-                'internship_status'        => IR::STATUS_COMPLETED,
-                'start_date'               => '2025-06-01',
-                'end_date'                 => '2025-09-01',
-            ]
-        );
-
-        // Pemagang 3: Draft Pendaftaran (Belum submit)
+        // 5. Data Calon Pemagang untuk Pengujian Lokal (Tanpa pemagang aktif/terdaftar)
         IR::firstOrCreate(
-            ['user_id' => $pemagangDraft->id],
+            ['user_id' => $pemagangTestCalon->id],
             [
                 'institution_id'    => $ugm->id,
                 'faculty_id'        => $facTeknik->id,
                 'study_program_id'  => $prodiTI->id,
                 'division_id'       => $division->id,
                 'brand_id'          => $brand->id,
-                'fullname'          => 'Bambang Pratama',
+                'fullname'          => '[TEST] Calon Pemagang',
                 'phone_number'      => '081234560003',
                 'internship_status' => IR::STATUS_NEW,
             ]

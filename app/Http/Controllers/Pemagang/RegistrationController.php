@@ -94,7 +94,7 @@ class RegistrationController extends Controller
                 if ($validatedQueryDate !== null) {
                     $targetYear         = $queryDateYear;
                     $effectiveStartDate = $validatedQueryDate;
-                    $activeSchema       = $this->resolveActiveSchemaForYear($targetYear);
+                    $activeSchema       = $this->resolveActiveSchemaForYear($targetYear, $detectedBrand?->id);
                 } elseif ($isQueryDateInvalid) {
                     $targetYear         = null;
                     $activeSchema       = null;
@@ -113,7 +113,7 @@ class RegistrationController extends Controller
                         $targetYear         = (int) now()->year;
                         $effectiveStartDate = null;
                     }
-                    $activeSchema = $this->resolveActiveSchemaForYear($targetYear);
+                    $activeSchema = $this->resolveActiveSchemaForYear($targetYear, $detectedBrand?->id);
                 }
             }
             if ($activeSchema) {
@@ -123,6 +123,7 @@ class RegistrationController extends Controller
                     \App\Models\FormField::GROUP_PILIHAN_DURASI     => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
                     \App\Models\FormField::GROUP_BERKAS             => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
                     \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                    \App\Models\FormField::GROUP_FINALISASI_SUBMIT  => $activeFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_FINALISASI_SUBMIT)->values(),
                 ];
                 $mainFields    = $activeFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN && $f->is_system)->values();
                 $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
@@ -140,6 +141,7 @@ class RegistrationController extends Controller
                     \App\Models\FormField::GROUP_PILIHAN_DURASI     => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
                     \App\Models\FormField::GROUP_BERKAS             => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
                     \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                    \App\Models\FormField::GROUP_FINALISASI_SUBMIT  => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_FINALISASI_SUBMIT)->values(),
                 ];
                 $mainFields    = $legacyFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values();
                 $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
@@ -164,6 +166,7 @@ class RegistrationController extends Controller
                     \App\Models\FormField::GROUP_PILIHAN_DURASI     => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_PILIHAN_DURASI)->values(),
                     \App\Models\FormField::GROUP_BERKAS             => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_BERKAS)->values(),
                     \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values(),
+                    \App\Models\FormField::GROUP_FINALISASI_SUBMIT  => $legacyFields->filter(fn($f) => $f->resolved_group === \App\Models\FormField::GROUP_FINALISASI_SUBMIT)->values(),
                 ];
                 $mainFields    = $legacyFields->filter(fn($f) => $f->resolved_group !== \App\Models\FormField::GROUP_INFORMASI_TAMBAHAN)->values();
                 $extraFields   = $groupedFields[\App\Models\FormField::GROUP_INFORMASI_TAMBAHAN];
@@ -186,11 +189,15 @@ class RegistrationController extends Controller
         $faculties = \App\Models\Faculty::select('id', 'name')->orderBy('name')->get();
         $studyPrograms = \App\Models\StudyProgram::select('id', 'name')->orderBy('name')->get();
 
+        $formYear = $activeSchema?->year ?? $queryDateYear ?? (int) now()->year;
+        $submitSettings = \App\Models\FormSubmitSetting::forYear($formYear, $detectedBrand?->id);
+
         return view('pemagang.registration.form', compact(
             'registration', 'divisions', 'groupedFields', 'mainFields', 'extraFields', 'customFields',
             'customAnswers', 'activeSchema', 'useFormFields',
             'cities', 'institutions', 'faculties', 'studyPrograms',
-            'effectiveStartDate', 'validatedQueryDate', 'isQueryDateInvalid', 'queryDateYear'
+            'effectiveStartDate', 'validatedQueryDate', 'isQueryDateInvalid', 'queryDateYear',
+            'submitSettings'
         ));
     }
 
@@ -252,6 +259,16 @@ class RegistrationController extends Controller
             }
         }
 
+        // Resolusi Brand Terkunci Calon Pemagang (Prioritaskan brand akun/registrasi di atas host domain):
+        $lockedBrand = $existing?->brandRel ?? $user?->brandRel;
+
+        $detectedBrand = $lockedBrand
+            ?? $request->attributes->get('current_brand')
+            ?? ($request->hasSession() && $request->session()->has('registration_brand_id')
+                ? \App\Models\Brand::find($request->session()->get('registration_brand_id'))
+                : null)
+            ?? app(\App\Services\BrandDomainResolverService::class)->resolveFromRequest($request);
+
         // Binding versi skema formulir dan validasi custom answers
         $formBuilder = app(\App\Services\FormBuilderService::class);
         $boundSchema = null;
@@ -290,7 +307,7 @@ class RegistrationController extends Controller
                 }
 
                 if ($targetYear !== null) {
-                    $targetYearSchema = $this->resolveActiveSchemaForYear($targetYear);
+                    $targetYearSchema = $this->resolveActiveSchemaForYear($targetYear, $detectedBrand?->id);
 
                     if (!$targetYearSchema && !$isDraft && $hasAnyPublishedSchema) {
                         return back()
@@ -1479,7 +1496,7 @@ class RegistrationController extends Controller
      * Mengembalikan null jika targetYear null atau skema tahun tersebut belum dipublikasikan.
      * Jangan diam-diam meminjam skema tahun lain atau tahun kalender server.
      */
-    protected function resolveActiveSchemaForYear(?int $targetYear): ?\App\Models\FormSchema
+    protected function resolveActiveSchemaForYear(?int $targetYear, ?int $brandId = null): ?\App\Models\FormSchema
     {
         if ($targetYear === null) {
             return null;
@@ -1489,17 +1506,12 @@ class RegistrationController extends Controller
         // otomatis aktifkan & lengkapi skema tahun berjalan jika belum terbit/belum lengkap (di luar unit test).
         if (!app()->runningUnitTests() && $targetYear <= (int) now()->year) {
             try {
-                app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear);
+                app(\App\Services\FormBuilderService::class)->ensureYearFormInitialized($targetYear, null, false, $brandId);
             } catch (\Throwable) {
             }
         }
 
-        $schema = \App\Models\FormSchema::with('activeFields')
-            ->where('year', $targetYear)
-            ->activePublished()
-            ->first();
-
-        return $schema;
+        return app(\App\Services\FormBuilderService::class)->resolveEffectivePublishedSchema($brandId, $targetYear);
     }
 
     /**
